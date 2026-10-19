@@ -441,6 +441,9 @@ async function apply(params: { investorOrgId: string; userId: string; targetId: 
     const delivery = await deliverApplication(id, target, applicant, documents, now).catch((e: any) => ({ ok: false, error: e.message as string }));
     if (!delivery.ok) console.error(`[InvestorAccounts] delivery of application ${id} failed:`, delivery.error);
 
+    // Remember these details so the next company is one click (best-effort; never fails the application).
+    saveKycProfile(params.userId, { applicant, idType, documents }).catch((e: any) => console.warn('[InvestorAccounts] could not save KYC profile:', e.message));
+
     const { data: saved } = await supabase.from('investor_accounts').select(PUBLIC_COLUMNS).eq('id', id).single();
     return saved;
 }
@@ -893,7 +896,80 @@ async function syncForwardAutomation(orgId: string, userId: string): Promise<'ac
     return 'active';
 }
 
+
+// ── Reusable KYC profile ─────────────────────────────────────────────────────
+// Everything an investment company asks for, saved once per person (Settings → KYC profile) and
+// reused for every new company: "one-click" applications submit this profile instead of the
+// investor re-entering it. Company-specific answers (the sales person) are deliberately not stored.
+
+const PROFILE_APPLICANT_KEYS = [
+    'first_name', 'middle_name', 'last_name', 'date_of_birth', 'gender', 'nationality', 'email', 'phone', 'physical_address',
+    'id_number', 'source_of_income', 'occupation', 'bank_name', 'bank_account_number', 'bank_account_name',
+    'nok_full_name', 'nok_id_number', 'nok_date_of_birth', 'nok_phone', 'nok_relationship',
+] as const;
+const PROFILE_DOC_KEYS = ['id_front', 'id_back', 'photo', 'proof_of_residence'] as const;
+
+/** What is still missing for a one-click application, in plain words. */
+async function profileMissing(userId: string, applicant: Record<string, string>, idType: string, documents: Record<string, string>): Promise<string[]> {
+    const { errors: applicantErrors } = validateApplicant({ ...applicant, id_type: idType });
+    const { errors: docErrors } = await validateDocuments({ ...documents, id_type: idType }, userId);
+    return [...applicantErrors, ...docErrors];
+}
+
+async function getKycProfile(userId: string): Promise<{ exists: boolean; complete: boolean; missing: string[]; applicant: Record<string, string> | null; idType: string | null; documents: Record<string, string>; documentUrls: Record<string, string | null>; updatedAt: string | null }> {
+    const { data } = await supabase.from('investor_kyc_profiles').select('applicant, id_type, documents, updated_at').eq('user_id', userId).maybeSingle();
+    if (!data) return { exists: false, complete: false, missing: [] as string[], applicant: null, idType: null, documents: {}, documentUrls: {}, updatedAt: null };
+    const applicant = (data.applicant ?? {}) as Record<string, string>;
+    const documents = (data.documents ?? {}) as Record<string, string>;
+    const idType = (data.id_type as string) || '';
+    const missing = await profileMissing(userId, applicant, idType, documents);
+    const documentUrls: Record<string, string | null> = {};
+    for (const [k, path] of Object.entries(documents)) documentUrls[k] = await signed(path, 15 * 60);
+    return { exists: true, complete: missing.length === 0, missing, applicant, idType, documents, documentUrls, updatedAt: data.updated_at as string };
+}
+
+/** Saves a (possibly unfinished) profile. Values are cleaned; document paths must be the caller's own existing uploads. */
+async function saveKycProfile(userId: string, input: { applicant?: any; idType?: string; documents?: any }) {
+    const src = input.applicant && typeof input.applicant === 'object' ? input.applicant : {};
+    const { applicant: cleaned } = validateApplicant({ ...src, id_type: input.idType });
+    const applicant: Record<string, string> = {};
+    for (const k of PROFILE_APPLICANT_KEYS) applicant[k] = cleaned[k] ?? '';
+
+    const idType = ID_TYPES.includes(String(input.idType)) ? String(input.idType) : '';
+    const documents: Record<string, string> = {};
+    const raw = input.documents && typeof input.documents === 'object' ? input.documents : {};
+    for (const k of PROFILE_DOC_KEYS) {
+        const p = typeof raw[k] === 'string' ? raw[k].trim() : '';
+        if (!p) continue;
+        if (p.length > 300 || !p.startsWith(`${userId}/`) || p.includes('..')) throw new InvestorAccountError('VALIDATION', `${docLabel(k, idType)}: invalid file reference`, 422);
+        if (!(await objectExists(p))) throw new InvestorAccountError('VALIDATION', `${docLabel(k, idType)}: the upload could not be found, please upload it again`, 422);
+        documents[k] = p;
+    }
+
+    const { error } = await supabase.from('investor_kyc_profiles').upsert(
+        { user_id: userId, applicant, id_type: idType, documents, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id' },
+    );
+    if (error) throw new Error(`Could not save your KYC profile: ${error.message}`);
+    return getKycProfile(userId);
+}
+
+/** One-click: submits the saved profile to a new company. */
+async function applyWithProfile(params: { investorOrgId: string; userId: string; targetId: string; declaration: boolean; salesPerson?: string }) {
+    const profile = await getKycProfile(params.userId);
+    if (!profile.exists) throw new InvestorAccountError('NO_PROFILE', 'You have not set up your KYC profile yet.', 409);
+    if (!profile.complete) throw new InvestorAccountError('PROFILE_INCOMPLETE', `Your KYC profile is incomplete: ${profile.missing[0]}`, 422, { errors: profile.missing });
+    return apply({
+        investorOrgId: params.investorOrgId, userId: params.userId, targetId: params.targetId, declaration: params.declaration,
+        applicant: { ...profile.applicant, id_type: profile.idType, sales_person: (params.salesPerson ?? '').slice(0, 120) },
+        documents: { ...profile.documents, id_type: profile.idType },
+    });
+}
+
 export const investorAccountService = {
+    getKycProfile,
+    saveKycProfile,
+    applyWithProfile,
     myAccounts,
     extractIdDetails,
     connect,

@@ -1,6 +1,6 @@
 import { randomBytes, createHash } from 'crypto';
 import { supabase } from '../lib/supabase';
-import { invalidateApiKeyCache, isPremiumOrg } from '../middleware/apiKey';
+import { invalidateApiKeyCache } from '../middleware/apiKey';
 import { revokeGrant } from '../services/oauth.service';
 
 const MAX_ACTIVE_KEYS = 10;
@@ -37,10 +37,6 @@ export const createApiKey = async (req: any, res: any) => {
 
     if (!name || typeof name !== 'string' || name.trim().length < 1 || name.trim().length > 60) {
         return res.status(400).json({ error: 'A name of 1–60 characters is required' });
-    }
-
-    if (!(await isPremiumOrg(orgId))) {
-        return res.status(403).json({ error: 'The MoneyWise API is available on the Premium plan' });
     }
 
     const { count: activeCount } = await supabase

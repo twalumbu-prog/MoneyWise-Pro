@@ -4,7 +4,7 @@ import {
     listInvestmentTargets, walletTransferToInvestmentTarget, recordInvestmentIntent, confirmInvestment,
     listMyInvestorAccounts, connectInvestorAccount, applyForInvestorAccount, extractInvestorId,
     listInvestorApplications, getInvestorApplication, reviewInvestorApplication,
-    getPayoutSettings, savePayoutSettings,
+    getPayoutSettings, savePayoutSettings, applyWithKycProfile, getMyKycProfile, saveMyKycProfile,
 } from '../controllers/invest.controller';
 
 const router = Router();
@@ -21,6 +21,9 @@ router.get('/my-accounts', listMyInvestorAccounts);
 router.post('/accounts/connect', connectInvestorAccount);
 router.post('/accounts/apply', applyForInvestorAccount);
 router.post('/accounts/extract-id', extractInvestorId);
+router.post('/accounts/apply-with-kyc', applyWithKycProfile);
+router.get('/kyc-profile', getMyKycProfile);
+router.put('/kyc-profile', saveMyKycProfile);
 
 // Company side: only an organization that IS an investment target has applications to show.
 router.get('/applications', requireRole(['ACCOUNTANT', 'ADMIN']), listInvestorApplications);

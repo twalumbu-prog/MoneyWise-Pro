@@ -144,6 +144,16 @@ export default function MenuScreen() {
                         <Text style={styles.rowSub}>Your account & disbursement details</Text>
                     </View>
                 </Pressable>
+                <Pressable
+                    onPress={() => router.push('/settings/kyc-profile')}
+                    style={({ pressed }) => [styles.row, styles.rowBorder, pressed && { opacity: 0.6 }]}
+                >
+                    <ShieldCheck size={18} color={colors.blue} />
+                    <View style={styles.rowMain}>
+                        <Text style={styles.rowLabel}>KYC Profile</Text>
+                        <Text style={styles.rowSub}>Save your details once for investment accounts</Text>
+                    </View>
+                </Pressable>
                 <TourTarget id="menu-general"><Pressable
                     onPress={() => router.push('/settings/general')}
                     style={({ pressed }) => [styles.row, styles.rowBorder, pressed && { opacity: 0.6 }]}

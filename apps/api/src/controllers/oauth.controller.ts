@@ -10,7 +10,6 @@
  * talks to the app's redirect_uri until the API has issued a code for it.
  */
 import { supabase } from '../lib/supabase';
-import { isPremiumOrg } from '../middleware/apiKey';
 import {
     CODE_TTL_MS,
     OAuthClient,
@@ -73,15 +72,12 @@ const validateAuthorizeRequest = async (
     return { ok: true, value: { client, redirectUri, scopes, codeChallenge: p.code_challenge, state } };
 };
 
-// Only an ADMIN of a Premium organisation can connect an app to it.
+// Only an ADMIN of the organisation can connect an app to it (any plan).
 const checkApprover = async (req: any): Promise<{ ok: true; orgId: string } | { ok: false; status: number; error: string; description: string }> => {
     const orgId = req.user.organization_id;
     if (!orgId) return { ok: false, status: 400, error: 'no_organization', description: 'Your account is not part of an organisation yet.' };
     if (req.user.role !== 'ADMIN') {
         return { ok: false, status: 403, error: 'not_admin', description: 'Only an organisation admin can connect apps to MoneyWise.' };
-    }
-    if (!(await isPremiumOrg(orgId))) {
-        return { ok: false, status: 403, error: 'not_premium', description: 'Connecting apps requires the Premium plan.' };
     }
     return { ok: true, orgId };
 };

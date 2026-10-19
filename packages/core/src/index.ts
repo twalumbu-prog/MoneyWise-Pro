@@ -124,7 +124,7 @@ export type {
 } from './services/savings.service';
 export type {
     InvestmentTarget, InvestorAccountStatus, MyInvestorAccount, InvestorApplicationSummary,
-    InvestorApplicationDetail, PayoutSettings,
+    InvestorApplicationDetail, PayoutSettings, KycProfile,
 } from './services/investment.service';
 export {
     ID_TYPES, GENDERS, OCCUPATIONS, INCOME_SOURCES, RELATIONSHIPS, ZAMBIA_BANK_NAMES, NATIONALITIES, EMPTY_APPLICANT,

@@ -6,7 +6,7 @@
  *     --scopes read,write [--confidential] [--description "..."] [--logo https://...]
  *     [--owner-org <organization uuid>] [--verified]
  *
- * Day to day, Premium admins register apps themselves under Settings -> MoneyWise API.
+ * Day to day, organisation admins register apps themselves under Settings -> MoneyWise API.
  * This script is for super-admins: it can mark an app --verified (unlocks the write scope).
  *
  * Public clients (default: SPAs, mobile apps) rely on PKCE alone.

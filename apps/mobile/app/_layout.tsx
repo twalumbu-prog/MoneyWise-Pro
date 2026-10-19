@@ -132,6 +132,7 @@ export default function RootLayout() {
                         <Stack.Screen name="products/index" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="products/[id]" options={{ animation: 'slide_from_bottom' }} />
                         <Stack.Screen name="settings/profile" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="settings/kyc-profile" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="settings/general" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="settings/team" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="settings/integrations" options={{ animation: 'slide_from_right' }} />

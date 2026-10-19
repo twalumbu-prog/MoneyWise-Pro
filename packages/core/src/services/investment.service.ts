@@ -57,6 +57,20 @@ export interface InvestorApplicationDetail extends Omit<InvestorApplicationSumma
     investments: { id: string; reference: string; method: string; amount_paid: number; amount_received: number | null; status: string; product_name: string | null; created_at: string }[];
 }
 
+/** The person's reusable KYC details — saved once, submitted to any investment company in one tap. */
+export interface KycProfile {
+    exists: boolean;
+    /** Everything a company needs is present and the uploads are still in storage. */
+    complete: boolean;
+    missing: string[];
+    applicant: Record<string, string> | null;
+    idType: string | null;
+    documents: Record<string, string>;
+    /** Short-lived links for previewing the uploads. */
+    documentUrls: Record<string, string | null>;
+    updatedAt: string | null;
+}
+
 export interface PayoutSettings {
     isInvestmentCompany: boolean;
     bankName: string | null;
@@ -117,6 +131,19 @@ export const investmentService = {
     /** Submits the onboarding application (the API builds the PDF and emails the company). */
     applyForAccount(payload: { targetId: string; applicant: Record<string, string>; documents: Record<string, string>; declaration: boolean }): Promise<MyInvestorAccount> {
         return apiJson('/investments/accounts/apply', { method: 'POST', body: JSON.stringify(payload) });
+    },
+
+    getKycProfile(): Promise<KycProfile> {
+        return apiJson<KycProfile>('/investments/kyc-profile');
+    },
+
+    saveKycProfile(body: { applicant: Record<string, string>; idType: string; documents: Record<string, string> }): Promise<KycProfile> {
+        return apiJson<KycProfile>('/investments/kyc-profile', { method: 'PUT', body: JSON.stringify(body) });
+    },
+
+    /** One-click: submits the saved KYC profile to a company. */
+    applyWithKycProfile(payload: { targetId: string; declaration: boolean; salesPerson?: string }): Promise<MyInvestorAccount> {
+        return apiJson('/investments/accounts/apply-with-kyc', { method: 'POST', body: JSON.stringify(payload) });
     },
 
     /** Has the server's AI read an uploaded ID (already in storage) and return what it could extract. */

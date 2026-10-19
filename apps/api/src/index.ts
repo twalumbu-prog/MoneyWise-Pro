@@ -426,6 +426,18 @@ const runMigration = async () => {
                 ADD COLUMN IF NOT EXISTS investor_account_number TEXT,
                 ADD COLUMN IF NOT EXISTS product_name TEXT;
         `);
+        // Reusable KYC profile (Settings → KYC profile): one row per person, reused for every investment company.
+        await migrationPool.query(`
+            CREATE TABLE IF NOT EXISTS public.investor_kyc_profiles (
+                user_id    UUID PRIMARY KEY,
+                applicant  JSONB NOT NULL DEFAULT '{}'::jsonb,
+                id_type    TEXT,
+                documents  JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            );
+            ALTER TABLE public.investor_kyc_profiles ENABLE ROW LEVEL SECURITY;
+        `);
         // The bucket + storage policy need rights on the storage schema; if the
         // migration role lacks them this logs and the SQL file must be run in the
         // Supabase SQL editor instead. It must not block the rest of the migration.

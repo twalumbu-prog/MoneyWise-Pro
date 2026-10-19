@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { X, Check, ExternalLink, Pencil, Sparkles, AlertCircle } from 'lucide-react-native';
+import { X, Check, ExternalLink, Pencil, Sparkles, AlertCircle, Zap } from 'lucide-react-native';
 import {
     investmentService, userService, onboardingService, APPLICATION_STEPS, GENDERS, ID_TYPES, OCCUPATIONS, INCOME_SOURCES,
     RELATIONSHIPS, NATIONALITIES, EMPTY_APPLICANT, idNeedsBack, nationalityFlag, flagFromIso2,
@@ -63,15 +63,23 @@ const normalizePhone = (p?: string | null): string => {
  * own. Submitting hands everything to the API, which builds the PDF and emails the company.
  */
 export const InvestApplicationWizard: React.FC<{
-    provider: InvestProvider;
+    /** The company being applied to. Omitted in `profile` mode. */
+    provider?: InvestProvider;
     onClose: () => void;
-    onSubmitted: (account: MyInvestorAccount) => void;
-}> = ({ provider, onClose, onSubmitted }) => {
+    onSubmitted?: (account: MyInvestorAccount) => void;
+    /**
+     * `apply` (default): apply to `provider`. If the person has a complete saved KYC profile this opens a
+     * one-click screen first. `profile`: edit and save the reusable KYC profile (Settings → KYC profile).
+     */
+    mode?: 'apply' | 'profile';
+    onSaved?: () => void;
+}> = ({ provider, onClose, onSubmitted, mode = 'apply', onSaved }) => {
+    const isProfile = mode === 'profile';
     const insets = useSafeAreaInsets();
     const qc = useQueryClient();
     const { user } = useAuth();
     const scrollRef = useRef<ScrollView>(null);
-    const targetId = provider.investmentTargetId!;
+    const targetId = provider?.investmentTargetId ?? 'kyc-profile';
     const uid = user?.id ?? '';
 
     const [stepIdx, setStepIdx] = useState(0);
@@ -84,6 +92,9 @@ export const InvestApplicationWizard: React.FC<{
     const [submitting, setSubmitting] = useState(false);
     const [banner, setBanner] = useState<string | null>(null);
     const [dirty, setDirty] = useState(false);
+    // One-click screen is shown when a complete saved profile exists; "Review or edit" drops into the pages.
+    const [editing, setEditing] = useState(false);
+    const [quickSales, setQuickSales] = useState('');
 
     const step = APPLICATION_STEPS[stepIdx];
     const isLast = stepIdx === APPLICATION_STEPS.length - 1;
@@ -95,9 +106,33 @@ export const InvestApplicationWizard: React.FC<{
         queryFn: () => onboardingService.getState().catch(() => null),
         staleTime: 5 * 60_000,
     });
+
+    // ── The saved, reusable KYC profile ──
+    const { data: kyc, isFetched: kycFetched } = useQuery({
+        queryKey: ['kyc-profile'],
+        queryFn: () => investmentService.getKycProfile().catch(() => null),
+        staleTime: 0,
+    });
+    const kycApplied = useRef(false);
+    useEffect(() => {
+        if (kycApplied.current || !kycFetched) return;
+        kycApplied.current = true;
+        if (!kyc?.exists || !kyc.applicant) return;
+        setA((prev) => ({ ...prev, ...(kyc.applicant as any), sales_person: prev.sales_person }));
+        if (kyc.idType && (ID_TYPES as string[]).includes(kyc.idType)) setIdType(kyc.idType as IdType);
+        const slots: DocSlots = {};
+        (Object.entries(kyc.documents ?? {}) as [keyof DocSlots, string][]).forEach(([k, path]) => {
+            const url = kyc.documentUrls?.[k as string];
+            slots[k] = { path, name: path.split('/').pop() || String(k), uri: url && !/\.pdf$/i.test(path) ? url : undefined };
+        });
+        setDocs(slots);
+        // Editing the saved profile opens on the review page, where every section can be changed.
+        if (isProfile && kyc.complete) setStepIdx(APPLICATION_STEPS.length - 1);
+    }, [kyc, kycFetched, isProfile]);
+
     const prefilled = useRef(false);
     useEffect(() => {
-        if (prefilled.current || !profile) return;
+        if (prefilled.current || !profile || !kycFetched) return;
         prefilled.current = true;
         const parts = (profile.name || '').trim().split(/\s+/).filter(Boolean);
         const ob: any = onboarding?.profile ?? {};
@@ -111,7 +146,7 @@ export const InvestApplicationWizard: React.FC<{
             phone: prev.phone || normalizePhone(user?.phone) || normalizePhone(ob.phone),
             physical_address: prev.physical_address || address,
         }));
-    }, [profile, onboarding, user?.email, user?.phone]);
+    }, [profile, onboarding, user?.email, user?.phone, kycFetched]);
 
     const set = <K extends keyof InvestorApplicant>(key: K, value: InvestorApplicant[K]) => {
         setA((prev) => ({ ...prev, [key]: value }));
@@ -214,13 +249,21 @@ export const InvestApplicationWizard: React.FC<{
             const e = (id === 'id' || id === 'photo' || id === 'residence') ? validateDocumentStep(id, idType, docPaths) : validateApplicantStep(id, a);
             if (Object.keys(e).length) { setErrors(e); setBanner(`Please review "${APPLICATION_STEPS[i].title}".`); goTo(i); return; }
         }
-        if (!declared) { setBanner('Please accept the declaration to submit.'); return; }
+        if (!isProfile && !declared) { setBanner('Please accept the declaration to submit.'); return; }
 
         setSubmitting(true);
         setBanner(null);
         try {
             const documents: Record<string, string> = { id_type: idType };
             (Object.entries(docPaths) as [string, string | undefined][]).forEach(([k, v]) => { if (v) documents[k] = v; });
+            if (isProfile) {
+                const { sales_person: _s, ...applicant } = a;
+                const saved = await investmentService.saveKycProfile({ applicant: { ...applicant, id_type: idType } as any, idType, documents: docPaths as any });
+                qc.setQueryData(['kyc-profile'], saved);
+                setDirty(false);
+                onSaved?.();
+                return;
+            }
             const account = await investmentService.applyForAccount({
                 targetId,
                 applicant: { ...a, id_type: idType } as any,
@@ -228,7 +271,23 @@ export const InvestApplicationWizard: React.FC<{
                 declaration: true,
             });
             qc.invalidateQueries({ queryKey: ['investor-accounts'] });
-            onSubmitted(account);
+            qc.invalidateQueries({ queryKey: ['kyc-profile'] });
+            onSubmitted?.(account);
+        } catch (e: any) {
+            setBanner(e?.message || 'We could not submit your application. Please try again.');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const submitQuick = async () => {
+        if (!declared) { setBanner('Please accept the declaration to submit.'); return; }
+        setSubmitting(true);
+        setBanner(null);
+        try {
+            const account = await investmentService.applyWithKycProfile({ targetId, declaration: true, salesPerson: quickSales || undefined });
+            qc.invalidateQueries({ queryKey: ['investor-accounts'] });
+            onSubmitted?.(account);
         } catch (e: any) {
             setBanner(e?.message || 'We could not submit your application. Please try again.');
         } finally {
@@ -241,6 +300,70 @@ export const InvestApplicationWizard: React.FC<{
     const idNumberLabel = idType === 'Passport' ? 'Passport number' : idType === "Driver's Licence" ? 'Licence number' : 'NRC number';
     const reading = step.id === 'id' && read === 'reading';
 
+    const showQuick = !isProfile && !editing && !!kyc?.complete;
+    if (!isProfile && !kycFetched) {
+        return <View style={[styles.root, { alignItems: 'center', justifyContent: 'center' }]}><ActivityIndicator color={colors.blue} /></View>;
+    }
+    if (showQuick && kyc) {
+        const ap = kyc.applicant ?? {};
+        const name = [ap.first_name, ap.middle_name, ap.last_name].filter(Boolean).join(' ');
+        const rows: [string, string][] = [
+            ['Name', name], ['Date of birth', fmtValue('date_of_birth', ap.date_of_birth)], [`${kyc.idType} number`, ap.id_number],
+            ['Email', ap.email], ['Phone', ap.phone], ['Bank', `${ap.bank_name} · ${ap.bank_account_number}`], ['Next of kin', `${ap.nok_full_name} (${ap.nok_relationship})`],
+        ];
+        return (
+            <KeyboardAvoidingView style={styles.root} behavior="padding">
+                <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+                    <Pressable onPress={onClose} hitSlop={12} accessibilityLabel="Close application"><X size={22} color={colors.textMuted} /></Pressable>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.headerTitle} numberOfLines={1}>Open an account · {provider?.name}</Text>
+                        <Text style={styles.headerSub}>One-click KYC</Text>
+                    </View>
+                </View>
+                <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                    <View style={[styles.readCard, styles.readOk, { marginBottom: 16 }]}>
+                        <Zap size={18} color={colors.positiveInk} />
+                        <Text style={styles.readText}>Your KYC profile is ready. Submit it to {provider?.name} in one tap — no need to fill anything in again.</Text>
+                    </View>
+                    <ErrorBanner message={banner} />
+                    <View style={styles.summaryCard}>
+                        <Text style={[styles.summaryTitle, { marginBottom: 8 }]}>Sending from your KYC profile</Text>
+                        {rows.map(([label, value]) => (
+                            <View key={label} style={styles.summaryRow}>
+                                <Text style={styles.summaryLabel}>{label}</Text>
+                                <Text style={styles.summaryValue} numberOfLines={2}>{value || '—'}</Text>
+                            </View>
+                        ))}
+                        <View style={styles.summaryRow}>
+                            <Text style={styles.summaryLabel}>Documents</Text>
+                            <Text style={styles.summaryValue}>{Object.keys(kyc.documents ?? {}).length} on file</Text>
+                        </View>
+                    </View>
+                    {(provider?.salesPeople?.length ?? 0) > 0 && (
+                        <SelectField label="Sales person" value={quickSales} options={opt(provider!.salesPeople!)} onChange={setQuickSales} optional placeholder="Who referred you?" />
+                    )}
+                    <Pressable onPress={() => { setDeclared((d) => !d); setBanner(null); }} style={styles.declare} accessibilityRole="checkbox" accessibilityState={{ checked: declared }}>
+                        <View style={[styles.checkbox, declared && styles.checkboxOn]}>{declared && <Check size={14} color="#FFFFFF" strokeWidth={3} />}</View>
+                        <Text style={styles.declareText}>
+                            I declare that all information provided is true and accurate to the best of my knowledge. I understand that providing false information may result in my application being rejected.
+                        </Text>
+                    </Pressable>
+                    {!!provider?.factSheetUrl && (
+                        <Pressable onPress={() => Linking.openURL(provider!.factSheetUrl!)} style={styles.factSheet}>
+                            <ExternalLink size={14} color={colors.blue} />
+                            <Text style={styles.factSheetText}>Review the fund fact sheet</Text>
+                        </Pressable>
+                    )}
+                    <Pressable onPress={() => { setEditing(true); setStepIdx(APPLICATION_STEPS.length - 1); setBanner(null); }} style={styles.editLink}>
+                        <Pencil size={13} color={colors.blue} /><Text style={styles.editText}>Review or edit my details first</Text>
+                    </Pressable>
+                    <Text style={styles.sendNote}>Your application goes straight to {provider?.name} for review. You'll get an email when it's decided.</Text>
+                </ScrollView>
+                <StepFooter onBack={onClose} onContinue={submitQuick} continueLabel="Submit with my KYC profile" loading={submitting} disabled={!declared} />
+            </KeyboardAvoidingView>
+        );
+    }
+
     return (
         <KeyboardAvoidingView style={styles.root} behavior="padding">
             <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
@@ -248,7 +371,7 @@ export const InvestApplicationWizard: React.FC<{
                     <X size={22} color={colors.textMuted} />
                 </Pressable>
                 <View style={{ flex: 1 }}>
-                    <Text style={styles.headerTitle} numberOfLines={1}>Open an account · {provider.name}</Text>
+                    <Text style={styles.headerTitle} numberOfLines={1}>{isProfile ? 'KYC profile' : `Open an account · ${provider?.name}`}</Text>
                     <Text style={styles.headerSub}>Step {stepIdx + 1} of {APPLICATION_STEPS.length}</Text>
                 </View>
             </View>
@@ -351,12 +474,12 @@ export const InvestApplicationWizard: React.FC<{
 
                 {step.id === 'kin' && (
                     <>
-                        {(provider.salesPeople?.length ?? 0) > 0 ? (
-                            <SelectField label="Sales person" value={a.sales_person} options={opt(provider.salesPeople!)} onChange={(v) => set('sales_person', v)} optional placeholder="Who referred you?" />
+                        {!isProfile && ((provider?.salesPeople?.length ?? 0) > 0 ? (
+                            <SelectField label="Sales person" value={a.sales_person} options={opt(provider!.salesPeople!)} onChange={(v) => set('sales_person', v)} optional placeholder="Who referred you?" />
                         ) : (
                             <TextField label="Sales person" value={a.sales_person} onChangeText={(t) => set('sales_person', t)} optional autoCapitalize="words" placeholder="Who referred you?" />
-                        )}
-                        <View style={styles.divider} />
+                        ))}
+                        {!isProfile && <View style={styles.divider} />}
                         <TextField label="Next of kin full name" value={a.nok_full_name} onChangeText={(t) => set('nok_full_name', t)} error={errors.nok_full_name} autoCapitalize="words" />
                         <TextField label="Next of kin ID / NRC / passport number" value={a.nok_id_number} onChangeText={(t) => set('nok_id_number', t)} error={errors.nok_id_number} autoCapitalize="characters" />
                         <DateField label="Next of kin date of birth" value={a.nok_date_of_birth} onChange={(v) => set('nok_date_of_birth', v)} error={errors.nok_date_of_birth} />
@@ -396,7 +519,7 @@ export const InvestApplicationWizard: React.FC<{
                                         <Pencil size={13} color={colors.blue} /><Text style={styles.editText}>Edit</Text>
                                     </Pressable>
                                 </View>
-                                {s.rows.map(([label, key]) => (
+                                {s.rows.filter(([, key]) => !(isProfile && key === 'sales_person')).map(([label, key]) => (
                                     <View key={key} style={styles.summaryRow}>
                                         <Text style={styles.summaryLabel}>{label}</Text>
                                         <Text style={styles.summaryValue} numberOfLines={2}>{key === 'id_type' ? idType : fmtValue(key, a[key] as string)}</Text>
@@ -422,19 +545,26 @@ export const InvestApplicationWizard: React.FC<{
                             ))}
                         </View>
 
+                        {isProfile ? (
+                            <View style={[styles.readCard, { marginTop: 4 }]}>
+                                <Zap size={18} color={colors.blue} />
+                                <Text style={styles.readText}>Saved to your account only. Next time you open an investment account, you can submit these details in one tap.</Text>
+                            </View>
+                        ) : (<>
                         <Pressable onPress={() => { setDeclared((d) => !d); setBanner(null); }} style={styles.declare} accessibilityRole="checkbox" accessibilityState={{ checked: declared }}>
                             <View style={[styles.checkbox, declared && styles.checkboxOn]}>{declared && <Check size={14} color="#FFFFFF" strokeWidth={3} />}</View>
                             <Text style={styles.declareText}>
                                 I declare that all information provided is true and accurate to the best of my knowledge. I understand that providing false information may result in my application being rejected.
                             </Text>
                         </Pressable>
-                        {!!provider.factSheetUrl && (
-                            <Pressable onPress={() => Linking.openURL(provider.factSheetUrl!)} style={styles.factSheet}>
+                        {!!provider?.factSheetUrl && (
+                            <Pressable onPress={() => Linking.openURL(provider!.factSheetUrl!)} style={styles.factSheet}>
                                 <ExternalLink size={14} color={colors.blue} />
                                 <Text style={styles.factSheetText}>Review the fund fact sheet</Text>
                             </Pressable>
                         )}
-                        <Text style={styles.sendNote}>Your application goes straight to {provider.name} for review. You'll get an email when it's decided.</Text>
+                        <Text style={styles.sendNote}>Your application goes straight to {provider?.name} for review. You'll get an email when it's decided.</Text>
+                        </>)}
                     </>
                 )}
             </ScrollView>
@@ -442,9 +572,9 @@ export const InvestApplicationWizard: React.FC<{
             <StepFooter
                 onBack={back}
                 onContinue={isLast ? submit : next}
-                continueLabel={reading ? 'Reading your ID…' : isLast ? 'Submit application' : 'Continue'}
+                continueLabel={reading ? 'Reading your ID…' : isLast ? (isProfile ? 'Save KYC profile' : 'Submit application') : 'Continue'}
                 loading={submitting}
-                disabled={reading || (isLast && !declared)}
+                disabled={reading || (isLast && !isProfile && !declared)}
             />
         </KeyboardAvoidingView>
     );
@@ -481,6 +611,7 @@ const styles = StyleSheet.create({
     checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
     checkboxOn: { backgroundColor: colors.blue, borderColor: colors.blue },
     declareText: { flex: 1, fontFamily: fonts.body, fontSize: 13, color: colors.text, lineHeight: 19 },
+    editLink: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14, alignSelf: 'flex-start' },
     factSheet: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, alignSelf: 'flex-start' },
     factSheetText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.blue },
     sendNote: { fontFamily: fonts.body, fontSize: 12, color: colors.textMuted, textAlign: 'center', marginTop: 16 },

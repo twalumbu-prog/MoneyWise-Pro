@@ -1,5 +1,5 @@
 /**
- * Self-service OAuth app registration for Premium organisation admins
+ * Self-service OAuth app registration for organisation admins
  * (mounted under /developer, which is already ADMIN-only).
  *
  * Trust model: an app belongs to the organisation that registered it, is shown as
@@ -8,7 +8,6 @@
  */
 import { randomBytes } from 'crypto';
 import { supabase } from '../lib/supabase';
-import { isPremiumOrg } from '../middleware/apiKey';
 import {
     MAX_APPS_PER_ORG,
     UNVERIFIED_SCOPES,
@@ -104,8 +103,6 @@ export const listOAuthApps = async (req: any, res: any) => {
 export const createOAuthApp = async (req: any, res: any) => {
     const orgId = req.user.organization_id;
     const body = req.body ?? {};
-
-    if (!(await isPremiumOrg(orgId))) return res.status(403).json({ error: 'Registering apps requires the Premium plan' });
 
     const { count } = await supabase.from('oauth_clients').select('id', { count: 'exact', head: true }).eq('owner_organization_id', orgId);
     if ((count ?? 0) >= MAX_APPS_PER_ORG) return res.status(400).json({ error: `You can register up to ${MAX_APPS_PER_ORG} apps. Delete one first.` });

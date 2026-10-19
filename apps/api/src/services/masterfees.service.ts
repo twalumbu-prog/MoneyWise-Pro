@@ -248,6 +248,9 @@ interface MFTransaction {
     source_payment_method?: string | null;
     status?: string;
     completed_at?: string;
+    /** Not exposed by the MF API today (completed_at is the time the payment was keyed in, so back-dated manual payments land a day late). If MF adds any of these, they win over completed_at. */
+    payment_date?: string;
+    paid_at?: string;
     invoice_id?: string;
     /** Academic term/year this payment was recorded against — see MFInvoice. */
     term?: number;
@@ -276,6 +279,8 @@ const dateOnly = (v?: string): string => {
     if (isNaN(d.getTime())) return String(v).slice(0, 10);
     return new Date(d.getTime() + ORG_TZ_OFFSET_MS).toISOString().slice(0, 10);
 };
+/** Real payment date when MF supplies one, else completed_at. */
+const txnDate = (t: MFTransaction): string | undefined => t.payment_date || t.paid_at || t.completed_at;
 const catId = (c: MFFeeCategory | MFInvoiceItem): string | undefined =>
     (c as any).id || (c as any).category_id || (c as any).fee_category_id;
 
@@ -1217,7 +1222,7 @@ async function postPayment(
         const accountType = await resolveManualAccountType(organizationId, channel); // dedicated bank wallet if the org has one, else the generic bucket
         const manualLabel = `Master Fees Manual Payment (${manualChannelLabel(channel)}) ${txn.reference || txn.transaction_id.slice(0, 8)}${studentName ? ` — ${studentName}` : ''}`;
         const entry = await cashbookService.createEntry(organizationId, {
-            date: dateOnly(txn.completed_at),
+            date: dateOnly(txnDate(txn)),
             description: manualLabel,
             debit: amount,
             credit: 0,
@@ -1283,7 +1288,7 @@ async function postPayment(
     // Receivable) automatically — same mechanism every other real cash movement uses.
     await getCollectionsAccount(organizationId); // ensure the contra-resolvable account exists
     const entry = await cashbookService.createEntry(organizationId, {
-        date: dateOnly(txn.completed_at),
+        date: dateOnly(txnDate(txn)),
         description: label,
         debit: amount,
         credit: 0,

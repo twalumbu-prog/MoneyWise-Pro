@@ -280,6 +280,30 @@ export const applyForInvestorAccount = async (req: any, res: any): Promise<any> 
     } catch (error: any) { sendAccountError(res, error, 'Failed to submit the application'); }
 };
 
+export const applyWithKycProfile = async (req: any, res: any): Promise<any> => {
+    try {
+        const { targetId, declaration, salesPerson } = req.body ?? {};
+        if (!targetId) return res.status(400).json({ error: 'targetId is required' });
+        const row = await investorAccountService.applyWithProfile({
+            investorOrgId: req.user.organization_id, userId: req.user.id, targetId, declaration: declaration === true,
+            salesPerson: typeof salesPerson === 'string' ? salesPerson : undefined,
+        });
+        res.status(201).json(row);
+    } catch (error: any) { sendAccountError(res, error, 'Failed to submit the application'); }
+};
+
+export const getMyKycProfile = async (req: any, res: any): Promise<any> => {
+    try { res.json(await investorAccountService.getKycProfile(req.user.id)); }
+    catch (error: any) { sendAccountError(res, error, 'Failed to load your KYC profile'); }
+};
+
+export const saveMyKycProfile = async (req: any, res: any): Promise<any> => {
+    try {
+        const { applicant, idType, documents } = req.body ?? {};
+        res.json(await investorAccountService.saveKycProfile(req.user.id, { applicant, idType, documents }));
+    } catch (error: any) { sendAccountError(res, error, 'Failed to save your KYC profile'); }
+};
+
 // ── Company side (CRM → Investors, Settings → Investor payouts) ──────────────
 
 export const listInvestorApplications = async (req: any, res: any): Promise<any> => {

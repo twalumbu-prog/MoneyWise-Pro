@@ -8,7 +8,6 @@ interface CachedKey {
     organization_id: string;
     scopes: string[];
     revoked: boolean;
-    premium: boolean;
     cachedAt: number;
     touchedAt: number;
 }
@@ -24,15 +23,6 @@ export const invalidateApiKeyCache = (keyId: string) => {
     for (const [hash, entry] of cache) {
         if (entry.id === keyId) cache.delete(hash);
     }
-};
-
-export const isPremiumOrg = async (organizationId: string): Promise<boolean> => {
-    const { data } = await supabase
-        .from('organization_subscriptions')
-        .select('plan_id')
-        .eq('organization_id', organizationId)
-        .maybeSingle();
-    return data?.plan_id === 'premium';
 };
 
 /**
@@ -113,7 +103,6 @@ export const requireApiKey = async (req: any, res: any, next: any) => {
                 return res.status(401).json({ error: isOAuth ? 'Invalid access token' : 'Invalid API key' });
             }
 
-            const premium = found.revoked ? false : await isPremiumOrg(found.organization_id);
             if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value as string);
             entry = {
                 kind: isOAuth ? 'oauth' : 'key',
@@ -122,7 +111,6 @@ export const requireApiKey = async (req: any, res: any, next: any) => {
                 organization_id: found.organization_id,
                 scopes: found.scopes,
                 revoked: found.revoked,
-                premium,
                 cachedAt: now,
                 touchedAt: entry?.touchedAt ?? 0,
             };
@@ -135,12 +123,6 @@ export const requireApiKey = async (req: any, res: any, next: any) => {
         if (entry.accessExpiresAt !== null && now > entry.accessExpiresAt) {
             res.set('WWW-Authenticate', 'Bearer error="invalid_token", error_description="The access token expired"');
             return res.status(401).json({ error: 'Access token expired', hint: 'Use your refresh token at POST /oauth/token to get a new one.' });
-        }
-        if (!entry.premium) {
-            return res.status(403).json({
-                error: 'The MoneyWise API requires a Premium plan',
-                hint: 'Upgrade under Settings → Subscription & Billing.',
-            });
         }
 
         req.user = {
