@@ -917,7 +917,28 @@ async function profileMissing(userId: string, applicant: Record<string, string>,
 }
 
 async function getKycProfile(userId: string): Promise<{ exists: boolean; complete: boolean; missing: string[]; applicant: Record<string, string> | null; idType: string | null; documents: Record<string, string>; documentUrls: Record<string, string | null>; updatedAt: string | null }> {
-    const { data } = await supabase.from('investor_kyc_profiles').select('applicant, id_type, documents, updated_at').eq('user_id', userId).maybeSingle();
+    let { data } = await supabase.from('investor_kyc_profiles').select('applicant, id_type, documents, updated_at').eq('user_id', userId).maybeSingle();
+    if (!data) {
+        // Applications made before the profile existed: adopt the person's most recent one so they never re-enter it.
+        const { data: prior } = await supabase.from('investor_accounts').select('applicant, documents')
+            .eq('user_id', userId).not('applicant', 'is', null).not('documents', 'is', null).order('created_at', { ascending: false }).limit(1).maybeSingle();
+        if (prior?.applicant && prior.documents) {
+            const a = prior.applicant as Record<string, string>;
+            // Earlier applications stored files under whatever folder the app used then (and older key names). They are
+            // this person's own submission, so copy them into their own folder, where the profile's ownership rule holds.
+            const LEGACY_KEY: Record<string, string> = { nrc_front: 'id_front', nrc_back: 'id_back' };
+            const adopted: Record<string, string> = {};
+            for (const [rawKey, path] of Object.entries(prior.documents as Record<string, string>)) {
+                const key = LEGACY_KEY[rawKey] ?? rawKey;
+                if (!(PROFILE_DOC_KEYS as readonly string[]).includes(key) || typeof path !== 'string') continue;
+                const dest = `${userId}/kyc-profile/${key}_${Date.now()}.${(path.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5) || 'jpg'}`;
+                const { error: copyErr } = await supabase.storage.from(KYC_BUCKET).copy(path, dest);
+                if (!copyErr) adopted[key] = dest;
+            }
+            const seed = await saveKycProfile(userId, { applicant: a, idType: a.id_type, documents: adopted }).catch(() => null);
+            if (seed) return seed;
+        }
+    }
     if (!data) return { exists: false, complete: false, missing: [] as string[], applicant: null, idType: null, documents: {}, documentUrls: {}, updatedAt: null };
     const applicant = (data.applicant ?? {}) as Record<string, string>;
     const documents = (data.documents ?? {}) as Record<string, string>;
