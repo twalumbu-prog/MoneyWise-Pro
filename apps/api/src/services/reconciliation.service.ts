@@ -24,6 +24,7 @@
 
 import { supabase } from '../lib/supabase';
 import { LencoService } from './lenco.service';
+import { isPlatformSweepDebit } from './ledgerGuardian/core';
 
 export const RECON_TOLERANCE = 1.0;
 const CACHE_TTL_MS = 60_000;
@@ -66,6 +67,8 @@ export interface OrgReconSummary {
     fees: FeesBreakdown | null;
     status: ReconStatus;
     reconciliationPct: number | null;
+    /** Funds Lenco is holding (ledgerBalance − availableBalance), typically failed payouts not yet released. The tie uses availableBalance. */
+    lencoHold?: number;
     error?: string;
     lastCheckedAt: string;
     /** Set whenever the transaction-level fetch may be incomplete (see fetchAllLencoTransactions). The closing balance itself is unaffected — it always comes from the live balance endpoint directly — but the transaction-level Matched/MoneyWise-only/Lenco-only drill-down may be missing older rows. */
@@ -109,14 +112,8 @@ const round2 = (v: number): number => Math.round((v + Number.EPSILON) * 100) / 1
 
 /** The MoneyWise platform-fee sweep leg (debit → Blue Opus). Mirrors the sync filter. */
 function isSweepDebit(narration: string, reference: string): boolean {
-    const d = (narration || '').toLowerCase();
-    const r = (reference || '').toUpperCase();
-    return (
-        d.includes('split payment') ||
-        r.startsWith('SPLIT-') ||
-        d.includes('split-inflow') ||
-        d.includes('to blue opus software')
-    );
+    // Shared with the Lenco sync and the Ledger Guardian so the three can never disagree about what a commission sweep is.
+    return isPlatformSweepDebit(narration, reference);
 }
 
 async function getMoneyWiseTotals(orgId: string): Promise<MoneyWiseTotals> {
@@ -373,6 +370,8 @@ async function buildOrgSummary(org: OrgRow): Promise<OrgReconSummary> {
     }
 
     const availableBalance = n(balanceData?.availableBalance ?? balanceData?.balance);
+    const holdAmt = round2(n(balanceData?.ledgerBalance ?? availableBalance) - availableBalance);
+    if (holdAmt > 0.005) base.lencoHold = holdAmt;
 
     try {
         const { txns, diagnostics } = await fetchAllLencoTransactions(org.lenco_subaccount_id, secretKey);

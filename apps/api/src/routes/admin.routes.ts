@@ -8,6 +8,7 @@ import {
     getRawLencoTxns,
     healOrgPlatformFees,
     healAllOrgsPlatformFees,
+  getLedgerHealth,
 } from '../controllers/admin.reconciliation.controller';
 import {
     listWalletPool,
@@ -34,6 +35,7 @@ const router = Router();
 router.use(requireAuth, requireSuperAdmin);
 
 router.get('/me', whoami);
+router.get('/ledger-health', getLedgerHealth);
 router.get('/reconciliation', getReconciliationList);
 router.get('/reconciliation/:orgId', getOrgReconciliation);
 router.get('/reconciliation/:orgId/raw-lenco-txns', getRawLencoTxns);

@@ -14,66 +14,9 @@ import { pushService } from '../services/push.service';
 import { QuickBooksService } from '../services/quickbooks.service';
 import { captureEvent, withTiming } from '../utils/analytics';
 import { ledgerService } from '../services/ledger.service';
+import { sweepPlatformCommission } from '../services/commissionSweep.service';
 
-// MoneyWise settlement merchant (Blue Opus Software Technology). The platform
-// commission collected on external payment links is auto-forwarded here.
-const SETTLEMENT_TILL_NUMBER = process.env.MONEYWISE_SETTLEMENT_TILL_NUMBER || '9838830';
-
-/**
- * Auto-sweep the MoneyWise platform commission out of a collecting sub-account
- * into the MoneyWise settlement merchant, as a separate "Split payment" transfer.
- *
- * The commission is simply the surplus the customer paid on top of the net
- * subtotal (gross collected − net settled), so it does not depend on re-deriving
- * the fee tier here. After the sweep the sub-account balance equals the net
- * subtotal, mirroring what the merchant sees in their ledger.
- *
- * Idempotent: the transfer reference is deterministic (`SPLIT-<originalRef>`) and
- * we skip if a transfer with that reference already exists. Non-fatal: any failure
- * is logged but never blocks the collection ledger entry.
- */
-async function sweepPlatformCommission(
-    sourceAccountId: string,
-    secretKey: string,
-    commission: number,
-    originalReference: string,
-    organizationId: string
-): Promise<void> {
-    const splitRef = `SPLIT-${originalReference}`;
-    let status: 'succeeded' | 'failed' | 'skipped' = 'succeeded';
-    try {
-        // Idempotency guard — don't double-sweep if the webhook / verify poller re-fires.
-        const existing = await LencoService.getTransferStatus(splitRef, secretKey);
-        if (existing) {
-            console.log(`[Lenco Sweep] Commission already forwarded for ${originalReference} (ref: ${splitRef}). Skipping.`);
-            status = 'skipped';
-            return;
-        }
-
-        await LencoService.transferToLencoMerchant({
-            amount: commission,
-            reference: splitRef,
-            tillNumber: SETTLEMENT_TILL_NUMBER,
-            narration: 'Split payment'
-        }, sourceAccountId, secretKey);
-
-        console.log(`[Lenco Sweep] Forwarded commission K${commission.toFixed(2)} → merchant ${SETTLEMENT_TILL_NUMBER} (ref: ${splitRef}).`);
-    } catch (sweepErr: any) {
-        // Never block the collection on a sweep failure — the surplus stays in the
-        // sub-account and can be reconciled/retried.
-        console.error(`[Lenco Sweep] FAILED to forward commission for ${originalReference}:`, sweepErr?.message || sweepErr);
-        status = 'failed';
-    } finally {
-        captureEvent('commission_sweep_attempted', {
-            feature: 'commission_sweep',
-            workflow_id: originalReference,
-            organization_id: organizationId,
-            user_id: 'system',
-            status,
-            amount: commission,
-        });
-    }
-}
+// The commission sweep lives in services/commissionSweep.service.ts (shared with the Ledger Guardian).
 
 // Quick Link purpose bucket -> the org account `type` it should map to when
 // looking for a best-fit account (accounts.type is 'ASSET'|'LIABILITY'|

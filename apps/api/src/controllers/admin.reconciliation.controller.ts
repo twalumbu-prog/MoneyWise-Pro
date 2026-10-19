@@ -115,3 +115,30 @@ export const healAllOrgsPlatformFees = async (_req: any, res: any) => {
         res.status(500).json({ error: 'Failed to heal platform fees across orgs', details: err?.message });
     }
 };
+
+
+/**
+ * GET /admin/ledger-health
+ * The Ledger Guardian's latest verdict per organization (status, closing balance vs Lenco, open issues, what it healed).
+ */
+export const getLedgerHealth = async (_req: any, res: any) => {
+    try {
+        const { supabase: sb } = await import('../lib/supabase');
+        const [{ data: rows }, { data: orgs }] = await Promise.all([
+            sb.from('app_settings').select('key, value, updated_at').like('key', 'ledger_health:%'),
+            sb.from('organizations').select('id, name').not('lenco_subaccount_id', 'is', null),
+        ]);
+        const health = new Map((rows ?? []).map((r: any) => [String(r.key).replace('ledger_health:', ''), r]));
+        res.json({
+            mode: (process.env.LEDGER_GUARDIAN_MODE || 'report').toLowerCase(),
+            sweepGuarantee: String(process.env.SWEEP_GUARANTEE || 'off').toLowerCase() === 'on',
+            orgs: (orgs ?? []).map((o: any) => {
+                const h: any = health.get(o.id)?.value;
+                return { orgId: o.id, name: o.name, status: h?.status ?? 'NOT_CHECKED', checkedAt: h?.checkedAt ?? null, kind: h?.kind ?? null,
+                         closing: h?.closing ?? null, issues: (h?.issues ?? []).filter((i: any) => i.severity !== 'info'), holds: (h?.issues ?? []).filter((i: any) => i.code === 'FUNDS_ON_HOLD'), healed: h?.healed ?? [] };
+            }),
+        });
+    } catch (err: any) {
+        res.status(500).json({ error: 'Failed to read ledger health', details: err?.message });
+    }
+};

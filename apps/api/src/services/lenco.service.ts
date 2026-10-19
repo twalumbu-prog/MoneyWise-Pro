@@ -471,6 +471,24 @@ export class LencoService {
 
 
     /**
+     * List transfers (payouts / on-us transfers) newest-first. Unlike /transactions these carry the merchant
+     * reference, the reported fee and the status (failed payouts are only visible here).
+     */
+    static async listTransfers(params: { page?: number } = {}, secretKey?: string) {
+        try {
+            const response = await axios.get(`${this.BASE_URL}/transfers`, {
+                headers: this.getHeaders(secretKey),
+                timeout: 20000,
+                params
+            });
+            return response.data;
+        } catch (error: any) {
+            console.error('Lenco transfers list failed:', error.response?.data || error.message);
+            throw new Error(error.response?.data?.message || 'Failed to list transfers');
+        }
+    }
+
+    /**
      * List all Lenco accounts (Subaccounts)
      */
     static async listAccounts(secretKey?: string) {

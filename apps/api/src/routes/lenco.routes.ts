@@ -24,6 +24,7 @@ import {
     getPublicSalesByPhone,
     getPublicSaleReceiptDetails,
     syncAllLencoTransactions,
+    runLedgerGuardian,
     syncMyOrganizationLencoTransactions,
     testInitiateCollection,
     testCollectionStatus,
@@ -67,6 +68,7 @@ router.post('/public-quicklink-intent', initiateQuickLinkIntent);
 
 // Cron sync endpoint (secured inside the handler via LENCO_SYNC_SECRET)
 router.post('/sync', syncAllLencoTransactions);
+router.post('/guardian', runLedgerGuardian);
 
 // TEMPORARY: Collections API migration diagnostics (secured via LENCO_SYNC_SECRET). Remove after validation.
 router.post('/test-collection/initiate', testInitiateCollection);

@@ -1,4 +1,6 @@
 import { matchesRecordedInternalTransfer } from '../services/internalTransferMatch.service';
+import { isPlatformSweepDebit } from '../services/ledgerGuardian/core';
+import { recordSyncFailure, claimDebitBooking, releaseDebitClaim, runGuardianCycle, guardianMode, runOrgGuardian } from '../services/ledgerGuardian/guardian.service';
 import { Request, Response } from 'express';
 import { LencoService, classifyLencoFailureReason } from '../services/lenco.service';
 import { isLencoAccountId, ensureValidLencoAccountId } from '../services/lencoAccountLink.service';
@@ -2614,13 +2616,10 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
                 //
                 // Covers the per-transaction sweep (narration "Split payment" / reference
                 // "SPLIT-...") and the legacy native split-inflow markers.
-                if (txnType === 'debit' && (
-                    descLower.includes('split payment') ||
-                    txnRefRaw.toUpperCase().startsWith('SPLIT-') ||
-                    descLower.includes('split-inflow') ||
-                    descLower.includes('split-inflow payment') ||
-                    descLower.includes('to blue opus software')
-                )) {
+                // One shared predicate (ledgerGuardian/core.ts, also used by the reconciliation dashboard and the Ledger
+                // Guardian). A forward to ANOTHER MoneyWise org ("To BLUE OPUS- EAGLES NEST / Split-Inflow Payment") is a real
+                // outflow and is booked — the old substring test skipped it (Blue Opus, K582 on 3–5 Oct 2026).
+                if (txnType === 'debit' && isPlatformSweepDebit(txnDesc, txnRefRaw)) {
                     continue;
                 }
 
@@ -2688,24 +2687,34 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
                 let candidates: any[] = [];
 
                 // 1. Check by the bank transaction UUID (txnId)
-                const { data: byTxnId } = await supabase
+                const { data: byTxnId, error: byTxnIdErr } = await supabase
                     .from('cashbook_entries')
                     .select('id, status, description, wallet_id, debit, credit, date')
                     .eq('organization_id', orgId)
                     .eq('account_type', 'MONEYWISE_WALLET')
                     .eq('external_reference', txnId)
                     .limit(5);
+                // A FAILED duplicate check must never read as "no duplicate": that is exactly how a row gets booked twice
+                // (the 18 Sep 2026 cutover). Leave the transaction for the next cycle and make the failure visible.
+                if (byTxnIdErr) {
+                    await recordSyncFailure(orgId, txnId, `duplicate check failed: ${byTxnIdErr.message}`);
+                    continue;
+                }
                 candidates = byTxnId || [];
 
                 // 2. Check by the resolved merchant reference (e.g. DEP-...)
                 if (resolvedRef) {
-                    const { data: byRef } = await supabase
+                    const { data: byRef, error: byRefErr } = await supabase
                         .from('cashbook_entries')
                         .select('id, status, description, wallet_id, debit, credit, date')
                         .eq('organization_id', orgId)
                         .eq('account_type', 'MONEYWISE_WALLET')
                         .eq('external_reference', resolvedRef)
                         .limit(5);
+                    if (byRefErr) {
+                        await recordSyncFailure(orgId, txnId, `reference duplicate check failed: ${byRefErr.message}`);
+                        continue;
+                    }
                     for (const row of byRef || []) {
                         if (!candidates.some((c) => c.id === row.id)) candidates.push(row);
                     }
@@ -2885,6 +2894,7 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
                         newEntriesCount++;
                     } catch (entryErr: any) {
                         console.error(`[Lenco Sync] Failed to log new inflow ${txnId} for org ${org.name}:`, entryErr.message);
+                        await recordSyncFailure(orgId, txnId, entryErr.message);
                     }
 
                 } else if (txnType === 'debit') {
@@ -2997,22 +3007,29 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
                             // Logged against the requisition that paid it — see the helper.
                         } else {
                             // Genuinely new direct outflow -> log at gross so the wallet mirrors Lenco.
-                            await cashbookService.createEntry(orgId, {
-                                date: (txn.datetime || new Date().toISOString()).split('T')[0],
-                                description: txnDesc || `Wallet Outflow | Ref: ${resolvedRef || txnId}`,
-                                debit: 0,
-                                credit: txnGross,
-                                entry_type: 'EXPENSE',
-                                account_type: 'MONEYWISE_WALLET',
-                                status: 'COMPLETED',
-                                wallet_id: walletId,
-                                external_reference: txnId
-                            } as any);
-                            newEntriesCount++;
+                            // Outflows have no unique index on external_reference (inflows do), so two overlapping runs — or a run
+                            // against a stale copy of the ledger — could book the same debit twice. Claim the transaction first:
+                            // the claim is an insert-once marker, so only one run can ever book it.
+                            if (await claimDebitBooking(orgId, txnId)) {
+                                await cashbookService.createEntry(orgId, {
+                                    date: (txn.datetime || new Date().toISOString()).split('T')[0],
+                                    description: txnDesc || `Wallet Outflow | Ref: ${resolvedRef || txnId}`,
+                                    debit: 0,
+                                    credit: txnGross,
+                                    entry_type: 'EXPENSE',
+                                    account_type: 'MONEYWISE_WALLET',
+                                    status: 'COMPLETED',
+                                    wallet_id: walletId,
+                                    external_reference: txnId
+                                } as any);
+                                newEntriesCount++;
+                            }
                         }
                     }
                   } catch (debitErr: any) {
                       console.error(`[Lenco Sync] Failed to process debit transaction ${txnId} for org ${org.name}:`, debitErr.message);
+                      await releaseDebitClaim(orgId, txnId);              // nothing was booked: let the next cycle retry
+                      await recordSyncFailure(orgId, txnId, debitErr.message);
                   }
                 }
             }
@@ -3208,9 +3225,23 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
             });
         }
 
+        // ── Ledger Guardian: re-verify what this cycle touched, repair what is provably safe, record health ──
+        // Runs AFTER the booking loop and inside its own time box, so it can never starve the sync. See ledgerGuardian/.
+        let guardianSummary: any = undefined;
+        if (guardianMode() !== 'off') {
+            try {
+                const touched = syncResults.filter(r => r.success && r.orgId).map(r => r.orgId as string);
+                const results = await runGuardianCycle(touched, SYNC_START_MS + 38_000);   // never start work that could outlive the function's hard limit
+                guardianSummary = results.map(r => ({ org: r.org.slice(0, 8), status: r.health.status, kind: r.health.kind, issues: r.health.issues.length, healed: r.health.healed.length, skipped: r.skipped }));
+            } catch (guardErr: any) {
+                console.warn('[Lenco Sync] Ledger Guardian cycle failed (non-fatal):', guardErr?.message);
+            }
+        }
+
         return res.json({
             success: true,
-            results: syncResults
+            results: syncResults,
+            ...(guardianSummary ? { guardian: guardianSummary } : {})
         });
 
     } catch (error: any) {
@@ -3220,6 +3251,28 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
 };
 
 export const syncAllLencoTransactions = (req: Request, res: Response) => runLencoSync(req, res);
+
+/**
+ * Ledger Guardian on demand (secret-protected like /sync): POST /lenco/guardian  { orgId?, full?, heal? }
+ *  - with orgId: verifies that one organization now (full pass when `full`), healing when mode=heal (or `heal` is true).
+ *  - without: runs one guardian cycle over every Lenco-linked organization within a time box (one FULL pass at most).
+ */
+export const runLedgerGuardian = async (req: Request, res: Response) => {
+    const syncSecret = process.env.LENCO_SYNC_SECRET;
+    if (syncSecret && req.headers['authorization'] !== `Bearer ${syncSecret}`) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+        const { orgId, full, heal } = { ...(req.query as any), ...(req.body || {}) };
+        if (orgId) {
+            const r = await runOrgGuardian(String(orgId), { full: full === true || full === 'true' || full === '1', heal: heal === undefined ? undefined : (heal === true || heal === 'true' || heal === '1') });
+            return res.json({ success: true, result: r.health, skipped: r.skipped });
+        }
+        const { data: orgs } = await supabase.from('organizations').select('id').not('lenco_subaccount_id', 'is', null);
+        const results = await runGuardianCycle((orgs || []).map((o: any) => o.id), Date.now() + 38_000);
+        return res.json({ success: true, results: results.map(r => ({ org: r.org, status: r.health.status, kind: r.health.kind, issues: r.health.issues.length, healed: r.health.healed.length, skipped: r.skipped })) });
+    } catch (e: any) {
+        return res.status(500).json({ error: e?.message || 'guardian failed' });
+    }
+};
 
 export const syncMyOrganizationLencoTransactions = (req: Request, res: Response) => {
     const orgId = (req as any).user?.organization_id;

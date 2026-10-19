@@ -3,6 +3,7 @@ import { broadcastInvalidate } from '../lib/realtimeBroadcast';
 import { LencoService } from './lenco.service';
 import { RequisitionMessageService } from './requisition_message.service';
 import { ledgerService } from './ledger.service';
+import { alignReferenceCounter, isReferenceCollision } from './referenceCounters';
 import { withTiming } from '../utils/analytics';
 import { emailService } from './email.service';
 import { pushService } from './push.service';
@@ -133,8 +134,16 @@ export const cashbookService = {
             });
 
             if (error) {
-                console.error(`[Ledger] RPC Error recalculating balances:`, error);
-                throw error;
+                // One retry: a transient failure here silently leaves balance_after stale (the displayed wallet balance).
+                await new Promise(r => setTimeout(r, 250));
+                const retry = await supabase.rpc('recalculate_cashbook_balances', {
+                    p_organization_id: organizationId, p_target_date: targetDate, p_target_created_at: targetCreatedAt,
+                    p_account_type: accountType, p_wallet_id: walletId || null
+                });
+                if (retry.error) {
+                    console.error(`[Ledger] RPC Error recalculating balances (after retry) — the Ledger Guardian will rebuild this wallet:`, retry.error);
+                    throw retry.error;
+                }
             }
             console.log(`[Ledger] Finished recalculating via RPC.`);
         } catch (err: any) {
@@ -189,13 +198,33 @@ export const cashbookService = {
         // Remove the helper field — it's not a real DB column
         delete insertPayload.transaction_at;
 
-        const { data, error } = await supabase
+        let { data, error } = await supabase
             .from('cashbook_entries')
             .insert(insertPayload)
             .select()
             .single();
 
-        if (error) throw new Error(`Failed to create cashbook entry: ${error.message}`);
+        // A generated reference (CR-/ADJ-/RT-…) can collide when the counter has fallen behind the numbers already
+        // issued (it did after the 2026-09-18 cutover: Kids Paradise inflows were rejected for 13 days). Heal the counter
+        // and retry with a fresh number instead of failing — but never when the CALLER chose the reference.
+        const callerChoseRef = !!(entryWithOpts as any).reference_number;
+        for (let attempt = 0; error && !callerChoseRef && refNum && isReferenceCollision(error) && attempt < 2; attempt++) {
+            try {
+                const entityType = entry.entry_type === 'INFLOW' ? 'INFLOW' : entry.entry_type === 'RETURN' ? 'RETURN' : 'ADJUSTMENT';
+                await alignReferenceCounter(organizationId, entityType, new Date().getUTCFullYear());
+                const prefix = refNum.split('-')[0];
+                const { data: fresh } = await supabase.rpc('generate_sequential_reference', { p_org_id: organizationId, p_entity_type: entry.entry_type, p_prefix: prefix });
+                if (!fresh) break;
+                refNum = fresh;
+                insertPayload.reference_number = refNum;
+                ({ data, error } = await supabase.from('cashbook_entries').insert(insertPayload).select().single());
+            } catch (healErr: any) {
+                console.error('[Ledger] reference-counter self-heal failed:', healErr?.message);
+                break;
+            }
+        }
+
+        if (error || !data) throw new Error(`Failed to create cashbook entry: ${error?.message}`);
 
         // 2. Recalculate balances starting from this entry's logical position
         await this.recalculateBalancesFrom(organizationId, data.date, data.created_at, accountType, walletId);
