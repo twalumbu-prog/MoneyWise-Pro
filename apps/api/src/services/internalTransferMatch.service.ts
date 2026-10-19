@@ -1,7 +1,7 @@
 /**
  * internalTransferMatch.service.ts — keeps the Lenco sync from logging a wallet-to-wallet transfer twice.
  *
- * Investments (INVW-) and group-savings contributions (SVT-) are real Lenco on-us transfers that we book
+ * Investments (INVW-), group-savings contributions (SVT-) and MoneyWise Pay payments (MWPAY-) are real Lenco on-us transfers that we book
  * ourselves the moment Lenco confirms them, tagging both ledger rows with OUR reference. Lenco reports
  * the same movement under its own transaction id, so the sync saw an unknown transaction and logged it a
  * second time: the company's wallet showed the money twice and the forward-to-bank automation paid it
@@ -36,7 +36,7 @@ export async function matchesRecordedInternalTransfer(
             // Any wallet of the org: Lenco only knows the org's one account, while savings contributions
             // are booked into the goal's own sub-wallet (not the main wallet the sync is looking at).
             .eq('account_type', 'MONEYWISE_WALLET')
-            .or('external_reference.like.INVW-%,external_reference.like.SVT-%')
+            .or('external_reference.like.INVW-%,external_reference.like.SVT-%,external_reference.like.MWPAY-%')
             .gte(amountCol, txn.amount - 0.01)
             .lte(amountCol, txn.amount + 0.01)
             .gt(txn.type === 'credit' ? 'debit' : 'credit', 0)

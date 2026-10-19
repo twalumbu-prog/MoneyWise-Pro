@@ -34,6 +34,16 @@ const postJournalForRequisitionAsync = (requisitionId: string, organizationId: s
     ).then(() => undefined, err => console.error(`[Ledger] async repost failed for requisition ${requisitionId}:`, err?.message));
 };
 
+// Loaded lazily: moneyWisePay.service uses this module, so a top-level import would be circular.
+const creditMoneyWisePayRecipient = async (requisitionId: string): Promise<void> => {
+    try {
+        const { moneyWisePayService } = await import('./moneyWisePay.service');
+        await moneyWisePayService.creditRecipient(requisitionId);
+    } catch (err: any) {
+        console.error(`[MoneyWise Pay] could not credit the recipient for ${requisitionId} (will retry on the next confirmation check):`, err?.message);
+    }
+};
+
 export interface CashbookEntry {
     id?: string;
     voucher_id?: string;
@@ -560,6 +570,7 @@ export const cashbookService = {
 
         if (existingLedger && existingLedger.length > 0) {
             console.log(`[Ledger Finalization] Disbursement ledger entry already exists for ${requisitionId}, skipping.`);
+            await creditMoneyWisePayRecipient(requisitionId); // no-op unless this was a MoneyWise Pay payment still waiting to credit its recipient
             return;
         }
 
@@ -613,6 +624,9 @@ export const cashbookService = {
         }
 
         console.log(`[Ledger Finalization] Ledger finalized for ${requisitionId}.`);
+
+        // MoneyWise Pay: Lenco has confirmed the transfer, so the recipient's inflow can be booked now.
+        await creditMoneyWisePayRecipient(requisitionId);
 
         // Re-post the GL for this requisition so the expense split reflects the fee line item.
         await postJournalForRequisitionAsync(requisitionId, disbursement.organization_id);

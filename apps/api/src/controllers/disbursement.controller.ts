@@ -1,4 +1,5 @@
 import { maybeAutoCategorizePersonal, maybeAutoCategorizePersonalById } from '../services/personalRequisitionClassifier.service';
+import { moneyWisePayService } from '../services/moneyWisePay.service';
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
@@ -168,38 +169,28 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                         throw new Error('Cannot MoneyWise Pay to your own organization.');
                     }
 
-                    // Credit recipient organization's wallet as an Inflow
+                    // Move the money at Lenco FIRST. Until 2026-10 this branch only wrote ledger rows (an inflow in the
+                    // recipient's books, a debit in the sender's) and never moved real money, so the recipient saw a
+                    // balance Lenco did not have. The recipient is now credited only once Lenco confirms the transfer
+                    // (moneyWisePayService.creditRecipient, from the shared payout-confirmed point).
                     const { data: senderOrg } = await supabase.from('organizations').select('name').eq('id', targetOrgId).maybeSingle();
                     const senderName = senderOrg?.name || (req as any).user?.name || 'MoneyWise User';
 
-                    const { data: recWallet } = await supabase
-                        .from('organization_wallets')
-                        .select('id')
-                        .eq('organization_id', recipientOrgId)
-                        .eq('is_main', true)
-                        .maybeSingle();
-
-                    await cashbookService.createEntry(recipientOrgId, {
-                        entry_type: 'INFLOW',
-                        account_type: 'MONEYWISE_WALLET',
-                        wallet_id: recWallet?.id || null,
-                        debit: totalPreparedNum,
-                        credit: 0,
-                        description: `MoneyWise Pay from ${senderName}`,
-                        reference_number: lencoReference,
-                        sender_name: senderName,
-                        date: new Date().toISOString().split('T')[0],
-                        status: 'COMPLETED'
+                    const transfer = await moneyWisePayService.sendOnUs({
+                        senderOrgId: targetOrgId,
+                        recipientOrgId,
+                        amount: totalPreparedNum,
+                        requisitionId: id,
+                        narration: `MoneyWise Pay from ${senderName}`,
                     });
+                    lencoReference = transfer.reference;
+                    await moneyWisePayService.remember(transfer.reference, { recipientOrgId, senderName, amount: totalPreparedNum });
 
-                    console.log(`[MoneyWise Pay] Inflow K${totalPreparedNum} credited to recipient org ${recipientOrgId}`);
-
-                    // Only now — after the recipient is actually credited — is this
-                    // genuinely a successful transfer.
-                    (req as any).lencoStatus = 'successful';
-                    (req as any).lencoFee = 0;
-                    (req as any).resolvedRef = lencoReference;
-                    (req as any).lencoTransactionAt = new Date().toISOString();
+                    (req as any).lencoStatus = transfer.status;          // 'successful' | 'pending'
+                    (req as any).lencoFee = transfer.fee;                // Lenco's own charge for the on-us transfer, booked as a fee
+                    (req as any).resolvedRef = transfer.reference;
+                    (req as any).lencoTransactionAt = transfer.at || new Date().toISOString();
+                    (req as any).orgLencoKey = transfer.senderKey || process.env.LENCO_SECRET_KEY; // a still-pending transfer is polled to completion
                 } else {
                     await ensureOrgLencoCredentials(targetOrgId);
                     const { data: org } = await supabase
