@@ -123,7 +123,12 @@ export const lencoService = {
      * arithmetic — no network — so it works offline and in the native app
      * unchanged.
      */
-    calculatePayoutFee(amount: number, _type: 'MOBILE_MONEY' | 'BANK' | string): number {
+    calculatePayoutFee(amount: number, type: 'MOBILE_MONEY' | 'BANK' | 'MONEYWISE' | 'MONEYWISE_PAY' | string): number {
+        // MoneyWise Pay (wallet-to-wallet) is an on-us Lenco transfer: nothing is charged to the sender. Mirrors the
+        // API's calculatePayoutFee — without this the apps quoted a K8.50–K20 fee (and demanded that much extra
+        // balance) for a transfer that costs nothing.
+        const t = String(type || '').toUpperCase();
+        if (t === 'MONEYWISE' || t === 'MONEYWISE_PAY') return 0;
         if (amount <= 150) return 8.50;
         if (amount <= 300) return 10.00;
         if (amount <= 501) return 11.00;

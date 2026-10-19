@@ -17,13 +17,17 @@ import { ensureValidLencoAccountId } from './lencoAccountLink.service';
 import { cashbookService } from './cashbook.service';
 
 const LENCO_ACCOUNT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE = LENCO_ACCOUNT_ID;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const memoKey = (ref: string) => `mwpay:${ref}`;
 
 export interface OnUsResult {
     status: 'successful' | 'pending';
     reference: string;
+    /** Always 0 — see sendOnUs: Lenco's reported on-us "fee" is never actually taken from the sender. */
     fee: number;
+    /** Lenco's transaction id for the transfer — the same id the account's /transactions feed (and so the sync) uses. */
+    transactionId?: string;
     at?: string;
     senderKey?: string;
     simulated?: boolean;
@@ -97,17 +101,23 @@ export const moneyWisePayService = {
         if (status === 'failed' || status === 'declined' || status === 'rejected') {
             throw new Error(latest?.reasonForFailure || latest?.message || 'Lenco could not complete the transfer. Nothing was taken.');
         }
+        // The fee is deliberately NOT taken from Lenco's response. For an on-us transfer Lenco reports a "fee"
+        // (K5.00 on a K30,000 transfer, K0.85 on a K1,000 one) but the sender's balance drops by exactly the amount
+        // — verified 2026-10-19 (K82,199.08 → K52,199.08 for a K30,000 MoneyWise Pay) and on the 12-Oct subscription
+        // transfers. Booking the reported fee made the sender's ledger K5 heavier than the bank, which in turn made
+        // the Lenco sync's amount check miss the pairing and log the same transfer a second time (a K30,000 duplicate).
         return {
             status: status === 'successful' ? 'successful' : 'pending',
             reference,
-            fee: latest?.fee ? parseFloat(latest.fee) : 0,
+            fee: 0,
+            transactionId: typeof latest?.id === 'string' ? latest.id : undefined,
             at: latest?.completedAt || latest?.initiatedAt || latest?.createdAt,
             senderKey: sender.key,
         };
     },
 
     /** Remember who to credit once Lenco confirms (kept in app_settings; no schema change needed). */
-    async remember(reference: string, memo: { recipientOrgId: string; senderName: string; amount: number }) {
+    async remember(reference: string, memo: { recipientOrgId: string; senderName: string; amount: number; txnId?: string }) {
         await supabase.from('app_settings').upsert(
             { key: memoKey(reference), value: memo, description: 'Pending MoneyWise Pay payment awaiting Lenco confirmation (safe to delete once settled).', updated_at: new Date().toISOString() },
             { onConflict: 'key' },
@@ -125,7 +135,9 @@ export const moneyWisePayService = {
             .select('organization_id, payment_method, external_reference, requisition_id')
             .eq('requisition_id', requisitionId).maybeSingle();
         const ref = (d as any)?.external_reference as string | undefined;
-        if (!d || (d as any).payment_method !== 'MONEYWISE_PAY' || !ref || !ref.startsWith('MWPAY-')) return;
+        // Keyed on the MWPAY- reference (only ever written by sendOnUs), not on payment_method: a requisition created
+        // for MoneyWise Pay but disbursed from a screen that sends MONEYWISE_WALLET must still credit its recipient.
+        if (!d || !ref || !ref.startsWith('MWPAY-')) return;
 
         const { data: memoRow } = await supabase.from('app_settings').select('value').eq('key', memoKey(ref)).maybeSingle();
         const memo: any = memoRow?.value;
@@ -152,8 +164,12 @@ export const moneyWisePayService = {
             status: 'COMPLETED',
         } as any);
 
-        // Tag the sender's own outflow with the same reference so the sync pairs Lenco's debit with it.
-        await supabase.from('cashbook_entries').update({ external_reference: ref })
+        // Tag the sender's own outflow so the sync recognises Lenco's debit as already booked. Prefer Lenco's own
+        // transaction id: the sync's first dedup check is "a ledger row whose external_reference equals the Lenco
+        // transaction id", which holds whatever the booked amount is. (The MWPAY- reference only pairs through the
+        // amount-based internalTransferMatch, which is exactly what failed on 2026-10-19.)
+        const senderTag = typeof memo.txnId === 'string' && UUID_RE.test(memo.txnId) ? memo.txnId : ref;
+        await supabase.from('cashbook_entries').update({ external_reference: senderTag })
             .eq('organization_id', (d as any).organization_id).eq('requisition_id', requisitionId)
             .eq('entry_type', 'DISBURSEMENT').is('external_reference', null);
 

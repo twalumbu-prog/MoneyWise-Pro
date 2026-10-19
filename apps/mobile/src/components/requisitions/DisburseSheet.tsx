@@ -103,7 +103,9 @@ export const DisburseSheet: React.FC<{
     }, [wallets, walletId]);
 
     const selectedWallet = wallets.find((w: any) => w.id === walletId);
-    const fee = lencoService.calculatePayoutFee(amount, rail);
+    // MoneyWise Pay (wallet-to-wallet) is an on-us transfer: no payout fee.
+    const isMoneyWisePay = (savedMethod || '').toUpperCase() === 'MONEYWISE_PAY' || savedCode === 'MONEYWISE';
+    const fee = lencoService.calculatePayoutFee(amount, isMoneyWisePay ? 'MONEYWISE_PAY' : rail);
     const totalDue = amount + fee;
     const insufficient = route === 'WALLET' && !!selectedWallet && totalDue > selectedWallet.balance;
 

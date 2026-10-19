@@ -60,7 +60,8 @@ async function main() {
         await step('1. asks Lenco to move the money from the sender\'s account to the recipient\'s till', async () => {
             stub({});
             const r = await moneyWisePayService.sendOnUs({ senderOrgId: sender, recipientOrgId: recipient, amount: 100, requisitionId: reqId });
-            must(r.status === 'successful' && r.fee === 0.12, `unexpected result ${JSON.stringify(r)}`);
+            // Lenco reports a K0.12 "fee" on the on-us transfer but never takes it from the sender, so none may be booked.
+            must(r.status === 'successful' && r.fee === 0, `unexpected result ${JSON.stringify(r)}`);
             must(transferCalls.length === 1, `Lenco should be called exactly once, was ${transferCalls.length}`);
             must(transferCalls[0].source === SRC_ACCT, 'must debit the SENDER\'s Lenco account');
             must(transferCalls[0].payload.tillNumber === '9876543', 'must credit the RECIPIENT\'s till');
@@ -110,6 +111,16 @@ async function main() {
             must((rows || []).length === 1, `recipient should have exactly one inflow, has ${(rows || []).length}`);
             must(Number(rows![0].debit) === 100 && rows![0].external_reference === ref && rows![0].status === 'COMPLETED', 'inflow wrong');
         });
+
+        await step('7. finalising an on-us payment books exactly the amount — Lenco\'s reported fee is ignored (2026-10-19 K30,000 → K30,005 bug)', async () => {
+            const { cashbookService } = require('../services/cashbook.service');
+            await cashbookService.finalizeWalletDisbursementLedger(reqId, 5);   // Lenco-reported fee of K5 must be ignored
+            const { data: rows } = await supabase.from('cashbook_entries').select('credit, entry_type, external_reference').eq('organization_id', sender).eq('requisition_id', reqId).eq('entry_type', 'DISBURSEMENT');
+            must((rows || []).length === 1, `expected one DISBURSEMENT row, got ${(rows || []).length}`);
+            must(Number(rows![0].credit) === 100, `sender outflow must be exactly K100, was K${rows![0].credit}`);
+            const { data: r2 } = await supabase.from('requisitions').select('estimated_total').eq('id', reqId).single();
+            must(Number((r2 as any).estimated_total) === 100, `requisition total must stay K100, was K${(r2 as any).estimated_total}`);
+        });
     } finally {
         L.getAccountBalance = saved.bal; L.getAccountDetails = saved.det; L.getTransferStatus = saved.st; L.transferToLencoMerchant = saved.tx;
         for (const org of [sender, recipient]) {
@@ -121,6 +132,8 @@ async function main() {
         }
         await supabase.from('app_settings').delete().like('key', `mwpay:MWPAY-${reqId.slice(0, 8)}%`);
         await supabase.from('disbursements').delete().eq('requisition_id', reqId);
+        await supabase.from('line_items').delete().eq('requisition_id', reqId);
+        await supabase.from('requisition_messages').delete().eq('requisition_id', reqId);
         await supabase.from('requisitions').delete().eq('id', reqId);
         for (const org of [sender, recipient]) {
             await supabase.from('organization_wallets').delete().eq('organization_id', org);

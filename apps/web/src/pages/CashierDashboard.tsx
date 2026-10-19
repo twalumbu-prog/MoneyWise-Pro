@@ -157,6 +157,10 @@ export const CashierDashboard: React.FC = () => {
 
 
     // Refetch wallet status and pre-fill details when a requisition is selected
+    // A MoneyWise Pay requisition (wallet-to-wallet) is an on-us transfer — no payout fee, unlike a bank/mobile-money payout.
+    const selectedReqFeeType = (selectedReq && (String(selectedReq.payment_method || '').toUpperCase() === 'MONEYWISE_PAY' ||
+        String(selectedReq.recipient_bank_code || '').toUpperCase() === 'MONEYWISE')) ? 'MONEYWISE_PAY' : 'MONEYWISE_WALLET';
+
     useEffect(() => {
         if (selectedReq) {
             fetchWalletStatus(selectedReq.organization_id);
@@ -755,11 +759,11 @@ export const CashierDashboard: React.FC = () => {
 
                                                     {/* Wallet Safeguard UI */}
                                                     {lencoSubaccountId && (
-                                                        <div className={`mt-4 p-4 rounded-xl border ${walletBalance !== null && (Number(selectedReq.estimated_total) + lencoService.calculatePayoutFee(Number(selectedReq.estimated_total), 'MONEYWISE_WALLET')) > walletBalance ? 'bg-red-50 border-red-100' : 'bg-brand-gray/30 border-gray-100'}`}>
+                                                        <div className={`mt-4 p-4 rounded-xl border ${walletBalance !== null && (Number(selectedReq.estimated_total) + lencoService.calculatePayoutFee(Number(selectedReq.estimated_total), selectedReqFeeType)) > walletBalance ? 'bg-red-50 border-red-100' : 'bg-brand-gray/30 border-gray-100'}`}>
                                                             <div className="flex justify-between items-start">
                                                                 <div className="space-y-1">
                                                                     <div className="flex items-center space-x-2">
-                                                                        <Wallet className={`h-4 w-4 ${walletBalance !== null && (Number(selectedReq.estimated_total) + lencoService.calculatePayoutFee(Number(selectedReq.estimated_total), 'MONEYWISE_WALLET')) > walletBalance ? 'text-red-500' : 'text-brand-green'}`} />
+                                                                        <Wallet className={`h-4 w-4 ${walletBalance !== null && (Number(selectedReq.estimated_total) + lencoService.calculatePayoutFee(Number(selectedReq.estimated_total), selectedReqFeeType)) > walletBalance ? 'text-red-500' : 'text-brand-green'}`} />
                                                                         <span className="text-sm font-bold text-brand-navy">MoneyWise Wallet Safeguard</span>
                                                                     </div>
                                                                     <p className="text-xs text-gray-500">
@@ -771,7 +775,7 @@ export const CashierDashboard: React.FC = () => {
                                                                     {fetchingBalance ? (
                                                                         <Loader2 className="h-4 w-4 animate-spin text-brand-green ml-auto" />
                                                                     ) : (
-                                                                        <p className={`text-lg font-black ${walletBalance !== null && (Number(selectedReq.estimated_total) + lencoService.calculatePayoutFee(Number(selectedReq.estimated_total), 'MONEYWISE_WALLET')) > walletBalance ? 'text-red-600' : 'text-brand-green'}`}>
+                                                                        <p className={`text-lg font-black ${walletBalance !== null && (Number(selectedReq.estimated_total) + lencoService.calculatePayoutFee(Number(selectedReq.estimated_total), selectedReqFeeType)) > walletBalance ? 'text-red-600' : 'text-brand-green'}`}>
                                                                             K{walletBalance?.toLocaleString() || '0.00'}
                                                                         </p>
                                                                     )}
@@ -787,17 +791,17 @@ export const CashierDashboard: React.FC = () => {
                                                                 </div>
                                                                 <div>
                                                                     <p className="text-[10px] text-gray-400 uppercase font-bold">Lenco Fee</p>
-                                                                    <p className="text-sm font-bold text-gray-600">K{lencoService.calculatePayoutFee(Number(selectedReq.estimated_total), 'MONEYWISE_WALLET').toFixed(2)}</p>
+                                                                    <p className="text-sm font-bold text-gray-600">K{lencoService.calculatePayoutFee(Number(selectedReq.estimated_total), selectedReqFeeType).toFixed(2)}</p>
                                                                 </div>
                                                                 <div className="col-span-2 pt-2 flex justify-between items-center border-t border-gray-100 mt-2">
                                                                     <p className="text-xs font-black text-brand-navy uppercase">Total Wallet Deduction</p>
-                                                                    <p className={`text-xl font-black ${walletBalance !== null && (Number(selectedReq.estimated_total) + lencoService.calculatePayoutFee(Number(selectedReq.estimated_total), 'MONEYWISE_WALLET')) > walletBalance ? 'text-red-600' : 'text-brand-navy'}`}>
-                                                                        K{(Number(selectedReq.estimated_total) + lencoService.calculatePayoutFee(Number(selectedReq.estimated_total), 'MONEYWISE_WALLET')).toLocaleString()}
+                                                                    <p className={`text-xl font-black ${walletBalance !== null && (Number(selectedReq.estimated_total) + lencoService.calculatePayoutFee(Number(selectedReq.estimated_total), selectedReqFeeType)) > walletBalance ? 'text-red-600' : 'text-brand-navy'}`}>
+                                                                        K{(Number(selectedReq.estimated_total) + lencoService.calculatePayoutFee(Number(selectedReq.estimated_total), selectedReqFeeType)).toLocaleString()}
                                                                     </p>
                                                                 </div>
                                                             </div>
                                                             
-                                                            {walletBalance !== null && (Number(selectedReq.estimated_total) + lencoService.calculatePayoutFee(Number(selectedReq.estimated_total), 'MONEYWISE_WALLET')) > walletBalance && (
+                                                            {walletBalance !== null && (Number(selectedReq.estimated_total) + lencoService.calculatePayoutFee(Number(selectedReq.estimated_total), selectedReqFeeType)) > walletBalance && (
                                                                 <div className="mt-4 p-3 bg-red-100 rounded-lg flex items-center space-x-2 border border-red-200 animate-pulse">
                                                                     <AlertTriangle className="h-4 w-4 text-red-600" />
                                                                     <p className="text-xs font-bold text-red-700">Insufficient funds in MoneyWise Wallet for this disbursement.</p>
@@ -957,7 +961,7 @@ export const CashierDashboard: React.FC = () => {
                                         </div>
                                         <button
                                             onClick={handleDisburse}
-                                            disabled={processing || (paymentMethod === 'CASH' ? calculateTotal(denominations) : Number(transferAmount || 0)) < Number(selectedReq.estimated_total) || (paymentMethod !== 'CASH' && paymentMethod !== 'MONEYWISE_WALLET' && !transferProofFile) || (paymentMethod === 'MONEYWISE_WALLET' && (!recipientAccount || !recipientBankCode || (walletBalance !== null && (Number(selectedReq.estimated_total) + lencoService.calculatePayoutFee(Number(selectedReq.estimated_total), 'MONEYWISE_WALLET')) > walletBalance)))}
+                                            disabled={processing || (paymentMethod === 'CASH' ? calculateTotal(denominations) : Number(transferAmount || 0)) < Number(selectedReq.estimated_total) || (paymentMethod !== 'CASH' && paymentMethod !== 'MONEYWISE_WALLET' && !transferProofFile) || (paymentMethod === 'MONEYWISE_WALLET' && (!recipientAccount || !recipientBankCode || (walletBalance !== null && (Number(selectedReq.estimated_total) + lencoService.calculatePayoutFee(Number(selectedReq.estimated_total), selectedReqFeeType)) > walletBalance)))}
                                             className="w-full flex items-center justify-center px-6 py-4 border border-transparent text-lg font-bold rounded-xl text-white bg-brand-navy hover:bg-brand-navy/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-navy disabled:bg-gray-400 disabled:cursor-not-allowed shadow-[0_4px_0_0_rgba(0,0,0,0.1)] active:translate-y-0.5 active:shadow-none transition-all"
                                         >
                                             {processing ? (

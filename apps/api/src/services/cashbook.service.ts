@@ -574,7 +574,14 @@ export const cashbookService = {
         // We use the requisition's estimated_total because it represents the amount the user 
         // intended to transfer (the net amount) before fees were added.
         const netAmount = Number(disbursement.requisitions?.estimated_total || 0);
-        const feeToUse = actualFee !== undefined ? actualFee : 
+        // MoneyWise Pay is an on-us Lenco-to-Lenco transfer: nothing is deducted beyond the amount, even though
+        // Lenco's transfer record reports a "fee". Never book one — whichever path (immediate, deferred poll,
+        // verify, webhook) reaches this point and whatever actualFee it carries. A phantom fee here made the
+        // ledger outflow differ from Lenco's debit and let the sync log the transfer a second time.
+        const isOnUsTransfer = disbursement.payment_method === 'MONEYWISE_PAY' ||
+            String(disbursement.external_reference || '').startsWith('MWPAY-');
+        const feeToUse = isOnUsTransfer ? 0 :
+                        actualFee !== undefined ? actualFee :
                         LencoService.calculatePayoutFee(netAmount, disbursement.payment_method || 'BANK');
 
         const walletId = disbursement.requisitions?.wallet_id;

@@ -184,7 +184,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                         narration: `MoneyWise Pay from ${senderName}`,
                     });
                     lencoReference = transfer.reference;
-                    await moneyWisePayService.remember(transfer.reference, { recipientOrgId, senderName, amount: totalPreparedNum });
+                    await moneyWisePayService.remember(transfer.reference, { recipientOrgId, senderName, amount: totalPreparedNum, txnId: transfer.transactionId });
 
                     (req as any).lencoStatus = transfer.status;          // 'successful' | 'pending'
                     (req as any).lencoFee = transfer.fee;                // Lenco's own charge for the on-us transfer, booked as a fee
@@ -307,7 +307,9 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                 requisition_id: id,
                 cashier_id: cashier_id,
                 total_prepared: totalDeduction, // Now includes Lenco fee if wallet
-                payment_method: payment_method || 'CASH',
+                // A MoneyWise Pay payment is always stored as one, even when the screen that disbursed it sent
+                // MONEYWISE_WALLET + a MONEYWISE bank code, so every later path (fees, recipient credit) agrees.
+                payment_method: isMoneyWisePay ? 'MONEYWISE_PAY' : (payment_method || 'CASH'),
                 transfer_proof_url: transfer_proof_url,
                 denominations: denominations,
                 organization_id: targetOrgId,

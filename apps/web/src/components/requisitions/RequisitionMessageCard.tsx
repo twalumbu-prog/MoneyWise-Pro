@@ -458,8 +458,12 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
         return () => { cancelled = true; };
     }, [activeMethod, selectedWalletId]);
 
+    // MoneyWise Pay (wallet-to-wallet) is an on-us transfer: no payout fee.
+    const isMoneyWisePayReq = String(requisitionData?.payment_method || '').toUpperCase() === 'MONEYWISE_PAY' ||
+        String(requisitionData?.recipient_bank_code || '').toUpperCase() === 'MONEYWISE';
+    const payoutFeeType = isMoneyWisePayReq ? 'MONEYWISE_PAY' : (activeMethod || paymentType);
     const walletTotalDue = Number(requisitionData?.estimated_total || 0) +
-        lencoService.calculatePayoutFee(Number(requisitionData?.estimated_total || 0), activeMethod || paymentType);
+        lencoService.calculatePayoutFee(Number(requisitionData?.estimated_total || 0), payoutFeeType);
     const isWalletBalanceInsufficient = activeMethod === 'MONEYWISE_WALLET' &&
         !!selectedWalletId &&
         selectedWalletBalance !== null &&
@@ -2024,7 +2028,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                         <div className="absolute right-6 top-1/2 -translate-y-1/2 flex items-center space-x-1.5 px-3 py-1 bg-gray-50 rounded-full border border-gray-100">
                                                                             <span className="text-[9px] font-black text-gray-400 uppercase">Fee:</span>
                                                                             <span className="text-[11px] font-black text-gray-500">
-                                                                                K{lencoService.calculatePayoutFee(Number(requisitionData?.estimated_total || 0), activeMethod || paymentType).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                                                K{lencoService.calculatePayoutFee(Number(requisitionData?.estimated_total || 0), payoutFeeType).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                                                             </span>
                                                                         </div>
                                                                     </div>
