@@ -493,6 +493,14 @@ async function settleRun(automation: Automation, run: RunRow): Promise<boolean> 
     // is only a short-lived claim while a send is in flight (released on failure).
     const popSent = run.steps.some(st => st.step === 'send_pop_email' && st.status === 'ok');
     const investor = await investorContextForRun(automation, run);
+    if (investor) {
+        // What reached the company's bank is less than the investor paid; the difference is the investor's charge.
+        try {
+            await investmentService.bookForwardingCharge(investor.reference, Number(disbursement.total_prepared));
+        } catch (err: any) {
+            console.error('[Automations] Could not book the investment transfer charge:', err.message);
+        }
+    }
     if ((pop?.to || investor?.investorEmail) && !popSent) {
         const fails = run.steps.filter(st => st.step === 'send_pop_email' && st.status === 'failed');
         const lastFail = fails.length ? new Date(fails[fails.length - 1].at).getTime() : 0;

@@ -416,7 +416,55 @@ async function payoutContextForDeposit(
     return { investorName, investorEmail, accountNumber, fundName, companyName, reference: inv.reference, narration };
 }
 
+/**
+ * The company's payout to its bank (forwarding automation) lands short of what the investor put in:
+ * the transfer charge is taken out of the amount. The asset must only carry what really reached the
+ * company's bank, and the difference is the investor's expense. Non-cash, so it is a journal reclass
+ * (Dr Investment fees / Cr Investment asset) keyed on the investment id: safe to call repeatedly.
+ */
+async function bookForwardingCharge(reference: string, delivered: number): Promise<number> {
+    const { data: inv } = await supabase.from('investments')
+        .select('id, investor_organization_id, investment_target_id, amount_received, fee_amount, created_by, status')
+        .eq('reference', reference).eq('status', 'CONFIRMED').maybeSingle();
+    if (!inv) return 0;
+    const charge = round2(Number(inv.amount_received) - Number(delivered));
+    if (!(charge > 0.005) || charge >= Number(inv.amount_received)) return 0;
+
+    const { data: done } = await supabase.from('journal_entries').select('id')
+        .eq('organization_id', inv.investor_organization_id).eq('source_type', 'RECLASS').eq('source_id', inv.id).maybeSingle();
+    if (done) return 0;
+
+    const target = await loadTarget(inv.investment_target_id);
+    if (!target) return 0;
+    const [assetAcct, feesAcct] = await Promise.all([
+        ensureInvestmentAccount(inv.investor_organization_id, target),
+        ensureFeesAccount(inv.investor_organization_id),
+    ]);
+
+    const { data: je, error } = await supabase.from('journal_entries').insert({
+        organization_id: inv.investor_organization_id,
+        entry_date: lusakaToday(),
+        description: `Transfer charge on investment in ${target.display_name} (${reference})`,
+        reference_number: reference,
+        source_type: 'RECLASS',
+        source_id: inv.id,
+        created_by: inv.created_by,
+    }).select('id').single();
+    if (error || !je) throw new Error(`Could not book the investment charge: ${error?.message}`);
+    const { error: lineErr } = await supabase.from('journal_lines').insert([
+        { journal_entry_id: je.id, account_id: feesAcct, debit: charge, credit: 0 },
+        { journal_entry_id: je.id, account_id: assetAcct, debit: 0, credit: charge },
+    ]);
+    if (lineErr) {
+        await supabase.from('journal_entries').delete().eq('id', je.id);
+        throw new Error(`Could not book the investment charge lines: ${lineErr.message}`);
+    }
+    await supabase.from('investments').update({ fee_amount: round2(Number(inv.fee_amount) + charge) }).eq('id', inv.id);
+    return charge;
+}
+
 export const investmentService = {
+    bookForwardingCharge,
     ensureInvestmentAccount,
     loadTarget,
     payoutContextForDeposit,
