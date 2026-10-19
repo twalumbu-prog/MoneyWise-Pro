@@ -27,6 +27,27 @@ export const parseScopes = (raw: unknown): string[] =>
 export const pkceChallengeFor = (verifier: string) =>
     createHash('sha256').update(verifier).digest('base64url');
 
+export const MAX_APPS_PER_ORG = 5;
+export const UNVERIFIED_SCOPES = ['read'];
+
+// Names that would let a stranger's app pass itself off as us or a payments partner.
+const RESERVED_NAME_FRAGMENTS = ['moneywise', 'lenco', 'quickbooks', 'intuit', 'official'];
+export const isReservedAppName = (name: string) => {
+    const flat = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return RESERVED_NAME_FRAGMENTS.some(f => flat.includes(f));
+};
+
+/** https anywhere, http only for localhost, or a custom app scheme (native apps). No wildcards or fragments. */
+export const isValidRedirectUri = (uri: string): boolean => {
+    if (typeof uri !== 'string' || uri.length > 500 || uri.includes('*')) return false;
+    let u: URL;
+    try { u = new URL(uri); } catch { return false; }
+    if (u.hash || u.username || u.password) return false;
+    if (u.protocol === 'https:') return true;
+    if (u.protocol === 'http:') return ['localhost', '127.0.0.1', '[::1]'].includes(u.hostname);
+    return !['javascript:', 'data:', 'file:', 'blob:', 'vbscript:', 'about:'].includes(u.protocol);
+};
+
 export interface OAuthClient {
     id: string;
     client_id: string;
@@ -36,13 +57,15 @@ export interface OAuthClient {
     redirect_uris: string[];
     allowed_scopes: string[];
     client_secret_hash: string | null;
+    owner_organization_id: string | null;
+    verified_at: string | null;
 }
 
 export const findClient = async (clientId: unknown): Promise<OAuthClient | null> => {
     if (typeof clientId !== 'string' || !clientId) return null;
     const { data } = await supabase
         .from('oauth_clients')
-        .select('id, client_id, name, description, logo_url, redirect_uris, allowed_scopes, client_secret_hash')
+        .select('id, client_id, name, description, logo_url, redirect_uris, allowed_scopes, client_secret_hash, owner_organization_id, verified_at')
         .eq('client_id', clientId)
         .is('disabled_at', null)
         .maybeSingle();

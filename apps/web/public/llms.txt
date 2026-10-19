@@ -25,7 +25,8 @@ X-Api-Key: mwp_live_YOUR_API_KEY
 ---
 
 ### OAuth 2.0 (Connect with MoneyWise)
-Apps can connect to an organisation without API keys. Authorization code flow, PKCE (S256) required. Register the app first to get a client_id (mwc_...); server-side apps also get a client_secret (mws_...).
+Apps can connect to an organisation without API keys. Authorization code flow, PKCE (S256) required.
+- Register the app: a Premium admin goes to https://moneywise.blueopus.cloud/settings?tab=api -> "Your apps" -> Register app. Fields: name, description, callback URLs (up to 5, exact match, https or http://localhost), app type (server-side gets client_id + client_secret shown once; mobile/browser-only gets client_id only). New apps are Unverified and read-only; write scope needs MoneyWise verification. Apps can be edited, have the secret regenerated, or be deleted (which disconnects every organisation immediately).
 - Authorize (browser): GET https://moneywise.blueopus.cloud/oauth/authorize?response_type=code&client_id=...&redirect_uri=...&scope=read%20write&state=...&code_challenge=BASE64URL(SHA256(verifier))&code_challenge_method=S256
 - Callback: redirect_uri?code=mwa_...&state=... (or ?error=access_denied&state=...). Codes last 5 minutes, single use.
 - Token: POST https://moneywise.blueopus.cloud/api/oauth/token (form-encoded or JSON)

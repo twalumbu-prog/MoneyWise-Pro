@@ -1091,6 +1091,19 @@ X-Api-Key: mwp_live_abc123...`}
                             <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-xs text-violet-700">client_id</code>).
                         </p>
 
+                        <h3 className="mt-5 text-sm font-bold text-slate-900">0. Register your app</h3>
+                        <p className="mt-1 text-sm text-slate-600 leading-relaxed">
+                            A Premium admin registers each app under{' '}
+                            <Link to="/settings?tab=api" className="text-violet-600 hover:underline font-semibold">Settings &rarr; MoneyWise API &rarr; Your apps</Link>{' '}
+                            and chooses:
+                        </p>
+                        <ul className="mt-2 ml-5 list-disc text-sm text-slate-600 space-y-1">
+                            <li><strong>App name</strong> and optional description &mdash; shown to admins on the approval screen.</li>
+                            <li><strong>Callback URLs</strong> (up to 5) &mdash; where MoneyWise sends users back. They must match your app's redirect exactly, including the path. Use <code className="bg-slate-100 px-1 rounded font-mono text-xs text-violet-700">https://</code>, or <code className="bg-slate-100 px-1 rounded font-mono text-xs text-violet-700">http://localhost</code> for testing.</li>
+                            <li><strong>App type</strong> &mdash; <em>server-side</em> apps get a <code className="bg-slate-100 px-1 rounded font-mono text-xs text-violet-700">client_id</code> and a <code className="bg-slate-100 px-1 rounded font-mono text-xs text-violet-700">client_secret</code> (shown once; keep it in server environment variables). <em>Mobile or browser-only</em> apps get only a client_id and rely on PKCE.</li>
+                            <li><strong>Access</strong> &mdash; new apps are <em>Unverified</em> and limited to <code className="bg-slate-100 px-1 rounded font-mono text-xs text-violet-700">read</code>. Admins see an &ldquo;Unverified app&rdquo; warning when approving. Write access is unlocked once MoneyWise verifies the app.</li>
+                        </ul>
+
                         <h3 className="mt-5 text-sm font-bold text-slate-900">1. Send the user to MoneyWise</h3>
                         <CodeBlock
                             code={`# Generate per login attempt:

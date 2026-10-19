@@ -4,13 +4,17 @@
  *   npm run oauth:create-client -- --name "My App" \
  *     --redirect https://myapp.com/callback --redirect myapp://oauth \
  *     --scopes read,write [--confidential] [--description "..."] [--logo https://...]
+ *     [--owner-org <organization uuid>] [--verified]
+ *
+ * Day to day, Premium admins register apps themselves under Settings -> MoneyWise API.
+ * This script is for super-admins: it can mark an app --verified (unlocks the write scope).
  *
  * Public clients (default: SPAs, mobile apps) rely on PKCE alone.
  * --confidential also issues a client secret (server-side apps), shown once.
  */
 import { randomBytes } from 'crypto';
 import { supabase } from '../lib/supabase';
-import { sha256, VALID_SCOPES } from '../services/oauth.service';
+import { sha256, VALID_SCOPES, isValidRedirectUri } from '../services/oauth.service';
 
 function parseArgs(argv: string[]) {
     const out: Record<string, string[]> = {};
@@ -24,15 +28,6 @@ function parseArgs(argv: string[]) {
     return out;
 }
 
-function validRedirect(uri: string): boolean {
-    let u: URL;
-    try { u = new URL(uri); } catch { return false; }
-    if (u.hash || uri.includes('*')) return false;
-    if (u.protocol === 'https:') return true;
-    if (u.protocol === 'http:') return ['localhost', '127.0.0.1', '[::1]'].includes(u.hostname);
-    return !['javascript:', 'data:', 'file:', 'http:', 'https:'].includes(u.protocol); // custom scheme for native apps
-}
-
 (async () => {
     const a = parseArgs(process.argv.slice(2));
     const name = a.name?.[0];
@@ -43,7 +38,7 @@ function validRedirect(uri: string): boolean {
         console.error('Usage: --name "App" --redirect <uri> [--redirect <uri>] [--scopes read,write] [--confidential]');
         process.exit(1);
     }
-    const badRedirect = redirects.find(r => !validRedirect(r));
+    const badRedirect = redirects.find(r => !isValidRedirectUri(r));
     if (badRedirect) { console.error(`Invalid redirect URI: ${badRedirect} (use https://, http://localhost, or a custom app scheme; no wildcards)`); process.exit(1); }
     const badScope = scopes.find(s => !VALID_SCOPES.includes(s));
     if (badScope) { console.error(`Unknown scope '${badScope}'. Valid: ${VALID_SCOPES.join(', ')}`); process.exit(1); }
@@ -59,6 +54,8 @@ function validRedirect(uri: string): boolean {
         redirect_uris: redirects,
         allowed_scopes: scopes,
         client_secret_hash: secret ? sha256(secret) : null,
+        owner_organization_id: a['owner-org']?.[0] ?? null,
+        verified_at: a.verified ? new Date().toISOString() : null,
     });
     if (error) { console.error('Failed to create client:', error.message); process.exit(1); }
 
@@ -69,5 +66,6 @@ function validRedirect(uri: string): boolean {
     else console.log('  type:           public (PKCE only, no secret)');
     console.log('  redirect URIs: ', redirects.join(', '));
     console.log('  scopes:        ', scopes.join(', '));
+    console.log('  verified:      ', a.verified ? 'yes' : 'no');
     process.exit(0);
 })();

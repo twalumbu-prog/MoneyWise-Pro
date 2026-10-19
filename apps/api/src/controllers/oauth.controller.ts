@@ -15,6 +15,7 @@ import {
     CODE_TTL_MS,
     OAuthClient,
     SCOPE_DESCRIPTIONS,
+    UNVERIFIED_SCOPES,
     VALID_SCOPES,
     findClient,
     issueTokens,
@@ -59,7 +60,9 @@ const validateAuthorizeRequest = async (
 
     const scopes = parseScopes(p.scope);
     if (scopes.length === 0) return { ok: false, error: 'invalid_scope', description: 'At least one scope is required.' };
-    const bad = scopes.find(s => !VALID_SCOPES.includes(s) || !client.allowed_scopes.includes(s));
+    // An unverified app can never get more than read, whatever its record says.
+    const allowed = client.verified_at ? client.allowed_scopes : client.allowed_scopes.filter(s => UNVERIFIED_SCOPES.includes(s));
+    const bad = scopes.find(s => !VALID_SCOPES.includes(s) || !allowed.includes(s));
     if (bad) return { ok: false, error: 'invalid_scope', description: `Scope '${bad}' is not available to this application.` };
 
     if (p.code_challenge_method !== 'S256' || typeof p.code_challenge !== 'string' || !CHALLENGE_RE.test(p.code_challenge)) {
@@ -94,13 +97,26 @@ export const authorizeInfo = async (req: any, res: any) => {
 
     const { client, scopes } = v.value;
 
-    const [{ data: org }, { data: grant }] = await Promise.all([
+    const [{ data: org }, { data: owner }, { data: grant }] = await Promise.all([
         supabase.from('organizations').select('id, name').eq('id', approver.orgId).maybeSingle(),
+        client.owner_organization_id
+            ? supabase.from('organizations').select('name').eq('id', client.owner_organization_id).maybeSingle()
+            : Promise.resolve({ data: null }),
         supabase.from('oauth_grants').select('scopes').eq('client_id', client.id).eq('organization_id', approver.orgId).is('revoked_at', null).maybeSingle(),
     ]);
 
+    let redirectHost = '';
+    try { const u = new URL(v.value.redirectUri); redirectHost = u.host ? `${u.protocol}//${u.host}` : u.protocol; } catch { /* validated earlier */ }
+
     res.json({
-        client: { name: client.name, description: client.description, logo_url: client.logo_url },
+        client: {
+            name: client.name,
+            description: client.description,
+            logo_url: client.logo_url,
+            owner_name: (owner as any)?.name ?? null,
+            verified: !!client.verified_at,
+            redirect_host: redirectHost,
+        },
         organization: { id: approver.orgId, name: org?.name ?? 'Your organisation' },
         scopes: scopes.map(s => ({ scope: s, description: SCOPE_DESCRIPTIONS[s] })),
         // Already approved at least these scopes -> the screen can skip the click.

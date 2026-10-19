@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Key, Plus, Trash2, Copy, Check, ExternalLink, AlertCircle, Eye, EyeOff, Code2, BookOpen } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { OAuthApps } from './OAuthApps';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 const DOCS_URL = '/docs/api';
@@ -381,6 +382,8 @@ export const DeveloperAPI: React.FC = () => {
                     </div>
                 )}
             </div>
+
+            <OAuthApps />
 
             {/* Base URL info */}
             <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-2">
