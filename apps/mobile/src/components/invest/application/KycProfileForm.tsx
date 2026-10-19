@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Sparkles, AlertCircle, Zap } from 'lucide-react-native';
+import { Sparkles, AlertCircle, CheckCircle2 } from 'lucide-react-native';
 import {
     investmentService, userService, GENDERS, ID_TYPES, OCCUPATIONS, INCOME_SOURCES, RELATIONSHIPS, NATIONALITIES, EMPTY_APPLICANT,
     idNeedsBack, flagFromIso2, validateApplicantStep, validateDocumentStep,
 } from 'core';
 import type { InvestorApplicant, IdType, FieldErrors, ApplicationStepId } from 'core';
 import { useAuth } from '../../../context/AuthContext';
-import { ErrorBanner, StepFooter, TextField } from '../../onboarding/ui';
+import { ErrorBanner, TextField } from '../../onboarding/ui';
 import { ScreenHeader } from '../../ScreenHeader';
 import { SelectField, DateField, DocUploadCard, type UploadedDoc, type SelectOption } from './formFields';
 import { BankAccountFields } from './BankAccountFields';
@@ -143,17 +143,43 @@ export const KycProfileForm: React.FC<{ onSaved: () => void }> = ({ onSaved }) =
     const idNumberLabel = idType === 'Passport' ? 'Passport number' : idType === "Driver's Licence" ? 'Licence number' : 'NRC number';
     const reading = read === 'reading';
 
+    // Completion: every required detail and document, counted live as the page is edited.
+    const REQUIRED: (keyof InvestorApplicant)[] = [
+        'first_name', 'last_name', 'date_of_birth', 'gender', 'nationality', 'id_number', 'email', 'phone', 'physical_address',
+        'occupation', 'source_of_income', 'bank_name', 'bank_account_number', 'bank_account_name',
+        'nok_full_name', 'nok_id_number', 'nok_date_of_birth', 'nok_phone', 'nok_relationship',
+    ];
+    const docKeys: (keyof DocSlots)[] = ['id_front', ...(idNeedsBack(idType) ? ['id_back' as const] : []), 'photo', 'proof_of_residence'];
+    const total = REQUIRED.length + docKeys.length;
+    const done = REQUIRED.filter((k) => String(a[k] ?? '').trim()).length + docKeys.filter((k) => !!docs[k]).length;
+    const pct = Math.round((done / total) * 100);
+
     return (
         <KeyboardAvoidingView style={styles.root} behavior="padding">
-            <ScreenHeader title="KYC Profile" />
+            <ScreenHeader
+                title="KYC Profile"
+                right={
+                    <Pressable onPress={save} disabled={saving || reading || !ready} hitSlop={10} accessibilityRole="button" accessibilityLabel="Save KYC profile">
+                        {saving ? <ActivityIndicator size="small" color={colors.blue} /> : <Text style={[styles.saveText, (reading || !ready) && { opacity: 0.4 }]}>Save</Text>}
+                    </Pressable>
+                }
+            />
             {!ready ? (
                 <View style={styles.centre}><ActivityIndicator color={colors.blue} /></View>
             ) : (
                 <>
                     <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-                        <View style={[styles.note, styles.noteBlue]}>
-                            <Zap size={18} color={colors.blue} />
-                            <Text style={styles.noteText}>Keep these up to date once. Opening an account with any investment company then takes one tap — you won’t fill this in again.</Text>
+                        <View style={styles.completion}>
+                            <View style={styles.completionHead}>
+                                <Text style={styles.completionTitle}>Profile completion</Text>
+                                {pct === 100
+                                    ? <View style={styles.completeBadge}><CheckCircle2 size={14} color={colors.positiveInk} /><Text style={styles.completeBadgeText}>Ready for one-click</Text></View>
+                                    : <Text style={styles.completionPct}>{pct}%</Text>}
+                            </View>
+                            <View style={styles.track}><View style={[styles.fill, { width: `${pct}%` }, pct === 100 && { backgroundColor: colors.positive }]} /></View>
+                            <Text style={styles.completionSub}>
+                                {pct === 100 ? 'Everything an investment company asks for is on file.' : `${done} of ${total} items done — complete them to open accounts in one tap.`}
+                            </Text>
                         </View>
                         <ErrorBanner message={banner} />
 
@@ -235,7 +261,6 @@ export const KycProfileForm: React.FC<{ onSaved: () => void }> = ({ onSaved }) =
                             />
                         </Section>
                     </ScrollView>
-                    <StepFooter onBack={() => {}} showBack={false} onContinue={save} continueLabel={reading ? 'Reading your ID…' : 'Save KYC profile'} loading={saving} disabled={reading} />
                 </>
             )}
         </KeyboardAvoidingView>
@@ -245,7 +270,17 @@ export const KycProfileForm: React.FC<{ onSaved: () => void }> = ({ onSaved }) =
 const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.canvas },
     centre: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-    scroll: { padding: 20, paddingBottom: 36 },
+    scroll: { padding: 20, paddingBottom: 48 },
+    saveText: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.blue },
+    completion: { backgroundColor: '#FFFFFF', borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: 18, marginBottom: 16 },
+    completionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    completionTitle: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.navy },
+    completionPct: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.blue },
+    completeBadge: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    completeBadgeText: { fontFamily: fonts.bodyBold, fontSize: 12.5, color: colors.positiveInk },
+    track: { height: 8, borderRadius: 4, backgroundColor: colors.chipActiveBg, marginTop: 12, overflow: 'hidden' },
+    fill: { height: 8, borderRadius: 4, backgroundColor: colors.blue },
+    completionSub: { fontFamily: fonts.body, fontSize: 12.5, color: colors.textMuted, marginTop: 10, lineHeight: 18 },
     section: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: 18, marginBottom: 16 },
     sectionTitle: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.navy },
     sectionHint: { fontFamily: fonts.body, fontSize: 12.5, color: colors.textMuted, marginTop: 3, lineHeight: 18 },
