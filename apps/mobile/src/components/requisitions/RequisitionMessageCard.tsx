@@ -209,6 +209,9 @@ export const RequisitionMessageCard: React.FC<{
                                         amount={requisitionData.actual_total ?? requisitionData.estimated_total}
                                         recipientName={requisitionData.recipient_name}
                                         recipientAccount={requisitionData.recipient_account}
+                                        recipientBankCode={requisitionData.recipient_bank_code}
+                                        savedMethod={requisitionData.payment_method}
+                                        organizationId={requisitionData.organization_id}
                                         onDone={onDisbursed}
                                     />
                                 )
@@ -571,6 +574,7 @@ export const RequisitionMessageCard: React.FC<{
                                     <DisburseSheet
                                         requisitionId={requisitionData.id}
                                         amount={excessAmount}
+                                        organizationId={requisitionData.organization_id}
                                         onDone={onDisbursed}
                                         mode="DISBURSE_EXCESS"
                                     />
