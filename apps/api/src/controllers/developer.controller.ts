@@ -1,6 +1,7 @@
 import { randomBytes, createHash } from 'crypto';
 import { supabase } from '../lib/supabase';
 import { invalidateApiKeyCache, isPremiumOrg } from '../middleware/apiKey';
+import { revokeGrant } from '../services/oauth.service';
 
 const MAX_ACTIVE_KEYS = 10;
 
@@ -108,4 +109,51 @@ export const revokeApiKey = async (req: any, res: any) => {
 
     invalidateApiKeyCache(data.id);
     res.json({ message: 'API key revoked successfully' });
+};
+
+// ── Connected apps (OAuth grants) ────────────────────────────────────────────
+
+export const listConnectedApps = async (req: any, res: any) => {
+    const { data, error } = await supabase
+        .from('oauth_grants')
+        .select('id, scopes, created_at, last_used_at, oauth_clients(name, description, logo_url)')
+        .eq('organization_id', req.user.organization_id)
+        .is('revoked_at', null)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('[Developer] list connected apps:', error.message);
+        return res.status(500).json({ error: 'Failed to fetch connected apps' });
+    }
+
+    res.json(
+        (data ?? []).map((g: any) => ({
+            id: g.id,
+            name: g.oauth_clients?.name ?? 'Unknown app',
+            description: g.oauth_clients?.description ?? null,
+            logo_url: g.oauth_clients?.logo_url ?? null,
+            scopes: g.scopes,
+            connected_at: g.created_at,
+            last_used_at: g.last_used_at,
+        }))
+    );
+};
+
+export const revokeConnectedApp = async (req: any, res: any) => {
+    const { data, error } = await supabase
+        .from('oauth_grants')
+        .select('id')
+        .eq('id', req.params.id)
+        .eq('organization_id', req.user.organization_id)
+        .is('revoked_at', null)
+        .maybeSingle();
+
+    if (error) {
+        console.error('[Developer] revoke connected app lookup:', error.message);
+        return res.status(500).json({ error: 'Failed to disconnect app' });
+    }
+    if (!data) return res.status(404).json({ error: 'Connected app not found' });
+
+    await revokeGrant(data.id);
+    res.json({ message: 'App disconnected' });
 };

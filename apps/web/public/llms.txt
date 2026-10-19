@@ -24,6 +24,20 @@ X-Api-Key: mwp_live_YOUR_API_KEY
 
 ---
 
+### OAuth 2.0 (Connect with MoneyWise)
+Apps can connect to an organisation without API keys. Authorization code flow, PKCE (S256) required. Register the app first to get a client_id (mwc_...); server-side apps also get a client_secret (mws_...).
+- Authorize (browser): GET https://moneywise.blueopus.cloud/oauth/authorize?response_type=code&client_id=...&redirect_uri=...&scope=read%20write&state=...&code_challenge=BASE64URL(SHA256(verifier))&code_challenge_method=S256
+- Callback: redirect_uri?code=mwa_...&state=... (or ?error=access_denied&state=...). Codes last 5 minutes, single use.
+- Token: POST https://moneywise.blueopus.cloud/api/oauth/token (form-encoded or JSON)
+  grant_type=authorization_code, client_id, code, redirect_uri, code_verifier [, client_secret]
+  -> { access_token (mwo_..., 1h), token_type: "Bearer", expires_in, refresh_token (mwr_..., 60d), scope, organization_id }
+- Refresh: POST /api/oauth/token grant_type=refresh_token, client_id, refresh_token [, client_secret]. Refresh tokens ROTATE (store the new one); reusing an old one revokes the app's access.
+- Revoke/disconnect: POST /api/oauth/revoke token=<access or refresh token>, client_id [, client_secret]
+- Use access tokens exactly like API keys: `Authorization: Bearer mwo_...` on all /v1 endpoints. Scopes limited to what the admin approved; the organization must be on Premium. Expired token -> 401 "Access token expired" -> refresh.
+- OAuth errors: { "error": "invalid_grant" | "invalid_client" | "invalid_request" | "unsupported_grant_type", "error_description": "..." }
+
+---
+
 ### API Endpoints
 
 #### 1. Organization Profile

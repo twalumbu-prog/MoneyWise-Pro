@@ -39,6 +39,7 @@ const InvestCompany = React.lazy(() => import('./pages/invest/InvestCompany').th
 const InvestProductDetail = React.lazy(() => import('./pages/invest/InvestProductDetail').then(m => ({ default: m.InvestProductDetail })));
 const ApiDocs = React.lazy(() => import('./pages/ApiDocs').then(m => ({ default: m.ApiDocs })));
 import { CompleteProfile } from './pages/CompleteProfile';
+import { OAuthAuthorize, OAUTH_RETURN_KEY } from './pages/OAuthAuthorize';
 import { Loader2 } from 'lucide-react';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { RealtimeCacheSync } from './components/RealtimeCacheSync';
@@ -46,6 +47,7 @@ import { UpdatePrompt } from './components/UpdatePrompt';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     const { session, loading, userStatus, signOut } = useAuth();
+    const location = useLocation();
 
     if (loading) {
         return (
@@ -56,6 +58,10 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     }
 
     if (!session) {
+        // A connecting app sent the user here: resume the consent screen after login.
+        if (location.pathname === '/oauth/authorize') {
+            try { sessionStorage.setItem(OAUTH_RETURN_KEY, location.pathname + location.search); } catch { /* storage unavailable */ }
+        }
         return <Navigate to="/login" />;
     }
 
@@ -133,6 +139,13 @@ const HomeRedirect = () => {
         return null;
     }
 
+    try {
+        const pendingOAuth = sessionStorage.getItem(OAUTH_RETURN_KEY);
+        if (pendingOAuth && pendingOAuth.startsWith('/oauth/authorize')) {
+            return <Navigate to={pendingOAuth} replace />;
+        }
+    } catch { /* storage unavailable */ }
+
     // Signed in with Google/Apple but no organization yet → choose personal or business first.
     if (organizationsLoaded && !userOrganizations.some((uo: any) => uo.status === 'ACTIVE' || !uo.status)) {
         return <Navigate to="/complete-profile" replace />;
@@ -195,6 +208,7 @@ function App() {
                         <Route path="/pl/:token" element={<PublicPaymentLink />} />
                         <Route path="/savings/join/:code" element={<SavingsJoin />} />
                         <Route path="/docs/api" element={<ApiDocs />} />
+                        <Route path="/oauth/authorize" element={<ProtectedRoute><OAuthAuthorize /></ProtectedRoute>} />
                         <Route path="/api-docs" element={<Navigate to="/docs/api" replace />} />
                         <Route
                             path="/onboarding"

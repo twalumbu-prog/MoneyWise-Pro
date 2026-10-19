@@ -34,6 +34,16 @@ interface NewKeyResult extends ApiKey {
     key: string; // raw key, shown only once
 }
 
+interface ConnectedApp {
+    id: string;
+    name: string;
+    description: string | null;
+    logo_url: string | null;
+    scopes: string[];
+    connected_at: string;
+    last_used_at: string | null;
+}
+
 function Badge({ children, variant }: { children: React.ReactNode; variant: 'green' | 'blue' | 'gray' }) {
     const styles = {
         green: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
@@ -79,6 +89,30 @@ export const DeveloperAPI: React.FC = () => {
     // revoke confirm
     const [revoking, setRevoking] = useState<string | null>(null);
 
+    // connected apps (OAuth)
+    const [apps, setApps] = useState<ConnectedApp[]>([]);
+    const [disconnecting, setDisconnecting] = useState<string | null>(null);
+
+    const loadApps = useCallback(async () => {
+        try {
+            setApps(await apiFetch('/developer/connected-apps'));
+        } catch {
+            // table may not exist yet on a fresh environment; keys UI still works
+        }
+    }, []);
+
+    const handleDisconnect = async (id: string) => {
+        setDisconnecting(id);
+        try {
+            await apiFetch(`/developer/connected-apps/${id}`, { method: 'DELETE' });
+            setApps(prev => prev.filter(a => a.id !== id));
+        } catch (e: any) {
+            setError(e.message);
+        } finally {
+            setDisconnecting(null);
+        }
+    };
+
     const loadKeys = useCallback(async () => {
         setLoading(true);
         setError(null);
@@ -92,7 +126,7 @@ export const DeveloperAPI: React.FC = () => {
         }
     }, []);
 
-    useEffect(() => { loadKeys(); }, [loadKeys]);
+    useEffect(() => { loadKeys(); loadApps(); }, [loadKeys, loadApps]);
 
     const handleCreate = async () => {
         if (!newName.trim()) return;
@@ -305,6 +339,48 @@ export const DeveloperAPI: React.FC = () => {
                     ))}
                 </div>
             )}
+
+            {/* Connected apps (OAuth) */}
+            <div className="space-y-3">
+                <div>
+                    <h3 className="text-sm font-bold text-gray-900">Connected apps</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                        Apps you approved through "Connect with MoneyWise". Disconnecting cuts off their access immediately.
+                    </p>
+                </div>
+                {apps.length === 0 ? (
+                    <div className="border border-dashed border-gray-200 rounded-xl p-5 text-center text-xs text-gray-400">
+                        No apps connected yet.
+                    </div>
+                ) : (
+                    <div className="divide-y divide-gray-100 border border-gray-100 rounded-xl">
+                        {apps.map(a => (
+                            <div key={a.id} className="flex items-center justify-between gap-3 p-3.5">
+                                <div className="min-w-0">
+                                    <p className="text-sm font-semibold text-gray-900 truncate">{a.name}</p>
+                                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                        {a.scopes.map(sc => (
+                                            <Badge key={sc} variant={sc === 'write' ? 'blue' : 'green'}>{sc}</Badge>
+                                        ))}
+                                        <span className="text-[11px] text-gray-400">
+                                            Connected {new Date(a.connected_at).toLocaleDateString()}
+                                            {a.last_used_at ? ` · last used ${new Date(a.last_used_at).toLocaleDateString()}` : ''}
+                                        </span>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => handleDisconnect(a.id)}
+                                    disabled={disconnecting === a.id}
+                                    className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 shrink-0"
+                                >
+                                    <Trash2 className="w-3 h-3" />
+                                    {disconnecting === a.id ? 'Disconnecting…' : 'Disconnect'}
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
 
             {/* Base URL info */}
             <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-2">

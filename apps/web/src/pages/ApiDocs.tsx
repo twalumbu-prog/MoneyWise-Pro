@@ -876,6 +876,7 @@ export const ApiDocs: React.FC = () => {
                                         { id: 'llm-context', label: 'Copy for LLM (AI Context)' },
                                         { id: 'overview', label: 'Overview & Base URL' },
                                         { id: 'authentication', label: 'Authentication' },
+                                        { id: 'oauth', label: 'OAuth (Connect with MoneyWise)' },
                                         { id: 'scopes', label: 'Scopes & Permissions' },
                                         { id: 'errors', label: 'Errors & Status Codes' },
                                     ].map(item => (
@@ -1068,6 +1069,103 @@ X-Api-Key: mwp_live_abc123...`}
                             <div>
                                 <span className="font-bold">Keep your secret keys secure:</span> Never commit API keys to public repositories or expose them in client-side mobile/browser bundles.
                                 If a key is compromised, immediately revoke it in the Settings dashboard and generate a replacement.
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* Getting Started: OAuth */}
+                    <section id="oauth" className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm scroll-mt-24">
+                        <div className="flex items-center gap-2 text-violet-600 font-bold text-xs uppercase tracking-wider mb-1">
+                            <Lock className="w-4 h-4" />
+                            Connect with MoneyWise
+                        </div>
+                        <h2 className="text-xl sm:text-2xl font-bold text-slate-900">
+                            OAuth 2.0
+                        </h2>
+                        <p className="mt-2 text-sm text-slate-600 leading-relaxed">
+                            Let users connect your app to their organisation without copying API keys. Your app sends the user to MoneyWise,
+                            an organisation admin approves it, and MoneyWise sends them back with a code you exchange for tokens.
+                            It uses the authorization code flow with <strong>PKCE (S256)</strong>, which is required for every app.
+                            Access tokens work on every <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-xs text-violet-700">/v1</code> endpoint
+                            exactly like an API key, limited to the scopes the admin approved. Apps must be registered first (you get a{' '}
+                            <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-xs text-violet-700">client_id</code>).
+                        </p>
+
+                        <h3 className="mt-5 text-sm font-bold text-slate-900">1. Send the user to MoneyWise</h3>
+                        <CodeBlock
+                            code={`# Generate per login attempt:
+#   code_verifier  = random string, 43-128 chars (A-Z a-z 0-9 - . _ ~)
+#   code_challenge = base64url( SHA256(code_verifier) )   (no padding)
+
+GET https://moneywise.blueopus.cloud/oauth/authorize
+  ?response_type=code
+  &client_id=mwc_your_client_id
+  &redirect_uri=https://yourapp.com/callback
+  &scope=read%20write
+  &state=RANDOM_CSRF_VALUE
+  &code_challenge=BASE64URL_SHA256_OF_VERIFIER
+  &code_challenge_method=S256`}
+                            language="http"
+                        />
+
+                        <h3 className="mt-5 text-sm font-bold text-slate-900">2. Receive the callback</h3>
+                        <CodeBlock
+                            code={`# Approved
+https://yourapp.com/callback?code=mwa_...&state=RANDOM_CSRF_VALUE
+
+# Denied
+https://yourapp.com/callback?error=access_denied&state=RANDOM_CSRF_VALUE`}
+                            language="http"
+                        />
+                        <p className="mt-2 text-xs text-slate-500">
+                            Always check that <code className="font-mono">state</code> matches what you sent. Codes expire after 5 minutes and work once.
+                        </p>
+
+                        <h3 className="mt-5 text-sm font-bold text-slate-900">3. Exchange the code for tokens</h3>
+                        <CodeBlock
+                            code={`curl -X POST https://moneywise.blueopus.cloud/api/oauth/token \\
+  -d grant_type=authorization_code \\
+  -d client_id=mwc_your_client_id \\
+  -d code=mwa_... \\
+  -d redirect_uri=https://yourapp.com/callback \\
+  -d code_verifier=YOUR_CODE_VERIFIER
+  # server-side apps also send: -d client_secret=mws_...
+
+{
+  "access_token": "mwo_...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "refresh_token": "mwr_...",
+  "scope": "read write",
+  "organization_id": "..."
+}`}
+                            language="bash"
+                        />
+
+                        <h3 className="mt-5 text-sm font-bold text-slate-900">4. Call the API, then refresh</h3>
+                        <CodeBlock
+                            code={`curl https://moneywise.blueopus.cloud/api/v1/balance \\
+  -H "Authorization: Bearer mwo_..."
+
+# When the access token expires (401 "Access token expired"), refresh it:
+curl -X POST https://moneywise.blueopus.cloud/api/oauth/token \\
+  -d grant_type=refresh_token \\
+  -d client_id=mwc_your_client_id \\
+  -d refresh_token=mwr_...
+
+# Disconnect (revokes the app's access for that organisation):
+curl -X POST https://moneywise.blueopus.cloud/api/oauth/revoke \\
+  -d client_id=mwc_your_client_id -d token=mwr_...`}
+                            language="bash"
+                        />
+
+                        <div className="mt-4 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs leading-relaxed flex items-start gap-3">
+                            <Shield className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                            <div>
+                                <span className="font-bold">Refresh tokens rotate:</span> every refresh returns a new refresh token and the old one stops working.
+                                Always store the newest one. Reusing an old refresh token is treated as theft and disconnects the app.
+                                Access tokens last 1 hour; refresh tokens 60 days. Admins can disconnect any app under{' '}
+                                <Link to="/settings?tab=api" className="underline font-semibold">Settings &rarr; MoneyWise API &rarr; Connected apps</Link>.
                             </div>
                         </div>
                     </section>
