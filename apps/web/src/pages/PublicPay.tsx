@@ -724,14 +724,27 @@ export const PublicPay: React.FC = () => {
         }
         return null;
     };
-    const goToInfoOrSummary = () => { setError(null); setStep(cartNeedsInfo ? 'INFO' : 'SUMMARY'); };
+    // Begin payment: the dedicated payment page (own-UX) or the Lenco widget.
+    const startPayment = () => {
+        if (!canPay) return;
+        if (collectionsApiEnabled) {
+            setError(null);
+            setCheckoutPhone(customerPhone);
+            setResolvedAccountName('');
+            setResolveFailed(false);
+            setCheckoutMethod('mobile-money');
+            setStep('CHECKOUT');
+        } else {
+            handlePay();
+        }
+    };
     // Answers sent with each item; unanswered optional fields are omitted.
     const responsesFor = (productId: string) => {
         const a = infoAnswers[productId];
         return a && Object.keys(a).length > 0 ? { responses: a } : {};
     };
 
-    // Cart → Delivery (if needed) → Info (if needed) → Payment Summary.
+    // Cart → Delivery (if needed) → Cart Total summary → Info (if needed) → Pay.
     const handleProceedToSummary = () => {
         setError(null);
         if (lineItems.length === 0) {
@@ -750,7 +763,7 @@ export const PublicPay: React.FC = () => {
         if (cartNeedsDelivery) {
             setStep('DELIVERY');
         } else {
-            goToInfoOrSummary();
+            setStep('SUMMARY');
         }
     };
 
@@ -2437,12 +2450,14 @@ Status: VERIFIED`;
                     <>
                         {/* 1. Loading Step */}
                 {step === 'LOADING' && (
-                    <div className="p-10 flex flex-col items-center justify-center min-h-[450px]">
-                        <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl animate-spin mb-4">
-                            <Loader2 size={32} />
-                        </div>
-                        <h3 className="text-sm font-bold text-slate-700 uppercase tracking-widest">Loading Payment Portal</h3>
-                        <p className="text-xs text-slate-400 mt-2 font-medium">Fetching catalog and settings...</p>
+                    <div className="p-10 flex flex-col items-center justify-center min-h-[450px] animate-in fade-in duration-300">
+                        {/* Bare ring spinner — no filled tile behind it */}
+                        <svg className="w-10 h-10 animate-spin text-blue-600 mb-6" viewBox="0 0 40 40" fill="none" aria-label="Loading">
+                            <circle cx="20" cy="20" r="16" stroke="currentColor" strokeOpacity="0.15" strokeWidth="3" />
+                            <path d="M20 4a16 16 0 0 1 16 16" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                        </svg>
+                        <h3 className="text-sm font-semibold text-slate-700 tracking-wide">Loading store</h3>
+                        <p className="text-xs text-slate-400 mt-1.5 animate-pulse">Getting everything ready…</p>
                     </div>
                 )}
 
@@ -3191,7 +3206,7 @@ Status: VERIFIED`;
                                     Back
                                 </button>
                                 <button
-                                    onClick={goToInfoOrSummary}
+                                    onClick={() => setStep('SUMMARY')}
                                     className="flex-1 h-11 px-3 py-2 bg-gray-900 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-white hover:bg-black transition-colors"
                                 >
                                     <CreditCard className="h-3.5 w-3.5" />
@@ -3222,7 +3237,7 @@ Status: VERIFIED`;
                         <div className="flex-1 overflow-y-auto px-6 pt-5 pb-36 space-y-5">
                             <div>
                                 <h2 className="text-lg font-semibold text-gray-900">Your details</h2>
-                                <p className="text-xs text-gray-500 mt-0.5">The seller needs a few details about your order before you pay.</p>
+                                <p className="text-xs text-gray-500 mt-0.5">The seller needs a few details about your order. Fill them in, then pay.</p>
                             </div>
 
                             {infoLines.map(li => (
@@ -3278,7 +3293,7 @@ Status: VERIFIED`;
                         <div className="fixed bottom-0 inset-x-0 sm:absolute sm:bottom-0 sm:inset-x-auto sm:left-0 sm:right-0 sm:w-full bg-white border-t border-gray-200 px-6 py-4">
                             <div className="flex gap-2.5">
                                 <button
-                                    onClick={() => { setError(null); setStep(cartNeedsDelivery ? 'DELIVERY' : 'CATALOG'); }}
+                                    onClick={() => { setError(null); setStep('SUMMARY'); }}
                                     className="flex-1 h-11 px-3 py-2 bg-white rounded-xl border border-gray-900 flex items-center justify-center text-xs font-medium text-gray-900 hover:bg-gray-50 transition-colors"
                                 >
                                     Back
@@ -3288,12 +3303,12 @@ Status: VERIFIED`;
                                         const missing = missingInfoMessage();
                                         if (missing) { setError(missing); return; }
                                         setError(null);
-                                        setStep('SUMMARY');
+                                        startPayment();
                                     }}
                                     className="flex-1 h-11 px-3 py-2 bg-gray-900 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-white hover:bg-black transition-colors"
                                 >
                                     <CreditCard className="h-3.5 w-3.5" />
-                                    Continue to payment
+                                    Pay
                                 </button>
                             </div>
                         </div>
@@ -3475,16 +3490,9 @@ Status: VERIFIED`;
                             <button
                                 onClick={() => {
                                     if (!canPay) return;
-                                    if (collectionsApiEnabled) {
-                                        setError(null);
-                                        setCheckoutPhone(customerPhone);
-                                        setResolvedAccountName('');
-                                        setResolveFailed(false);
-                                        setCheckoutMethod('mobile-money');
-                                        setStep('CHECKOUT');
-                                    } else {
-                                        handlePay();
-                                    }
+                                    // Carts with buyer-info fields go to their own page first.
+                                    if (cartNeedsInfo) { setError(null); setStep('INFO'); return; }
+                                    startPayment();
                                 }}
                                 disabled={!canPay}
                                 className={`w-full py-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${
@@ -3493,16 +3501,16 @@ Status: VERIFIED`;
                                         : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
                                 }`}
                             >
-                                <CreditCard size={16} />
-                                <span>Pay</span>
+                                {cartNeedsInfo ? <ChevronRight size={16} /> : <CreditCard size={16} />}
+                                <span>{cartNeedsInfo ? 'Continue' : 'Pay'}</span>
                             </button>
                             <div className="text-center">
                                 <button
                                     type="button"
-                                    onClick={() => { setError(null); setStep(cartNeedsInfo ? 'INFO' : 'CATALOG'); }}
+                                    onClick={() => { setError(null); setStep('CATALOG'); }}
                                     className="text-[11px] font-bold text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-wider"
                                 >
-                                    {cartNeedsInfo ? 'Back' : 'Back to Cart'}
+                                    Back to Cart
                                 </button>
                             </div>
                         </div>
@@ -3516,7 +3524,7 @@ Status: VERIFIED`;
                         {/* Top bar — back + title */}
                         <div className="px-7 py-3 flex items-start gap-6">
                             <button
-                                onClick={() => { setStep('SUMMARY'); setError(null); }}
+                                onClick={() => { setStep(cartNeedsInfo ? 'INFO' : 'SUMMARY'); setError(null); }}
                                 className="p-1 -ml-1 mt-1 rounded-lg hover:bg-slate-100 transition-colors"
                             >
                                 <ArrowLeft size={20} className="text-black" />
