@@ -1,3 +1,4 @@
+import { mergePaymentInfo, presentPaymentInfo, accountsOf } from '../services/paymentInfo.service';
 import {
     getPreferences, updatePreferences, isStaffWithPayroll, getPersonalOrgForUser, CATEGORIZATION_MODELS,
 } from '../services/userPreferences.service';
@@ -664,6 +665,7 @@ export const getMyProfile = async (req: AuthRequest, res: any): Promise<any> => 
             .select('id, name, role, employee_id, payment_info')
             .eq('id', userId)
             .single();
+        if (data) (data as any).payment_info = presentPaymentInfo((data as any).payment_info);
 
         if (error) {
             // Fallback: Try selecting without payment_info if the first one failed
@@ -695,13 +697,16 @@ export const updatePaymentInfo = async (req: AuthRequest, res: any): Promise<any
             return res.status(400).json({ error: 'payment_info must be a valid object' });
         }
 
+        const { data: current } = await supabase.from('users').select('payment_info').eq('id', userId).maybeSingle();
+        const merged = mergePaymentInfo((current as any)?.payment_info, payment_info);
+
         const { error } = await supabase
             .from('users')
-            .update({ payment_info })
+            .update({ payment_info: merged })
             .eq('id', userId);
 
         if (error) throw error;
-        res.json({ message: 'Payment info updated successfully', payment_info });
+        res.json({ message: 'Payment info updated successfully', payment_info: merged });
     } catch (error: any) {
         console.error('Error updating payment info:', error);
         res.status(500).json({ error: 'Failed to update payment info', details: error.message });
@@ -1168,8 +1173,10 @@ export const getMyPreferences = async (req: AuthRequest, res: any): Promise<any>
                 available: staff,
                 employers,
                 personalAccount: personalOrg ? { id: personalOrg.id, name: personalOrg.name } : null,
-                bankSummary: pi.bank_account_number ? `${pi.bank_name || 'Bank'} · ${String(pi.bank_account_number).slice(-4).padStart(String(pi.bank_account_number).length, '•')}`
-                    : pi.mobile_money_number ? `${pi.mobile_money_provider || 'Mobile money'} · ${pi.mobile_money_number}` : null,
+                accounts: [
+                    ...accountsOf(pi).banks.map((a) => ({ id: a.id, kind: 'BANK' as const, label: `${a.bank_name || 'Bank'} · ${'•'.repeat(Math.max(0, a.account_number.length - 4))}${a.account_number.slice(-4)}`, is_default: a.is_default })),
+                    ...accountsOf(pi).momos.map((a) => ({ id: a.id, kind: 'MOBILE_MONEY' as const, label: `${a.provider || 'Mobile money'} · ${a.number}`, is_default: a.is_default })),
+                ],
             },
         });
     } catch (error: any) {

@@ -426,6 +426,22 @@ const runMigration = async () => {
                 ADD COLUMN IF NOT EXISTS investor_account_number TEXT,
                 ADD COLUMN IF NOT EXISTS product_name TEXT;
         `);
+        // Loan / salary-advance recoveries acknowledged by an admin outside payroll.
+        await migrationPool.query(`
+            CREATE TABLE IF NOT EXISTS public.loan_manual_recoveries (
+                id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                organization_id uuid NOT NULL,
+                requisition_id  uuid NOT NULL REFERENCES public.requisitions(id) ON DELETE CASCADE,
+                amount          numeric NOT NULL CHECK (amount > 0),
+                note            text,
+                recorded_by     uuid,
+                created_at      timestamptz NOT NULL DEFAULT now()
+            );
+            CREATE INDEX IF NOT EXISTS idx_lmr_requisition ON public.loan_manual_recoveries(requisition_id);
+            CREATE INDEX IF NOT EXISTS idx_lmr_organization ON public.loan_manual_recoveries(organization_id);
+            ALTER TABLE public.loan_manual_recoveries ENABLE ROW LEVEL SECURITY;
+        `);
+
         // Per-person preferences (Settings → Preferences, personal app).
         await migrationPool.query(`ALTER TABLE public.users ADD COLUMN IF NOT EXISTS preferences JSONB NOT NULL DEFAULT '{}'::jsonb;`);
         // Reusable KYC profile (Settings → KYC profile): one row per person, reused for every investment company.

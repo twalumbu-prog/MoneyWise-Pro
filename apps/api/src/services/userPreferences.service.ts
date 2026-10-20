@@ -7,27 +7,29 @@
  *   notifications.channel     BOTH | APP | EMAIL — where notifications about their PERSONAL account are delivered
  *   ai.assistant_model        default model for the Assistant (one of ASSISTANT_MODELS)
  *   ai.categorization_model   model used to categorise their personal transactions (one of CATEGORIZATION_MODELS)
- *   payroll.destination       PERSONAL_WALLET | BANK — where a salary from an employer's payroll is paid
+ *   payroll.destination       PERSONAL_WALLET | BANK | MOBILE_MONEY (+ account_id) — where a salary from an employer's payroll is paid
  */
+import { accountsOf } from './paymentInfo.service';
 import { supabase } from '../lib/supabase';
 import { ASSISTANT_MODELS } from './agent/models';
 import { PROVIDER_CATALOG } from './ai/ai.settings.service';
 
 export const NOTIFY_CHANNELS = ['BOTH', 'APP', 'EMAIL'] as const;
 export type NotifyChannel = typeof NOTIFY_CHANNELS[number];
-export const SALARY_DESTINATIONS = ['PERSONAL_WALLET', 'BANK'] as const;
+export const SALARY_DESTINATIONS = ['PERSONAL_WALLET', 'BANK', 'MOBILE_MONEY'] as const;
 export type SalaryDestination = typeof SALARY_DESTINATIONS[number];
 
 export interface UserPreferences {
     notifications: { channel: NotifyChannel };
     ai: { assistant_model: string | null; categorization_model: string | null };
-    payroll: { destination: SalaryDestination };
+    /** account_id: which saved bank / mobile-money account (from the profile) when the destination is one of those. */
+    payroll: { destination: SalaryDestination; account_id: string | null };
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
     notifications: { channel: 'BOTH' },
     ai: { assistant_model: null, categorization_model: null },
-    payroll: { destination: 'BANK' },
+    payroll: { destination: 'BANK', account_id: null },
 };
 
 /** Same test the client and the rest of the API use: personal workspaces are recognised by name. */
@@ -53,7 +55,8 @@ export function normalizePreferences(raw: any): UserPreferences {
     const assistant = ASSISTANT_MODELS.some((m) => m.id === src.ai?.assistant_model) ? src.ai.assistant_model : null;
     const cat = CATEGORIZATION_MODELS.some((m) => m.id === src.ai?.categorization_model) ? src.ai.categorization_model : null;
     const dest = SALARY_DESTINATIONS.includes(src.payroll?.destination) ? src.payroll.destination : DEFAULT_PREFERENCES.payroll.destination;
-    return { notifications: { channel }, ai: { assistant_model: assistant, categorization_model: cat }, payroll: { destination: dest } };
+    const accountId = typeof src.payroll?.account_id === 'string' && dest !== 'PERSONAL_WALLET' ? src.payroll.account_id : null;
+    return { notifications: { channel }, ai: { assistant_model: assistant, categorization_model: cat }, payroll: { destination: dest, account_id: accountId } };
 }
 
 export async function getPreferences(userId: string): Promise<UserPreferences> {
@@ -82,9 +85,21 @@ export async function updatePreferences(userId: string, patch: any): Promise<Use
         next.ai.categorization_model = v;
     }
     if (patch?.payroll?.destination !== undefined) {
-        if (!SALARY_DESTINATIONS.includes(patch.payroll.destination)) bad('Choose your personal MoneyWise account or your bank.');
-        if (patch.payroll.destination === 'PERSONAL_WALLET' && !(await getPersonalOrgForUser(userId))) bad('You need a MoneyWise personal account to receive your salary there.');
-        next.payroll.destination = patch.payroll.destination;
+        const dest = patch.payroll.destination;
+        if (!SALARY_DESTINATIONS.includes(dest)) bad('Choose your personal MoneyWise account, a bank account or a mobile-money account.');
+        if (dest === 'PERSONAL_WALLET') {
+            if (!(await getPersonalOrgForUser(userId))) bad('You need a MoneyWise personal account to receive your salary there.');
+            next.payroll = { destination: dest, account_id: null };
+        } else {
+            // A bank / mobile-money choice must name one of the person's own saved accounts.
+            const { data: u } = await supabase.from('users').select('payment_info').eq('id', userId).maybeSingle();
+            const { banks, momos } = accountsOf((u as any)?.payment_info);
+            const list: { id: string }[] = dest === 'BANK' ? banks : momos;
+            const id = patch.payroll.account_id;
+            if (list.length === 0) bad(`Add a ${dest === 'BANK' ? 'bank' : 'mobile-money'} account in My Profile first.`);
+            if (!list.some((a) => a.id === id)) bad('That account is not on your profile.');
+            next.payroll = { destination: dest, account_id: id };
+        }
     }
 
     const { error } = await supabase.from('users').update({ preferences: next }).eq('id', userId);
@@ -114,11 +129,14 @@ export async function isStaffWithPayroll(userId: string): Promise<boolean> {
 // workspace. Business notifications are never filtered by it.
 
 const orgIsPersonalCache = new Map<string, { at: number; v: boolean }>();
-async function orgIsPersonal(orgId: string): Promise<boolean> {
+export async function orgIsPersonal(orgId: string): Promise<boolean> {
     const hit = orgIsPersonalCache.get(orgId);
     if (hit && Date.now() - hit.at < 10 * 60_000) return hit.v;
-    const { data } = await supabase.from('organizations').select('name').eq('id', orgId).maybeSingle();
-    const v = isPersonalOrgName((data as any)?.name);
+    // is_personal is the authoritative flag (set only when a personal workspace is created); the name test is only a fallback
+    // for rows that predate it.
+    const { data } = await supabase.from('organizations').select('name, is_personal').eq('id', orgId).maybeSingle();
+    const flag = (data as any)?.is_personal;
+    const v = flag === true || flag === false ? flag : isPersonalOrgName((data as any)?.name);
     orgIsPersonalCache.set(orgId, { at: Date.now(), v });
     return v;
 }
@@ -138,3 +156,9 @@ export async function filterEmailsForOrg(emails: string[], orgId?: string | null
     const appOnly = new Set((data ?? []).filter((u: any) => u.preferences?.notifications?.channel === 'APP').map((u: any) => String(u.email).toLowerCase()));
     return emails.filter((e) => !appOnly.has(e.toLowerCase()));
 }
+
+/**
+ * Personal workspaces get one notification for a payment — that it was sent — not one for every internal step
+ * (submitted, approved, completed…). Those steps exist for organisations, where several people act on a request.
+ */
+export const PERSONAL_SUPPRESSED_EVENTS = new Set(['NEW_REQUISITION', 'REQUISITION_APPROVED', 'CHANGE_SUBMITTED', 'REQUISITION_COMPLETED']);

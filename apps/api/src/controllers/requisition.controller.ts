@@ -1,3 +1,4 @@
+import { employerLoanLedger, LoanRecoveryError } from '../services/employerLoanLedger.service';
 import { maybeAutoCategorizePersonalById } from '../services/personalRequisitionClassifier.service';
 import { Response } from 'express';
 import { waitUntil } from '@vercel/functions';
@@ -88,13 +89,40 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             recipient_bank_code,
             recipient_name,
             wallet_id,
-            walletId
+            walletId,
+            target_organization_id,
         } = req.body;
         const requestor_id = (req as any).user.id;
-        const organization_id = (req as any).user.organization_id;
+        let organization_id = (req as any).user.organization_id;
 
         if (!organization_id) {
             return res.status(400).json({ error: 'Organization context missing. Please contact support.' });
+        }
+
+        // A personal account asking its EMPLOYER for a salary advance / staff loan: the request is filed in the employer's
+        // organization (so their admins see and approve it there), and once approved it is paid straight into the person's own
+        // MoneyWise personal account. Everything about where it goes is decided here, from the database — never from the form.
+        let personalPayout: { orgId: string; name: string; employeeId: string | null } | null = null;
+        if (target_organization_id && target_organization_id !== organization_id) {
+            if (type !== 'LOAN' && type !== 'ADVANCE') {
+                return res.status(400).json({ error: 'Only a salary advance or staff loan can be requested from an employer.' });
+            }
+            const { data: own } = await supabase.from('organizations').select('is_personal, lenco_subaccount_id').eq('id', organization_id).single();
+            if (own?.is_personal !== true) {
+                return res.status(403).json({ error: 'Switch to your personal account to request from your employer.' });
+            }
+            if (!own.lenco_subaccount_id) {
+                return res.status(400).json({ error: 'Your personal account needs an active MoneyWise wallet to receive the money. Finish setting it up first.' });
+            }
+            const { data: membership } = await supabase.from('user_organizations')
+                .select('status, employee_id, organization:organizations(is_personal)')
+                .eq('user_id', requestor_id).eq('organization_id', target_organization_id).maybeSingle();
+            if (!membership || membership.status !== 'ACTIVE' || (membership as any).organization?.is_personal === true) {
+                return res.status(403).json({ error: 'You are not an active member of that organization.' });
+            }
+            const { data: me } = await supabase.from('users').select('name').eq('id', requestor_id).maybeSingle();
+            personalPayout = { orgId: organization_id, name: (me as any)?.name || 'Employee', employeeId: (membership as any).employee_id ?? null };
+            organization_id = target_organization_id;
         }
 
         // Accountability Safeguard is enforced at disbursal (disbursement.controller),
@@ -124,7 +152,7 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             monthly_deduction,
             type: type || 'EXPENSE',
             department: department || null, // Ensure empty strings are handled as null
-            wallet_id: wallet_id || walletId || null
+            wallet_id: personalPayout ? null : (wallet_id || walletId || null)
         };
 
         // LOAN/ADVANCE requests are filed by an accountant on the employee's
@@ -133,14 +161,14 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
         // These were being accepted from the form and silently dropped before
         // insert, which meant payroll's recovery ledger could never find them.
         if (type === 'LOAN' || type === 'ADVANCE') {
-            insertData.staff_name = staff_name || null;
-            insertData.employee_id = employee_id || null;
+            insertData.staff_name = staff_name || personalPayout?.name || null;
+            insertData.employee_id = employee_id || personalPayout?.employeeId || null;
             insertData.loan_amount = loan_amount ?? null;
 
             try {
                 insertData.payroll_staff_id = await resolveStaffFromFreeText(organization_id, {
-                    employeeId: employee_id,
-                    staffName: staff_name,
+                    employeeId: employee_id || personalPayout?.employeeId || undefined,
+                    staffName: staff_name || personalPayout?.name || undefined,
                 });
             } catch (matchErr) {
                 console.error('[createRequisition] payroll_staff auto-match failed:', matchErr);
@@ -156,10 +184,18 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
 
         if (!schemaError) {
             // Columns exist, add them to the insert
-            insertData.payment_method = payment_method;
-            insertData.recipient_account = recipient_account;
-            insertData.recipient_bank_code = recipient_bank_code;
-            insertData.recipient_name = recipient_name;
+            if (personalPayout) {
+                // Paid into the requester's own personal account (a Lenco on-us transfer once approved).
+                insertData.payment_method = 'MONEYWISE_PAY';
+                insertData.recipient_account = personalPayout.orgId;
+                insertData.recipient_bank_code = 'MONEYWISE';
+                insertData.recipient_name = personalPayout.name;
+            } else {
+                insertData.payment_method = payment_method;
+                insertData.recipient_account = recipient_account;
+                insertData.recipient_bank_code = recipient_bank_code;
+                insertData.recipient_name = recipient_name;
+            }
         } else if (schemaError.code !== 'PGRST204') {
             // Log other errors, but PGRST204 is 'Column not found' which we handle
             console.error('[Schema Check] Unexpected error:', schemaError);
@@ -3461,5 +3497,36 @@ export const resolveRecipientName = async (req: any, res: Response): Promise<any
     } catch (err: any) {
         console.error('[resolveRecipientName]', err?.message);
         res.status(500).json({ error: 'Failed to resolve recipient name', details: err?.message });
+    }
+};
+
+/**
+ * POST /requisitions/:id/loan-recovery — an admin acknowledges that (part of) a salary advance / staff loan has been paid back
+ * outside payroll. Reduces the outstanding balance, settles the loan when nothing is left, and — when the borrower holds it in a
+ * MoneyWise personal account — works the liability off in their books too.
+ */
+export const recordLoanRecovery = async (req: any, res: any): Promise<any> => {
+    try {
+        const { id } = req.params;
+        const { amount, note } = req.body ?? {};
+        const result = await employerLoanLedger.recordManualRecovery({
+            requisitionId: id, organizationId: req.user.organization_id, userId: req.user.id, amount: Number(amount), note: typeof note === 'string' ? note : undefined,
+        });
+        res.json(result);
+    } catch (error: any) {
+        if (error instanceof LoanRecoveryError) return res.status(error.httpStatus).json({ error: error.message });
+        console.error('[recordLoanRecovery]', error);
+        res.status(500).json({ error: 'Could not record the recovery', details: error.message });
+    }
+};
+
+/** GET /requisitions/:id/loan-balance — owed / recovered / outstanding for a salary advance or loan. */
+export const getLoanBalance = async (req: any, res: any): Promise<any> => {
+    try {
+        const bal = await employerLoanLedger.getOutstanding(req.params.id);
+        if (!bal || bal.organization_id !== req.user.organization_id) return res.status(404).json({ error: 'Loan or salary advance not found' });
+        res.json({ owed: bal.owed, recovered: bal.recovered, outstanding: bal.outstanding, status: bal.status, type: bal.type });
+    } catch (error: any) {
+        res.status(500).json({ error: 'Could not load the balance', details: error.message });
     }
 };

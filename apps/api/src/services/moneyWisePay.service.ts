@@ -15,6 +15,7 @@ import { supabase } from '../lib/supabase';
 import { LencoService } from './lenco.service';
 import { ensureValidLencoAccountId } from './lencoAccountLink.service';
 import { cashbookService } from './cashbook.service';
+import { employerLoanLedger } from './employerLoanLedger.service';
 
 const LENCO_ACCOUNT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UUID_RE = LENCO_ACCOUNT_ID;
@@ -139,7 +140,14 @@ export const moneyWisePayService = {
         // for MoneyWise Pay but disbursed from a screen that sends MONEYWISE_WALLET must still credit its recipient.
         if (!d || !ref || !ref.startsWith('MWPAY-')) return;
 
-        await this.creditByReference(ref, { tag: { orgId: (d as any).organization_id, requisitionId } });
+        // A salary advance / staff loan paid into someone's personal account is booked there as a liability, not as income.
+        const { data: req } = await supabase.from('requisitions').select('type, organization_id').eq('id', requisitionId).maybeSingle();
+        let loan: { kind: string; employerName: string } | undefined;
+        if (req && (req.type === 'LOAN' || req.type === 'ADVANCE')) {
+            const { data: org } = await supabase.from('organizations').select('name').eq('id', req.organization_id).maybeSingle();
+            loan = { kind: req.type, employerName: (org as any)?.name || 'your employer' };
+        }
+        await this.creditByReference(ref, { tag: { orgId: (d as any).organization_id, requisitionId }, loan });
     },
 
     /**
@@ -147,7 +155,7 @@ export const moneyWisePayService = {
      * `tag` (single-payment requisitions only) also stamps the sender's own outflow row; batch payroll rows already
      * carry their per-employee reference, so they pass no tag.
      */
-    async creditByReference(ref: string, opts: { tag?: { orgId: string; requisitionId: string } } = {}): Promise<void> {
+    async creditByReference(ref: string, opts: { tag?: { orgId: string; requisitionId: string }; loan?: { kind: string; employerName: string } } = {}): Promise<void> {
         if (!ref || !ref.startsWith('MWPAY-')) return;
         const { data: memoRow } = await supabase.from('app_settings').select('value').eq('key', memoKey(ref)).maybeSingle();
         const memo: any = memoRow?.value;
@@ -157,22 +165,26 @@ export const moneyWisePayService = {
             .eq('organization_id', memo.recipientOrgId).eq('external_reference', ref).limit(1);
         if (already && already.length > 0) return;
 
-        const { data: recWallet } = await supabase.from('organization_wallets').select('id')
-            .eq('organization_id', memo.recipientOrgId).eq('is_main', true).maybeSingle();
+        if (opts.loan) {
+            await employerLoanLedger.bookLoanReceived({ recipientOrgId: memo.recipientOrgId, kind: opts.loan.kind, employerName: opts.loan.employerName, amount: Number(memo.amount), ref });
+        } else {
+            const { data: recWallet } = await supabase.from('organization_wallets').select('id')
+                .eq('organization_id', memo.recipientOrgId).eq('is_main', true).maybeSingle();
 
-        await cashbookService.createEntry(memo.recipientOrgId, {
-            entry_type: 'INFLOW',
-            account_type: 'MONEYWISE_WALLET',
-            wallet_id: recWallet?.id || null,
-            debit: Number(memo.amount),
-            credit: 0,
-            description: `MoneyWise Pay from ${memo.senderName || 'a MoneyWise user'}`,
-            reference_number: ref,
-            external_reference: ref,
-            sender_name: memo.senderName || null,
-            date: new Date().toISOString().split('T')[0],
-            status: 'COMPLETED',
-        } as any);
+            await cashbookService.createEntry(memo.recipientOrgId, {
+                entry_type: 'INFLOW',
+                account_type: 'MONEYWISE_WALLET',
+                wallet_id: recWallet?.id || null,
+                debit: Number(memo.amount),
+                credit: 0,
+                description: `MoneyWise Pay from ${memo.senderName || 'a MoneyWise user'}`,
+                reference_number: ref,
+                external_reference: ref,
+                sender_name: memo.senderName || null,
+                date: new Date().toISOString().split('T')[0],
+                status: 'COMPLETED',
+            } as any);
+        }
 
         // Tag the sender's own outflow so the sync recognises Lenco's debit as already booked. Prefer Lenco's own
         // transaction id: the sync's first dedup check is "a ledger row whose external_reference equals the Lenco

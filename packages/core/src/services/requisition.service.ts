@@ -182,6 +182,22 @@ export const requisitionService = {
         return data;
     },
 
+    /** An admin acknowledges that (part of) a salary advance / staff loan was repaid outside payroll. */
+    async recordLoanRecovery(id: string, amount: number, note?: string): Promise<{ recovered: number; outstanding: number; settled: boolean }> {
+        const response = await apiFetch(`/requisitions/${id}/loan-recovery`, { method: 'POST', body: JSON.stringify({ amount, note }) });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Could not record the recovery');
+        return data;
+    },
+
+    /** What is owed, recovered and still outstanding on a salary advance / staff loan. */
+    async getLoanBalance(id: string): Promise<{ owed: number; recovered: number; outstanding: number; status: string; type: string }> {
+        const response = await apiFetch(`/requisitions/${id}/loan-balance`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Could not load the balance');
+        return data;
+    },
+
     async verifyDisbursement(id: string) {
         const response = await apiFetch(`/requisitions/${id}/verify-disbursement`);
         const data = await response.json();

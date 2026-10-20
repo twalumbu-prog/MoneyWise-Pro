@@ -1,4 +1,4 @@
-import { filterEmailsForOrg } from './userPreferences.service';
+import { filterEmailsForOrg, orgIsPersonal, PERSONAL_SUPPRESSED_EVENTS } from './userPreferences.service';
 import { Resend } from 'resend';
 import { getFrontendUrl } from '../utils/frontendUrl';
 import { supabase } from '../lib/supabase';
@@ -203,6 +203,10 @@ export const emailService = {
             const requisitionLink = `${FRONTEND_URL}/requisitions?id=${requisitionId}`;
             const ref = requisition.reference_number || requisitionId.slice(0, 8);
 
+            // Personal workspaces: only the "money sent" confirmation, not every internal step.
+            const personal = await orgIsPersonal(requisition.organization_id).catch(() => false);
+            if (personal && PERSONAL_SUPPRESSED_EVENTS.has(type)) return;
+
             // 2. Determine recipients and content based on type
             let recipients: string[] = [];
             let subject = '';
@@ -246,6 +250,26 @@ export const emailService = {
 
                 case 'CASH_DISBURSED':
                     recipients = await this.getUserEmail(requisition.requestor_id);
+                    if (personal) {
+                        subject = `Money sent: K${Number(requisition.estimated_total).toLocaleString()}`;
+                        body = `
+                        <h2>Money sent</h2>
+                        <p><strong>${requisition.description}</strong></p>
+                        <p>Your payment of K${Number(requisition.estimated_total).toLocaleString()} has been sent.</p>
+                        <a href="${requisitionLink}" style="display:inline-block;padding:12px 24px;background-color:#006AFF;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">View Details</a>
+                    `;
+                        break;
+                    }
+                    if (requisition.payment_method === 'MONEYWISE_PAY') {
+                        subject = `Funds sent to your MoneyWise account: ${ref}`;
+                        body = `
+                        <h2>Funds sent</h2>
+                        <p><strong>Description:</strong> ${requisition.description}</p>
+                        <p>K${Number(requisition.estimated_total).toLocaleString()} has been sent to your MoneyWise personal account.</p>
+                        <a href="${requisitionLink}" style="display:inline-block;padding:12px 24px;background-color:#006AFF;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">View Details</a>
+                    `;
+                        break;
+                    }
                     subject = `Funds Ready for Collection: ${ref}`;
                     body = `
                         <h2>Cash Disbursed</h2>

@@ -51,6 +51,14 @@ export interface MutationAck {
     message: string;
 }
 
+export interface BankAccount { id: string; label?: string; bank_name: string; account_number: string; account_name: string; is_default: boolean }
+export interface MobileMoneyAccount { id: string; label?: string; provider: string; number: string; name: string; is_default: boolean }
+
+/**
+ * A person's payout details. They can hold several bank and mobile-money accounts (`bank_accounts`, `mobile_money_accounts`, one
+ * marked primary). The flat fields always mirror the PRIMARY account of each kind, so anything written before multiple accounts
+ * existed keeps working; the arrays are what the account screens read and write.
+ */
 export interface PaymentInfo {
     bank_name?: string;
     bank_account_number?: string;
@@ -58,6 +66,8 @@ export interface PaymentInfo {
     mobile_money_provider?: string;
     mobile_money_number?: string;
     mobile_money_name?: string;
+    bank_accounts?: BankAccount[];
+    mobile_money_accounts?: MobileMoneyAccount[];
 }
 
 export interface MyProfile extends UserProfile {
@@ -81,13 +91,14 @@ export interface MoneyWiseRecipient {
 }
 
 export type NotifyChannel = 'BOTH' | 'APP' | 'EMAIL';
-export type SalaryDestination = 'PERSONAL_WALLET' | 'BANK';
+export type SalaryDestination = 'PERSONAL_WALLET' | 'BANK' | 'MOBILE_MONEY';
 
 /** A person's own settings (Settings → Preferences in the personal app). */
 export interface UserPreferences {
     notifications: { channel: NotifyChannel };
     ai: { assistant_model: string | null; categorization_model: string | null };
-    payroll: { destination: SalaryDestination };
+    /** account_id: which saved bank / mobile-money account, when the destination is one of those. */
+    payroll: { destination: SalaryDestination; account_id: string | null };
 }
 
 export interface PreferencesResponse {
@@ -101,7 +112,8 @@ export interface PreferencesResponse {
         available: boolean;
         employers: string[];
         personalAccount: { id: string; name: string } | null;
-        bankSummary: string | null;
+        /** The person's saved bank and mobile-money accounts, as choosable salary destinations. */
+        accounts: { id: string; kind: 'BANK' | 'MOBILE_MONEY'; label: string; is_default: boolean }[];
     };
 }
 
@@ -114,7 +126,7 @@ export const userService = {
     updateMyPreferences(patch: {
         notifications?: { channel?: NotifyChannel };
         ai?: { assistant_model?: string | null; categorization_model?: string | null };
-        payroll?: { destination?: SalaryDestination };
+        payroll?: { destination?: SalaryDestination; account_id?: string | null };
     }): Promise<{ preferences: UserPreferences }> {
         return apiJson('/users/me/preferences', { method: 'PUT', body: JSON.stringify(patch) });
     },

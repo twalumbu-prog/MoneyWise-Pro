@@ -3,6 +3,7 @@ import 'dotenv/config';
 import { supabase } from '../lib/supabase';
 import { getPreferences, updatePreferences, filterUserIdsForPush, filterEmailsForOrg, normalizePreferences } from '../services/userPreferences.service';
 import { pinRecoveryService } from '../services/pinRecovery.service';
+import { mergePaymentInfo, presentPaymentInfo, accountsOf } from '../services/paymentInfo.service';
 
 const results: boolean[] = [];
 const must = (c: any, m: string) => { if (!c) throw new Error(m); };
@@ -60,6 +61,30 @@ async function main() {
             let refused = 0;
             for (const code of ['000000', '', 'abcdef']) { try { await pinRecoveryService.verifyCode(STEPHEN, code); } catch { refused++; } }
             must(refused === 3, `${refused}/3 refused`);
+        });
+
+        await step('payment info: an older client\'s flat save becomes the primary account and keeps the arrays in step', async () => {
+            const m = mergePaymentInfo(null, { bank_name: 'Zanaco', bank_account_number: '111', bank_account_name: 'A', mobile_money_provider: 'MTN', mobile_money_number: '0961', mobile_money_name: 'A' }) as any;
+            must(m.bank_accounts.length === 1 && m.bank_accounts[0].is_default && m.bank_name === 'Zanaco', 'flat→arrays failed');
+            must(m.mobile_money_accounts.length === 1 && m.mobile_money_number === '0961', 'momo flat→arrays failed');
+        });
+        await step('payment info: a second account is kept; the flat fields always follow the PRIMARY', async () => {
+            let m: any = mergePaymentInfo(null, { bank_name: 'Zanaco', bank_account_number: '111', bank_account_name: 'A' });
+            m = mergePaymentInfo(m, { bank_accounts: [...m.bank_accounts.map((a: any) => ({ ...a, is_default: false })), { id: 'b2', bank_name: 'Absa', account_number: '222', account_name: 'A', is_default: true }, ] });
+            must(m.bank_accounts.length === 2 && m.bank_accounts.filter((a: any) => a.is_default).length === 1, 'exactly one primary');
+            must(m.bank_name === 'Absa' && m.bank_account_number === '222', 'flat fields must mirror the primary');
+            // the web app saves flat fields only: it edits the primary and must not wipe the other account
+            const web: any = mergePaymentInfo(m, { bank_name: 'Absa', bank_account_number: '333', bank_account_name: 'A' });
+            must(web.bank_accounts.length === 2 && web.bank_accounts.find((a: any) => a.id === 'b2').account_number === '333', 'flat save should edit the primary only');
+            must(web.bank_accounts.some((a: any) => a.account_number === '111'), 'the other account must survive a flat save');
+        });
+        await step('payment info: removing the primary promotes another; accounts without a number are dropped; capped at 10', async () => {
+            const two = { bank_accounts: [{ id: 'a', bank_name: 'X', account_number: '1', account_name: 'A', is_default: true }, { id: 'b', bank_name: 'Y', account_number: '2', account_name: 'A', is_default: false }, { id: 'c', bank_name: 'Z', account_number: '  ', account_name: 'A', is_default: false }] };
+            const m: any = mergePaymentInfo(null, { bank_accounts: two.bank_accounts.slice(1).concat(two.bank_accounts.slice(2)) });
+            must(m.bank_accounts.length === 1 && m.bank_accounts[0].is_default && m.bank_account_number === '2', 'promotion / dropping failed');
+            const many: any = mergePaymentInfo(null, { bank_accounts: Array.from({ length: 15 }, (_, i) => ({ bank_name: 'B', account_number: String(i + 1), account_name: 'A' })) });
+            must(many.bank_accounts.length === 10, 'should cap at 10');
+            must(accountsOf({ bank_name: 'Z', bank_account_number: '9' }).banks[0].is_default && presentPaymentInfo({ bank_account_number: '9' })!.bank_accounts!.length === 1, 'old records must present as arrays');
         });
     } finally {
         await supabase.from('users').update({ preferences: original }).eq('id', STEPHEN);

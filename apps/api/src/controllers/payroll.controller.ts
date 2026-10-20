@@ -1,4 +1,7 @@
+import { employerLoanLedger } from '../services/employerLoanLedger.service';
+import { RECOVERABLE_STATUSES, loanTermExpired, totalOwed } from '../lib/loanMath';
 import { getPreferences, getPersonalOrgForUser } from '../services/userPreferences.service';
+import { accountsOf } from '../services/paymentInfo.service';
 import { Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
 import { matchStaffMember } from '../lib/staffUserMatching';
@@ -356,52 +359,6 @@ export const createPayrollRun = async (req: Request, res: Response) => {
  * QuickBooks is connected — see requisition.controller.ts) — money is out
  * the door either way, which is what matters for recovery.
  */
-const RECOVERABLE_STATUSES = ['DISBURSED', 'RECEIVED', 'ACCOUNTED', 'CATEGORIZED', 'COMPLETED'];
-
-/**
- * Returns true if a LOAN's calendar repayment term has already elapsed.
- *
- * We use created_at as the loan start date and add repayment_period months to
- * get the expiry. If today is past that point the loan should no longer generate
- * payroll deductions — this handles loans that were fully or partially repaid
- * outside the payroll system before automatic tracking was introduced.
- *
- * Salary advances (type === 'ADVANCE') have no fixed term, so this always
- * returns false for them.
- */
-function loanTermExpired(r: any): boolean {
-    if (r.type !== 'LOAN') return false;
-    const periods = Number(r.repayment_period) || 0;
-    if (periods <= 0) return false;
-
-    const start = new Date(r.created_at);
-    if (isNaN(start.getTime())) return false;
-
-    const expiry = new Date(start);
-    expiry.setMonth(expiry.getMonth() + periods);
-
-    return new Date() > expiry;
-}
-
-/**
- * Total amount a loan or advance is expected to repay in full.
- * For a loan this is the instalment schedule (or principal plus interest);
- * for an advance it is simply the amount advanced.
- */
-function totalOwed(r: any): number {
-    if (r.type === 'LOAN') {
-        const monthly = Number(r.monthly_deduction) || 0;
-        const periods = Number(r.repayment_period) || 0;
-        if (monthly > 0 && periods > 0) return monthly * periods;
-
-        const principal = Number(r.loan_amount) || Number(r.actual_total) || Number(r.estimated_total) || 0;
-        const rate = Number(r.interest_rate) || 0;
-        return principal * (1 + rate / 100);
-    }
-    // ADVANCE — recovered at face value
-    return Number(r.actual_total) || Number(r.estimated_total) || Number(r.loan_amount) || 0;
-}
-
 /**
  * Load every still-owing loan/advance for an org, with how much has already
  * been recovered against each. Returns rows ordered oldest-first so recoveries
@@ -443,9 +400,15 @@ async function loadOutstandingDebts(orgId: string, staff: { id: string; user_id:
         .in('requisition_id', reqs.map(r => r.id));
     if (recErr) throw recErr;
 
+    const { data: manualRecoveries } = await supabase
+        .from('loan_manual_recoveries')
+        .select('requisition_id, amount')
+        .in('requisition_id', reqs.map(r => r.id));
+
     return reqs.map(r => {
         const mine = (recoveries ?? []).filter(x => x.requisition_id === r.id);
-        const recovered = mine.reduce((s, x) => s + Number(x.amount), 0);
+        const manual = (manualRecoveries ?? []).filter(x => x.requisition_id === r.id);
+        const recovered = mine.reduce((s, x) => s + Number(x.amount), 0) + manual.reduce((s, x) => s + Number(x.amount), 0);
         const owed = totalOwed(r);
         const staff_id = r.payroll_staff_id || (r.requestor_id ? byUserId.get(r.requestor_id) : undefined) || null;
         return {
@@ -543,6 +506,13 @@ async function recordLoanRecoveries(orgId: string, run: any, runItems: any[]) {
             .update({ status: 'SETTLED' })
             .in('id', settledIds);
         if (setErr) throw setErr;
+    }
+
+    // A loan paid into the employee's MoneyWise personal account lives there as a liability: reflect what payroll just recovered.
+    // Best effort and idempotent per (requisition, run) — payroll itself must never fail because of a borrower's books.
+    for (const reqId of new Set(rows.map((r: any) => r.requisition_id as string))) {
+        await employerLoanLedger.healLoanLedger(reqId)
+            .catch((e: any) => console.error('[Payroll] borrower ledger update failed for', reqId, e?.message));
     }
 
     return { recovered: rows.length, settled: settledIds.length };
@@ -650,11 +620,12 @@ export const approvePayrollRun = async (req: Request, res: Response) => {
             if (reqErr) throw reqErr;
 
             // Employees who chose (Settings → Preferences) to receive their salary in their MoneyWise personal account.
-            const personalDest = electronic ? await resolvePersonalWalletDestinations(groupItems.map((i: any) => i.staff_id).filter(Boolean)) : new Map<string, string>();
+            const salaryOverrides = electronic ? await resolveSalaryOverrides(groupItems.map((i: any) => i.staff_id).filter(Boolean)) : new Map<string, SalaryOverride>();
 
             // Build line items
             const lineItems = groupItems.map((item: any) => {
-                const personalOrgId = item.staff_id ? personalDest.get(item.staff_id) : undefined;
+                const override = item.staff_id ? salaryOverrides.get(item.staff_id) : undefined;
+                const personalOrgId = override?.kind === 'MONEYWISE' ? override.orgId : undefined;
                 if (personalOrgId) {
                     return {
                         requisition_id: req_.id,
@@ -672,7 +643,11 @@ export const approvePayrollRun = async (req: Request, res: Response) => {
                         error_message: null,
                     };
                 }
-                const destMethod = item.destination_method || item.payment_method || 'BANK';
+                // The employee's own choice of one of their saved accounts replaces the payroll record's details.
+                const chosen = override && override.kind !== 'MONEYWISE' ? override : null;
+                const destMethod = chosen ? chosen.kind : (item.destination_method || item.payment_method || 'BANK');
+                const chosenAccount = chosen?.kind === 'MOBILE_MONEY' ? chosen.number : chosen?.kind === 'BANK' ? chosen.account_number : null;
+                const chosenBank = chosen?.kind === 'BANK' ? chosen.bank_name : null;
                 return {
                     requisition_id: req_.id,
                     description: `Payroll for ${item.staff_name}`,
@@ -682,10 +657,10 @@ export const approvePayrollRun = async (req: Request, res: Response) => {
                     employee_id: item.staff_id || null,
                     employee_name: item.staff_name,
                     payment_method: electronic ? destMethod : paySource,
-                    recipient_account: destMethod === 'MOBILE_MONEY'
+                    recipient_account: chosenAccount ?? (destMethod === 'MOBILE_MONEY'
                         ? item.mobile_money_number
-                        : item.bank_account_number,
-                    recipient_bank_code: destMethod === 'BANK' ? item.bank_name : null,
+                        : item.bank_account_number),
+                    recipient_bank_code: destMethod === 'BANK' ? (chosenBank ?? item.bank_name) : null,
                     is_valid: !electronic, // external methods are pre-valid; electronic need Lenco verification
                     verified_name: !electronic ? item.staff_name : null,
                     error_message: null,
@@ -902,23 +877,42 @@ export const getSuggestedDeductions = async (req: Request, res: Response) => {
     }
 };
 
+type SalaryOverride =
+    | { kind: 'MONEYWISE'; orgId: string }
+    | { kind: 'BANK'; bank_name: string; account_number: string; account_name: string }
+    | { kind: 'MOBILE_MONEY'; provider: string; number: string; name: string };
+
 /**
- * staff id → personal-workspace organization id, for staff who linked their account to the payroll record AND chose to be
- * paid into MoneyWise. Anyone without a linked account, without that preference, or whose personal workspace has no Lenco
- * account yet stays on their saved bank / mobile-money details — a salary is never routed somewhere it can't land.
+ * staff id → where that employee chose (Settings → Preferences → Salary) to be paid, for staff who linked their account to
+ * the payroll record. MoneyWise personal account → an on-us transfer (only if that workspace has a Lenco wallet);
+ * a saved bank / mobile-money account → those details instead of the payroll record's. Anyone without a linked account, without a
+ * choice, or whose chosen account has since been removed stays on the payroll record's details — a salary is never routed
+ * somewhere it can't land.
  */
-async function resolvePersonalWalletDestinations(staffIds: string[]): Promise<Map<string, string>> {
-    const out = new Map<string, string>();
+async function resolveSalaryOverrides(staffIds: string[]): Promise<Map<string, SalaryOverride>> {
+    const out = new Map<string, SalaryOverride>();
     if (staffIds.length === 0) return out;
     const { data: staff } = await supabase.from('payroll_staff').select('id, user_id').in('id', staffIds).not('user_id', 'is', null);
     for (const row of staff ?? []) {
         try {
             const prefs = await getPreferences((row as any).user_id);
-            if (prefs.payroll.destination !== 'PERSONAL_WALLET') continue;
-            const org = await getPersonalOrgForUser((row as any).user_id);
-            if (!org) continue;
-            const { data: o } = await supabase.from('organizations').select('lenco_subaccount_id').eq('id', org.id).maybeSingle();
-            if ((o as any)?.lenco_subaccount_id) out.set((row as any).id, org.id);
+            const dest = prefs.payroll.destination;
+            if (dest === 'PERSONAL_WALLET') {
+                const org = await getPersonalOrgForUser((row as any).user_id);
+                if (!org) continue;
+                const { data: o } = await supabase.from('organizations').select('lenco_subaccount_id').eq('id', org.id).maybeSingle();
+                if ((o as any)?.lenco_subaccount_id) out.set((row as any).id, { kind: 'MONEYWISE', orgId: org.id });
+            } else if (prefs.payroll.account_id) {
+                const { data: u } = await supabase.from('users').select('payment_info').eq('id', (row as any).user_id).maybeSingle();
+                const { banks, momos } = accountsOf((u as any)?.payment_info);
+                if (dest === 'BANK') {
+                    const a = banks.find((b) => b.id === prefs.payroll.account_id);
+                    if (a && a.bank_name && a.account_number) out.set((row as any).id, { kind: 'BANK', bank_name: a.bank_name, account_number: a.account_number, account_name: a.account_name });
+                } else {
+                    const a = momos.find((m) => m.id === prefs.payroll.account_id);
+                    if (a && a.number) out.set((row as any).id, { kind: 'MOBILE_MONEY', provider: a.provider, number: a.number, name: a.name });
+                }
+            }
         } catch (e: any) {
             console.warn('[Payroll] could not resolve salary destination for staff', (row as any).id, e?.message);
         }

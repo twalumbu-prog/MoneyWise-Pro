@@ -29,6 +29,8 @@ import {
     sendAutoCategorizationReminder,
     resolveRecipientName,
     getMyAccountability,
+    recordLoanRecovery,
+    getLoanBalance,
 } from '../controllers/requisition.controller';
 import {
     disburseRequisition,
@@ -69,6 +71,8 @@ router.get('/disbursements/history', getDisbursementHistory);
 router.post('/:id/disburse', disburseRequisition);
 router.post('/:id/auto-disburse', autoAuthorizeAndDisburse);
 router.post('/:id/disburse-payroll', disbursePayrollRequisition);
+router.post('/:id/loan-recovery', requireRole(['ADMIN', 'ACCOUNTANT']), recordLoanRecovery);
+router.get('/:id/loan-balance', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER', 'MANAGER']), getLoanBalance);
 router.post('/:id/verify-payroll', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER', 'MANAGER']), verifyPayrollDisbursements);
 router.post('/:id/disburse-excess', disburseExcessRequisition);
 router.post('/:id/acknowledge', acknowledgeReceipt);

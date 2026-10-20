@@ -12,7 +12,7 @@
  */
 
 import { supabase } from '../lib/supabase';
-import { filterUserIdsForPush } from './userPreferences.service';
+import { filterUserIdsForPush, orgIsPersonal, PERSONAL_SUPPRESSED_EVENTS } from './userPreferences.service';
 import { getBadgeTotal } from './notificationCounts.service';
 
 // expo-server-sdk ships ESM-only, and this project's CJS build target
@@ -200,13 +200,15 @@ export const pushService = {
         try {
             const { data: requisition, error } = await supabase
                 .from('requisitions')
-                .select('organization_id, requestor_id, description, estimated_total, reference_number, requestor:users!requestor_id(name)')
+                .select('organization_id, requestor_id, description, estimated_total, reference_number, payment_method, requestor:users!requestor_id(name)')
                 .eq('id', requisitionId)
                 .single();
 
             if (error || !requisition) return;
 
             const ref = requisition.reference_number || requisitionId.slice(0, 8);
+            const personal = await orgIsPersonal(requisition.organization_id).catch(() => false);
+            if (personal && PERSONAL_SUPPRESSED_EVENTS.has(type)) return;
             const requestorName = (requisition as any).requestor?.name || 'A team member';
             const data = { type: 'requisition', id: requisitionId };
 
@@ -238,7 +240,17 @@ export const pushService = {
                     });
                     break;
                 case 'CASH_DISBURSED':
-                    await this.sendToUser(requisition.requestor_id, {
+                    await this.sendToUser(requisition.requestor_id, (requisition as any).payment_method === 'MONEYWISE_PAY' && !personal ? {
+                        title: `Funds sent to your MoneyWise account: K${Number(requisition.estimated_total).toLocaleString()}`,
+                        body: `${ref}: ${requisition.description}`,
+                        data,
+                        orgId: requisition.organization_id,
+                    } : personal ? {
+                        title: `Money sent: K${Number(requisition.estimated_total).toLocaleString()}`,
+                        body: requisition.description,
+                        data,
+                        orgId: requisition.organization_id,
+                    } : {
                         title: 'Funds ready for collection',
                         body: `${ref}: ${requisition.description}`,
                         data,
