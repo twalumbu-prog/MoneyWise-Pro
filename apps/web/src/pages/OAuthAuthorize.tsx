@@ -95,7 +95,6 @@ export const OAuthAuthorize: React.FC = () => {
     );
 
     if (error) {
-        const settingsFix = error.code === 'not_premium';
         return shell(
             <div className="text-center">
                 <div className="mx-auto w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mb-4">
@@ -103,11 +102,8 @@ export const OAuthAuthorize: React.FC = () => {
                 </div>
                 <h1 className="text-lg font-semibold text-gray-900 mb-2">Can't connect this app</h1>
                 <p className="text-sm text-gray-600 mb-6">{error.message}</p>
-                <Link
-                    to={settingsFix ? '/settings?tab=billing' : '/'}
-                    className="inline-block px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium"
-                >
-                    {settingsFix ? 'View plans' : 'Back to MoneyWise'}
+                <Link to="/" className="inline-block px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium">
+                    Back to MoneyWise
                 </Link>
             </div>
         );

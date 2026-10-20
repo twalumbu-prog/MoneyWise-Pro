@@ -54,7 +54,7 @@ This document contains the complete API specification for MoneyWise Pro. Use thi
 - Authentication: Provide the secret API key in the 'Authorization: Bearer <key>' or 'X-Api-Key: <key>' header.
 - Key Format: Keys start with prefix 'mwp_live_' (e.g. mwp_live_9f8a7b6c5d4e...).
 - Scopes: Keys have either 'read', 'write', or both scopes.
-- Plan Requirement: The organization must have an active Premium subscription plan.
+- Plan Requirement: None. The API and OAuth are available on every plan, including Free.
 
 ---
 
@@ -367,7 +367,7 @@ All error responses return a standardized JSON structure:
 \`\`\`
 - 400 Bad Request: Missing or malformed parameters (e.g. invalid date or UUID format).
 - 401 Unauthorized: Missing, invalid, or revoked API key (mwp_live_...).
-- 403 Forbidden: Insufficient scope (read vs write) or organization not on Premium plan.
+- 403 Forbidden: Insufficient scope (read vs write).
 - 404 Not Found: Requested entity not found in your organization.
 - 500 Internal Server Error: Server-side error.
 `;
@@ -1093,7 +1093,7 @@ X-Api-Key: mwp_live_abc123...`}
 
                         <h3 className="mt-5 text-sm font-bold text-slate-900">0. Register your app</h3>
                         <p className="mt-1 text-sm text-slate-600 leading-relaxed">
-                            A Premium admin registers each app under{' '}
+                            An organisation admin registers each app under{' '}
                             <Link to="/settings?tab=api" className="text-violet-600 hover:underline font-semibold">Settings &rarr; MoneyWise API &rarr; Your apps</Link>{' '}
                             and chooses:
                         </p>
@@ -1223,7 +1223,7 @@ curl -X POST https://moneywise.blueopus.cloud/api/oauth/revoke \\
                         </div>
 
                         <div className="mt-4 text-xs text-slate-500">
-                            Note: The MoneyWise Developer API requires an active <strong>Premium</strong> subscription for your organization.
+                            Note: The MoneyWise Developer API is available on every plan, including Free.
                         </div>
                     </section>
 
@@ -1272,8 +1272,8 @@ curl -X POST https://moneywise.blueopus.cloud/api/oauth/revoke \\
                                     </tr>
                                     <tr>
                                         <td className="py-2.5 font-mono font-bold text-red-600">403 Forbidden</td>
-                                        <td className="py-2.5">Insufficient scope or free-tier plan.</td>
-                                        <td className="py-2.5 text-slate-500">Calling POST endpoint with read-only key, or organization not on Premium.</td>
+                                        <td className="py-2.5">Insufficient scope.</td>
+                                        <td className="py-2.5 text-slate-500">Calling a POST endpoint with a read-only key or token.</td>
                                     </tr>
                                     <tr>
                                         <td className="py-2.5 font-mono font-bold text-slate-600">404 Not Found</td>

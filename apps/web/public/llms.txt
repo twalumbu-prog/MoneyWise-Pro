@@ -11,7 +11,7 @@ This document contains the complete API specification for MoneyWise Pro. Use thi
 - Authentication: Provide the secret API key in the `Authorization: Bearer <key>` or `X-Api-Key: <key>` header.
 - Key Format: Keys start with prefix `mwp_live_` (e.g. `mwp_live_9f8a7b6c5d4e...`).
 - Scopes: Keys have either `read`, `write`, or both scopes.
-- Plan Requirement: The organization must have an active Premium subscription plan.
+- Plan Requirement: None. The API and OAuth are available on every plan, including Free.
 
 ---
 
@@ -26,7 +26,7 @@ X-Api-Key: mwp_live_YOUR_API_KEY
 
 ### OAuth 2.0 (Connect with MoneyWise)
 Apps can connect to an organisation without API keys. Authorization code flow, PKCE (S256) required.
-- Register the app: a Premium admin goes to https://moneywise.blueopus.cloud/settings?tab=api -> "Your apps" -> Register app. Fields: name, description, callback URLs (up to 5, exact match, https or http://localhost), app type (server-side gets client_id + client_secret shown once; mobile/browser-only gets client_id only). New apps are Unverified and read-only; write scope needs MoneyWise verification. Apps can be edited, have the secret regenerated, or be deleted (which disconnects every organisation immediately).
+- Register the app: an organisation admin goes to https://moneywise.blueopus.cloud/settings?tab=api -> "Your apps" -> Register app. Fields: name, description, callback URLs (up to 5, exact match, https or http://localhost), app type (server-side gets client_id + client_secret shown once; mobile/browser-only gets client_id only). New apps are Unverified and read-only; write scope needs MoneyWise verification. Apps can be edited, have the secret regenerated, or be deleted (which disconnects every organisation immediately).
 - Authorize (browser): GET https://moneywise.blueopus.cloud/oauth/authorize?response_type=code&client_id=...&redirect_uri=...&scope=read%20write&state=...&code_challenge=BASE64URL(SHA256(verifier))&code_challenge_method=S256
 - Callback: redirect_uri?code=mwa_...&state=... (or ?error=access_denied&state=...). Codes last 5 minutes, single use.
 - Token: POST https://moneywise.blueopus.cloud/api/oauth/token (form-encoded or JSON)
@@ -34,7 +34,7 @@ Apps can connect to an organisation without API keys. Authorization code flow, P
   -> { access_token (mwo_..., 1h), token_type: "Bearer", expires_in, refresh_token (mwr_..., 60d), scope, organization_id }
 - Refresh: POST /api/oauth/token grant_type=refresh_token, client_id, refresh_token [, client_secret]. Refresh tokens ROTATE (store the new one); reusing an old one revokes the app's access.
 - Revoke/disconnect: POST /api/oauth/revoke token=<access or refresh token>, client_id [, client_secret]
-- Use access tokens exactly like API keys: `Authorization: Bearer mwo_...` on all /v1 endpoints. Scopes limited to what the admin approved; the organization must be on Premium. Expired token -> 401 "Access token expired" -> refresh.
+- Use access tokens exactly like API keys: `Authorization: Bearer mwo_...` on all /v1 endpoints. Scopes limited to what the admin approved; Expired token -> 401 "Access token expired" -> refresh.
 - OAuth errors: { "error": "invalid_grant" | "invalid_client" | "invalid_request" | "unsupported_grant_type", "error_description": "..." }
 
 ---
@@ -339,6 +339,6 @@ All error responses return a standardized JSON structure:
 ```
 - 400 Bad Request: Missing or malformed parameters (e.g. invalid date or UUID format).
 - 401 Unauthorized: Missing, invalid, or revoked API key (`mwp_live_...`).
-- 403 Forbidden: Insufficient scope (`read` vs `write`) or organization not on Premium plan.
+- 403 Forbidden: Insufficient scope (`read` vs `write`).
 - 404 Not Found: Requested entity not found in your organization.
 - 500 Internal Server Error: Server-side error.
