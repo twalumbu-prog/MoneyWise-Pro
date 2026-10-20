@@ -261,6 +261,30 @@ Apps can connect to an organisation without API keys. Authorization code flow, P
 }
 ```
 
+#### 8b. Get a Product
+- Method: GET
+- Path: /v1/products/:id
+- Scope Required: read
+- Response (200 OK): one product object (same shape as in List Products, plus `wallet_id` and `income_account_id`).
+
+#### 8c. Create a Product
+- Method: POST
+- Path: /v1/products
+- Scope Required: write
+- Description: Creates a product so it can be sold via payment links. All payments for it are tracked against the product in MoneyWise (sales per product, money routed to `wallet_id`, booked to `income_account_id`). DIGITAL and booking products can only be created in the MoneyWise app.
+- Request Body (JSON): `name` (required, 1-120 chars), `price` (required, >= 0, ZMW; ignored for DONATION), `type` (PRODUCT default | SERVICE_FIXED | SERVICE_VARIABLE | DONATION), `description` (<= 1000), `category` (<= 60, e.g. your app name), `wallet_id` (UUID from GET /v1/wallets; default main wallet), `income_account_id` (UUID from GET /v1/accounts?type=INCOME; default automatic)
+```json
+{ "name": "Eagles Nest School — Platform access", "price": 150, "type": "SERVICE_FIXED", "category": "Project Genius" }
+```
+- Response (201 Created): the product object (id, name, description, price, type, category, image_url, wallet_id, income_account_id, is_active, currency, created_at).
+
+#### 8d. Update a Product
+- Method: PATCH
+- Path: /v1/products/:id
+- Scope Required: write
+- Request Body (JSON, any subset): `name`, `description`, `price`, `category`, `wallet_id` (null = main wallet), `income_account_id` (null = automatic), `is_active` (false stops new payment links). Existing payment links keep their own amount.
+- Response (200 OK): the updated product object. 404 if the product is not in your organization.
+
 #### 9. List Payment Links
 - Method: GET
 - Path: /v1/payment-links
@@ -292,6 +316,13 @@ Apps can connect to an organisation without API keys. Authorization code flow, P
   "count": 1
 }
 ```
+
+#### 9b. Get a Payment Link
+- Method: GET
+- Path: /v1/payment-links/:id
+- Scope Required: read
+- Description: One payment link with its current `status` (ACTIVE | PAID | CANCELLED) and `paid_at`. Poll this to learn whether the customer has paid.
+- Response (200 OK): the payment link object (same shape as Create Payment Link's response).
 
 #### 10. Create Payment Link
 - Method: POST

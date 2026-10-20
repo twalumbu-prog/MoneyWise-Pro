@@ -13,6 +13,10 @@ import {
     getRequisitions,
     getRequisitionById,
     getProducts,
+    getProductById,
+    createProduct,
+    updateProduct,
+    getPaymentLinkById,
     getPaymentLinks,
     createPaymentLink,
 } from '../controllers/publicApi.controller';
@@ -36,9 +40,13 @@ router.get('/requisitions/:id', requireScope('read'), getRequisitionById);
 
 // ── Products ──────────────────────────────────────────────────────────────────
 router.get('/products', requireScope('read'), getProducts);
+router.get('/products/:id', requireScope('read'), getProductById);
+router.post('/products', requireScope('write'), createProduct);
+router.patch('/products/:id', requireScope('write'), updateProduct);
 
 // ── Payment Links ─────────────────────────────────────────────────────────────
 router.get('/payment-links', requireScope('read'), getPaymentLinks);
+router.get('/payment-links/:id', requireScope('read'), getPaymentLinkById);
 router.post('/payment-links', requireScope('write'), createPaymentLink);
 
 export default router;

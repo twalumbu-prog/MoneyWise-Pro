@@ -229,13 +229,28 @@ export const getRequisitionById = async (req: any, res: any) => {
 
 // ── Products ──────────────────────────────────────────────────────────────────
 
+// Simple sellable types only: digital delivery and bookings need uploads/calendars the API doesn't carry.
+const API_PRODUCT_TYPES = ['PRODUCT', 'SERVICE_FIXED', 'SERVICE_VARIABLE', 'DONATION'];
+const PRODUCT_COLUMNS = 'id, name, description, price, product_type, category, image_url, wallet_id, income_account_id, is_active, created_at';
+
+const shapeProduct = ({ product_type, ...p }: any) => ({ ...p, price: Number(p.price), type: product_type, currency: CURRENCY });
+
+// A wallet / income account the caller names must belong to the caller's own organisation.
+const checkOwnedRef = async (table: 'organization_wallets' | 'accounts', id: unknown, orgId: string): Promise<string | null> => {
+    if (id === undefined || id === null || id === '') return null;
+    if (typeof id !== 'string' || !UUID_RE.test(id)) return `${table === 'accounts' ? 'income_account_id' : 'wallet_id'} must be a UUID`;
+    const { data } = await supabase.from(table).select('organization_id').eq('id', id).maybeSingle();
+    if (!data || data.organization_id !== orgId) return `${table === 'accounts' ? 'income_account_id' : 'wallet_id'} not found in your organization`;
+    return null;
+};
+
 export const getProducts = async (req: any, res: any) => {
     const { type } = req.query as Record<string, string>;
     const limit = clampLimit(req.query.limit);
 
     let query = supabase
         .from('products')
-        .select('id, name, description, price, product_type, category, image_url, is_active, created_at')
+        .select(PRODUCT_COLUMNS)
         .eq('organization_id', req.user.organization_id)
         .eq('is_active', true)
         .order('created_at', { ascending: false })
@@ -246,8 +261,133 @@ export const getProducts = async (req: any, res: any) => {
     const { data, error } = await query;
     if (error) return fail(res, 500, 'Failed to fetch products', error);
 
-    const shaped = (data ?? []).map(({ product_type, ...p }) => ({ ...p, type: product_type, currency: CURRENCY }));
+    const shaped = (data ?? []).map(shapeProduct);
     res.json({ data: shaped, count: shaped.length });
+};
+
+export const getProductById = async (req: any, res: any) => {
+    if (!UUID_RE.test(req.params.id)) return fail(res, 400, 'Invalid product id');
+    const { data, error } = await supabase
+        .from('products')
+        .select(PRODUCT_COLUMNS)
+        .eq('id', req.params.id)
+        .eq('organization_id', req.user.organization_id)
+        .maybeSingle();
+    if (error) return fail(res, 500, 'Failed to fetch product', error);
+    if (!data) return fail(res, 404, 'Product not found');
+    res.json(shapeProduct(data));
+};
+
+export const createProduct = async (req: any, res: any) => {
+    const orgId = req.user.organization_id;
+    const b = req.body ?? {};
+
+    const name = typeof b.name === 'string' ? b.name.trim() : '';
+    if (name.length < 1 || name.length > 120) return fail(res, 400, '`name` (1–120 characters) is required');
+
+    const type = b.type === undefined ? 'PRODUCT' : String(b.type).toUpperCase();
+    if (!API_PRODUCT_TYPES.includes(type)) return fail(res, 400, `\`type\` must be one of: ${API_PRODUCT_TYPES.join(', ')}`);
+
+    let price = 0;
+    if (type !== 'DONATION') {
+        price = Number(b.price);
+        if (b.price === undefined || !Number.isFinite(price) || price < 0) return fail(res, 400, '`price` must be a non-negative number');
+    }
+    if (b.description !== undefined && b.description !== null && (typeof b.description !== 'string' || b.description.length > 1000)) {
+        return fail(res, 400, '`description` must be a string of at most 1000 characters');
+    }
+    if (b.category !== undefined && b.category !== null && (typeof b.category !== 'string' || b.category.length > 60)) {
+        return fail(res, 400, '`category` must be a string of at most 60 characters');
+    }
+
+    const walletErr = await checkOwnedRef('organization_wallets', b.wallet_id, orgId);
+    if (walletErr) return fail(res, 400, walletErr);
+    const accountErr = await checkOwnedRef('accounts', b.income_account_id, orgId);
+    if (accountErr) return fail(res, 400, accountErr);
+
+    const { data, error } = await supabase
+        .from('products')
+        .insert({
+            organization_id: orgId,
+            name,
+            description: b.description || null,
+            price,
+            product_type: type,
+            category: (typeof b.category === 'string' && b.category.trim()) || null,
+            wallet_id: b.wallet_id || null,
+            income_account_id: b.income_account_id || null,
+            is_active: true,
+        })
+        .select(PRODUCT_COLUMNS)
+        .single();
+    if (error) return fail(res, 500, 'Failed to create product', error);
+
+    res.status(201).json(shapeProduct(data));
+};
+
+export const updateProduct = async (req: any, res: any) => {
+    const orgId = req.user.organization_id;
+    const id = req.params.id;
+    if (!UUID_RE.test(id)) return fail(res, 400, 'Invalid product id');
+    const b = req.body ?? {};
+
+    const { data: existing, error: loadErr } = await supabase
+        .from('products')
+        .select('id, product_type')
+        .eq('id', id)
+        .eq('organization_id', orgId)
+        .maybeSingle();
+    if (loadErr) return fail(res, 500, 'Failed to update product', loadErr);
+    if (!existing) return fail(res, 404, 'Product not found');
+    if (!API_PRODUCT_TYPES.includes(existing.product_type)) {
+        return fail(res, 400, 'This product type can only be edited in the MoneyWise app');
+    }
+
+    const patch: Record<string, any> = {};
+    if (b.name !== undefined) {
+        const name = typeof b.name === 'string' ? b.name.trim() : '';
+        if (name.length < 1 || name.length > 120) return fail(res, 400, '`name` must be 1–120 characters');
+        patch.name = name;
+    }
+    if (b.description !== undefined) {
+        if (b.description !== null && (typeof b.description !== 'string' || b.description.length > 1000)) return fail(res, 400, '`description` must be a string of at most 1000 characters');
+        patch.description = b.description || null;
+    }
+    if (b.category !== undefined) {
+        if (b.category !== null && (typeof b.category !== 'string' || b.category.length > 60)) return fail(res, 400, '`category` must be a string of at most 60 characters');
+        patch.category = (typeof b.category === 'string' && b.category.trim()) || null;
+    }
+    if (b.price !== undefined) {
+        const price = Number(b.price);
+        if (existing.product_type === 'DONATION' || !Number.isFinite(price) || price < 0) return fail(res, 400, '`price` must be a non-negative number (donations have no fixed price)');
+        patch.price = price;
+    }
+    if (b.is_active !== undefined) {
+        if (typeof b.is_active !== 'boolean') return fail(res, 400, '`is_active` must be true or false');
+        patch.is_active = b.is_active;
+    }
+    if (b.wallet_id !== undefined) {
+        const err = await checkOwnedRef('organization_wallets', b.wallet_id, orgId);
+        if (err) return fail(res, 400, err);
+        patch.wallet_id = b.wallet_id || null;
+    }
+    if (b.income_account_id !== undefined) {
+        const err = await checkOwnedRef('accounts', b.income_account_id, orgId);
+        if (err) return fail(res, 400, err);
+        patch.income_account_id = b.income_account_id || null;
+    }
+    if (Object.keys(patch).length === 0) return fail(res, 400, 'Nothing to update');
+
+    const { data, error } = await supabase
+        .from('products')
+        .update({ ...patch, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .eq('organization_id', orgId)
+        .select(PRODUCT_COLUMNS)
+        .single();
+    if (error) return fail(res, 500, 'Failed to update product', error);
+
+    res.json(shapeProduct(data));
 };
 
 // ── Payment Links ─────────────────────────────────────────────────────────────
@@ -287,6 +427,19 @@ export const getPaymentLinks = async (req: any, res: any) => {
     const base = getFrontendUrl();
     const shaped = (data ?? []).map(l => shapeLink(l, base));
     res.json({ data: shaped, count: shaped.length });
+};
+
+export const getPaymentLinkById = async (req: any, res: any) => {
+    if (!UUID_RE.test(req.params.id)) return fail(res, 400, 'Invalid payment link id');
+    const { data, error } = await supabase
+        .from('payment_links')
+        .select(LINK_COLUMNS)
+        .eq('id', req.params.id)
+        .eq('organization_id', req.user.organization_id)
+        .maybeSingle();
+    if (error) return fail(res, 500, 'Failed to fetch payment link', error);
+    if (!data) return fail(res, 404, 'Payment link not found');
+    res.json(shapeLink(data, getFrontendUrl()));
 };
 
 export const createPaymentLink = async (req: any, res: any) => {

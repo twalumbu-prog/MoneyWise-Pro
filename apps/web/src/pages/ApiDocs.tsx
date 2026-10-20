@@ -29,7 +29,7 @@ interface EndpointParam {
 interface EndpointDoc {
     id: string;
     category: string;
-    method: 'GET' | 'POST' | 'DELETE' | 'PUT';
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'PUT';
     path: string;
     title: string;
     scope: 'read' | 'write';
@@ -640,6 +640,114 @@ const ENDPOINTS: EndpointDoc[] = [
 }`
     },
     {
+        id: 'get-product',
+        category: 'Products',
+        method: 'GET',
+        path: '/v1/products/:id',
+        title: 'Get a Product',
+        scope: 'read',
+        description: 'Returns one product (active or not) from your organization, including where its payments are routed.',
+        pathParams: [
+            { name: 'id', type: 'UUID', required: true, description: 'Product ID.' }
+        ],
+        exampleCurl: `curl -X GET "https://moneywise.blueopus.cloud/api/v1/products/37759f07-95af-48ff-8112-b04fec3cdc2a" \\
+  -H "Authorization: Bearer mwp_live_..."`,
+        exampleResponse: `{
+  "id": "37759f07-95af-48ff-8112-b04fec3cdc2a",
+  "name": "Eagles Nest School — Platform access",
+  "description": "Student access fee for Eagles Nest School on Project Genius (one-time payment).",
+  "price": 150,
+  "type": "SERVICE_FIXED",
+  "category": "Project Genius",
+  "image_url": null,
+  "wallet_id": "48ad2128-b737-49d7-a241-587df8149600",
+  "income_account_id": null,
+  "is_active": true,
+  "currency": "ZMW",
+  "created_at": "2026-10-20T08:07:01Z"
+}`
+    },
+    {
+        id: 'create-product',
+        category: 'Products',
+        method: 'POST',
+        path: '/v1/products',
+        title: 'Create a Product',
+        scope: 'write',
+        description: 'Creates a product in your organization so you can sell it through payment links. Every payment for it is then tracked against the product in MoneyWise (sales per product, money routed to the wallet and booked to the income account you choose). Digital and booking products can only be created in the MoneyWise app.',
+        bodyParams: [
+            { name: 'name', type: 'string', required: true, description: 'Product name (1–120 characters).' },
+            { name: 'price', type: 'number', required: true, description: 'Price in ZMW (non-negative). Not used for DONATION products.' },
+            { name: 'type', type: 'string', required: false, description: 'PRODUCT (default), SERVICE_FIXED, SERVICE_VARIABLE or DONATION.' },
+            { name: 'description', type: 'string', required: false, description: 'Up to 1000 characters.' },
+            { name: 'category', type: 'string', required: false, description: 'Free-text grouping used in reports (e.g. your app name).' },
+            { name: 'wallet_id', type: 'UUID', required: false, description: 'Wallet that receives the payments (from GET /v1/wallets). Defaults to the main wallet.' },
+            { name: 'income_account_id', type: 'UUID', required: false, description: 'Income account the sales are booked to (from GET /v1/accounts?type=INCOME). Defaults to MoneyWise automatic categorisation.' }
+        ],
+        exampleCurl: `curl -X POST "https://moneywise.blueopus.cloud/api/v1/products" \\
+  -H "Authorization: Bearer mwp_live_..." \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "name": "Eagles Nest School — Platform access",
+    "price": 150,
+    "type": "SERVICE_FIXED",
+    "category": "Project Genius"
+  }'`,
+        exampleResponse: `{
+  "id": "37759f07-95af-48ff-8112-b04fec3cdc2a",
+  "name": "Eagles Nest School — Platform access",
+  "description": "Student access fee for Eagles Nest School on Project Genius (one-time payment).",
+  "price": 150,
+  "type": "SERVICE_FIXED",
+  "category": "Project Genius",
+  "image_url": null,
+  "wallet_id": "48ad2128-b737-49d7-a241-587df8149600",
+  "income_account_id": null,
+  "is_active": true,
+  "currency": "ZMW",
+  "created_at": "2026-10-20T08:07:01Z"
+}`
+    },
+    {
+        id: 'update-product',
+        category: 'Products',
+        method: 'PATCH',
+        path: '/v1/products/:id',
+        title: 'Update a Product',
+        scope: 'write',
+        description: 'Changes a product\'s name, description, price, category, routing, or switches it on/off with is_active. Send only the fields you want to change. Existing payment links keep their own amount.',
+        pathParams: [
+            { name: 'id', type: 'UUID', required: true, description: 'Product ID.' }
+        ],
+        bodyParams: [
+            { name: 'name', type: 'string', required: false, description: '1–120 characters.' },
+            { name: 'description', type: 'string | null', required: false, description: 'Up to 1000 characters.' },
+            { name: 'price', type: 'number', required: false, description: 'Non-negative price in ZMW.' },
+            { name: 'category', type: 'string | null', required: false, description: 'Reporting group.' },
+            { name: 'wallet_id', type: 'UUID | null', required: false, description: 'null resets to the main wallet.' },
+            { name: 'income_account_id', type: 'UUID | null', required: false, description: 'null resets to automatic categorisation.' },
+            { name: 'is_active', type: 'boolean', required: false, description: 'false stops new payment links being created for the product.' }
+        ],
+        exampleCurl: `curl -X PATCH "https://moneywise.blueopus.cloud/api/v1/products/37759f07-95af-48ff-8112-b04fec3cdc2a" \\
+  -H "Authorization: Bearer mwp_live_..." \\
+  -H "Content-Type: application/json" \\
+  -d '{ "price": 175 }'`,
+        exampleResponse: `{
+  "id": "37759f07-95af-48ff-8112-b04fec3cdc2a",
+  "name": "Eagles Nest School — Platform access",
+  "description": "Student access fee for Eagles Nest School on Project Genius (one-time payment).",
+  "price": 150,
+  "type": "SERVICE_FIXED",
+  "category": "Project Genius",
+  "image_url": null,
+  "wallet_id": "48ad2128-b737-49d7-a241-587df8149600",
+  "income_account_id": null,
+  "is_active": true,
+  "currency": "ZMW",
+  "created_at": "2026-10-20T08:07:01Z"
+}`
+    },
+    {
         id: 'get-payment-links',
         category: 'Payment Links',
         method: 'GET',
@@ -673,6 +781,35 @@ const ENDPOINTS: EndpointDoc[] = [
     }
   ],
   "count": 1
+}`
+    },
+    {
+        id: 'get-payment-link',
+        category: 'Payment Links',
+        method: 'GET',
+        path: '/v1/payment-links/:id',
+        title: 'Get a Payment Link',
+        scope: 'read',
+        description: 'Returns one payment link, including its current status (ACTIVE, PAID or CANCELLED) and paid_at. Poll this to find out whether a customer has paid.',
+        pathParams: [
+            { name: 'id', type: 'UUID', required: true, description: 'Payment link ID (the id returned when you created it).' }
+        ],
+        exampleCurl: `curl -X GET "https://moneywise.blueopus.cloud/api/v1/payment-links/673f8d22-d790-449e-b9bb-2287e02b7931" \\
+  -H "Authorization: Bearer mwp_live_..."`,
+        exampleResponse: `{
+  "id": "673f8d22-d790-449e-b9bb-2287e02b7931",
+  "token": "dGhpc19pc19hX3VuaXF1ZV90b2tlbl9leGFtcGxl",
+  "product_id": "90bb2ef3-706d-4767-85b1-09de5394ef20",
+  "customer_name": "Mutale Banda",
+  "customer_phone": "+260977112233",
+  "customer_email": "mutale@example.com",
+  "amount": 750.00,
+  "status": "PAID",
+  "reference": "REF-1760000000000",
+  "created_at": "2026-10-14T10:15:00Z",
+  "paid_at": "2026-10-14T10:18:42Z",
+  "currency": "ZMW",
+  "url": "https://moneywise.blueopus.cloud/pl/dGhpc19pc19hX3VuaXF1ZV90b2tlbl9leGFtcGxl"
 }`
     },
     {
@@ -916,6 +1053,8 @@ export const ApiDocs: React.FC = () => {
                                                     className={`text-[9px] font-bold px-1 rounded uppercase ${
                                                         ep.method === 'POST'
                                                             ? 'bg-indigo-100 text-indigo-700'
+                                                            : ep.method === 'PATCH'
+                                                            ? 'bg-amber-100 text-amber-700'
                                                             : 'bg-emerald-100 text-emerald-700'
                                                     }`}
                                                 >
@@ -1309,6 +1448,8 @@ curl -X POST https://moneywise.blueopus.cloud/api/oauth/revoke \\
                                             className={`text-xs font-bold font-mono px-2 py-0.5 rounded uppercase tracking-wider ${
                                                 ep.method === 'POST'
                                                     ? 'bg-indigo-600 text-white'
+                                                    : ep.method === 'PATCH'
+                                                    ? 'bg-amber-600 text-white'
                                                     : 'bg-emerald-600 text-white'
                                             }`}
                                         >
