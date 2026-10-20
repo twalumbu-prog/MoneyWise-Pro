@@ -1141,6 +1141,23 @@ export const emailService = {
         });
     },
 
+    /** Tell a member an admin has removed them from an organization. */
+    async notifyRemovedFromOrganization(params: { to: string; name: string; orgName: string }) {
+        const { to, name, orgName } = params;
+        const body = `
+            <h2>Your access to ${orgName} has been removed</h2>
+            <p>Hi ${name || 'there'},</p>
+            <p>An admin has removed you from <strong>${orgName}</strong> on MoneyWise. You no longer have access to that organization.</p>
+            <p style="margin-top:16px; font-size:12px; color:#9ca3af;">If you think this was a mistake, please contact that organization's admin.</p>
+        `;
+
+        await this.sendEmail({
+            to,
+            subject: `You've been removed from ${orgName} on MoneyWise`,
+            html: this.wrapTemplate(body),
+        });
+    },
+
     /**
      * Password reset email. Like sendTeamInvite, the recovery token is minted via
      * supabase.auth.admin.generateLink({ type: 'recovery' }) and we deliver the

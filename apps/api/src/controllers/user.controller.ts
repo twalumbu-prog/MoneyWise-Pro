@@ -510,16 +510,45 @@ export const deleteUser = async (req: AuthRequest, res: any): Promise<any> => {
             return res.status(403).json({ error: 'Only admins can delete users' });
         }
 
-        // Ensure target user is in same org
-        const { data: targetUser } = await supabase
-            .from('users')
-            .select('organization_id, status')
-            .eq('id', id)
-            .single();
+        if (id === (req as any).user.id) {
+            return res.status(400).json({ error: 'You cannot remove yourself from the organization' });
+        }
 
-        if (!targetUser || targetUser.organization_id !== organization_id) {
+        // Membership (user_organizations) is the source of truth for "is in this org".
+        // users.organization_id is only the person's *currently active* org, so a
+        // multi-org member whose active org is elsewhere used to 404 here even though
+        // the team list (which reads user_organizations) showed them.
+        const { data: membership } = await supabase
+            .from('user_organizations')
+            .select('role, status')
+            .eq('user_id', id)
+            .eq('organization_id', organization_id)
+            .maybeSingle();
+
+        if (!membership) {
             return res.status(404).json({ error: 'User not found in organization' });
         }
+
+        const { data: userRow } = await supabase
+            .from('users')
+            .select('email, name, status')
+            .eq('id', id)
+            .maybeSingle();
+        const targetUser = { status: membership.status || userRow?.status };
+
+        const { data: orgRow } = await supabase.from('organizations').select('name').eq('id', organization_id).maybeSingle();
+        const notifyRemoved = async () => {
+            if (targetUser.status === 'INVITED' || !userRow?.email) return;
+            try {
+                await emailService.notifyRemovedFromOrganization({
+                    to: userRow.email,
+                    name: userRow.name,
+                    orgName: orgRow?.name || 'your organization',
+                });
+            } catch (emailErr: any) {
+                console.error('[DeleteUser] Failed to send removal email:', emailErr);
+            }
+        };
 
         // Delete membership from user_organizations
         const { error: uoDeleteError } = await supabase
@@ -563,6 +592,7 @@ export const deleteUser = async (req: AuthRequest, res: any): Promise<any> => {
 
                 if (dbError) throw dbError;
 
+                await notifyRemoved();
                 return res.json({ message: 'User deactivated successfully' });
             }
         } else {
@@ -586,6 +616,7 @@ export const deleteUser = async (req: AuthRequest, res: any): Promise<any> => {
                     .eq('id', id);
             }
 
+            await notifyRemoved();
             return res.json({ message: 'User removed from organization successfully' });
         }
 
