@@ -23,6 +23,7 @@ import {
     Search,
     BadgeCheck,
     PlusCircle,
+    ChevronLeft,
     ChevronRight,
     Bike,
     Store,
@@ -121,6 +122,8 @@ interface Product {
     requires_delivery?: boolean;
     allow_external_delivery?: boolean;
     own_delivery_charge?: number;
+    /** Info fields the buyer fills in on the INFO step before paying. */
+    checkout_fields?: { id: string; label: string; type: 'text' | 'select'; required: boolean; options?: string[] }[];
     /** Ordered array of extra image URLs for the detail page carousel. */
     additional_images?: string[];
     /** Bullet-point feature list shown on the detail page. */
@@ -203,13 +206,16 @@ export const PublicPay: React.FC = () => {
     //  SHOP     = product catalogue grid (entry page)
     //  CATALOG  = the cart (added items)
     //  DELIVERY = delivery address + rider selection (only when cart has physical goods)
+    //  INFO     = merchant-defined buyer info (name, size, ...) on its own page, just before payment
     //  SUMMARY  = checkout breakdown + customer details + Pay
     //  CHECKOUT = dedicated payment-method page (Collections API own-UX only)
-    const [step, setStep] = useState<'LOADING' | 'SHOP' | 'DETAIL' | 'CATALOG' | 'DELIVERY' | 'SUMMARY' | 'CHECKOUT' | 'VERIFYING' | 'SUCCESS' | 'ERROR'>('LOADING');
+    const [step, setStep] = useState<'LOADING' | 'SHOP' | 'DETAIL' | 'CATALOG' | 'DELIVERY' | 'INFO' | 'SUMMARY' | 'CHECKOUT' | 'VERIFYING' | 'SUCCESS' | 'ERROR'>('LOADING');
     // Product currently shown on the DETAIL page.
     const [detailProduct, setDetailProduct] = useState<Product | null>(null);
     // Current image index in the detail carousel.
     const [detailImageIndex, setDetailImageIndex] = useState(0);
+    // Touch start point for swiping the detail image carousel.
+    const detailTouchStart = useRef<{ x: number; y: number } | null>(null);
     // True while the detail panel is playing its slide-out-right exit animation
     // (Add to Cart / Back), just before the step actually flips to SHOP.
     const [detailExiting, setDetailExiting] = useState(false);
@@ -271,6 +277,8 @@ export const PublicPay: React.FC = () => {
     const [deliveryState, setDeliveryState] = useState('');
     const [deliveryStreet, setDeliveryStreet] = useState('');
     const [deliveryApartment, setDeliveryApartment] = useState('');
+    // Answers to each product's checkout_fields, keyed productId → fieldId → value.
+    const [infoAnswers, setInfoAnswers] = useState<Record<string, Record<string, string>>>({});
     const [selectedRider, setSelectedRider] = useState<string>(RIDER_SERVICES[0].id);
     const [riderDropdownOpen, setRiderDropdownOpen] = useState(false);
     const riderSectionRef = useRef<HTMLDivElement | null>(null);
@@ -668,7 +676,7 @@ export const PublicPay: React.FC = () => {
 
     // Full-screen "app" steps fill the viewport (fixed height) so inner content
     // scrolls and footers stay pinned; the simple states just center normally.
-    const isAppStep = step === 'SHOP' || step === 'DETAIL' || step === 'CATALOG' || step === 'DELIVERY' || step === 'SUMMARY' || step === 'CHECKOUT' || step === 'SUCCESS' || step === 'VERIFYING';
+    const isAppStep = step === 'SHOP' || step === 'DETAIL' || step === 'CATALOG' || step === 'DELIVERY' || step === 'INFO' || step === 'SUMMARY' || step === 'CHECKOUT' || step === 'SUCCESS' || step === 'VERIFYING';
 
     // Whether any item in the cart requires physical delivery.
     const cartNeedsDelivery = lineItems.some(li => li.product.requires_delivery);
@@ -700,7 +708,30 @@ export const PublicPay: React.FC = () => {
         delivery_charge: effectiveDeliveryCharge,
     } : null;
 
-    // Cart → Delivery (if needed) → Payment Summary.
+    // Cart lines whose product asks the buyer for extra info before paying.
+    const infoLines = lineItems.filter(li => (li.product.checkout_fields?.length ?? 0) > 0);
+    const cartNeedsInfo = infoLines.length > 0;
+    const setInfoAnswer = (productId: string, fieldId: string, value: string) =>
+        setInfoAnswers(prev => ({ ...prev, [productId]: { ...(prev[productId] || {}), [fieldId]: value } }));
+    /** First required field still empty, as a message — or null when the INFO step is complete. */
+    const missingInfoMessage = (): string | null => {
+        for (const li of infoLines) {
+            for (const f of li.product.checkout_fields || []) {
+                if (f.required && !(infoAnswers[li.product.id]?.[f.id] || '').trim()) {
+                    return `Please fill in "${f.label}" for ${li.product.name}.`;
+                }
+            }
+        }
+        return null;
+    };
+    const goToInfoOrSummary = () => { setError(null); setStep(cartNeedsInfo ? 'INFO' : 'SUMMARY'); };
+    // Answers sent with each item; unanswered optional fields are omitted.
+    const responsesFor = (productId: string) => {
+        const a = infoAnswers[productId];
+        return a && Object.keys(a).length > 0 ? { responses: a } : {};
+    };
+
+    // Cart → Delivery (if needed) → Info (if needed) → Payment Summary.
     const handleProceedToSummary = () => {
         setError(null);
         if (lineItems.length === 0) {
@@ -719,7 +750,7 @@ export const PublicPay: React.FC = () => {
         if (cartNeedsDelivery) {
             setStep('DELIVERY');
         } else {
-            setStep('SUMMARY');
+            goToInfoOrSummary();
         }
     };
 
@@ -747,6 +778,11 @@ export const PublicPay: React.FC = () => {
         }
         if (cartHasDigital && !emailIsValid) {
             setError('Please enter a valid email — your digital file will be sent there.');
+            return;
+        }
+        const infoMissing = missingInfoMessage();
+        if (infoMissing) {
+            setError(infoMissing);
             return;
         }
 
@@ -795,7 +831,8 @@ export const PublicPay: React.FC = () => {
                     // Booking lines carry their stay so the server can hold/confirm the dates.
                     ...(li.isBooking && li.booking
                         ? { check_in: li.booking.checkIn, check_out: li.booking.checkOut }
-                        : {})
+                        : {}),
+                    ...responsesFor(li.product.id),
                 })),
                 orderDetails: deliveryDetails,
             });
@@ -1089,7 +1126,8 @@ export const PublicPay: React.FC = () => {
                     price: li.unitPrice,
                     ...(li.isBooking && li.booking
                         ? { check_in: li.booking.checkIn, check_out: li.booking.checkOut }
-                        : {})
+                        : {}),
+                    ...responsesFor(li.product.id),
                 })),
                 orderDetails: deliveryDetails,
             });
@@ -1394,6 +1432,7 @@ export const PublicPay: React.FC = () => {
         setDeliveryState('');
         setDeliveryStreet('');
         setDeliveryApartment('');
+        setInfoAnswers({});
         setSelectedRider(RIDER_SERVICES[0].id);
         setRiderDropdownOpen(false);
         setLocationError(null);
@@ -2452,7 +2491,20 @@ Status: VERIFIED`;
                             style={{ animation: detailExiting ? 'mw-slide-out-right 0.26s ease-in both' : 'atabs-in-right 0.38s cubic-bezier(0.22, 1, 0.36, 1)' }}
                         >
                             {/* Image carousel */}
-                            <div className="relative w-full aspect-square flex-shrink-0 bg-neutral-100 overflow-hidden">
+                            <div
+                                className="relative w-full aspect-square flex-shrink-0 bg-neutral-100 overflow-hidden"
+                                style={{ touchAction: 'pan-y' }}
+                                onTouchStart={e => { detailTouchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
+                                onTouchEnd={e => {
+                                    const start = detailTouchStart.current;
+                                    detailTouchStart.current = null;
+                                    if (!start || allImages.length < 2) return;
+                                    const dx = e.changedTouches[0].clientX - start.x;
+                                    const dy = e.changedTouches[0].clientY - start.y;
+                                    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
+                                    setDetailImageIndex(i => Math.max(0, Math.min(allImages.length - 1, i + (dx < 0 ? 1 : -1))));
+                                }}
+                            >
                                 {hasImages ? (
                                     <>
                                         <img
@@ -2462,22 +2514,28 @@ Status: VERIFIED`;
                                             className="w-full h-full object-cover"
                                             style={{ animation: 'atabs-in-right 0.28s cubic-bezier(0.22, 1, 0.36, 1)' }}
                                         />
-                                        {/* Swipe hint arrows */}
-                                        {allImages.length > 1 && clampedIdx > 0 && (
-                                            <button
-                                                onClick={() => setDetailImageIndex(i => Math.max(0, i - 1))}
-                                                className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 text-white flex items-center justify-center"
-                                            >
-                                                <ArrowLeft size={16} />
-                                            </button>
-                                        )}
-                                        {allImages.length > 1 && clampedIdx < allImages.length - 1 && (
-                                            <button
-                                                onClick={() => setDetailImageIndex(i => Math.min(allImages.length - 1, i + 1))}
-                                                className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 text-white flex items-center justify-center"
-                                            >
-                                                <ChevronRight size={16} />
-                                            </button>
+                                        {/* Subtle prev / next buttons (swipe also works) */}
+                                        {allImages.length > 1 && (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    aria-label="Previous image"
+                                                    onClick={() => setDetailImageIndex(i => Math.max(0, i - 1))}
+                                                    disabled={clampedIdx === 0}
+                                                    className="absolute left-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/25 backdrop-blur-sm text-white flex items-center justify-center transition-opacity hover:bg-black/40 disabled:opacity-0 disabled:pointer-events-none"
+                                                >
+                                                    <ChevronLeft size={18} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    aria-label="Next image"
+                                                    onClick={() => setDetailImageIndex(i => Math.min(allImages.length - 1, i + 1))}
+                                                    disabled={clampedIdx === allImages.length - 1}
+                                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/25 backdrop-blur-sm text-white flex items-center justify-center transition-opacity hover:bg-black/40 disabled:opacity-0 disabled:pointer-events-none"
+                                                >
+                                                    <ChevronRight size={18} />
+                                                </button>
+                                            </>
                                         )}
                                     </>
                                 ) : (
@@ -3133,11 +3191,109 @@ Status: VERIFIED`;
                                     Back
                                 </button>
                                 <button
-                                    onClick={() => setStep('SUMMARY')}
+                                    onClick={goToInfoOrSummary}
                                     className="flex-1 h-11 px-3 py-2 bg-gray-900 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-white hover:bg-black transition-colors"
                                 >
                                     <CreditCard className="h-3.5 w-3.5" />
                                     Checkout
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* 3b-2. Information Step — merchant-defined buyer details, on their own page before payment */}
+                {step === 'INFO' && org && (
+                    <div className="flex flex-col flex-1 min-h-0" style={{ animation: 'atabs-in-right 0.42s cubic-bezier(0.22, 1, 0.36, 1)' }}>
+                        <div className="px-6 pt-6 pb-4 flex items-center gap-4 shrink-0 border-b border-gray-100">
+                            {org.logo_url ? (
+                                <img src={org.logo_url} alt={org.name} className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
+                            ) : (
+                                <div className="w-10 h-10 rounded-xl bg-[#0058DB]/10 flex items-center justify-center flex-shrink-0">
+                                    <ShoppingBag className="h-5 w-5 text-[#0058DB]" />
+                                </div>
+                            )}
+                            <div>
+                                <p className="text-base font-bold text-gray-900">{org.name}</p>
+                                <p className="text-xs text-gray-400">Payment Checkout Portal</p>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto px-6 pt-5 pb-36 space-y-5">
+                            <div>
+                                <h2 className="text-lg font-semibold text-gray-900">Your details</h2>
+                                <p className="text-xs text-gray-500 mt-0.5">The seller needs a few details about your order before you pay.</p>
+                            </div>
+
+                            {infoLines.map(li => (
+                                <div key={li.product.id} className="rounded-2xl border border-gray-200 p-4 space-y-3">
+                                    <p className="text-sm font-bold text-gray-900">
+                                        {li.product.name}
+                                        {li.quantity > 1 && !li.isBooking && <span className="font-medium text-gray-400"> × {li.quantity}</span>}
+                                    </p>
+                                    {(li.product.checkout_fields || []).map(f => {
+                                        const value = infoAnswers[li.product.id]?.[f.id] || '';
+                                        return (
+                                            <div key={f.id}>
+                                                <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                                                    {f.label}{f.required && <span className="text-red-500"> *</span>}
+                                                </label>
+                                                {f.type === 'select' ? (
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {(f.options || []).map(opt => (
+                                                            <button
+                                                                key={opt}
+                                                                type="button"
+                                                                onClick={() => setInfoAnswer(li.product.id, f.id, opt)}
+                                                                className={`min-w-[44px] h-10 px-3 rounded-xl border text-sm font-semibold transition-colors ${
+                                                                    value === opt
+                                                                        ? 'bg-gray-900 border-gray-900 text-white'
+                                                                        : 'bg-white border-gray-200 text-gray-700 hover:border-gray-400'
+                                                                }`}
+                                                            >
+                                                                {opt}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <input
+                                                        type="text"
+                                                        value={value}
+                                                        maxLength={200}
+                                                        onChange={e => setInfoAnswer(li.product.id, f.id, e.target.value)}
+                                                        className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none"
+                                                    />
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ))}
+
+                            {error && (
+                                <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-xs font-semibold text-red-600">{error}</div>
+                            )}
+                        </div>
+
+                        <div className="fixed bottom-0 inset-x-0 sm:absolute sm:bottom-0 sm:inset-x-auto sm:left-0 sm:right-0 sm:w-full bg-white border-t border-gray-200 px-6 py-4">
+                            <div className="flex gap-2.5">
+                                <button
+                                    onClick={() => { setError(null); setStep(cartNeedsDelivery ? 'DELIVERY' : 'CATALOG'); }}
+                                    className="flex-1 h-11 px-3 py-2 bg-white rounded-xl border border-gray-900 flex items-center justify-center text-xs font-medium text-gray-900 hover:bg-gray-50 transition-colors"
+                                >
+                                    Back
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        const missing = missingInfoMessage();
+                                        if (missing) { setError(missing); return; }
+                                        setError(null);
+                                        setStep('SUMMARY');
+                                    }}
+                                    className="flex-1 h-11 px-3 py-2 bg-gray-900 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-white hover:bg-black transition-colors"
+                                >
+                                    <CreditCard className="h-3.5 w-3.5" />
+                                    Continue to payment
                                 </button>
                             </div>
                         </div>
@@ -3343,10 +3499,10 @@ Status: VERIFIED`;
                             <div className="text-center">
                                 <button
                                     type="button"
-                                    onClick={() => { setError(null); setStep('CATALOG'); }}
+                                    onClick={() => { setError(null); setStep(cartNeedsInfo ? 'INFO' : 'CATALOG'); }}
                                     className="text-[11px] font-bold text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-wider"
                                 >
-                                    Back to Cart
+                                    {cartNeedsInfo ? 'Back' : 'Back to Cart'}
                                 </button>
                             </div>
                         </div>

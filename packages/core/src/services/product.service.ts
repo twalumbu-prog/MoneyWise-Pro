@@ -33,6 +33,7 @@ export interface ProductSale {
     amount_paid: number;
     status: string;
     created_at: string;
+    customer_responses?: { id: string; label: string; value: string }[] | null;
     order_details?: {
         mode?: 'deliver' | 'pickup';
         country?: string;
@@ -107,8 +108,19 @@ export interface Product {
     additional_images?: string[];
     /** Bullet-point list of features / inclusions shown on the store detail page. */
     whats_included?: string[];
+    /** Info fields the buyer fills in on the store's information page before paying. */
+    checkout_fields?: CheckoutField[];
     created_at?: string;
     updated_at?: string;
+}
+
+/** A merchant-defined info field collected from the buyer before payment. */
+export interface CheckoutField {
+    id: string;
+    label: string;
+    type: 'text' | 'select';
+    required: boolean;
+    options?: string[];
 }
 
 /** Delivery details captured at checkout and stored with each sale. */

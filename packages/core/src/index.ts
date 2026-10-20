@@ -195,6 +195,7 @@ export type {
     Product,
     ProductSale,
     OrderDeliveryDetails,
+    CheckoutField,
     InvoiceLinkSnapshotItem,
     PaymentLink,
     UpdateInvoiceLinkPayload,

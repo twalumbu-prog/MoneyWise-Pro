@@ -14,6 +14,7 @@ export type {
     BookingTerminology,
     Product,
     OrderDeliveryDetails,
+    CheckoutField,
     InvoiceLinkSnapshotItem,
     PaymentLink,
     UpdateInvoiceLinkPayload,

@@ -16,6 +16,7 @@ import { QuickBooksService } from '../services/quickbooks.service';
 import { captureEvent, withTiming } from '../utils/analytics';
 import { ensureWalletTransferConfirmed } from './disbursement.controller';
 import { getCachedOrgSecretKey } from '../lib/orgSecretKeyCache';
+import { sanitizeCheckoutFields } from './product.controller';
 
 // MoneyWise's own Lenco settlement merchant (receives the commission-sweep
 // credit leg of every external payment link). See categorizeSplitPaymentRevenue.
@@ -825,7 +826,7 @@ export const getPublicWalletContext = async (req: Request, res: Response) => {
                         .single(),
                     supabase
                         .from('products')
-                        .select('id, name, description, price, image_url, additional_images, whats_included, category, product_type, requires_delivery, allow_external_delivery, own_delivery_charge')
+                        .select('id, name, description, price, image_url, additional_images, whats_included, category, product_type, requires_delivery, allow_external_delivery, own_delivery_charge, checkout_fields')
                         .eq('organization_id', wallet.organization_id)
                         .eq('is_active', true)
                         .order('name', { ascending: true })
@@ -1127,6 +1128,33 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
             }
         }
 
+        // Buyer answers to each product's checkout_fields. Validated against the stored field
+        // definitions (never trusted from the client) before any intent is written.
+        const responsesByProduct: Record<string, { id: string; label: string; value: string }[]> = {};
+        if (Array.isArray(items) && items.length > 0) {
+            const pids = [...new Set(items.map((it: any) => it?.id).filter(Boolean))];
+            const { data: fprods } = await supabase.from('products').select('id, name, checkout_fields').in('id', pids).eq('organization_id', wallet.organization_id);
+            for (const p of (fprods || []) as any[]) {
+                const defs = sanitizeCheckoutFields(p.checkout_fields);
+                if (defs.length === 0) continue;
+                const item = items.find((it: any) => it?.id === p.id);
+                const given = (item?.responses && typeof item.responses === 'object') ? item.responses : {};
+                const answers: { id: string; label: string; value: string }[] = [];
+                for (const f of defs) {
+                    const value = String(given[f.id] ?? '').trim().slice(0, 200);
+                    if (!value) {
+                        if (f.required) return res.status(400).json({ error: `Please fill in "${f.label}" for ${p.name}.` });
+                        continue;
+                    }
+                    if (f.type === 'select' && !(f.options || []).includes(value)) {
+                        return res.status(400).json({ error: `Invalid choice for "${f.label}" on ${p.name}.` });
+                    }
+                    answers.push({ id: f.id, label: f.label, value });
+                }
+                responsesByProduct[p.id] = answers;
+            }
+        }
+
         const { error } = await supabase.from('cashbook_entries').insert({
             organization_id: wallet.organization_id,
             entry_type: 'INFLOW',
@@ -1180,6 +1208,7 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
                     // Store the delivery details captured at checkout (address, mode, rider service).
                     // Stored on every line item in the purchase so the inflow drawer can surface them.
                     order_details: orderDetails ? JSON.parse(JSON.stringify(orderDetails)) : null,
+                    customer_responses: responsesByProduct[item.id]?.length ? responsesByProduct[item.id] : null,
                 };
             });
 

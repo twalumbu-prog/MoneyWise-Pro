@@ -29,6 +29,7 @@ interface ProductSale {
     amount_paid: number;
     status: string;
     created_at: string;
+    customer_responses?: { id: string; label: string; value: string }[] | null;
     order_details?: {
         mode?: 'deliver' | 'pickup';
         country?: string;
@@ -242,6 +243,23 @@ const InflowDetailDrawer: React.FC<InflowDetailDrawerProps> = ({ inflow, onClose
                             <div className="p-3 bg-gray-50 rounded-2xl space-y-1.5">
                                 <p className="text-sm font-semibold text-gray-800">{sales[0].customer_name}</p>
                                 <p className="text-xs text-gray-500">{sales[0].customer_phone}</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Customer-provided order information (name, size, ...) */}
+                    {!loading && sales.some(s => s.customer_responses && s.customer_responses.length > 0) && (
+                        <div>
+                            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Order Information</h3>
+                            <div className="p-3 bg-gray-50 rounded-2xl space-y-3">
+                                {sales.filter(s => s.customer_responses && s.customer_responses.length > 0).map(s => (
+                                    <div key={s.id} className="space-y-1">
+                                        <p className="text-xs font-bold text-gray-700">{s.products?.name || 'Item'}</p>
+                                        {s.customer_responses!.map(r => (
+                                            <p key={r.id} className="text-xs text-gray-600"><span className="text-gray-400">{r.label}:</span> <span className="font-semibold">{r.value}</span></p>
+                                        ))}
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     )}

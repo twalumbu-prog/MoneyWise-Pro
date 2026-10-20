@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { productService, Product, ProductType, PRODUCT_TYPE_OPTIONS, isBookingProductType, DigitalAsset } from '../../services/product.service';
+import { productService, Product, ProductType, PRODUCT_TYPE_OPTIONS, isBookingProductType, DigitalAsset, CheckoutField } from '../../services/product.service';
 import { accountService } from '../../services/account.service';
 import { cashbookService } from '../../services/cashbook.service';
 import { masterFeesService, MasterFeesStatus, MasterFeesCategory } from '../../services/integration.service';
@@ -88,6 +88,22 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
     const [uploadingAdditionalImage, setUploadingAdditionalImage] = useState(false);
     // "What's Included" bullet list
     const [whatsIncluded, setWhatsIncluded] = useState<string[]>([]);
+    // Customer-information fields shown on the store's own info page before payment.
+    // `optionsText` is the raw comma-separated input for select fields (parsed on save).
+    type UiCheckoutField = CheckoutField & { optionsText?: string };
+    const [checkoutFields, setCheckoutFields] = useState<UiCheckoutField[]>([]);
+    const [collectInfo, setCollectInfo] = useState(false);
+    const newFieldId = () => `f_${Math.random().toString(36).slice(2, 9)}`;
+    const addCheckoutField = (preset: 'name' | 'email' | 'size' | 'custom') => {
+        const f: UiCheckoutField =
+            preset === 'name' ? { id: newFieldId(), label: 'Full name', type: 'text', required: true }
+            : preset === 'email' ? { id: newFieldId(), label: 'Email address', type: 'text', required: true }
+            : preset === 'size' ? { id: newFieldId(), label: 'Size', type: 'select', required: true, options: ['S', 'M', 'L'], optionsText: 'S, M, L' }
+            : { id: newFieldId(), label: '', type: 'text', required: true };
+        setCheckoutFields(prev => [...prev, f]);
+    };
+    const updateCheckoutField = (id: string, patch: Partial<UiCheckoutField>) =>
+        setCheckoutFields(prev => prev.map(f => f.id === id ? { ...f, ...patch } : f));
 
     // Share-link modal state
     const [shareProduct, setShareProduct] = useState<Product | null>(null);
@@ -199,6 +215,8 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
         setEditingProduct(null);
         setAdditionalImages([]);
         setWhatsIncluded([]);
+        setCheckoutFields([]);
+        setCollectInfo(false);
         setFormData({
             name: '',
             description: '',
@@ -229,6 +247,9 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
         setDigitalAssets(Array.isArray(product.digital_assets) ? product.digital_assets : []);
         setAdditionalImages(Array.isArray(product.additional_images) ? product.additional_images : []);
         setWhatsIncluded(Array.isArray(product.whats_included) ? product.whats_included : []);
+        const existingFields = Array.isArray(product.checkout_fields) ? product.checkout_fields : [];
+        setCheckoutFields(existingFields.map(f => ({ ...f, optionsText: (f.options || []).join(', ') })));
+        setCollectInfo(existingFields.length > 0);
         setFormData({
             name: product.name,
             description: product.description || '',
@@ -403,6 +424,27 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
             return;
         }
 
+        const cleanedCheckoutFields: CheckoutField[] = checkoutFields
+            .map(({ optionsText, ...f }) => ({
+                ...f,
+                label: f.label.trim(),
+                ...(f.type === 'select'
+                    ? { options: (optionsText ?? (f.options || []).join(',')).split(',').map(o => o.trim()).filter(Boolean) }
+                    : {}),
+            }))
+            .filter(f => f.label);
+        if (collectInfo) {
+            if (cleanedCheckoutFields.length === 0) {
+                setError('Add at least one information field, or switch "Collect customer information" off.');
+                return;
+            }
+            const badSelect = cleanedCheckoutFields.find(f => f.type === 'select' && (!f.options || f.options.length === 0));
+            if (badSelect) {
+                setError(`"${badSelect.label}" needs at least one option (separate options with commas).`);
+                return;
+            }
+        }
+
         try {
             setSubmitting(true);
             setError(null);
@@ -424,6 +466,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                 own_delivery_charge: Number(formData.own_delivery_charge) || 0,
                 additional_images: additionalImages,
                 whats_included: whatsIncluded.filter(s => s.trim()),
+                checkout_fields: collectInfo ? cleanedCheckoutFields : [],
             };
 
             if (editingProduct) {
@@ -1181,6 +1224,91 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                                         <p className="text-xs text-gray-400 mt-1">Shown to customers as the delivery charge at checkout.</p>
                                                     </div>
                                                 )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* ── Customer information collected before payment ── */}
+                                {formData.product_type !== 'DONATION' && (
+                                    <div className="border border-gray-100 rounded-2xl overflow-hidden">
+                                        <button
+                                            type="button"
+                                            onClick={() => setCollectInfo(v => !v)}
+                                            disabled={submitting}
+                                            className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-gray-50 transition-colors"
+                                        >
+                                            <div className="text-left">
+                                                <div className="text-sm font-bold text-gray-800">Collect customer information</div>
+                                                <div className="text-xs text-gray-400">Buyers fill these in on their own page right before paying (e.g. name, size)</div>
+                                            </div>
+                                            <div className={`relative w-10 h-6 rounded-full transition-colors flex-shrink-0 ml-3 ${collectInfo ? 'bg-[#0058DB]' : 'bg-gray-200'}`}>
+                                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${collectInfo ? 'translate-x-5' : 'translate-x-1'}`} />
+                                            </div>
+                                        </button>
+
+                                        {collectInfo && (
+                                            <div className="border-t border-gray-100 bg-gray-50/50 px-4 py-4 space-y-3">
+                                                {checkoutFields.map(f => (
+                                                    <div key={f.id} className="bg-white border border-gray-200 rounded-xl p-3 space-y-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <input
+                                                                type="text"
+                                                                value={f.label}
+                                                                onChange={e => updateCheckoutField(f.id, { label: e.target.value })}
+                                                                disabled={submitting}
+                                                                placeholder="Field label, e.g. Full name"
+                                                                className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none"
+                                                            />
+                                                            <select
+                                                                value={f.type}
+                                                                onChange={e => updateCheckoutField(f.id, e.target.value === 'select'
+                                                                    ? { type: 'select', optionsText: f.optionsText ?? '' }
+                                                                    : { type: 'text' })}
+                                                                disabled={submitting}
+                                                                className="px-2 py-2 bg-white border border-gray-200 rounded-lg text-xs font-semibold text-gray-700 outline-none"
+                                                            >
+                                                                <option value="text">Text</option>
+                                                                <option value="select">Choices</option>
+                                                            </select>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setCheckoutFields(prev => prev.filter(x => x.id !== f.id))}
+                                                                disabled={submitting}
+                                                                className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"
+                                                            >
+                                                                <X className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        </div>
+                                                        {f.type === 'select' && (
+                                                            <input
+                                                                type="text"
+                                                                value={f.optionsText ?? ''}
+                                                                onChange={e => updateCheckoutField(f.id, { optionsText: e.target.value })}
+                                                                disabled={submitting}
+                                                                placeholder="Options, separated by commas (S, M, L, XL)"
+                                                                className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none"
+                                                            />
+                                                        )}
+                                                        <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={f.required}
+                                                                onChange={e => updateCheckoutField(f.id, { required: e.target.checked })}
+                                                                disabled={submitting}
+                                                            />
+                                                            Required
+                                                        </label>
+                                                    </div>
+                                                ))}
+                                                <div className="flex flex-wrap gap-2">
+                                                    <button type="button" onClick={() => addCheckoutField('name')} disabled={submitting} className="px-3 py-2 text-xs font-bold text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50">+ Name</button>
+                                                    {formData.product_type === 'PRODUCT' && (
+                                                        <button type="button" onClick={() => addCheckoutField('size')} disabled={submitting} className="px-3 py-2 text-xs font-bold text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50">+ Sizes</button>
+                                                    )}
+                                                    <button type="button" onClick={() => addCheckoutField('email')} disabled={submitting} className="px-3 py-2 text-xs font-bold text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50">+ Email</button>
+                                                    <button type="button" onClick={() => addCheckoutField('custom')} disabled={submitting} className="px-3 py-2 text-xs font-bold text-[#0058DB] bg-white border border-[#0058DB]/30 rounded-xl hover:bg-blue-50">+ Custom field</button>
+                                                </div>
                                             </div>
                                         )}
                                     </div>

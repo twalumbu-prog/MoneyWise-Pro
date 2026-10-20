@@ -21,6 +21,32 @@ const sanitizeDigitalAssets = (raw: any): { name: string; path: string; size?: n
         }));
 };
 
+export interface CheckoutField { id: string; label: string; type: 'text' | 'select'; required: boolean; options?: string[] }
+
+/** Normalise merchant-defined checkout fields; drops malformed entries (a select needs options). */
+export const sanitizeCheckoutFields = (raw: any): CheckoutField[] => {
+    if (!Array.isArray(raw)) return [];
+    const seen = new Set<string>();
+    const out: CheckoutField[] = [];
+    for (const f of raw.slice(0, 20)) {
+        const label = typeof f?.label === 'string' ? f.label.trim().slice(0, 80) : '';
+        const id = typeof f?.id === 'string' ? f.id.trim().slice(0, 40) : '';
+        if (!label || !id || seen.has(id)) continue;
+        const type = f.type === 'select' ? 'select' : 'text';
+        if (type === 'select') {
+            const options = Array.isArray(f.options)
+                ? [...new Set(f.options.map((o: any) => String(o ?? '').trim().slice(0, 40)).filter(Boolean))] as string[]
+                : [];
+            if (options.length === 0) continue;
+            out.push({ id, label, type, required: f.required !== false, options: options.slice(0, 30) });
+        } else {
+            out.push({ id, label, type, required: f.required !== false });
+        }
+        seen.add(id);
+    }
+    return out;
+};
+
 /**
  * Validates that an optional wallet/income-account reference belongs to the
  * caller's organization. Returns an error message string if invalid, else null.
@@ -81,7 +107,7 @@ export const createProduct = async (req: any, res: Response): Promise<any> => {
 
         const { name, description, price, image_url, product_type, wallet_id, income_account_id, category, digital_assets,
                 requires_delivery, allow_external_delivery, own_delivery_charge,
-                additional_images, whats_included } = req.body;
+                additional_images, whats_included, checkout_fields } = req.body;
 
         if (!name || name.trim() === '') {
             return res.status(400).json({ error: 'Product name is required' });
@@ -129,6 +155,7 @@ export const createProduct = async (req: any, res: Response): Promise<any> => {
                 own_delivery_charge: Number(own_delivery_charge) || 0,
                 additional_images: Array.isArray(additional_images) ? additional_images.filter((u: any) => typeof u === 'string' && u.trim()) : [],
                 whats_included: Array.isArray(whats_included) ? whats_included.filter((s: any) => typeof s === 'string' && s.trim()) : [],
+                checkout_fields: sanitizeCheckoutFields(checkout_fields),
             })
             .select()
             .single();
@@ -172,7 +199,7 @@ export const updateProduct = async (req: any, res: Response): Promise<any> => {
 
         const { name, description, price, is_active, image_url, product_type, wallet_id, income_account_id, category, digital_assets,
                 requires_delivery, allow_external_delivery, own_delivery_charge,
-                additional_images, whats_included } = req.body;
+                additional_images, whats_included, checkout_fields } = req.body;
         const updateData: any = {};
 
         if (name !== undefined) {
@@ -242,6 +269,7 @@ export const updateProduct = async (req: any, res: Response): Promise<any> => {
         if (own_delivery_charge !== undefined) updateData.own_delivery_charge = Number(own_delivery_charge) || 0;
         if (additional_images !== undefined) updateData.additional_images = Array.isArray(additional_images) ? additional_images.filter((u: any) => typeof u === 'string' && u.trim()) : [];
         if (whats_included !== undefined) updateData.whats_included = Array.isArray(whats_included) ? whats_included.filter((s: any) => typeof s === 'string' && s.trim()) : [];
+        if (checkout_fields !== undefined) updateData.checkout_fields = sanitizeCheckoutFields(checkout_fields);
         updateData.updated_at = new Date().toISOString();
 
         const { data, error } = await supabase
