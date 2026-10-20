@@ -9,6 +9,8 @@ interface Props {
     mode: 'outflows' | 'inflows';
     userRole: string | null;
     isPersonal?: boolean;
+    /** Personal accounts that work for an organization: its name, so the advance / loan rows can say who is asked. */
+    employerName?: string;
     onNewSale: () => void;
     /** Personal accounts: record a transaction on an external bank / mobile-money account by hand. */
     onManualEntry: () => void;
@@ -22,7 +24,7 @@ interface Props {
 }
 
 export const NewMenuSheet: React.FC<Props> = ({
-    visible, onClose, mode, userRole, isPersonal, onNewSale, onManualEntry, onLogReceived, onNewRequisition, onSalaryAdvance, onStaffLoan, onInvest, onPayroll,
+    visible, onClose, mode, userRole, isPersonal, employerName, onNewSale, onManualEntry, onLogReceived, onNewRequisition, onSalaryAdvance, onStaffLoan, onInvest, onPayroll,
 }) => {
     const isCashHandler = canDisburse(userRole);
     const isRequestor = isRequestorRole(userRole);
@@ -64,8 +66,8 @@ export const NewMenuSheet: React.FC<Props> = ({
                         <>
                             <Row icon={Send} iconColor={colors.navy} title="Send Money" subtitle="Send funds or pay for personal expenses" onPress={onNewRequisition} />
                             <Row icon={PenLine} iconColor={colors.navy} title="New manual entry" subtitle="Record a transaction on an external account" onPress={onManualEntry} />
-                            <Row icon={History} iconColor={colors.navy} title="New Salary Advance" subtitle="Quick funds from your upcoming income" onPress={onSalaryAdvance} />
-                            <Row icon={Plus} iconColor={colors.navy} title="New Loan" subtitle="Fixed loan with structured repayment" onPress={onStaffLoan} />
+                            <Row icon={History} iconColor={colors.navy} title="New Salary Advance" subtitle={employerName ? `Ask ${employerName} for funds from your next pay` : 'Quick funds from your upcoming income'} onPress={onSalaryAdvance} />
+                            <Row icon={Plus} iconColor={colors.navy} title="New Loan" subtitle={employerName ? `Staff loan from ${employerName}, repaid through payroll` : 'Fixed loan with structured repayment'} onPress={onStaffLoan} />
                             <Row icon={TrendingUp} iconColor={colors.navy} title="Invest" subtitle="Grow your money with our partners" onPress={onInvest} />
                         </>
                     ) : (

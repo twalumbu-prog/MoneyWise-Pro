@@ -1,7 +1,7 @@
 import { View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { Stack } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, Smartphone, Mail, Sparkles, Wallet, Landmark, Check } from 'lucide-react-native';
+import { Bell, Smartphone, Mail, Sparkles, Wallet, Check } from 'lucide-react-native';
 import { userService } from 'core';
 import type { NotifyChannel, SalaryDestination, PreferencesResponse } from 'core';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
@@ -9,6 +9,8 @@ import { InlineSearchSelect } from '../../src/components/InlineSearchSelect';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
 const DEFAULT_ID = '__default__';
+const WALLET_ID = '__wallet__';
+const PAYROLL_ID = '__payroll__';
 
 /**
  * Settings → Preferences (personal accounts): where notifications arrive, which AI models do what, and — for people on an
@@ -29,7 +31,7 @@ export default function PreferencesScreen() {
                     preferences: {
                         notifications: { ...prev.preferences.notifications, ...patch.notifications } as any,
                         ai: { ...prev.preferences.ai, ...patch.ai },
-                        payroll: { ...prev.preferences.payroll, ...patch.payroll } as any,
+                        payroll: { ...prev.preferences.payroll, account_id: null, ...patch.payroll } as any,
                     },
                 });
             }
@@ -45,6 +47,13 @@ export default function PreferencesScreen() {
         { id: 'APP', label: 'App only', sub: 'Push notifications on your phone, no emails', icon: <Smartphone size={18} color={colors.blue} /> },
         { id: 'EMAIL', label: 'Email only', sub: 'Emails only, no push notifications', icon: <Mail size={18} color={colors.blue} /> },
     ];
+
+    const salaryItems = [
+        ...(data?.salary.personalAccount ? [{ id: WALLET_ID, label: 'My MoneyWise personal account' }] : []),
+        ...(data?.salary.accounts ?? []).map((a) => ({ id: a.id, label: `${a.kind === 'BANK' ? 'Bank' : 'Mobile money'}: ${a.label}${a.is_default ? ' (primary)' : ''}` })),
+        { id: PAYROLL_ID, label: 'Use the details my employer has on file' },
+    ];
+    const salarySelected = !p ? null : p.payroll.destination === 'PERSONAL_WALLET' ? WALLET_ID : p.payroll.account_id ?? PAYROLL_ID;
 
     const modelItems = (list: { id: string; label: string }[]) => [{ id: DEFAULT_ID, label: 'Automatic (recommended)' }, ...list.map((m) => ({ id: m.id, label: m.label }))];
 
@@ -91,23 +100,30 @@ export default function PreferencesScreen() {
                     {data.salary.available && (
                         <>
                             <Text style={[styles.sectionLabel, { marginTop: 24 }]}>SALARY</Text>
-                            <View style={styles.card}>
-                                <Choice
-                                    icon={<Wallet size={18} color={colors.blue} />} label="My MoneyWise personal account"
-                                    sub={data.salary.personalAccount ? 'Paid straight into your wallet, instantly and free' : 'You need an active MoneyWise personal account first'}
-                                    selected={p.payroll.destination === 'PERSONAL_WALLET'} disabled={!data.salary.personalAccount}
-                                    onPress={() => save.mutate({ payroll: { destination: 'PERSONAL_WALLET' as SalaryDestination } })}
+                            <View style={[styles.card, { padding: 16 }]}>
+                                <View style={styles.aiHead}><Wallet size={16} color={colors.blue} /><Text style={styles.aiTitle}>Pay my salary into</Text></View>
+                                <Text style={styles.aiSub}>
+                                    Where {data.salary.employers.length ? data.salary.employers.join(', ') : 'your employer'} pays you. Takes effect from the next payroll.
+                                </Text>
+                                <InlineSearchSelect
+                                    items={salaryItems}
+                                    selectedId={salarySelected}
+                                    placeholder="Choose where to be paid"
+                                    searchPlaceholder="Search…"
+                                    maxVisible={12}
+                                    onSelect={(i) => {
+                                        if (i.id === WALLET_ID) save.mutate({ payroll: { destination: 'PERSONAL_WALLET' as SalaryDestination } });
+                                        else if (i.id === PAYROLL_ID) save.mutate({ payroll: { destination: 'BANK' as SalaryDestination, account_id: null } });
+                                        else {
+                                            const acc = data.salary.accounts.find((x) => x.id === i.id);
+                                            if (acc) save.mutate({ payroll: { destination: acc.kind as SalaryDestination, account_id: acc.id } });
+                                        }
+                                    }}
                                 />
-                                <Choice
-                                    icon={<Landmark size={18} color={colors.blue} />} label="My bank or mobile money" border
-                                    sub={data.salary.bankSummary ?? 'Add your details in My Profile so payroll can pay you'}
-                                    selected={p.payroll.destination === 'BANK'}
-                                    onPress={() => save.mutate({ payroll: { destination: 'BANK' as SalaryDestination } })}
-                                />
+                                {data.salary.accounts.length === 0 && (
+                                    <Text style={styles.hint}>Add bank or mobile money accounts in My Profile to choose them here.</Text>
+                                )}
                             </View>
-                            <Text style={styles.hint}>
-                                Where {data.salary.employers.length ? data.salary.employers.join(', ') : 'your employer'} pays your salary. Takes effect from the next payroll.
-                            </Text>
                         </>
                     )}
                 </ScrollView>

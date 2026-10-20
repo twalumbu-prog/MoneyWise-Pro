@@ -6,8 +6,9 @@ import {
 } from 'react-native';
 import { Stack } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Plus, Trash2 } from 'lucide-react-native';
 import { userService } from 'core';
-import type { PaymentInfo } from 'core';
+import type { BankAccount, MobileMoneyAccount } from 'core';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { InlineSearchSelect } from '../../src/components/InlineSearchSelect';
 import { colors, fonts, radius } from '../../src/theme/tokens';
@@ -15,10 +16,13 @@ import { colors, fonts, radius } from '../../src/theme/tokens';
 const BANK_OPTIONS = ['Absa Bank', 'Access Bank', 'Atlas Mara', 'Ecobank', 'FNB', 'Indo-Zambia Bank', 'Investrust', 'Stanbic Bank', 'Standard Chartered', 'ZANACO', 'Zambia Industrial Commercial Bank'];
 const MOMO_OPTIONS = ['Airtel Money', 'MTN Mobile Money', 'Zamtel Kwacha'];
 
+let idSeq = 0;
+const newId = () => `acc-${Date.now().toString(36)}-${(idSeq++).toString(36)}`;
+
 /**
- * Personal profile — disbursement details a requestor or staff loan recipient
- * gives so payouts can reach them directly. Name/role are read-only here
- * (an admin changes those via Team Members); this screen only edits payment info.
+ * Personal profile — the payout details a requestor, staff loan recipient or employee gives so money can reach them directly.
+ * A person can keep several bank accounts and several mobile-money accounts; one of each is the primary (what is used by
+ * default). Name/role are read-only here (an admin changes those via Team Members); this screen only edits payout details.
  */
 export default function ProfileSettingsScreen() {
     const qc = useQueryClient();
@@ -27,20 +31,37 @@ export default function ProfileSettingsScreen() {
         queryFn: () => userService.getMyProfile(),
     });
 
-    const [payment, setPayment] = useState<PaymentInfo>({});
+    const [banks, setBanks] = useState<BankAccount[]>([]);
+    const [momos, setMomos] = useState<MobileMoneyAccount[]>([]);
     const [dirty, setDirty] = useState(false);
 
     useEffect(() => {
-        if (data?.payment_info) setPayment(data.payment_info);
+        const pi = data?.payment_info;
+        if (!pi) return;
+        setBanks(pi.bank_accounts ?? (pi.bank_account_number ? [{ id: 'primary-bank', bank_name: pi.bank_name ?? '', account_number: pi.bank_account_number, account_name: pi.bank_account_name ?? '', is_default: true }] : []));
+        setMomos(pi.mobile_money_accounts ?? (pi.mobile_money_number ? [{ id: 'primary-momo', provider: pi.mobile_money_provider ?? '', number: pi.mobile_money_number, name: pi.mobile_money_name ?? '', is_default: true }] : []));
+        setDirty(false);
     }, [data]);
 
-    const set = (patch: Partial<PaymentInfo>) => { setPayment((p) => ({ ...p, ...patch })); setDirty(true); };
+    const editBank = (id: string, patch: Partial<BankAccount>) => { setBanks((l) => l.map((a) => (a.id === id ? { ...a, ...patch } : a))); setDirty(true); };
+    const editMomo = (id: string, patch: Partial<MobileMoneyAccount>) => { setMomos((l) => l.map((a) => (a.id === id ? { ...a, ...patch } : a))); setDirty(true); };
+    const primaryBank = (id: string) => { setBanks((l) => l.map((a) => ({ ...a, is_default: a.id === id }))); setDirty(true); };
+    const primaryMomo = (id: string) => { setMomos((l) => l.map((a) => ({ ...a, is_default: a.id === id }))); setDirty(true); };
+    const removeBank = (id: string) => { setBanks((l) => { const next = l.filter((a) => a.id !== id); return next.length && !next.some((a) => a.is_default) ? next.map((a, i) => ({ ...a, is_default: i === 0 })) : next; }); setDirty(true); };
+    const removeMomo = (id: string) => { setMomos((l) => { const next = l.filter((a) => a.id !== id); return next.length && !next.some((a) => a.is_default) ? next.map((a, i) => ({ ...a, is_default: i === 0 })) : next; }); setDirty(true); };
+    const addBank = () => { setBanks((l) => [...l, { id: newId(), bank_name: '', account_number: '', account_name: '', is_default: l.length === 0 }]); setDirty(true); };
+    const addMomo = () => { setMomos((l) => [...l, { id: newId(), provider: '', number: '', name: '', is_default: l.length === 0 }]); setDirty(true); };
 
     const save = useMutation({
-        mutationFn: () => userService.updatePaymentInfo(payment),
+        mutationFn: () => userService.updatePaymentInfo({
+            // Half-filled rows (no number) are dropped by the server; send everything else as the person left it.
+            bank_accounts: banks.filter((a) => a.account_number.trim()),
+            mobile_money_accounts: momos.filter((a) => a.number.trim()),
+        }),
         onSuccess: () => {
             setDirty(false);
             qc.invalidateQueries({ queryKey: ['users', 'me'] });
+            qc.invalidateQueries({ queryKey: ['preferences'] });
             Alert.alert('Saved', 'Your payment information has been updated.');
         },
         onError: (e: Error) => Alert.alert('Could not save', e.message),
@@ -54,7 +75,7 @@ export default function ProfileSettingsScreen() {
             {isLoading ? (
                 <View style={styles.centre}><ActivityIndicator color={colors.blue} /></View>
             ) : (
-                <ScrollView contentContainerStyle={styles.scroll}>
+                <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
                     <View style={styles.card}>
                         <Text style={styles.label}>Name</Text>
                         <Text style={styles.readonly}>{data?.name || '—'}</Text>
@@ -63,62 +84,80 @@ export default function ProfileSettingsScreen() {
                     </View>
 
                     <View style={styles.card}>
-                        <Text style={styles.sectionTitle}>Bank details</Text>
-                        <Text style={styles.label}>Bank</Text>
-                        <InlineSearchSelect
-                            items={BANK_OPTIONS.map((b) => ({ id: b, label: b }))}
-                            selectedId={payment.bank_name || null}
-                            placeholder="Select bank"
-                            searchPlaceholder="Search banks…"
-                            maxVisible={12}
-                            onSelect={(i) => set({ bank_name: i.id })}
-                        />
-                        <Text style={[styles.label, styles.spaced]}>Account number</Text>
-                        <TextInput
-                            style={styles.input}
-                            value={payment.bank_account_number ?? ''}
-                            onChangeText={(v) => set({ bank_account_number: v })}
-                            keyboardType="number-pad" inputAccessoryViewID={KB_DONE_ID}
-                            placeholder="0123456789"
-                            placeholderTextColor={colors.textFaint}
-                        />
-                        <Text style={[styles.label, styles.spaced]}>Account name</Text>
-                        <TextInput
-                            style={styles.input}
-                            value={payment.bank_account_name ?? ''}
-                            onChangeText={(v) => set({ bank_account_name: v })}
-                            placeholder="As it appears on the account"
-                            placeholderTextColor={colors.textFaint}
-                        />
+                        <Text style={styles.sectionTitle}>Bank accounts</Text>
+                        {banks.length === 0 && <Text style={styles.empty}>No bank account yet.</Text>}
+                        {banks.map((a, i) => (
+                            <View key={a.id} style={[styles.account, i > 0 && styles.accountGap]}>
+                                <AccountHeader index={i} isPrimary={a.is_default} showPrimary={banks.length > 1} onPrimary={() => primaryBank(a.id)} onRemove={() => removeBank(a.id)} />
+                                <Text style={styles.label}>Bank</Text>
+                                <InlineSearchSelect
+                                    items={BANK_OPTIONS.map((b) => ({ id: b, label: b }))}
+                                    selectedId={a.bank_name || null}
+                                    placeholder="Select bank"
+                                    searchPlaceholder="Search banks…"
+                                    maxVisible={12}
+                                    onSelect={(it) => editBank(a.id, { bank_name: it.id })}
+                                />
+                                <Text style={[styles.label, styles.spaced]}>Account number</Text>
+                                <TextInput
+                                    style={styles.input}
+                                    value={a.account_number}
+                                    onChangeText={(v) => editBank(a.id, { account_number: v })}
+                                    keyboardType="number-pad" inputAccessoryViewID={KB_DONE_ID}
+                                    placeholder="0123456789"
+                                    placeholderTextColor={colors.textFaint}
+                                />
+                                <Text style={[styles.label, styles.spaced]}>Account name</Text>
+                                <TextInput
+                                    style={styles.input}
+                                    value={a.account_name}
+                                    onChangeText={(v) => editBank(a.id, { account_name: v })}
+                                    placeholder="As it appears on the account"
+                                    placeholderTextColor={colors.textFaint}
+                                />
+                            </View>
+                        ))}
+                        <Pressable onPress={addBank} style={({ pressed }) => [styles.addBtn, pressed && { opacity: 0.7 }]} accessibilityLabel="Add a bank account">
+                            <Plus size={16} color={colors.blue} /><Text style={styles.addText}>Add a bank account</Text>
+                        </Pressable>
                     </View>
 
                     <View style={styles.card}>
-                        <Text style={styles.sectionTitle}>Mobile money</Text>
-                        <Text style={styles.label}>Provider</Text>
-                        <InlineSearchSelect
-                            items={MOMO_OPTIONS.map((m) => ({ id: m, label: m }))}
-                            selectedId={payment.mobile_money_provider || null}
-                            placeholder="Select provider"
-                            searchPlaceholder="Search providers…"
-                            onSelect={(i) => set({ mobile_money_provider: i.id })}
-                        />
-                        <Text style={[styles.label, styles.spaced]}>Number</Text>
-                        <TextInput
-                            style={styles.input}
-                            value={payment.mobile_money_number ?? ''}
-                            onChangeText={(v) => set({ mobile_money_number: v })}
-                            keyboardType="phone-pad" inputAccessoryViewID={KB_DONE_ID}
-                            placeholder="09xxxxxxxx"
-                            placeholderTextColor={colors.textFaint}
-                        />
-                        <Text style={[styles.label, styles.spaced]}>Registered name</Text>
-                        <TextInput
-                            style={styles.input}
-                            value={payment.mobile_money_name ?? ''}
-                            onChangeText={(v) => set({ mobile_money_name: v })}
-                            placeholder="As registered with the provider"
-                            placeholderTextColor={colors.textFaint}
-                        />
+                        <Text style={styles.sectionTitle}>Mobile money accounts</Text>
+                        {momos.length === 0 && <Text style={styles.empty}>No mobile money account yet.</Text>}
+                        {momos.map((a, i) => (
+                            <View key={a.id} style={[styles.account, i > 0 && styles.accountGap]}>
+                                <AccountHeader index={i} isPrimary={a.is_default} showPrimary={momos.length > 1} onPrimary={() => primaryMomo(a.id)} onRemove={() => removeMomo(a.id)} />
+                                <Text style={styles.label}>Provider</Text>
+                                <InlineSearchSelect
+                                    items={MOMO_OPTIONS.map((m) => ({ id: m, label: m }))}
+                                    selectedId={a.provider || null}
+                                    placeholder="Select provider"
+                                    searchPlaceholder="Search providers…"
+                                    onSelect={(it) => editMomo(a.id, { provider: it.id })}
+                                />
+                                <Text style={[styles.label, styles.spaced]}>Number</Text>
+                                <TextInput
+                                    style={styles.input}
+                                    value={a.number}
+                                    onChangeText={(v) => editMomo(a.id, { number: v })}
+                                    keyboardType="phone-pad" inputAccessoryViewID={KB_DONE_ID}
+                                    placeholder="09xxxxxxxx"
+                                    placeholderTextColor={colors.textFaint}
+                                />
+                                <Text style={[styles.label, styles.spaced]}>Registered name</Text>
+                                <TextInput
+                                    style={styles.input}
+                                    value={a.name}
+                                    onChangeText={(v) => editMomo(a.id, { name: v })}
+                                    placeholder="As registered with the provider"
+                                    placeholderTextColor={colors.textFaint}
+                                />
+                            </View>
+                        ))}
+                        <Pressable onPress={addMomo} style={({ pressed }) => [styles.addBtn, pressed && { opacity: 0.7 }]} accessibilityLabel="Add a mobile money account">
+                            <Plus size={16} color={colors.blue} /><Text style={styles.addText}>Add a mobile money account</Text>
+                        </Pressable>
                     </View>
 
                     <Pressable
@@ -135,6 +174,19 @@ export default function ProfileSettingsScreen() {
         </View>
     );
 }
+
+const AccountHeader: React.FC<{ index: number; isPrimary: boolean; showPrimary: boolean; onPrimary: () => void; onRemove: () => void }> = ({ index, isPrimary, showPrimary, onPrimary, onRemove }) => (
+    <View style={styles.accountHead}>
+        <View style={styles.accountTitleRow}>
+            <Text style={styles.accountTitle}>Account {index + 1}</Text>
+            {isPrimary && showPrimary && <View style={styles.primaryBadge}><Text style={styles.primaryBadgeText}>Primary</Text></View>}
+        </View>
+        <View style={styles.accountActions}>
+            {!isPrimary && <Pressable onPress={onPrimary} hitSlop={8}><Text style={styles.linkText}>Make primary</Text></Pressable>}
+            <Pressable onPress={onRemove} hitSlop={8} accessibilityLabel="Remove this account"><Trash2 size={16} color={colors.danger} /></Pressable>
+        </View>
+    </View>
+);
 
 const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.canvas },
@@ -161,6 +213,18 @@ const styles = StyleSheet.create({
     chipActive: { backgroundColor: colors.tabActiveBg, borderColor: colors.blue },
     chipText: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.textMuted },
     chipTextActive: { color: colors.blue },
+    empty: { fontFamily: fonts.body, fontSize: 13, color: colors.textFaint, marginBottom: 12 },
+    account: { paddingBottom: 6 },
+    accountGap: { marginTop: 18, paddingTop: 18, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.borderStrong },
+    accountHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+    accountTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    accountTitle: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.navy },
+    primaryBadge: { backgroundColor: colors.tabActiveBg, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 2 },
+    primaryBadgeText: { fontFamily: fonts.bodyBold, fontSize: 10, color: colors.blue },
+    accountActions: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+    linkText: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.blue },
+    addBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 16, paddingVertical: 8 },
+    addText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.blue },
     saveBtn: {
         backgroundColor: colors.blue, borderRadius: radius.md, paddingVertical: 16,
         alignItems: 'center', justifyContent: 'center', minHeight: 52,

@@ -2063,7 +2063,12 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                         {paymentType === 'MOBILE_MONEY' ? 'Recipient Number' : 'Bank & Account Details'}
                                                                     </label>
 
-                                                                    {paymentType === 'BANK' && (
+                                                                    {isMoneyWisePayReq && (
+                                                                        <div className="px-6 py-4 bg-blue-50 border border-blue-100 rounded-2xl text-[12px] font-medium text-blue-900 leading-relaxed">
+                                                                            MoneyWise account{requisitionData?.recipient_name ? ` · ${requisitionData.recipient_name}` : ''} — sent straight to their wallet. Instant and free.
+                                                                        </div>
+                                                                    )}
+                                                                    {paymentType === 'BANK' && !isMoneyWisePayReq && (
                                                                         <div className="animate-in fade-in slide-in-from-top-2 duration-300">
                                                                             <BankSelect
                                                                                 banks={banks}

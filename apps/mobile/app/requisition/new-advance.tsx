@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { KB_DONE_ID } from '../../src/components/KeyboardDoneBar';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator, Modal,
-    KeyboardAvoidingView, 
+    KeyboardAvoidingView, Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
@@ -11,6 +11,9 @@ import { X, AlertCircle, ChevronDown, ArrowRight } from 'lucide-react-native';
 import { requisitionService, formatKwacha } from 'core';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 import { useGoBack } from '../../src/hooks/useGoBack';
+import { useAuth } from '../../src/context/AuthContext';
+import { useEmployers } from '../../src/hooks/useEmployers';
+import { LoanLogo } from '../../src/components/loans/LoanLogo';
 
 const DEPARTMENTS = ['Finance', 'Admin', 'HR', 'IT', 'Education', 'Transportation', 'Stocks', 'Maintenance', 'Catering'];
 const ACCENT = '#10B981';
@@ -21,6 +24,12 @@ export default function NewSalaryAdvanceScreen() {
     const safeBack = useGoBack();
     const qc = useQueryClient();
     const insets = useSafeAreaInsets();
+    const { userName } = useAuth();
+    // A personal account that works for an organization asks that organization; the money is paid into the personal account.
+    const { employers } = useEmployers();
+    const [employerId, setEmployerId] = useState<string | null>(null);
+    const employer = employers.length === 1 ? employers[0] : employers.find((e) => e.id === employerId) ?? null;
+    const requestingFromEmployer = employers.length > 0;
 
     const [stage, setStage] = useState<Stage>(1);
     const [staffName, setStaffName] = useState('');
@@ -35,10 +44,14 @@ export default function NewSalaryAdvanceScreen() {
     const numericAmount = Number(amount) || 0;
 
     const proceed = () => {
-        if (!staffName.trim()) { setError("Please enter the staff member's name."); return; }
-        if (!employeeId.trim()) { setError('Please enter the employee ID.'); return; }
+        if (requestingFromEmployer) {
+            if (!employer) { setError('Please choose which organization to request from.'); return; }
+        } else {
+            if (!staffName.trim()) { setError("Please enter the staff member's name."); return; }
+            if (!employeeId.trim()) { setError('Please enter the employee ID.'); return; }
+            if (!department) { setError('Please select a department.'); return; }
+        }
         if (numericAmount <= 0) { setError('Please enter a valid advance amount.'); return; }
-        if (!department) { setError('Please select a department.'); return; }
         setError(null);
         setStage(2);
     };
@@ -48,15 +61,19 @@ export default function NewSalaryAdvanceScreen() {
         setError(null);
         try {
             await requisitionService.create({
-                description: `ADVANCE: ${staffName} - ${reason || 'Salary Advance'}`,
-                department,
+                description: `ADVANCE: ${requestingFromEmployer ? userName : staffName} - ${reason || 'Salary Advance'}`,
+                department: requestingFromEmployer ? 'HR' : department,
                 type: 'ADVANCE',
                 estimated_total: numericAmount,
-                staff_name: staffName,
-                employee_id: employeeId,
+                staff_name: requestingFromEmployer ? (userName ?? '') : staffName,
+                employee_id: requestingFromEmployer ? (employer?.employeeId ?? undefined) : employeeId,
                 loan_amount: numericAmount,
+                ...(requestingFromEmployer && employer ? { target_organization_id: employer.id } : {}),
             } as any);
             qc.invalidateQueries({ queryKey: ['requisitions'] });
+            if (requestingFromEmployer && employer) {
+                Alert.alert('Request sent', `${employer.name} will review your salary advance request. Once it's approved, the money is paid straight into your MoneyWise account.`);
+            }
             safeBack();
         } catch (e: any) {
             setError(e?.message ?? 'Failed to submit. Please try again.');
@@ -97,17 +114,39 @@ export default function NewSalaryAdvanceScreen() {
                         <Text style={styles.stepTitle}>Advance Details</Text>
                         <Text style={styles.stepSub}>Fill in the details for the salary advance</Text>
 
-                        <Text style={styles.label}>Staff Member Name</Text>
-                        <TextInput style={styles.input} value={staffName} onChangeText={setStaffName} placeholder="Enter full name" placeholderTextColor={colors.textFaint} />
+                        {requestingFromEmployer ? (
+                            <>
+                                <Text style={styles.label}>{employers.length > 1 ? 'Request from' : 'Employer'}</Text>
+                                {employers.map((e) => {
+                                    const selected = employer?.id === e.id;
+                                    return (
+                                        <Pressable key={e.id} onPress={() => setEmployerId(e.id)} style={[styles.employerRow, selected && styles.employerRowOn]} accessibilityRole="radio" accessibilityState={{ selected }}>
+                                            <LoanLogo logo={null} orgLogoUrl={e.logoUrl} size={40} />
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={styles.employerName}>{e.name}</Text>
+                                                <Text style={styles.employerSub}>Internal organization · paid into your MoneyWise account once approved</Text>
+                                            </View>
+                                            <View style={[styles.radio, selected && styles.radioOn]}>{selected && <View style={styles.radioDot} />}</View>
+                                        </Pressable>
+                                    );
+                                })}
+                                <Text style={[styles.employerSub, { marginTop: 6 }]}>Requesting as {userName}.</Text>
+                            </>
+                        ) : (
+                            <>
+                                <Text style={styles.label}>Staff Member Name</Text>
+                                <TextInput style={styles.input} value={staffName} onChangeText={setStaffName} placeholder="Enter full name" placeholderTextColor={colors.textFaint} />
 
-                        <Text style={[styles.label, styles.spaced]}>Employee ID</Text>
-                        <TextInput style={styles.input} value={employeeId} onChangeText={setEmployeeId} placeholder="e.g. EMP-001" placeholderTextColor={colors.textFaint} />
+                                <Text style={[styles.label, styles.spaced]}>Employee ID</Text>
+                                <TextInput style={styles.input} value={employeeId} onChangeText={setEmployeeId} placeholder="e.g. EMP-001" placeholderTextColor={colors.textFaint} />
 
-                        <Text style={[styles.label, styles.spaced]}>Department</Text>
-                        <Pressable style={styles.selectInput} onPress={() => setDeptPickerOpen(true)}>
-                            <Text style={[styles.selectInputText, !department && styles.selectInputPlaceholder]}>{department || 'Select Department'}</Text>
-                            <ChevronDown size={16} color={colors.textFaint} />
-                        </Pressable>
+                                <Text style={[styles.label, styles.spaced]}>Department</Text>
+                                <Pressable style={styles.selectInput} onPress={() => setDeptPickerOpen(true)}>
+                                    <Text style={[styles.selectInputText, !department && styles.selectInputPlaceholder]}>{department || 'Select Department'}</Text>
+                                    <ChevronDown size={16} color={colors.textFaint} />
+                                </Pressable>
+                            </>
+                        )}
 
                         <Text style={[styles.label, styles.spaced]}>Advance Amount (K)</Text>
                         <TextInput style={styles.input} value={amount} onChangeText={(v) => setAmount(v.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" inputAccessoryViewID={KB_DONE_ID} placeholder="0.00" placeholderTextColor={colors.textFaint} />
@@ -131,15 +170,25 @@ export default function NewSalaryAdvanceScreen() {
                         <Text style={styles.stepSub}>Review and confirm the advance request</Text>
 
                         <View style={styles.summaryCard}>
-                            <SummaryRow label="Staff Member" value={staffName} />
-                            <SummaryRow label="Employee ID" value={employeeId} />
-                            <SummaryRow label="Department" value={department} />
+                            {requestingFromEmployer ? (
+                                <>
+                                    <SummaryRow label="Employer" value={employer?.name ?? ''} />
+                                    <SummaryRow label="Requested by" value={userName ?? ''} />
+                                    <SummaryRow label="Paid into" value="Your MoneyWise account" />
+                                </>
+                            ) : (
+                                <>
+                                    <SummaryRow label="Staff Member" value={staffName} />
+                                    <SummaryRow label="Employee ID" value={employeeId} />
+                                    <SummaryRow label="Department" value={department} />
+                                </>
+                            )}
                             <SummaryRow label="Advance Amount" value={formatKwacha(numericAmount)} />
                             {reason && <Text style={styles.summaryReason}>Reason: {reason}</Text>}
                         </View>
 
                         <View style={styles.noteCard}>
-                            <Text style={styles.noteText}>This salary advance will be deducted from the employee's next payroll cycle.</Text>
+                            <Text style={styles.noteText}>{requestingFromEmployer ? 'Once approved, the advance is paid into your MoneyWise account and recovered from your next payroll.' : "This salary advance will be deducted from the employee's next payroll cycle."}</Text>
                         </View>
 
                         <Pressable style={[styles.submitBtn, submitting && styles.submitBtnDisabled]} onPress={submit} disabled={submitting}>
@@ -218,6 +267,13 @@ const styles = StyleSheet.create({
     previewLabel: { fontFamily: fonts.bodyBold, fontSize: 9, color: 'rgba(255,255,255,0.7)', letterSpacing: 1 },
     previewAmount: { fontFamily: fonts.bodyBold, fontSize: 28, color: '#FFFFFF', marginTop: 6 },
     previewNote: { fontFamily: fonts.body, fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 4 },
+    employerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, marginBottom: 10 },
+    employerRowOn: { borderColor: ACCENT, backgroundColor: '#ECFDF5' },
+    employerName: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text },
+    employerSub: { fontFamily: fonts.body, fontSize: 11, color: colors.textFaint, marginTop: 2, lineHeight: 15 },
+    radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
+    radioOn: { borderColor: ACCENT },
+    radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: ACCENT },
     summaryCard: { backgroundColor: colors.canvasAlt, borderRadius: radius.lg, padding: 16, gap: 10, borderWidth: 1, borderColor: colors.border },
     summaryRow: { flexDirection: 'row', justifyContent: 'space-between' },
     summaryLabel: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint },

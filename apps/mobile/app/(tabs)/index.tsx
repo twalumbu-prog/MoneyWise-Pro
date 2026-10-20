@@ -22,6 +22,7 @@ import { WalkthroughCard } from '../../src/components/walkthrough/WalkthroughCar
 import { walkthroughUi } from '../../src/lib/walkthroughUi';
 import { AnimatedSegmented, AnimatedTabContent } from '../../src/components/AnimatedTabs';
 import { useAuth } from '../../src/context/AuthContext';
+import { useEmployers } from '../../src/hooks/useEmployers';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
 /** Status tabs, derived from core's config so they cannot drift from the web inbox. */
@@ -49,6 +50,7 @@ export default function InboxScreen() {
         activeOrgName.toLowerCase().includes('individual') ||
         activeOrgName.toLowerCase().includes('private');
 
+    const { employers } = useEmployers();
     const [mode, setMode] = useState<InboxMode>('outflows');
     const [tab, setTab] = useState('ALL');
     const [inflowTab, setInflowTab] = useState('ALL');
@@ -377,6 +379,7 @@ export default function InboxScreen() {
                 mode={mode}
                 userRole={userRole}
                 isPersonal={isPersonal}
+                employerName={employers.length === 1 ? employers[0].name : employers.length > 1 ? 'your employer' : undefined}
                 onNewSale={() => {
                     setNewMenuOpen(false);
                     Alert.alert('New Sale', 'Recording sales from the app is coming in a later update — use the web app for now.');

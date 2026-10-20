@@ -6,7 +6,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, Send, MoreVertical, Trash2 } from 'lucide-react-native';
+import { ChevronLeft, Send, MoreVertical, Trash2, HandCoins } from 'lucide-react-native';
 import {
     requisitionService, canAuthoriseRequisition, isPrivilegedRole,
 } from 'core';
@@ -16,6 +16,7 @@ import { RequisitionProgress } from '../../src/components/requisitions/Requisiti
 import { RequisitionMessageCard } from '../../src/components/requisitions/RequisitionMessageCard';
 import { RequisitionAttachments } from '../../src/components/requisitions/RequisitionAttachments';
 import { AuditScoreBreakdown } from '../../src/components/requisitions/AuditScoreBreakdown';
+import { LoanRecoverySheet } from '../../src/components/requisitions/LoanRecoverySheet';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 import { useGoBack } from '../../src/hooks/useGoBack';
 
@@ -40,6 +41,7 @@ export default function RequisitionDetailScreen() {
     const [actingOn, setActingOn] = useState<'APPROVE' | 'REJECT' | null>(null);
     const [tab, setTab] = useState<Tab>('chat');
     const [menuOpen, setMenuOpen] = useState(false);
+    const [recoveryOpen, setRecoveryOpen] = useState(false);
 
     const { data: req, isLoading, isError, error, refetch: refetchReq } = useQuery({
         queryKey: ['requisitions', id],
@@ -121,6 +123,10 @@ export default function RequisitionDetailScreen() {
         ? canAuthoriseRequisition(userRole)
         : isPrivilegedRole(userRole);
     const canDelete = !!req && DELETABLE_STATUSES.includes(req.status);
+    // An admin can acknowledge a repayment made outside payroll on a salary advance / loan that has been paid out.
+    const canRecordRecovery = !!req && (req.type === 'LOAN' || req.type === 'ADVANCE')
+        && ['DISBURSED', 'RECEIVED', 'ACCOUNTED', 'CATEGORIZED', 'COMPLETED'].includes(req.status)
+        && (userRole === 'ADMIN' || userRole === 'ACCOUNTANT');
 
     return (
         <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -236,17 +242,26 @@ export default function RequisitionDetailScreen() {
             <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)} statusBarTranslucent>
                 <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)}>
                     <View style={[styles.menuCard, { marginTop: insets.top + 56 }]}>
-                        {canDelete ? (
+                        {canRecordRecovery && (
+                            <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setRecoveryOpen(true); }}>
+                                <HandCoins size={15} color={colors.navy} />
+                                <Text style={styles.menuItemText}>Record recovery</Text>
+                            </Pressable>
+                        )}
+                        {canDelete && (
                             <Pressable style={styles.menuItem} onPress={deleteRequisition}>
                                 <Trash2 size={15} color={colors.danger} />
                                 <Text style={styles.menuItemDangerText}>Delete Requisition</Text>
                             </Pressable>
-                        ) : (
-                            <Text style={styles.menuEmptyText}>No actions available</Text>
                         )}
+                        {!canDelete && !canRecordRecovery && <Text style={styles.menuEmptyText}>No actions available</Text>}
                     </View>
                 </Pressable>
             </Modal>
+
+            {req && (req.type === 'LOAN' || req.type === 'ADVANCE') && (
+                <LoanRecoverySheet visible={recoveryOpen} requisitionId={String(id)} kind={req.type} onClose={() => setRecoveryOpen(false)} onDone={refresh} />
+            )}
         </View>
     );
 }
@@ -306,6 +321,7 @@ const styles = StyleSheet.create({
         shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
     },
     menuItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12 },
+    menuItemText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.navy },
     menuItemDangerText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.danger },
     menuEmptyText: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint, paddingHorizontal: 16, paddingVertical: 12 },
 });

@@ -103,7 +103,8 @@ export const DisburseSheet: React.FC<{
     }, [wallets, walletId]);
 
     const selectedWallet = wallets.find((w: any) => w.id === walletId);
-    // MoneyWise Pay (wallet-to-wallet) is an on-us transfer: no payout fee.
+    // MoneyWise Pay (wallet-to-wallet) is an on-us transfer: no payout fee, and no bank / mobile-money details to enter or look up
+    // (e.g. an approved salary advance or loan going into an employee's personal MoneyWise account).
     const isMoneyWisePay = (savedMethod || '').toUpperCase() === 'MONEYWISE_PAY' || savedCode === 'MONEYWISE';
     const fee = lencoService.calculatePayoutFee(amount, isMoneyWisePay ? 'MONEYWISE_PAY' : rail);
     const totalDue = amount + fee;
@@ -119,7 +120,7 @@ export const DisburseSheet: React.FC<{
 
     // ── recipient name verification ──
     useEffect(() => {
-        if (route !== 'WALLET' || lookupName || looking || !provider) return;
+        if (route !== 'WALLET' || isMoneyWisePay || lookupName || looking || !provider) return;
         const ready = rail === 'MOBILE_MONEY' ? phone.length === 10 : recipient.trim().length >= 5;
         if (!ready) return;
         const seq = ++lookupSeq.current;
@@ -130,7 +131,7 @@ export const DisburseSheet: React.FC<{
         run.then((res: any) => { if (seq === lookupSeq.current) setLookupName(res?.accountName || res?.account_name || res?.name || 'Name not found'); })
             .catch(() => { if (seq === lookupSeq.current) setLookupName('Name not found'); })
             .finally(() => { if (seq === lookupSeq.current) setLooking(false); });
-    }, [route, rail, provider, phone, recipient, lookupName, looking, organizationId]);
+    }, [route, rail, provider, phone, recipient, lookupName, looking, organizationId, isMoneyWisePay]);
 
     const bankItems = useMemo(() => banks.map((b) => ({ id: String(b.id), label: String(b.name) })), [banks]);
     const walletItems = useMemo(() => wallets.map((w: any) => ({ id: w.id, label: `${w.name} · ${formatKwacha(w.balance)}` })), [wallets]);
@@ -141,12 +142,11 @@ export const DisburseSheet: React.FC<{
     };
 
     const walletReady = route === 'WALLET'
-        && amount >= LENCO_MIN_TRANSFER
-        && recipient.trim().length > 0
-        && !!provider
         && (wallets.length === 0 || !!walletId)
         && !insufficient
-        && lookupName !== 'Name not found';
+        && (isMoneyWisePay
+            ? amount > 0 && !!recipientAccount
+            : amount >= LENCO_MIN_TRANSFER && recipient.trim().length > 0 && !!provider && lookupName !== 'Name not found');
     const canSubmit = route === 'CASH' ? amount > 0 : walletReady;
 
     const pay = useMutation({
@@ -157,7 +157,14 @@ export const DisburseSheet: React.FC<{
                 return isExcess ? requisitionService.disburseExcess(requisitionId, payload) : requisitionService.disburse(requisitionId, payload);
             }
             setStatus('Initiating transfer…');
-            const payload = {
+            const payload = isMoneyWisePay ? {
+                payment_method: 'MONEYWISE_WALLET',
+                total_prepared: amount,
+                recipient_account: recipientAccount,
+                recipient_bank_code: 'moneywise',
+                recipient_account_name: recipientName || undefined,
+                wallet_id: walletId || undefined,
+            } : {
                 payment_method: 'MONEYWISE_WALLET',
                 total_prepared: amount,
                 recipient_account: rail === 'MOBILE_MONEY' ? phone : recipient.trim(),
@@ -239,6 +246,15 @@ export const DisburseSheet: React.FC<{
                 </View>
             ) : (
                 <>
+                    {isMoneyWisePay ? (
+                        <View style={styles.mwCard}>
+                            <Wallet size={18} color={colors.blue} />
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.mwTitle}>MoneyWise account{recipientName ? ` · ${recipientName}` : ''}</Text>
+                                <Text style={styles.mwSub}>Sent straight to their MoneyWise wallet. Instant and free.</Text>
+                            </View>
+                        </View>
+                    ) : (
                     <View style={styles.rails}>
                         {([
                             { id: 'MOBILE_MONEY' as Rail, label: 'Mobile money', Icon: Smartphone },
@@ -250,6 +266,7 @@ export const DisburseSheet: React.FC<{
                             </Pressable>
                         ))}
                     </View>
+                    )}
 
                     <Text style={styles.label}>Amount</Text>
                     <View style={styles.amountBox}>
@@ -278,7 +295,7 @@ export const DisburseSheet: React.FC<{
                         </>
                     )}
 
-                    {rail === 'BANK' && (
+                    {!isMoneyWisePay && rail === 'BANK' && (
                         <>
                             <Text style={[styles.label, styles.spaced]}>Destination bank</Text>
                             <InlineSearchSelect
@@ -291,6 +308,7 @@ export const DisburseSheet: React.FC<{
                         </>
                     )}
 
+                    {!isMoneyWisePay && <>
                     <Text style={[styles.label, styles.spaced]}>{rail === 'MOBILE_MONEY' ? 'Recipient number' : 'Account number'}</Text>
                     <View>
                         <TextInput
@@ -318,6 +336,7 @@ export const DisburseSheet: React.FC<{
                     {amount < LENCO_MIN_TRANSFER && (
                         <Text style={styles.hintError}>Lenco needs at least K{LENCO_MIN_TRANSFER} per transfer — use Cash / Other for this amount.</Text>
                     )}
+                    </>}
                 </>
             )}
 
@@ -391,6 +410,9 @@ const styles = StyleSheet.create({
         borderRadius: radius.md, backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FDE68A',
     },
     warnText: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 12, lineHeight: 17, color: '#92400E' },
+    mwCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: radius.md, backgroundColor: colors.tabActiveBg, marginBottom: 12 },
+    mwTitle: { fontFamily: fonts.bodyBold, fontSize: 13.5, color: colors.navy },
+    mwSub: { fontFamily: fonts.body, fontSize: 12, color: colors.textMuted, marginTop: 2, lineHeight: 17 },
     note: {
         flexDirection: 'row', gap: 10, padding: 14, borderRadius: radius.md,
         backgroundColor: colors.canvasAlt, borderWidth: 1, borderColor: colors.border,

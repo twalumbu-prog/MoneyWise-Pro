@@ -96,6 +96,13 @@ export async function updatePreferences(userId: string, patch: any): Promise<Use
             const { banks, momos } = accountsOf((u as any)?.payment_info);
             const list: { id: string }[] = dest === 'BANK' ? banks : momos;
             const id = patch.payroll.account_id;
+            if (id === null || id === undefined) {
+                // No specific account: payroll uses the payment details its own staff record holds.
+                next.payroll = { destination: 'BANK', account_id: null };
+                const { error: e0 } = await supabase.from('users').update({ preferences: next }).eq('id', userId);
+                if (e0) throw new Error(`Could not save your preferences: ${e0.message}`);
+                return next;
+            }
             if (list.length === 0) bad(`Add a ${dest === 'BANK' ? 'bank' : 'mobile-money'} account in My Profile first.`);
             if (!list.some((a) => a.id === id)) bad('That account is not on your profile.');
             next.payroll = { destination: dest, account_id: id };

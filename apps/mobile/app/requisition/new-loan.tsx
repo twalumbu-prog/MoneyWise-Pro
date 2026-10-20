@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { KB_DONE_ID } from '../../src/components/KeyboardDoneBar';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator,
-    KeyboardAvoidingView, 
+    KeyboardAvoidingView, Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
@@ -12,6 +12,7 @@ import { requisitionService, organizationService, formatKwacha } from 'core';
 import { EXTERNAL_LOAN_PROVIDERS, type LoanProvider } from '../../src/data/loanCatalog';
 import { LoanLogo } from '../../src/components/loans/LoanLogo';
 import { useAuth } from '../../src/context/AuthContext';
+import { useEmployers } from '../../src/hooks/useEmployers';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 import { useGoBack } from '../../src/hooks/useGoBack';
 
@@ -23,7 +24,8 @@ export default function NewStaffLoanScreen() {
     const safeBack = useGoBack();
     const qc = useQueryClient();
     const insets = useSafeAreaInsets();
-    const { organizationId, organizationName, userOrganizations } = useAuth();
+    const { organizationId, organizationName, userOrganizations, userName } = useAuth();
+    const { employers } = useEmployers();
     const { data: org } = useQuery({ queryKey: ['organization'], queryFn: () => organizationService.getOrganization() });
 
     const currentOrg = userOrganizations.find((uo) => uo.organization?.id === organizationId)?.organization;
@@ -44,17 +46,27 @@ export default function NewStaffLoanScreen() {
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const providers: LoanProvider[] = [
-        {
+    // A personal account that belongs to an employer's organization offers that employer (with its logo) instead of the generic
+    // "Personal Loan": the request goes to the employer, and once approved is paid into the personal account.
+    type Provider = LoanProvider & { orgLogoUrl?: string | null; employerId?: string };
+    const employerProviders: Provider[] = isPersonal ? employers.map((e) => ({
+        id: `employer:${e.id}`, name: e.name, employerId: e.id, orgLogoUrl: e.logoUrl,
+        description: 'Internal organization — a staff loan paid straight into your MoneyWise account, repaid through payroll.',
+        logo: null,
+        products: [{ id: 'standard', name: 'Standard Staff Loan', interest: 15, maxPeriod: 36 }],
+    })) : [];
+    const providers: Provider[] = [
+        ...(employerProviders.length > 0 ? employerProviders : [{
             id: 'internal', name: isPersonal ? 'Personal Loan' : 'Internal Organization',
             description: `Direct loan from ${org?.name ?? 'your account'} with favourable rates.`,
             logo: null,
             products: [{ id: 'standard', name: isPersonal ? 'Standard Loan' : 'Standard Staff Loan', interest: 15, maxPeriod: 36 }],
-        },
+        } as Provider]),
         ...EXTERNAL_LOAN_PROVIDERS,
     ];
 
     const provider = providers.find((p) => p.id === providerId);
+    const employerId = provider?.employerId;
     const product = provider?.products.find((p) => p.id === productId);
     const numericAmount = Number(amount) || 0;
     const interestRate = product?.interest ?? 15;
@@ -69,26 +81,35 @@ export default function NewStaffLoanScreen() {
         else setStage((s) => (s - 1) as Stage);
     };
 
+    // Requesting from an employer: who is asking is already known (the signed-in person), so nothing about them is typed.
+    const requesterName = employerId ? (userName ?? '') : staffName;
+    const requesterId = employerId ? (employers.find((e) => e.id === employerId)?.employeeId ?? '') : employeeId;
+    const canSubmit = numericAmount > 0 && (employerId ? true : !!staffName.trim() && !!employeeId.trim());
+
     const submit = async () => {
-        if (!staffName.trim()) { setError("Please enter the staff member's name."); return; }
-        if (!employeeId.trim()) { setError('Please enter the employee ID.'); return; }
+        if (!employerId && !staffName.trim()) { setError("Please enter the staff member's name."); return; }
+        if (!employerId && !employeeId.trim()) { setError('Please enter the employee ID.'); return; }
         if (numericAmount <= 0) { setError('Please enter a valid loan amount.'); return; }
         setError(null);
         setSubmitting(true);
         try {
             await requisitionService.create({
-                description: `LOAN: ${staffName} - ${provider?.name} - ${product?.name} - ${remarks || 'Staff Loan'}`,
+                description: `LOAN: ${requesterName} - ${provider?.name} - ${product?.name} - ${remarks || 'Staff Loan'}`,
                 department: 'HR',
                 type: 'LOAN',
                 estimated_total: numericAmount,
-                staff_name: staffName,
-                employee_id: employeeId,
+                staff_name: requesterName,
+                employee_id: requesterId || undefined,
                 loan_amount: numericAmount,
                 repayment_period: repaymentPeriod,
                 interest_rate: interestRate,
                 monthly_deduction: monthlyDeduction,
+                ...(employerId ? { target_organization_id: employerId } : {}),
             } as any);
             qc.invalidateQueries({ queryKey: ['requisitions'] });
+            if (employerId) {
+                Alert.alert('Request sent', `${provider?.name} will review your loan request. Once it's approved, the money is paid straight into your MoneyWise account.`);
+            }
             safeBack();
         } catch (e: any) {
             setError(e?.message ?? 'Failed to submit. Please try again.');
@@ -117,7 +138,7 @@ export default function NewStaffLoanScreen() {
                         <Text style={styles.stepSub}>Choose where you want to request your loan from.</Text>
                         {providers.map((p) => (
                             <Pressable key={p.id} style={styles.providerRow} onPress={() => { setProviderId(p.id); setStage(2); }}>
-                                <LoanLogo logo={p.logo} orgLogoUrl={org?.logo_url} size={48} />
+                                <LoanLogo logo={p.logo} orgLogoUrl={p.orgLogoUrl ?? org?.logo_url} size={48} />
                                 <View style={{ flex: 1 }}>
                                     <Text style={styles.providerName}>{p.name}</Text>
                                     <Text style={styles.providerDesc} numberOfLines={2}>{p.description}</Text>
@@ -152,11 +173,23 @@ export default function NewStaffLoanScreen() {
                         <Text style={styles.stepTitle}>Loan Details</Text>
                         <Text style={styles.stepSub}>Fill in the details for your {product.name}.</Text>
 
-                        <Text style={styles.label}>Staff Member Name</Text>
-                        <TextInput style={styles.input} value={staffName} onChangeText={setStaffName} placeholder="Enter full name" placeholderTextColor={colors.textFaint} />
+                        {employerId ? (
+                            <View style={styles.employerCard}>
+                                <LoanLogo logo={null} orgLogoUrl={(provider as Provider).orgLogoUrl} size={36} />
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.providerName}>{provider.name}</Text>
+                                    <Text style={styles.providerDesc}>Requesting as {userName}. Paid into your MoneyWise account once approved.</Text>
+                                </View>
+                            </View>
+                        ) : (
+                            <>
+                                <Text style={styles.label}>Staff Member Name</Text>
+                                <TextInput style={styles.input} value={staffName} onChangeText={setStaffName} placeholder="Enter full name" placeholderTextColor={colors.textFaint} />
 
-                        <Text style={[styles.label, styles.spaced]}>Employee ID</Text>
-                        <TextInput style={styles.input} value={employeeId} onChangeText={setEmployeeId} placeholder="e.g. EMP-001" placeholderTextColor={colors.textFaint} />
+                                <Text style={[styles.label, styles.spaced]}>Employee ID</Text>
+                                <TextInput style={styles.input} value={employeeId} onChangeText={setEmployeeId} placeholder="e.g. EMP-001" placeholderTextColor={colors.textFaint} />
+                            </>
+                        )}
 
                         <Text style={[styles.label, styles.spaced]}>Loan Amount (K)</Text>
                         <TextInput style={styles.input} value={amount} onChangeText={(v) => setAmount(v.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" inputAccessoryViewID={KB_DONE_ID} placeholder="0.00" placeholderTextColor={colors.textFaint} />
@@ -193,9 +226,9 @@ export default function NewStaffLoanScreen() {
             {stage === 3 && (
                 <View style={styles.footer}>
                     <Pressable
-                        style={[styles.submitBtn, (submitting || numericAmount <= 0 || !staffName.trim() || !employeeId.trim()) && styles.submitBtnDisabled]}
+                        style={[styles.submitBtn, (submitting || !canSubmit) && styles.submitBtnDisabled]}
                         onPress={submit}
-                        disabled={submitting || numericAmount <= 0 || !staffName.trim() || !employeeId.trim()}
+                        disabled={submitting || !canSubmit}
                     >
                         {submitting ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.submitBtnText}>Submit Request</Text>}
                     </Pressable>
@@ -239,6 +272,7 @@ const styles = StyleSheet.create({
         borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.lg,
         paddingHorizontal: 16, paddingVertical: 13,
     },
+    employerCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: radius.lg, backgroundColor: colors.tabActiveBg, marginBottom: 6 },
     multiline: { minHeight: 70, textAlignVertical: 'top' },
     periodGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     periodBtn: {
