@@ -1,6 +1,6 @@
 import { mergePaymentInfo, presentPaymentInfo, accountsOf } from '../services/paymentInfo.service';
 import {
-    getPreferences, updatePreferences, isStaffWithPayroll, getPersonalOrgForUser, CATEGORIZATION_MODELS,
+    getPreferences, updatePreferences, isStaffWithPayroll, getPersonalOrgForUser, getEmployersForUser, CATEGORIZATION_MODELS,
 } from '../services/userPreferences.service';
 import { ASSISTANT_MODELS } from '../services/agent/models';
 import { pinRecoveryService, PinRecoveryError } from '../services/pinRecovery.service';
@@ -1203,4 +1203,14 @@ export const requestPinRecovery = async (req: AuthRequest, res: any): Promise<an
 export const verifyPinRecovery = async (req: AuthRequest, res: any): Promise<any> => {
     try { await pinRecoveryService.verifyCode((req as any).user.id, req.body?.code); res.json({ ok: true }); }
     catch (error: any) { res.status(error instanceof PinRecoveryError ? error.httpStatus : 500).json({ error: error.message || 'Could not verify the code' }); }
+};
+
+/** The organizations the person works for — who they can ask for a salary advance or staff loan. */
+export const getMyEmployers = async (req: AuthRequest, res: any): Promise<any> => {
+    try {
+        const list = await getEmployersForUser((req as any).user.id);
+        res.json(list.map((e) => ({ id: e.id, name: e.name, logoUrl: e.logo_url, employeeId: e.employee_id })));
+    } catch (error: any) {
+        res.status(500).json({ error: 'Failed to load your employers', details: error.message });
+    }
 };

@@ -169,3 +169,31 @@ export async function filterEmailsForOrg(emails: string[], orgId?: string | null
  * (submitted, approved, completed…). Those steps exist for organisations, where several people act on a request.
  */
 export const PERSONAL_SUPPRESSED_EVENTS = new Set(['NEW_REQUISITION', 'REQUISITION_APPROVED', 'CHANGE_SUBMITTED', 'REQUISITION_COMPLETED']);
+
+export interface Employer { id: string; name: string; logo_url: string | null; employee_id: string | null; role: string }
+
+/**
+ * The organizations a person WORKS for (as opposed to owns or administers): active memberships in a company where they are on its
+ * payroll (a staff record linked to their account) or hold a non-admin role. Owners/administrators with no staff record are not
+ * listed — they have no employer to ask for a salary advance. This is the one definition used both to offer employers in the app and
+ * to authorise a loan / advance request filed with one.
+ */
+export async function getEmployersForUser(userId: string): Promise<Employer[]> {
+    const [{ data: memberships }, { data: staff }] = await Promise.all([
+        supabase.from('user_organizations')
+            .select('role, employee_id, organization:organizations(id, name, logo_url, is_personal)')
+            .eq('user_id', userId).eq('status', 'ACTIVE'),
+        supabase.from('payroll_staff').select('organization_id').eq('user_id', userId),
+    ]);
+    const onPayroll = new Set((staff ?? []).map((s: any) => s.organization_id as string));
+    const out: Employer[] = [];
+    for (const m of (memberships ?? []) as any[]) {
+        const org = m.organization;
+        if (!org || org.is_personal === true) continue;
+        if (org.is_personal == null && isPersonalOrgName(org.name)) continue;
+        if (onPayroll.has(org.id) || m.role !== 'ADMIN') {
+            out.push({ id: org.id, name: org.name, logo_url: org.logo_url ?? null, employee_id: m.employee_id ?? null, role: m.role });
+        }
+    }
+    return out;
+}

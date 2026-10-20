@@ -117,7 +117,14 @@ export interface PreferencesResponse {
     };
 }
 
+export interface Employer { id: string; name: string; logoUrl: string | null; employeeId: string | null }
+
 export const userService = {
+    /** Organizations the person works for — who they can ask for a salary advance or staff loan. */
+    getMyEmployers(): Promise<Employer[]> {
+        return apiJson<Employer[]>('/users/me/employers');
+    },
+
     getMyPreferences(): Promise<PreferencesResponse> {
         return apiJson<PreferencesResponse>('/users/me/preferences');
     },

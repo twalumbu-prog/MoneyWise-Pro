@@ -80,6 +80,20 @@ async function main() {
             must(c.code === 403, `business account: ${c.code}`);
         });
 
+        await step('2b. an owner/administrator is not offered their own company as an employer — unless they are on its payroll', async () => {
+            const { getEmployersForUser } = await import('../services/userPreferences.service');
+            await supabase.from('user_organizations').update({ role: 'ADMIN' }).eq('user_id', STEPHEN).eq('organization_id', employer);
+            must(!(await getEmployersForUser(STEPHEN)).some((e) => e.id === employer), 'an admin with no staff record must not be offered');
+            const a: any = mockRes(); await createRequisition({ user: { id: STEPHEN, organization_id: personal, role: 'ADMIN' }, body: { description: 'x', type: 'ADVANCE', estimated_total: 50, target_organization_id: employer } }, a);
+            must(a.code === 403, `admin without payroll must be refused, got ${a.code}`);
+            const { error } = await supabase.from('payroll_staff').insert({ organization_id: employer, first_name: 'ZZ', last_name: 'Staff', user_id: STEPHEN });
+            if (error) throw new Error(`payroll_staff insert: ${error.message}`);
+            must((await getEmployersForUser(STEPHEN)).some((e) => e.id === employer), 'an admin ON payroll must be offered');
+            await supabase.from('payroll_staff').delete().eq('organization_id', employer);
+            await supabase.from('user_organizations').update({ role: 'REQUESTOR' }).eq('user_id', STEPHEN).eq('organization_id', employer);
+            must((await getEmployersForUser(STEPHEN)).some((e) => e.id === employer), 'a non-admin member must be offered');
+        });
+
         await step('3. money arriving is booked as a LIABILITY (Dr wallet / Cr Employer Loans Payable), once', async () => {
             await supabase.from('requisitions').update({ status: 'RECEIVED' }).eq('id', reqId);
             await supabase.from('disbursements').insert({ requisition_id: reqId, cashier_id: STEPHEN, total_prepared: 100, payment_method: 'MONEYWISE_PAY', organization_id: employer, external_reference: ref, recipient_account: personal });
@@ -151,6 +165,7 @@ async function main() {
             await supabase.from('requisitions').delete().eq('id', (r as any).id);
         }
         await supabase.from('app_settings').delete().like('key', `mwpay:${ref}%`);
+        await supabase.from('payroll_staff').delete().eq('organization_id', employer);
         await supabase.from('user_organizations').delete().eq('organization_id', employer);
         for (const org of [personal, employer, stranger]) {
             await supabase.from('organization_wallets').delete().eq('organization_id', org);

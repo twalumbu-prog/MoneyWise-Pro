@@ -40,6 +40,7 @@ export type {
     CreateUserResult,
     MutationAck,
     PaymentInfo,
+    Employer,
     BankAccount,
     MobileMoneyAccount,
     UserPreferences,

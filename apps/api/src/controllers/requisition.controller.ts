@@ -1,3 +1,4 @@
+import { getEmployersForUser } from '../services/userPreferences.service';
 import { employerLoanLedger, LoanRecoveryError } from '../services/employerLoanLedger.service';
 import { maybeAutoCategorizePersonalById } from '../services/personalRequisitionClassifier.service';
 import { Response } from 'express';
@@ -114,14 +115,13 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             if (!own.lenco_subaccount_id) {
                 return res.status(400).json({ error: 'Your personal account needs an active MoneyWise wallet to receive the money. Finish setting it up first.' });
             }
-            const { data: membership } = await supabase.from('user_organizations')
-                .select('status, employee_id, organization:organizations(is_personal)')
-                .eq('user_id', requestor_id).eq('organization_id', target_organization_id).maybeSingle();
-            if (!membership || membership.status !== 'ACTIVE' || (membership as any).organization?.is_personal === true) {
-                return res.status(403).json({ error: 'You are not an active member of that organization.' });
+            // Only an organization the person actually works for (on its payroll, or a non-admin member) can be asked.
+            const employer = (await getEmployersForUser(requestor_id)).find((e) => e.id === target_organization_id);
+            if (!employer) {
+                return res.status(403).json({ error: 'You can only request a salary advance or loan from an organization you work for.' });
             }
             const { data: me } = await supabase.from('users').select('name').eq('id', requestor_id).maybeSingle();
-            personalPayout = { orgId: organization_id, name: (me as any)?.name || 'Employee', employeeId: (membership as any).employee_id ?? null };
+            personalPayout = { orgId: organization_id, name: (me as any)?.name || 'Employee', employeeId: employer.employee_id };
             organization_id = target_organization_id;
         }
 
