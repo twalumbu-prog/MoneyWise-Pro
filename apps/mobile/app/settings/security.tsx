@@ -96,9 +96,7 @@ export default function SecurityScreen() {
             ) : (
                 <ScrollView contentContainerStyle={styles.scroll}>
                     <View style={styles.hero}>
-                        <View style={[styles.heroIcon, lock.config.enabled && { backgroundColor: '#ECFDF5' }]}>
-                            <ShieldCheck size={26} color={lock.config.enabled ? colors.positiveInk : colors.blue} />
-                        </View>
+                        <ShieldCheck size={56} strokeWidth={1.5} color={lock.config.enabled ? colors.positiveInk : colors.blue} />
                         <Text style={styles.heroTitle}>{lock.config.enabled ? 'App lock is on' : 'Protect MoneyWise with a PIN'}</Text>
                         <Text style={styles.heroSub}>
                             {lock.config.enabled
@@ -156,7 +154,6 @@ const styles = StyleSheet.create({
     scroll: { padding: 20, paddingBottom: 48 },
     flow: { flex: 1, justifyContent: 'center', alignItems: 'stretch' },
     hero: { alignItems: 'center', paddingVertical: 12, marginBottom: 12 },
-    heroIcon: { width: 60, height: 60, borderRadius: 30, backgroundColor: colors.tabActiveBg, alignItems: 'center', justifyContent: 'center' },
     heroTitle: { fontFamily: fonts.bodyBold, fontSize: 20, color: colors.navy, marginTop: 14, textAlign: 'center' },
     heroSub: { fontFamily: fonts.body, fontSize: 14, color: colors.textMuted, marginTop: 6, textAlign: 'center', lineHeight: 20, paddingHorizontal: 12 },
     card: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, marginBottom: 16, overflow: 'hidden' },
