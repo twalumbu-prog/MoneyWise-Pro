@@ -20,6 +20,7 @@ export const PinSetupFlow: React.FC<{ userId: string; title?: string; onDone: ()
     return (
         <View style={styles.wrap}>
             <PinEntry
+                key={first ? 'confirm' : 'create'}
                 title={first ? 'Confirm your PIN' : title}
                 subtitle={first ? 'Enter the same PIN once more.' : 'Choose a 4-digit PIN you’ll remember. You can also unlock with Face ID or fingerprint.'}
                 error={error} errorKey={errorKey} onComplete={handle}

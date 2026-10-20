@@ -28,7 +28,19 @@ export default function SecurityScreen() {
     const bioLabel = biometricLabel(lock.biometric.kind, Platform.OS === 'ios');
     const BioIcon = lock.biometric.kind === 'face' ? ScanFace : Fingerprint;
 
-    const finish = async () => { await lock.refresh(); lock.markUnlocked(); setMode('home'); setError(null); };
+    const finish = async (justCreated = false) => {
+        const cfg = await lock.refresh();
+        lock.markUnlocked();
+        setMode('home');
+        setError(null);
+        // Face ID / fingerprint is never switched on silently: right after a PIN is created, offer it (the system asks permission the first time).
+        if (justCreated && cfg.enabled && !cfg.biometric && lock.biometric.available) {
+            Alert.alert(`Unlock with ${bioLabel}?`, `Open MoneyWise with ${bioLabel} instead of typing your PIN. The PIN always works as a backup.`, [
+                { text: 'Not now', style: 'cancel' },
+                { text: `Use ${bioLabel}`, onPress: () => { void toggleBiometric(true); } },
+            ]);
+        }
+    };
 
     /** Confirms the current PIN, then carries on to turning it off or choosing a new one. */
     const confirmCurrent = async (pin: string) => {
@@ -65,8 +77,8 @@ export default function SecurityScreen() {
 
             {fullScreen ? (
                 <View style={[styles.flow, { paddingBottom: insets.bottom + 24 }]}>
-                    {mode === 'setup' && <PinSetupFlow userId={uid} onDone={finish} onCancel={() => setMode('home')} />}
-                    {mode === 'change' && <PinSetupFlow userId={uid} title="Choose a new PIN" onDone={finish} onCancel={() => setMode('home')} />}
+                    {mode === 'setup' && <PinSetupFlow userId={uid} onDone={() => finish(true)} onCancel={() => setMode('home')} />}
+                    {mode === 'change' && <PinSetupFlow userId={uid} title="Choose a new PIN" onDone={() => finish()} onCancel={() => setMode('home')} />}
                     {(mode === 'verify-change' || mode === 'verify-off') && (
                         <View style={{ alignItems: 'center' }}>
                             <PinEntry
@@ -79,7 +91,7 @@ export default function SecurityScreen() {
                             <Pressable onPress={() => { setMode('home'); setError(null); }} hitSlop={10} style={{ marginTop: 16 }}><Text style={styles.link}>Cancel</Text></Pressable>
                         </View>
                     )}
-                    {mode === 'recover' && <PinRecoveryFlow userId={uid} onRecovered={finish} onCancel={() => setMode('home')} />}
+                    {mode === 'recover' && <PinRecoveryFlow userId={uid} onRecovered={() => finish()} onCancel={() => setMode('home')} />}
                 </View>
             ) : (
                 <ScrollView contentContainerStyle={styles.scroll}>

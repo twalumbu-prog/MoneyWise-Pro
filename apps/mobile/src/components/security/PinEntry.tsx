@@ -34,7 +34,11 @@ export const PinEntry: React.FC<{
         if (disabled || pin.length >= PIN_LENGTH) return;
         const next = pin + d;
         setPin(next);
-        if (next.length === PIN_LENGTH) setTimeout(() => onComplete(next), 80);
+        if (next.length === PIN_LENGTH) {
+            // Hand the PIN over, then empty the dots: the same pad is reused for the next step (e.g. "confirm your PIN"), so it
+            // must be ready for fresh digits rather than stay full.
+            setTimeout(() => { onComplete(next); setPin(''); }, 120);
+        }
     };
 
     return (
