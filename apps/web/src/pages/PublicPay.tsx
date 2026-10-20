@@ -200,7 +200,11 @@ const OPERATOR_COLORS: Record<string, string> = {
 const SLOW_LATENCY_MS = 1200;
 
 export const PublicPay: React.FC = () => {
-    const { wallet_id } = useParams<{ wallet_id: string }>();
+    // Reached either as /pay/<wallet-uuid> (legacy) or /<business>/store (friendly username,
+    // resolved to the org's Main wallet by the API). `wallet_id` holds whichever was used
+    // until the context loads; `wallet?.id` is always the real wallet UUID.
+    const { wallet_id: walletParam, username: storeUsername, walletSlug } = useParams<{ wallet_id?: string; username?: string; walletSlug?: string }>();
+    const wallet_id = walletParam || storeUsername;
 
     // UI Steps
     //  SHOP     = product catalogue grid (entry page)
@@ -404,7 +408,7 @@ export const PublicPay: React.FC = () => {
             // "Connection timed out" even on requests that would've completed.
             // Giving the client real margin means the server error (if any) wins.
             const response = await axios.get<PublicContextResponse>(
-                `${API_URL}/lenco/public-context/${wallet_id}`,
+                `${API_URL}/lenco/public-context/${wallet_id}${walletSlug ? `?wallet=${encodeURIComponent(walletSlug)}` : ''}`,
                 { timeout: 45000 }
             );
             const duration = Math.round(performance.now() - startFetchTime);
@@ -492,7 +496,7 @@ export const PublicPay: React.FC = () => {
             document.removeEventListener('visibilitychange', onVisibilityChange);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [wallet_id]);
+    }, [wallet_id, walletSlug]);
 
     useEffect(() => {
         loadContext();
@@ -1644,7 +1648,7 @@ Status: VERIFIED`;
         setIsRetrieving(true);
         setRetrieveError(null);
         try {
-            const res = await axios.get(`${API_URL}/lenco/public-sales/by-phone/${encodeURIComponent(retrievePhone.trim())}?walletId=${wallet_id}`);
+            const res = await axios.get(`${API_URL}/lenco/public-sales/by-phone/${encodeURIComponent(retrievePhone.trim())}?walletId=${wallet?.id ?? wallet_id}`);
             setRetrievedReceipts(res.data);
             if (res.data.length === 0) {
                 setRetrieveError('No completed receipts found for this phone number.');

@@ -780,13 +780,44 @@ export const resolveMobileMoney = async (req: Request, res: Response) => {
  * Fetch public context for a wallet (organization name, logo, products, and wallet settings)
  */
 export const getPublicWalletContext = async (req: Request, res: Response) => {
-    const { wallet_id } = req.params;
+    let { wallet_id } = req.params;
 
     if (!wallet_id) {
         return res.status(400).json({ error: 'wallet_id is required' });
     }
 
     try {
+        // Friendly store links (/<business>/store) pass the org's public username instead of a
+        // wallet UUID; resolve it to that org's Main wallet (or the wallet named by ?wallet=<slug>). Legacy /pay/<uuid> links are untouched.
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(wallet_id)) {
+            const { data: usernameOrg, error: usernameErr } = await supabase
+                .from('organizations')
+                .select('id')
+                .eq('public_username', wallet_id.toLowerCase())
+                .maybeSingle();
+            if (usernameErr) {
+                return res.status(503).json({ error: 'Payment service is busy, please try again', details: usernameErr.message });
+            }
+            if (!usernameOrg) {
+                return res.status(404).json({ error: 'Wallet not found' });
+            }
+            // /<business>/store → Main wallet; /<business>/store/<slug> → that wallet's stable slug.
+            const slugParam = typeof req.query.wallet === 'string' ? req.query.wallet.toLowerCase() : '';
+            let walletQuery = supabase
+                .from('organization_wallets')
+                .select('id')
+                .eq('organization_id', usernameOrg.id);
+            walletQuery = slugParam ? walletQuery.eq('store_slug', slugParam) : walletQuery.eq('is_main', true);
+            const { data: mainWallet, error: mainErr } = await walletQuery.maybeSingle();
+            if (mainErr) {
+                return res.status(503).json({ error: 'Payment service is busy, please try again', details: mainErr.message });
+            }
+            if (!mainWallet) {
+                return res.status(404).json({ error: 'Wallet not found' });
+            }
+            wallet_id = mainWallet.id;
+        }
+
         console.log('[Lenco Public Context] Fetching wallet ID:', wallet_id);
         // 1. Fetch wallet details
         const { data: wallet, error: walletError } = await supabase

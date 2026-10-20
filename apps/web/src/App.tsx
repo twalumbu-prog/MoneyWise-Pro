@@ -30,6 +30,7 @@ const Apps = React.lazy(() => import('./pages/Apps').then(m => ({ default: m.App
 const Payroll = React.lazy(() => import('./pages/Payroll').then(m => ({ default: m.Payroll })));
 const CRM = React.lazy(() => import('./pages/CRM').then(m => ({ default: m.CRM })));
 const RunPayrollPage = React.lazy(() => import('./pages/RunPayrollPage').then(m => ({ default: m.RunPayrollPage })));
+const PublicStore = React.lazy(() => import('./pages/PublicPay').then(m => ({ default: m.PublicPay })));
 const PayEntry = React.lazy(() => import('./pages/PayEntry').then(m => ({ default: m.PayEntry })));
 const SavingsJoin = React.lazy(() => import('./pages/SavingsJoin').then(m => ({ default: m.SavingsJoin })));
 const PublicPaymentLink = React.lazy(() => import('./pages/PublicPaymentLink').then(m => ({ default: m.PublicPaymentLink })));
@@ -205,6 +206,9 @@ function App() {
                         <Route path="/terms" element={<TermsOfService />} />
                         <Route path="/disconnect" element={<Disconnect />} />
                         <Route path="/pay/:wallet_id" element={<PayEntry />} />
+                        {/* Friendly store link: /<business-username>/store → that org's Main wallet catalogue */}
+                        <Route path="/:username/store" element={<PublicStore />} />
+                        <Route path="/:username/store/:walletSlug" element={<PublicStore />} />
                         <Route path="/pl/:token" element={<PublicPaymentLink />} />
                         <Route path="/savings/join/:code" element={<SavingsJoin />} />
                         <Route path="/docs/api" element={<ApiDocs />} />

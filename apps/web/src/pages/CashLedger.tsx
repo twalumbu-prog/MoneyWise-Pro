@@ -2419,6 +2419,7 @@ Status: VERIFIED`;
                 }}
                 walletName={wallets.find(w => w.id === shareWalletId)?.name || ''}
                 shareUrl={shareWalletId ? `${window.location.origin}/pay/${shareWalletId}` : ''}
+                walletId={shareWalletId}
                 onGenerateInvoiceLink={shareWalletId ? () => {
                     const wid = shareWalletId;
                     setIsShareModalOpen(false);

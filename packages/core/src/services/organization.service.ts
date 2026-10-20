@@ -34,6 +34,11 @@ export const organizationService = {
     },
 
     /** Fetches (generating on first call) the org's clean Quick Link username. */
+    /** Name parts of a wallet's friendly store link: /<username>/store[/<slug>] (slug null for Main). */
+    async getWalletStoreLink(walletId: string): Promise<{ username: string; slug: string | null }> {
+        return apiJson<{ username: string; slug: string | null }>(`/organizations/wallets/${encodeURIComponent(walletId)}/store-link`);
+    },
+
     async getOrCreateQuickLinkUsername(): Promise<string> {
         const data = await apiJson<{ username: string }>('/organizations/quick-link-username');
         return data.username;

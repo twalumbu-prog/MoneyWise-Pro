@@ -155,6 +155,68 @@ export const OrganizationController = {
         }
     },
 
+    // Friendly store-link parts for one wallet: the org's public username plus, for non-main
+    // wallets, a stable per-wallet slug (created on first request, never changed after).
+    // Main wallet → slug null (its link is just /<username>/store).
+    async getWalletStoreLink(req: Request, res: Response<any>) {
+        try {
+            const organization_id = (req as any).user?.organization_id;
+            const { walletId } = req.params;
+            if (!organization_id) {
+                return res.status(400).json({ error: 'User does not belong to an organization' });
+            }
+
+            const { data: wallet } = await supabase
+                .from('organization_wallets')
+                .select('id, name, is_main, store_slug')
+                .eq('id', walletId)
+                .eq('organization_id', organization_id)
+                .maybeSingle();
+            if (!wallet) return res.status(404).json({ error: 'Wallet not found' });
+
+            const { data: org } = await supabase
+                .from('organizations')
+                .select('id, name, public_username')
+                .eq('id', organization_id)
+                .single();
+            if (!org) return res.status(404).json({ error: 'Organization not found' });
+
+            let username = org.public_username as string | null;
+            if (!username) {
+                const base = (org.name || 'business').toLowerCase().replace(/[^a-z0-9]/g, '') || 'business';
+                let candidate = base;
+                for (let n = 2; n < 52; n++) {
+                    const { data: taken } = await supabase.from('organizations').select('id').eq('public_username', candidate).maybeSingle();
+                    if (!taken) break;
+                    candidate = `${base}${n}`;
+                }
+                const { data: updated, error: upErr } = await supabase
+                    .from('organizations').update({ public_username: candidate }).eq('id', organization_id).select('public_username').single();
+                if (upErr || !updated) return res.status(500).json({ error: 'Failed to generate store link' });
+                username = updated.public_username;
+            }
+
+            if (wallet.is_main) return res.json({ username, slug: null });
+            if (wallet.store_slug) return res.json({ username, slug: wallet.store_slug });
+
+            const base = (wallet.name || 'wallet').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'wallet';
+            let slug = base;
+            for (let n = 2; n < 52; n++) {
+                const { data: taken } = await supabase
+                    .from('organization_wallets').select('id').eq('organization_id', organization_id).eq('store_slug', slug).maybeSingle();
+                if (!taken) break;
+                slug = `${base}-${n}`;
+            }
+            const { data: saved, error: saveErr } = await supabase
+                .from('organization_wallets').update({ store_slug: slug }).eq('id', wallet.id).select('store_slug').single();
+            if (saveErr || !saved) return res.status(500).json({ error: 'Failed to generate store link' });
+            return res.json({ username, slug: saved.store_slug });
+        } catch (error: any) {
+            console.error('[Organization] Wallet store link error:', error);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    },
+
     async deleteOrganization(req: Request, res: Response<any>) {
         try {
             const organization_id = (req as any).user?.organization_id;

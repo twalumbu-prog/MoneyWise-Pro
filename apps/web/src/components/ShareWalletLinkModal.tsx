@@ -19,6 +19,8 @@ interface ShareWalletLinkModalProps {
     onClose: () => void;
     walletName: string;
     shareUrl: string;
+    /** The wallet being shared — used to build its friendly /<business>/store[/<wallet>] link. */
+    walletId?: string | null;
     /** Opens the invoice builder (New Sale in link mode) to generate a one-time link. */
     onGenerateInvoiceLink?: () => void;
 }
@@ -28,6 +30,7 @@ const ShareWalletLinkModal: React.FC<ShareWalletLinkModalProps> = ({
     onClose,
     walletName,
     shareUrl,
+    walletId,
     onGenerateInvoiceLink
 }) => {
     const { organizationLogoUrl, organizationName } = useAuth();
@@ -48,7 +51,23 @@ const ShareWalletLinkModal: React.FC<ShareWalletLinkModalProps> = ({
     const [quickLinkError, setQuickLinkError] = useState<string | null>(null);
     const quickLinkUrl = quickLinkUsername ? `${window.location.origin}/pay/${quickLinkUsername}` : '';
 
-    const displayUrl = activeTab === 'store' ? shareUrl : quickLinkUrl;
+    // Friendly store link for this wallet: /<business>/store (Main) or /<business>/store/<wallet>.
+    // Until it loads (or if it fails) the long wallet-id link, which always works, is shown.
+    const [storeLinkParts, setStoreLinkParts] = useState<{ username: string; slug: string | null } | null>(null);
+    useEffect(() => {
+        setStoreLinkParts(null);
+        if (!isOpen || !walletId) return;
+        let cancelled = false;
+        organizationService.getWalletStoreLink(walletId)
+            .then(parts => { if (!cancelled) setStoreLinkParts(parts); })
+            .catch(err => console.error('Failed to load friendly store link:', err));
+        return () => { cancelled = true; };
+    }, [isOpen, walletId]);
+    const storeUrl = storeLinkParts
+        ? `${window.location.origin}/${storeLinkParts.username}/store${storeLinkParts.slug ? `/${storeLinkParts.slug}` : ''}`
+        : shareUrl;
+
+    const displayUrl = activeTab === 'store' ? storeUrl : quickLinkUrl;
 
     useEffect(() => {
         if (organizationLogoUrl) {
