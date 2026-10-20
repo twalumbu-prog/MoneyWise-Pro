@@ -25,7 +25,8 @@ import {
     syncAllMasterFees,
     backfillMasterFeesPayments,
     recategorizeMasterFeesInvoices,
-    correctMasterFeesPaymentDates
+    correctMasterFeesPaymentDates,
+    syncStudentsToCrmNow,
 } from '../controllers/masterfees.controller';
 
 const router = Router();
@@ -69,6 +70,7 @@ router.get('/masterfees/fee-categories', requireAuth, getMasterFeesFeeCategories
 router.put('/masterfees/fee-categories', requireAuth, updateMasterFeesCategoryMapping);
 router.put('/masterfees/lenco-mode', requireAuth, updateMasterFeesLencoMode);
 router.post('/masterfees/sync', requireAuth, syncMasterFeesNow);
+router.post('/masterfees/sync-students', requireAuth, syncStudentsToCrmNow);
 router.get('/masterfees/reconcile', requireAuth, getMasterFeesReconciliation);
 
 export default router;

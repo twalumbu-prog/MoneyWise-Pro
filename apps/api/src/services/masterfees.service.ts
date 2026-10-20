@@ -180,6 +180,7 @@ export interface MasterFeesConfig {
     lastSyncActivityAt?: string;
     /** Last time the incremental invoice pass completed (throttles it to INVOICE_DELTA_MIN_INTERVAL_MS). */
     lastInvoiceSyncAt?: string;
+    lastStudentSyncAt?: string;
     /** Automatic QuickBooks posting (masterfees_qb.service.ts). Absent/disabled = off. */
     qbAutoPost?: {
         enabled: boolean;
@@ -201,6 +202,8 @@ export interface MasterFeesConfig {
 
 interface MFStudent {
     student_id?: string;
+    gender?: string | null;
+    date_of_enrollment?: string | null;
     full_name?: string;
     first_name?: string;
     last_name?: string;
@@ -1437,6 +1440,53 @@ export interface SyncSummary {
  *   45s function timeout for the fee-category + invoice/transaction fetches
  *   that happen before either loop starts.
  */
+// ─────────────────────────────────────────────────────────────────────────────
+// Students → CRM
+// ─────────────────────────────────────────────────────────────────────────────
+const STUDENT_SYNC_MIN_INTERVAL_MS = 6 * 60 * 60_000;
+
+/**
+ * Mirror Master Fees students into the org's CRM (`customers`), keyed on
+ * (org, 'MASTERFEES', student_id) so re-runs update rather than duplicate.
+ * MF exposes no guardian phone/email, so rows carry name + admission no. + grade
+ * in notes. Existing CRM rows are never overwritten except ones this sync owns.
+ */
+export async function syncStudentsToCrm(organizationId: string): Promise<{ created: number; updated: number; unchanged: number }> {
+    const integration = await getMasterFeesIntegration(organizationId);
+    if (!integration) throw new Error('Master Fees is not connected for this organization.');
+    const students = (await new MasterFeesClient(integration.config).getStudents()).filter(st => st.student_id && (st.full_name || st.first_name));
+
+    const existing = new Map<string, { id: string; name: string; notes: string | null }>();
+    for (let o = 0; ; o += 1000) {
+        const { data, error } = await supabase.from('customers').select('id, external_id, name, notes')
+            .eq('organization_id', organizationId).eq('external_source', 'MASTERFEES').order('id').range(o, o + 999);
+        if (error) throw new Error(`CRM lookup failed (is migration 20261020120000 applied?): ${error.message}`);
+        (data ?? []).forEach(r => existing.set(r.external_id, r));
+        if ((data ?? []).length < 1000) break;
+    }
+
+    const out = { created: 0, updated: 0, unchanged: 0 };
+    const inserts: any[] = [];
+    for (const st of students) {
+        const name = (st.full_name || `${st.first_name ?? ''} ${st.last_name ?? ''}`).replace(/\s+/g, ' ').trim();
+        const notes = `Master Fees student${st.admission_number ? ` · Adm ${st.admission_number}` : ''}${st.grade ? ` · ${st.grade}` : ''}`;
+        const prior = existing.get(st.student_id!);
+        if (!prior) { inserts.push({ organization_id: organizationId, name, notes, status: 'ACTIVE', external_source: 'MASTERFEES', external_id: st.student_id }); continue; }
+        if (prior.name === name && prior.notes === notes) { out.unchanged++; continue; }
+        const { error } = await supabase.from('customers').update({ name, notes, updated_at: new Date().toISOString() }).eq('id', prior.id);
+        if (error) throw new Error(error.message);
+        out.updated++;
+    }
+    for (let i = 0; i < inserts.length; i += 200) {
+        const { error } = await supabase.from('customers').insert(inserts.slice(i, i + 200));
+        if (error) throw new Error(error.message);
+        out.created += Math.min(200, inserts.length - i);
+    }
+    await patchConfig(organizationId, { lastStudentSyncAt: new Date().toISOString() });
+    return out;
+}
+
+
 export async function syncMasterfees(organizationId: string, deadline: number = Date.now() + 35_000): Promise<SyncSummary> {
     const integration = await getMasterFeesIntegration(organizationId);
     if (!integration) throw new Error('Master Fees is not connected for this organization.');
@@ -1451,7 +1501,13 @@ export async function syncMasterfees(organizationId: string, deadline: number = 
     }
 
     try {
-        return await runMasterfeesSync(organizationId, integration, deadline);
+        const summary = await runMasterfeesSync(organizationId, integration, deadline);
+        // Student→CRM mirror is best-effort and throttled; it must never fail the money sync.
+        const last = integration.config.lastStudentSyncAt;
+        if (!last || Date.now() - new Date(last).getTime() > STUDENT_SYNC_MIN_INTERVAL_MS) {
+            try { await syncStudentsToCrm(organizationId); } catch (e: any) { summary.errors.push(`Student CRM sync: ${e.message}`); }
+        }
+        return summary;
     } finally {
         await releaseSyncLock(integration.id);
     }

@@ -13,6 +13,7 @@ import {
     recategorizeMasterfeesInvoices,
     applyPaymentDateCorrections,
     reconcileMasterfees,
+    syncStudentsToCrm,
     purgeMasterFeesData,
     MasterFeesConfig,
 } from '../services/masterfees.service';
@@ -587,6 +588,15 @@ export const syncAllMasterFees = async (req: Request, res: Response) => {
             }
         }
         res.json({ success: true, processed: results.length, skippedNotDue, results });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+export const syncStudentsToCrmNow = async (req: AuthRequest, res: Response) => {
+    try {
+        const result = await syncStudentsToCrm(req.user.organization_id);
+        res.json({ success: true, ...result });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }
