@@ -1,7 +1,7 @@
 import { View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { Stack } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, Smartphone, Mail, Sparkles, Wallet, Check } from 'lucide-react-native';
+import { Bell, Smartphone, Mail, Wallet, Check } from 'lucide-react-native';
 import { userService } from 'core';
 import type { NotifyChannel, SalaryDestination, PreferencesResponse } from 'core';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
@@ -83,14 +83,14 @@ export default function PreferencesScreen() {
 
                     <Text style={[styles.sectionLabel, { marginTop: 24 }]}>AI MODELS</Text>
                     <View style={[styles.card, { padding: 16 }]}>
-                        <View style={styles.aiHead}><Sparkles size={16} color={colors.blue} /><Text style={styles.aiTitle}>Assistant</Text></View>
+                        <View style={styles.aiHead}><Text style={styles.aiTitle}>Assistant</Text></View>
                         <Text style={styles.aiSub}>The model the Assistant answers with by default.</Text>
                         <InlineSearchSelect
                             items={modelItems(data.options.assistantModels)} selectedId={p.ai.assistant_model ?? DEFAULT_ID}
                             placeholder="Automatic (recommended)" searchPlaceholder="Search models…" maxVisible={8}
                             onSelect={(i) => save.mutate({ ai: { assistant_model: i.id === DEFAULT_ID ? null : i.id } })}
                         />
-                        <View style={[styles.aiHead, { marginTop: 18 }]}><Sparkles size={16} color={colors.blue} /><Text style={styles.aiTitle}>Categorising transactions</Text></View>
+                        <View style={[styles.aiHead, { marginTop: 18 }]}><Text style={styles.aiTitle}>Categorising transactions</Text></View>
                         <Text style={styles.aiSub}>The model that sorts your payments into categories.</Text>
                         <InlineSearchSelect
                             items={modelItems(data.options.categorizationModels)} selectedId={p.ai.categorization_model ?? DEFAULT_ID}
