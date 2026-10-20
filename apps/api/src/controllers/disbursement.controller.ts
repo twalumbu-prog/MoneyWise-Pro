@@ -2003,6 +2003,20 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
                                 narration: `Payroll for ${item.employee_name}`
                             }, subaccountId, secretKey);
                             lencoReference = payout.reference || resolvedRef;
+                        } else if (item.payment_method === 'MONEYWISE_PAY') {
+                            // Salary into the employee's MoneyWise personal account: a real Lenco on-us transfer, credited
+                            // to them only once Lenco confirms it (see moneyWisePayService).
+                            const mwRef = `MWPAY-${stableRef}`;
+                            const { data: senderOrg } = await supabase.from('organizations').select('name').eq('id', organizationId).maybeSingle();
+                            const transfer = await moneyWisePayService.sendOnUs({
+                                senderOrgId: organizationId, recipientOrgId: String(item.recipient_account), amount,
+                                requisitionId: id, reference: mwRef, narration: `Salary from ${(senderOrg as any)?.name || 'your employer'}`.slice(0, 60),
+                            });
+                            await moneyWisePayService.remember(transfer.reference, {
+                                recipientOrgId: String(item.recipient_account), senderName: (senderOrg as any)?.name || 'your employer', amount, txnId: transfer.transactionId,
+                            });
+                            payout = { status: transfer.status, reference: transfer.reference };
+                            lencoReference = transfer.reference;
                         } else {
                             throw new Error(`Unsupported payment method: ${item.payment_method}`);
                         }
@@ -2036,6 +2050,13 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
                     .from('line_items')
                     .update({ actual_amount: amount, updated_at: new Date().toISOString() })
                     .eq('id', item.id);
+
+                // Salary paid into MoneyWise: the employee's inflow is booked as soon as Lenco has confirmed the transfer
+                // (a still-pending one is credited by the status poller once it settles).
+                if (item.payment_method === 'MONEYWISE_PAY' && !testMode && lencoStatus === 'successful') {
+                    await moneyWisePayService.creditByReference(lencoReference).catch((e: any) =>
+                        console.error(`[Payroll Disbursal] could not credit ${item.employee_name}'s MoneyWise account for ${lencoReference}:`, e.message));
+                }
 
                 successfulDisbursements.push({ item, amount, fee, reference: lencoReference });
             } catch (err: any) {
@@ -2534,6 +2555,10 @@ async function refreshPendingPayrollPayouts(): Promise<{ checked: number; succes
                 } else if (transfer.status === 'successful') {
                     await supabase.from('disbursements').update({ lenco_status: 'successful', lenco_status_checked_at: checkedAt, failure_reason: null }).eq('id', row.id);
                     summary.successful++;
+                    if (String(row.external_reference || '').startsWith('MWPAY-')) {
+                        await moneyWisePayService.creditByReference(row.external_reference).catch((e: any) =>
+                            console.error(`[Poll-Processing] could not credit the recipient of ${row.external_reference}:`, e.message));
+                    }
                 } else if (transfer.status === 'failed') {
                     await supabase.from('disbursements').update({
                         lenco_status: 'failed',

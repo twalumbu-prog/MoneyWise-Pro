@@ -7,6 +7,8 @@
  * to that account, and the transaction is in the reports straight away. It only changes if the person
  * edits it — and that edit re-posts the ledger the same way (see updateLineItemAccount).
  */
+import { getPreferences } from './userPreferences.service';
+import { runWithCategorizationModel } from './ai/aiPrefs.context';
 import { supabase } from '../lib/supabase';
 import { isPersonalOrganization } from '../lib/orgType';
 import { ledgerService } from './ledger.service';
@@ -173,8 +175,14 @@ export async function autoCategorizePersonalRequisition(requisitionId: string, o
 }
 
 /** Call from anywhere money-out is confirmed: no-ops unless the organization is personal. */
-export function maybeAutoCategorizePersonal(requisitionId: string, organizationId: string, userId?: string | null): Promise<AutoCategorizeResult> {
-    return autoCategorizePersonalRequisition(requisitionId, organizationId, userId).catch(() => ({ done: false }));
+export async function maybeAutoCategorizePersonal(requisitionId: string, organizationId: string, userId?: string | null): Promise<AutoCategorizeResult> {
+    // The owner's own model choice (Settings → Preferences → AI) applies to categorising their transactions.
+    let model: string | null = null;
+    try {
+        const { data: r } = await supabase.from('requisitions').select('requestor_id').eq('id', requisitionId).maybeSingle();
+        if (r?.requestor_id) model = (await getPreferences(r.requestor_id)).ai.categorization_model;
+    } catch { /* default model */ }
+    return runWithCategorizationModel(model, () => autoCategorizePersonalRequisition(requisitionId, organizationId, userId)).catch(() => ({ done: false }));
 }
 
 /** Same, when only the requisition id is at hand (background pollers). */

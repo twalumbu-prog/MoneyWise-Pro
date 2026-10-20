@@ -51,8 +51,8 @@ export const moneyWisePayService = {
      * Moves `amount` from the sender's Lenco account to the recipient's, and waits (briefly) for Lenco to confirm.
      * Throws on anything that means the money did not move, so the caller can reset the requisition for a retry.
      */
-    async sendOnUs(p: { senderOrgId: string; recipientOrgId: string; amount: number; requisitionId: string; narration?: string }): Promise<OnUsResult> {
-        const baseRef = `MWPAY-${p.requisitionId.slice(0, 8)}`;
+    async sendOnUs(p: { senderOrgId: string; recipientOrgId: string; amount: number; requisitionId: string; narration?: string; /** Several payments from one requisition (payroll) each need their own reference. */ reference?: string }): Promise<OnUsResult> {
+        const baseRef = p.reference || `MWPAY-${p.requisitionId.slice(0, 8)}`;
         const sender = await orgLenco(p.senderOrgId);
         const recipient = await orgLenco(p.recipientOrgId);
 
@@ -139,6 +139,16 @@ export const moneyWisePayService = {
         // for MoneyWise Pay but disbursed from a screen that sends MONEYWISE_WALLET must still credit its recipient.
         if (!d || !ref || !ref.startsWith('MWPAY-')) return;
 
+        await this.creditByReference(ref, { tag: { orgId: (d as any).organization_id, requisitionId } });
+    },
+
+    /**
+     * Credits the recipient for one confirmed MoneyWise Pay transfer, identified by its reference. Idempotent.
+     * `tag` (single-payment requisitions only) also stamps the sender's own outflow row; batch payroll rows already
+     * carry their per-employee reference, so they pass no tag.
+     */
+    async creditByReference(ref: string, opts: { tag?: { orgId: string; requisitionId: string } } = {}): Promise<void> {
+        if (!ref || !ref.startsWith('MWPAY-')) return;
         const { data: memoRow } = await supabase.from('app_settings').select('value').eq('key', memoKey(ref)).maybeSingle();
         const memo: any = memoRow?.value;
         if (!memo?.recipientOrgId) return; // an older payment from before this flow existed: nothing to credit
@@ -168,10 +178,12 @@ export const moneyWisePayService = {
         // transaction id: the sync's first dedup check is "a ledger row whose external_reference equals the Lenco
         // transaction id", which holds whatever the booked amount is. (The MWPAY- reference only pairs through the
         // amount-based internalTransferMatch, which is exactly what failed on 2026-10-19.)
-        const senderTag = typeof memo.txnId === 'string' && UUID_RE.test(memo.txnId) ? memo.txnId : ref;
-        await supabase.from('cashbook_entries').update({ external_reference: senderTag })
-            .eq('organization_id', (d as any).organization_id).eq('requisition_id', requisitionId)
-            .eq('entry_type', 'DISBURSEMENT').is('external_reference', null);
+        if (opts.tag) {
+            const senderTag = typeof memo.txnId === 'string' && UUID_RE.test(memo.txnId) ? memo.txnId : ref;
+            await supabase.from('cashbook_entries').update({ external_reference: senderTag })
+                .eq('organization_id', opts.tag.orgId).eq('requisition_id', opts.tag.requisitionId)
+                .eq('entry_type', 'DISBURSEMENT').is('external_reference', null);
+        }
 
         console.log(`[MoneyWise Pay] K${memo.amount} credited to ${memo.recipientOrgId} after Lenco confirmed ${ref}.`);
     },

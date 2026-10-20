@@ -16,6 +16,7 @@
  *   PERPLEXITY_API_KEY
  */
 
+import { getCategorizationModelOverride } from './aiPrefs.context';
 import { getAIModelSettings } from './ai.settings.service';
 
 export interface LLMMessage {
@@ -217,20 +218,25 @@ export async function callAllCategorizationProviders(
     const orKey     = process.env.OPENROUTER_API_KEY;
     const pplxKey   = process.env.PERPLEXITY_API_KEY;
 
+    // A person's own model choice (personal accounts) takes the primary slot, over OpenRouter.
+    const override = getCategorizationModelOverride();
+    const useOverride = !!override && !!orKey;
+
     // Always include the configured primary provider
-    const primary = settings.categorization_provider;
+    const primary = useOverride ? 'openrouter' : settings.categorization_provider;
+    const categorizationModel = useOverride ? (override as string) : settings.categorization_model;
 
     if (primary === 'gemini' && geminiKey) {
-        tasks.push(callGeminiText(settings.categorization_model, messages).catch(e => { throw e; }));
+        tasks.push(callGeminiText(categorizationModel, messages).catch(e => { throw e; }));
     } else if (primary === 'openrouter' && orKey) {
-        tasks.push(callOpenAICompat('OpenRouter', orKey, 'https://openrouter.ai/api/v1', settings.categorization_model, messages, OR_HEADERS).catch(e => { throw e; }));
+        tasks.push(callOpenAICompat('OpenRouter', orKey, 'https://openrouter.ai/api/v1', categorizationModel, messages, OR_HEADERS).catch(e => { throw e; }));
     } else if (primary === 'perplexity' && pplxKey) {
         if (settings.perplexity_mode === 'agent') {
             const sys = messages.find(m => m.role === 'system')?.content || '';
             const usr = messages.filter(m => m.role === 'user').map(m => m.content).join('\n');
             tasks.push(callPerplexityAgent(pplxKey, sys, usr).catch(e => { throw e; }));
         } else {
-            tasks.push(callOpenAICompat('Perplexity-Gateway', pplxKey, 'https://api.perplexity.ai', settings.categorization_model, messages).catch(e => { throw e; }));
+            tasks.push(callOpenAICompat('Perplexity-Gateway', pplxKey, 'https://api.perplexity.ai', categorizationModel, messages).catch(e => { throw e; }));
         }
     }
 

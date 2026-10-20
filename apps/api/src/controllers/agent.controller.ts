@@ -12,6 +12,7 @@
  * carries a bearer token and a JSON body — neither of which EventSource can send.
  */
 
+import { getPreferences } from '../services/userPreferences.service';
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
@@ -106,7 +107,12 @@ export const agentChat = async (req: AuthRequest, res: Response) => {
         return res.status(400).json({ error: 'attachment must have path and filename' });
     }
 
-    const model = resolveModel(requestedModel);
+    // No model named in the request: use the person's own default from Settings → Preferences.
+    let preferred: string | undefined;
+    if (!requestedModel) {
+        try { preferred = (await getPreferences((req as any).user.id)).ai.assistant_model ?? undefined; } catch { /* default */ }
+    }
+    const model = resolveModel(requestedModel ?? preferred);
 
     // The attachment's storage path is only useful to the model — it's noise
     // in the chat bubble the user reads back — so the two diverge here: the

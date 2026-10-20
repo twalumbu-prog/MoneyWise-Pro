@@ -1,3 +1,9 @@
+import {
+    getPreferences, updatePreferences, isStaffWithPayroll, getPersonalOrgForUser, CATEGORIZATION_MODELS,
+} from '../services/userPreferences.service';
+import { ASSISTANT_MODELS } from '../services/agent/models';
+import { pinRecoveryService, PinRecoveryError } from '../services/pinRecovery.service';
+import { getNotificationCounts } from '../services/notificationCounts.service';
 import { Response } from 'express';
 import { getFrontendUrl } from '../utils/frontendUrl';
 import { AuthRequest } from '../middleware/auth';
@@ -72,77 +78,7 @@ export const getNotificationsSummary = async (req: AuthRequest, res: any): Promi
             if (isNaN(walletsSinceDate.getTime())) walletsSinceDate = null;
         }
 
-        const counts = {
-            requisitions: 0,
-            approvals: 0,
-            vouchers: 0,
-            disbursements: 0,
-            settings: 0,
-            wallets: 0,
-        };
-
-        // REQUESTOR checks
-        const { count: reqCount } = await supabase
-            .from('requisitions')
-            .select('*', { count: 'exact', head: true })
-            .eq('requestor_id', user_id)
-            .eq('has_unread_updates', true);
-        counts.requisitions = reqCount || 0;
-
-        // AUTHORISER, ACCOUNTANT, ADMIN checks for approvals
-        if (['AUTHORISER', 'ACCOUNTANT', 'ADMIN'].includes(userRole)) {
-            const { count: appCount } = await supabase
-                .from('requisitions')
-                .select('*', { count: 'exact', head: true })
-                .eq('organization_id', organization_id)
-                .in('status', ['DRAFT', 'SUBMITTED']);
-            counts.approvals = appCount || 0;
-        }
-
-        // ACCOUNTANT, ADMIN checks for vouchers (DRAFT)
-        if (['ACCOUNTANT', 'ADMIN'].includes(userRole)) {
-            const { count: vouchCount } = await supabase
-                .from('vouchers')
-                .select('id, requisitions!inner(organization_id)', { count: 'exact', head: true })
-                .eq('status', 'DRAFT')
-                .eq('requisitions.organization_id', organization_id);
-            counts.vouchers = vouchCount || 0;
-        }
-
-        // Cashier, Accountant, Admin checks
-        if (['CASHIER', 'ACCOUNTANT', 'ADMIN'].includes(userRole)) {
-            const { count: disbCount } = await supabase
-                .from('requisitions')
-                .select('*', { count: 'exact', head: true })
-                .eq('organization_id', organization_id)
-                .in('status', ['AUTHORISED', 'CHANGE_SUBMITTED']);
-            counts.disbursements = disbCount || 0;
-        }
-
-        // Admin checks
-        if (userRole === 'ADMIN') {
-            const { count: setCount } = await supabase
-                .from('users')
-                .select('*', { count: 'exact', head: true })
-                .eq('organization_id', organization_id)
-                .eq('status', 'PENDING_APPROVAL');
-            counts.settings = setCount || 0;
-        }
-
-        // Wallets badge: INFLOW COMPLETED entries since last /cashbook visit.
-        // Only meaningful when the caller supplies wallets_since; without it we
-        // return 0 so the badge stays hidden until the user has visited once.
-        if (walletsSinceDate && ['CASHIER', 'ACCOUNTANT', 'ADMIN'].includes(userRole)) {
-            const { count: walletsCount } = await supabase
-                .from('cashbook_entries')
-                .select('*', { count: 'exact', head: true })
-                .eq('organization_id', organization_id)
-                .eq('entry_type', 'INFLOW')
-                .eq('status', 'COMPLETED')
-                .gt('created_at', walletsSinceDate.toISOString());
-            counts.wallets = walletsCount || 0;
-        }
-
+        const counts = await getNotificationCounts({ organization_id, role: userRole, user_id, walletsSinceDate });
         res.json(counts);
     } catch (error: any) {
         console.error('Error fetching notifications:', error);
@@ -1205,3 +1141,59 @@ export const verifyRecipient = async (req: AuthRequest, res: any): Promise<any> 
     }
 };
 
+
+
+// ── Preferences (Settings → Preferences, personal app) ────────────────────────
+
+export const getMyPreferences = async (req: AuthRequest, res: any): Promise<any> => {
+    try {
+        const userId = (req as any).user.id;
+        const [preferences, staff, personalOrg] = await Promise.all([getPreferences(userId), isStaffWithPayroll(userId), getPersonalOrgForUser(userId)]);
+
+        let employers: string[] = [];
+        if (staff) {
+            const { data } = await supabase.from('payroll_staff').select('organization:organizations(name)').eq('user_id', userId);
+            employers = [...new Set((data ?? []).map((r: any) => r.organization?.name).filter(Boolean))] as string[];
+        }
+        const { data: u } = await supabase.from('users').select('payment_info').eq('id', userId).maybeSingle();
+        const pi: any = (u as any)?.payment_info ?? {};
+
+        res.json({
+            preferences,
+            options: {
+                assistantModels: ASSISTANT_MODELS.map(({ id, label, vendor, blurb, tier }) => ({ id, label, vendor, blurb, tier })),
+                categorizationModels: CATEGORIZATION_MODELS,
+            },
+            salary: {
+                available: staff,
+                employers,
+                personalAccount: personalOrg ? { id: personalOrg.id, name: personalOrg.name } : null,
+                bankSummary: pi.bank_account_number ? `${pi.bank_name || 'Bank'} · ${String(pi.bank_account_number).slice(-4).padStart(String(pi.bank_account_number).length, '•')}`
+                    : pi.mobile_money_number ? `${pi.mobile_money_provider || 'Mobile money'} · ${pi.mobile_money_number}` : null,
+            },
+        });
+    } catch (error: any) {
+        console.error('[GetMyPreferences]', error);
+        res.status(500).json({ error: 'Failed to load your preferences', details: error.message });
+    }
+};
+
+export const updateMyPreferences = async (req: AuthRequest, res: any): Promise<any> => {
+    try {
+        res.json({ preferences: await updatePreferences((req as any).user.id, req.body ?? {}) });
+    } catch (error: any) {
+        res.status(error.httpStatus ?? 500).json({ error: error.message || 'Failed to save your preferences' });
+    }
+};
+
+// ── App PIN recovery ──────────────────────────────────────────────────────────
+
+export const requestPinRecovery = async (req: AuthRequest, res: any): Promise<any> => {
+    try { res.json(await pinRecoveryService.requestCode((req as any).user.id)); }
+    catch (error: any) { res.status(error instanceof PinRecoveryError ? error.httpStatus : 500).json({ error: error.message || 'Could not send the code' }); }
+};
+
+export const verifyPinRecovery = async (req: AuthRequest, res: any): Promise<any> => {
+    try { await pinRecoveryService.verifyCode((req as any).user.id, req.body?.code); res.json({ ok: true }); }
+    catch (error: any) { res.status(error instanceof PinRecoveryError ? error.httpStatus : 500).json({ error: error.message || 'Could not verify the code' }); }
+};

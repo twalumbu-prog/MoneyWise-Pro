@@ -1,3 +1,4 @@
+import { getPreferences, getPersonalOrgForUser } from '../services/userPreferences.service';
 import { Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
 import { matchStaffMember } from '../lib/staffUserMatching';
@@ -648,8 +649,29 @@ export const approvePayrollRun = async (req: Request, res: Response) => {
                 .single();
             if (reqErr) throw reqErr;
 
+            // Employees who chose (Settings → Preferences) to receive their salary in their MoneyWise personal account.
+            const personalDest = electronic ? await resolvePersonalWalletDestinations(groupItems.map((i: any) => i.staff_id).filter(Boolean)) : new Map<string, string>();
+
             // Build line items
             const lineItems = groupItems.map((item: any) => {
+                const personalOrgId = item.staff_id ? personalDest.get(item.staff_id) : undefined;
+                if (personalOrgId) {
+                    return {
+                        requisition_id: req_.id,
+                        description: `Payroll for ${item.staff_name}`,
+                        quantity: 1,
+                        unit_price: Number(item.net_pay),
+                        estimated_amount: Number(item.net_pay),
+                        employee_id: item.staff_id || null,
+                        employee_name: item.staff_name,
+                        payment_method: 'MONEYWISE_PAY',
+                        recipient_account: personalOrgId,
+                        recipient_bank_code: 'MONEYWISE',
+                        is_valid: true, // an on-us transfer to a MoneyWise account needs no bank-name lookup
+                        verified_name: item.staff_name,
+                        error_message: null,
+                    };
+                }
                 const destMethod = item.destination_method || item.payment_method || 'BANK';
                 return {
                     requisition_id: req_.id,
@@ -880,3 +902,26 @@ export const getSuggestedDeductions = async (req: Request, res: Response) => {
     }
 };
 
+/**
+ * staff id → personal-workspace organization id, for staff who linked their account to the payroll record AND chose to be
+ * paid into MoneyWise. Anyone without a linked account, without that preference, or whose personal workspace has no Lenco
+ * account yet stays on their saved bank / mobile-money details — a salary is never routed somewhere it can't land.
+ */
+async function resolvePersonalWalletDestinations(staffIds: string[]): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    if (staffIds.length === 0) return out;
+    const { data: staff } = await supabase.from('payroll_staff').select('id, user_id').in('id', staffIds).not('user_id', 'is', null);
+    for (const row of staff ?? []) {
+        try {
+            const prefs = await getPreferences((row as any).user_id);
+            if (prefs.payroll.destination !== 'PERSONAL_WALLET') continue;
+            const org = await getPersonalOrgForUser((row as any).user_id);
+            if (!org) continue;
+            const { data: o } = await supabase.from('organizations').select('lenco_subaccount_id').eq('id', org.id).maybeSingle();
+            if ((o as any)?.lenco_subaccount_id) out.set((row as any).id, org.id);
+        } catch (e: any) {
+            console.warn('[Payroll] could not resolve salary destination for staff', (row as any).id, e?.message);
+        }
+    }
+    return out;
+}

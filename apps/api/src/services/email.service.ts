@@ -1,3 +1,4 @@
+import { filterEmailsForOrg } from './userPreferences.service';
 import { Resend } from 'resend';
 import { getFrontendUrl } from '../utils/frontendUrl';
 import { supabase } from '../lib/supabase';
@@ -43,6 +44,8 @@ interface EmailParams {
     text?: string;
     replyTo?: string | string[];
     attachments?: { filename: string; content: Buffer | string }[];
+    /** Set for notifications about an organization: a person who chose app-only notifications for their personal account is skipped. */
+    orgId?: string;
 }
 
 // A bare HTML body with no plain-text alternative is a well-known spam signal —
@@ -281,7 +284,8 @@ export const emailService = {
                 await this.sendEmail({
                     to: recipients,
                     subject,
-                    html: this.wrapTemplate(body)
+                    html: this.wrapTemplate(body),
+                    orgId: requisition.organization_id,
                 });
                 console.log(`[EmailService] Notification sent successfully to ${recipients.join(', ')} for type ${type}`);
             } else {
@@ -345,6 +349,7 @@ export const emailService = {
                     to: emails,
                     subject: `You just got paid — K${amount.toLocaleString()}`,
                     html,
+                    orgId: organizationId,
                 });
                 console.log(`[EmailService] Payment-link notification sent to ${emails.join(', ')} for ref ${reference}`);
             }
@@ -427,6 +432,7 @@ export const emailService = {
                     to: emails,
                     subject: `You just got paid — K${total.toLocaleString()}`,
                     html,
+                    orgId: organizationId,
                 });
                 console.log(`[EmailService] Sale notification sent to ${emails.join(', ')} for ref ${reference} (${sales.length} item(s))`);
             }
@@ -516,6 +522,7 @@ export const emailService = {
                 to: emails,
                 subject: `New Inflow: K${amount.toLocaleString()} — ${accountLabel}`,
                 html: this.wrapTemplate(body),
+                orgId: organizationId,
             });
             console.log(`[EmailService] Inflow notification sent to ${emails.join(', ')} for ${accountLabel} (K${amount})`);
         } catch (error) {
@@ -1637,9 +1644,17 @@ export const emailService = {
             return false;
         }
 
+        let recipients = params.to;
+        if (params.orgId) {
+            const list = Array.isArray(params.to) ? params.to : [params.to];
+            const allowed = await filterEmailsForOrg(list, params.orgId).catch(() => list);
+            if (allowed.length === 0) return false; // everyone asked for app-only notifications
+            recipients = Array.isArray(params.to) ? allowed : allowed[0];
+        }
+
         const { data, error } = await resend.emails.send({
             from: FROM_ADDRESS, // Use verified domain in prod
-            to: params.to,
+            to: recipients,
             subject: params.subject,
             html: params.html,
             text: params.text || htmlToPlainText(params.html),

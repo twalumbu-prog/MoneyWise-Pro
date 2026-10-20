@@ -3,7 +3,8 @@ import { requireAuth } from '../middleware/auth';
 import { 
     getUsers, getNotificationsSummary, createUser, updateUser, deleteUser, 
     resendInvite, getMyProfile, updatePaymentInfo, registerPushToken, 
-    unregisterPushToken, searchRecipients, verifyRecipient 
+    unregisterPushToken, searchRecipients, verifyRecipient,
+    getMyPreferences, updateMyPreferences, requestPinRecovery, verifyPinRecovery 
 } from '../controllers/user.controller';
 
 const router = Router();
@@ -13,6 +14,10 @@ router.use(requireAuth);
 router.get('/notifications', getNotificationsSummary);
 router.get('/me', getMyProfile);
 router.put('/me/payment-info', updatePaymentInfo);
+router.get('/me/preferences', getMyPreferences);
+router.put('/me/preferences', updateMyPreferences);
+router.post('/me/pin-recovery/request', requestPinRecovery);
+router.post('/me/pin-recovery/verify', verifyPinRecovery);
 router.post('/me/push-token', registerPushToken);
 router.delete('/me/push-token', unregisterPushToken);
 router.get('/search-recipients', searchRecipients);

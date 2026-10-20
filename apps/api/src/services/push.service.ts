@@ -12,6 +12,8 @@
  */
 
 import { supabase } from '../lib/supabase';
+import { filterUserIdsForPush } from './userPreferences.service';
+import { getBadgeTotal } from './notificationCounts.service';
 
 // expo-server-sdk ships ESM-only, and this project's CJS build target
 // (tsconfig "module": "commonjs") downlevels even a dynamic import() back
@@ -31,6 +33,8 @@ interface ExpoPushMessage {
     title: string;
     body: string;
     data: Record<string, any>;
+    /** The red number on the app icon (iOS) — this person's total of things needing attention. */
+    badge?: number;
 }
 
 interface ExpoPushTicket {
@@ -62,22 +66,32 @@ interface PushPayload {
     body: string;
     /** Delivered to the app so a tap can deep-link straight to the relevant screen. */
     data?: Record<string, any>;
+    /**
+     * The organization the event belongs to. Lets a person who chose app-only or email-only notifications for their
+     * personal account be honoured; business events are never filtered by that choice.
+     */
+    orgId?: string;
 }
 
 // ── Token registry ───────────────────────────────────────────────────────────
 
-async function getTokensForUserIds(userIds: string[]): Promise<string[]> {
+interface TokenRow { token: string; user_id: string }
+
+async function getTokenRows(userIds: string[], orgId?: string | null): Promise<TokenRow[]> {
     if (userIds.length === 0) return [];
+    const allowed = await filterUserIdsForPush(userIds, orgId).catch(() => userIds);
+    if (allowed.length === 0) return [];
     const { data, error } = await supabase
         .from('push_tokens')
-        .select('token')
-        .in('user_id', userIds);
+        .select('token, user_id')
+        .in('user_id', allowed);
 
     if (error || !data) {
         console.error('[PushService] Failed to fetch tokens:', error);
         return [];
     }
-    return [...new Set(data.map((r: any) => r.token as string))];
+    const seen = new Set<string>();
+    return (data as TokenRow[]).filter((r) => (seen.has(r.token) ? false : (seen.add(r.token), true)));
 }
 
 /**
@@ -86,16 +100,22 @@ async function getTokensForUserIds(userIds: string[]): Promise<string[]> {
  * uninstalled, or a stale token from a reinstall) is deleted so the next
  * send doesn't keep paying for it.
  */
-async function sendToTokens(tokens: string[], payload: PushPayload): Promise<void> {
-    const validTokens = tokens.filter(isExpoPushToken);
-    if (validTokens.length === 0) return;
+async function sendToTokens(rows: TokenRow[], payload: PushPayload): Promise<void> {
+    const valid = rows.filter((r) => isExpoPushToken(r.token));
+    if (valid.length === 0) return;
+    const validTokens = valid.map((r) => r.token);
 
-    const messages: ExpoPushMessage[] = validTokens.map((to) => ({
-        to,
+    // Each person's own count goes on their own devices, so the icon badge is right even with the app closed.
+    const badgeByUser = new Map<string, number>();
+    await Promise.all([...new Set(valid.map((r) => r.user_id))].map(async (uid) => { badgeByUser.set(uid, await getBadgeTotal(uid)); }));
+
+    const messages: ExpoPushMessage[] = valid.map((r) => ({
+        to: r.token,
         sound: 'default',
         title: payload.title,
         body: payload.body,
         data: payload.data ?? {},
+        badge: badgeByUser.get(r.user_id) ?? 0,
     }));
 
     const chunks = chunkMessages(messages);
@@ -138,11 +158,11 @@ export const pushService = {
     },
 
     async sendToUser(userId: string, payload: PushPayload): Promise<void> {
-        await sendToTokens(await getTokensForUserIds([userId]), payload);
+        await sendToTokens(await getTokenRows([userId], payload.orgId), payload);
     },
 
     async sendToUsers(userIds: string[], payload: PushPayload): Promise<void> {
-        await sendToTokens(await getTokensForUserIds(userIds), payload);
+        await sendToTokens(await getTokenRows(userIds, payload.orgId), payload);
     },
 
     /**
@@ -165,7 +185,7 @@ export const pushService = {
 
     async sendToRoles(organizationId: string, roles: string[], payload: PushPayload): Promise<void> {
         const userIds = await this.getUserIdsByRoles(organizationId, roles);
-        await this.sendToUsers(userIds, payload);
+        await this.sendToUsers(userIds, { orgId: organizationId, ...payload });
     },
 
     /**
@@ -197,6 +217,7 @@ export const pushService = {
                         title: 'New requisition to review',
                         body: `${requestorName} — ${requisition.description} (K${Number(requisition.estimated_total).toLocaleString()})`,
                         data,
+                        orgId: requisition.organization_id,
                     });
                     break;
                 }
@@ -205,6 +226,7 @@ export const pushService = {
                         title: 'Requisition approved',
                         body: `${ref}: ${requisition.description}`,
                         data,
+                        orgId: requisition.organization_id,
                     });
                     break;
                 case 'REQUISITION_REJECTED':
@@ -212,6 +234,7 @@ export const pushService = {
                         title: 'Requisition rejected',
                         body: `${ref}: ${requisition.description}`,
                         data,
+                        orgId: requisition.organization_id,
                     });
                     break;
                 case 'CASH_DISBURSED':
@@ -219,6 +242,7 @@ export const pushService = {
                         title: 'Funds ready for collection',
                         body: `${ref}: ${requisition.description}`,
                         data,
+                        orgId: requisition.organization_id,
                     });
                     break;
                 case 'CHANGE_SUBMITTED': {
@@ -227,6 +251,7 @@ export const pushService = {
                         title: 'Change submitted for verification',
                         body: `${requestorName} returned change for ${ref}`,
                         data,
+                        orgId: requisition.organization_id,
                     });
                     break;
                 }
@@ -235,6 +260,7 @@ export const pushService = {
                         title: 'Requisition completed',
                         body: `${ref}: ${requisition.description}`,
                         data,
+                        orgId: requisition.organization_id,
                     });
                     break;
             }

@@ -426,6 +426,8 @@ const runMigration = async () => {
                 ADD COLUMN IF NOT EXISTS investor_account_number TEXT,
                 ADD COLUMN IF NOT EXISTS product_name TEXT;
         `);
+        // Per-person preferences (Settings → Preferences, personal app).
+        await migrationPool.query(`ALTER TABLE public.users ADD COLUMN IF NOT EXISTS preferences JSONB NOT NULL DEFAULT '{}'::jsonb;`);
         // Reusable KYC profile (Settings → KYC profile): one row per person, reused for every investment company.
         await migrationPool.query(`
             CREATE TABLE IF NOT EXISTS public.investor_kyc_profiles (
