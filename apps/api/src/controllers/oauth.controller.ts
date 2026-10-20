@@ -50,7 +50,12 @@ const validateAuthorizeRequest = async (
 
     const redirectUri = typeof p.redirect_uri === 'string' ? p.redirect_uri : '';
     if (!redirectUri || !client.redirect_uris.includes(redirectUri)) {
-        return { ok: false, error: 'invalid_redirect_uri', description: 'This redirect URI is not registered for the application.' };
+        const shown = redirectUri ? redirectUri.slice(0, 200) : '(none)';
+        return {
+            ok: false,
+            error: 'invalid_redirect_uri',
+            description: `The callback URL ${shown} is not registered for ${client.name}. Ask the app's developer to add it (under Settings → MoneyWise API → Your apps) or to use a registered address.`,
+        };
     }
 
     if (p.response_type !== 'code') {

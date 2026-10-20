@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Check, Loader2, ShieldCheck, ShieldAlert, BadgeCheck, AlertCircle } from 'lucide-react';
 import { apiFetch } from '../lib/api';
+import { toFlowError, type FlowError } from '../lib/oauthErrors';
 
 export const OAUTH_RETURN_KEY = 'mw_oauth_return';
 
@@ -19,11 +20,6 @@ interface AuthorizeInfo {
     organization: { id: string; name: string };
     scopes: { scope: string; description: string }[];
     auto_approve: boolean;
-}
-
-interface FlowError {
-    code: string;
-    message: string;
 }
 
 export const OAuthAuthorize: React.FC = () => {
@@ -57,8 +53,8 @@ export const OAuthAuthorize: React.FC = () => {
                 return;
             }
             window.location.assign(json.redirect_to);
-        } catch {
-            setError({ code: 'network', message: 'Could not reach MoneyWise. Check your connection and try again.' });
+        } catch (err) {
+            setError(toFlowError(err));
             setBusy(false);
         }
     };
@@ -81,8 +77,9 @@ export const OAuthAuthorize: React.FC = () => {
                     setBusy(true);
                     await decide(true);
                 }
-            } catch {
-                setError({ code: 'network', message: 'Could not reach MoneyWise. Check your connection and try again.' });
+            } catch (err) {
+                setError(toFlowError(err));
+                setBusy(false);
             }
         })();
         // eslint-disable-next-line react-hooks/exhaustive-deps
