@@ -81,7 +81,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onRequestAdd }) 
     };
 
     const handleDeleteUser = async (userId: string) => {
-        if (!window.confirm('Are you sure you want to remove this user? They will lose access immediately.')) return;
+        if (!window.confirm('Are you sure you want to remove this user? They will lose access immediately and will be notified by email.')) return;
 
         try {
             setActionLoading(true);

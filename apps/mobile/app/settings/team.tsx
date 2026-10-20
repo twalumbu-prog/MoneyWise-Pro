@@ -121,7 +121,7 @@ export default function TeamMembersScreen() {
                                 )}
                                 <Pressable
                                     style={styles.actionBtn}
-                                    onPress={() => Alert.alert('Remove access?', `${u.name || u.email} will lose access immediately.`, [
+                                    onPress={() => Alert.alert('Remove access?', `${u.name || u.email} will lose access immediately and will be notified by email.`, [
                                         { text: 'Cancel', style: 'cancel' },
                                         { text: 'Remove', style: 'destructive', onPress: () => remove.mutate(u.id) },
                                     ])}
