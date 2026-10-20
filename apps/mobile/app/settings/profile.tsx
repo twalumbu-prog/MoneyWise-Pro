@@ -61,7 +61,7 @@ export default function ProfileSettingsScreen() {
         onSuccess: () => {
             setDirty(false);
             qc.invalidateQueries({ queryKey: ['users', 'me'] });
-            qc.invalidateQueries({ queryKey: ['preferences'] });
+            qc.invalidateQueries({ queryKey: ['preferences', 'v2'] });
             Alert.alert('Saved', 'Your payment information has been updated.');
         },
         onError: (e: Error) => Alert.alert('Could not save', e.message),

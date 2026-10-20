@@ -8,6 +8,8 @@ import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { InlineSearchSelect } from '../../src/components/InlineSearchSelect';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
+/** Versioned so a response saved by an older build (a different shape) is never read back from the persisted cache. */
+const PREFS_KEY = ['preferences', 'v2'];
 const DEFAULT_ID = '__default__';
 const WALLET_ID = '__wallet__';
 const PAYROLL_ID = '__payroll__';
@@ -18,15 +20,15 @@ const PAYROLL_ID = '__payroll__';
  */
 export default function PreferencesScreen() {
     const qc = useQueryClient();
-    const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['preferences'], queryFn: () => userService.getMyPreferences() });
+    const { data, isLoading, isError, refetch } = useQuery({ queryKey: PREFS_KEY, queryFn: () => userService.getMyPreferences() });
 
     const save = useMutation({
         mutationFn: (patch: Parameters<typeof userService.updateMyPreferences>[0]) => userService.updateMyPreferences(patch),
         onMutate: async (patch) => {
-            await qc.cancelQueries({ queryKey: ['preferences'] });
-            const prev = qc.getQueryData<PreferencesResponse>(['preferences']);
+            await qc.cancelQueries({ queryKey: PREFS_KEY });
+            const prev = qc.getQueryData<PreferencesResponse>(PREFS_KEY);
             if (prev) {
-                qc.setQueryData<PreferencesResponse>(['preferences'], {
+                qc.setQueryData<PreferencesResponse>(PREFS_KEY, {
                     ...prev,
                     preferences: {
                         notifications: { ...prev.preferences.notifications, ...patch.notifications } as any,
@@ -37,8 +39,8 @@ export default function PreferencesScreen() {
             }
             return { prev };
         },
-        onError: (e: Error, _v, ctx) => { if (ctx?.prev) qc.setQueryData(['preferences'], ctx.prev); Alert.alert('Could not save', e.message); },
-        onSettled: () => { void qc.invalidateQueries({ queryKey: ['preferences'] }); },
+        onError: (e: Error, _v, ctx) => { if (ctx?.prev) qc.setQueryData(PREFS_KEY, ctx.prev); Alert.alert('Could not save', e.message); },
+        onSettled: () => { void qc.invalidateQueries({ queryKey: PREFS_KEY }); },
     });
 
     const p = data?.preferences;
@@ -103,7 +105,7 @@ export default function PreferencesScreen() {
                             <View style={[styles.card, { padding: 16 }]}>
                                 <View style={styles.aiHead}><Wallet size={16} color={colors.blue} /><Text style={styles.aiTitle}>Pay my salary into</Text></View>
                                 <Text style={styles.aiSub}>
-                                    Where {data.salary.employers.length ? data.salary.employers.join(', ') : 'your employer'} pays you. Takes effect from the next payroll.
+                                    Where {(data.salary.employers ?? []).length ? data.salary.employers.join(', ') : 'your employer'} pays you. Takes effect from the next payroll.
                                 </Text>
                                 <InlineSearchSelect
                                     items={salaryItems}
@@ -115,12 +117,12 @@ export default function PreferencesScreen() {
                                         if (i.id === WALLET_ID) save.mutate({ payroll: { destination: 'PERSONAL_WALLET' as SalaryDestination } });
                                         else if (i.id === PAYROLL_ID) save.mutate({ payroll: { destination: 'BANK' as SalaryDestination, account_id: null } });
                                         else {
-                                            const acc = data.salary.accounts.find((x) => x.id === i.id);
+                                            const acc = (data.salary.accounts ?? []).find((x) => x.id === i.id);
                                             if (acc) save.mutate({ payroll: { destination: acc.kind as SalaryDestination, account_id: acc.id } });
                                         }
                                     }}
                                 />
-                                {data.salary.accounts.length === 0 && (
+                                {(data.salary.accounts ?? []).length === 0 && (
                                     <Text style={styles.hint}>Add bank or mobile money accounts in My Profile to choose them here.</Text>
                                 )}
                             </View>
