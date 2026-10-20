@@ -72,6 +72,8 @@ const PLUGINS: ExpoConfig['plugins'] = [
     // Sign in with Apple (App Store guideline 4.8 requires it whenever another social login is offered).
     'expo-apple-authentication',
     'expo-web-browser',
+    // App PIN with Face ID / fingerprint unlock (Settings → Security).
+    ['expo-local-authentication', { faceIDPermission: 'MoneyWise uses Face ID to unlock the app.' }],
     [
         'expo-speech-recognition',
         {
@@ -99,7 +101,8 @@ if (!PERSONAL_TEAM_BUILD) {
 const config: ExpoConfig = {
     name: 'MoneyWise Pro',
     slug: 'moneywise-pro',
-    version: '0.1.0',
+    // 0.2.0: adds a native module (expo-local-authentication). runtimeVersion follows this, so OTA updates for 0.1.x binaries stop here.
+    version: '0.2.0',
     orientation: 'portrait',
     scheme: 'moneywise',
     userInterfaceStyle: 'light',

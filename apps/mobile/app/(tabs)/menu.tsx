@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
     ShieldCheck, ShoppingBag, LayoutGrid, TrendingUp, Landmark, Store,
-    User, Settings as SettingsIcon, Users, LogOut, Plug, FolderTree, FileText, Lock, UserX,
+    User, Settings as SettingsIcon, Users, LogOut, Plug, FolderTree, FileText, Lock, UserX, SlidersHorizontal,
 } from 'lucide-react-native';
 import { userService, investmentService } from 'core';
 import { useQuery } from '@tanstack/react-query';
@@ -142,6 +142,28 @@ export default function MenuScreen() {
                     <View style={styles.rowMain}>
                         <Text style={styles.rowLabel}>My Profile</Text>
                         <Text style={styles.rowSub}>Your account & disbursement details</Text>
+                    </View>
+                </Pressable>
+                {isPersonal && (
+                    <Pressable
+                        onPress={() => router.push('/settings/preferences')}
+                        style={({ pressed }) => [styles.row, styles.rowBorder, pressed && { opacity: 0.6 }]}
+                    >
+                        <SlidersHorizontal size={18} color={colors.blue} />
+                        <View style={styles.rowMain}>
+                            <Text style={styles.rowLabel}>Preferences</Text>
+                            <Text style={styles.rowSub}>Notifications, AI models & salary</Text>
+                        </View>
+                    </Pressable>
+                )}
+                <Pressable
+                    onPress={() => router.push('/settings/security')}
+                    style={({ pressed }) => [styles.row, styles.rowBorder, pressed && { opacity: 0.6 }]}
+                >
+                    <Lock size={18} color={colors.blue} />
+                    <View style={styles.rowMain}>
+                        <Text style={styles.rowLabel}>Security</Text>
+                        <Text style={styles.rowSub}>App PIN, Face ID & fingerprint</Text>
                     </View>
                 </Pressable>
                 <Pressable

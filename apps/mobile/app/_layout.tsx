@@ -20,6 +20,8 @@ import { initCore } from '../src/platform';
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
 import { queryClient, persister, MAX_CACHE_AGE_MS } from '../src/lib/queryClient';
 import { useNotificationNavigation } from '../src/hooks/useNotificationNavigation';
+import { useBadgeSync } from '../src/hooks/useBadgeSync';
+import { AppLockProvider } from '../src/context/AppLockContext';
 import { colors } from '../src/theme/tokens';
 
 // Hand `core` its native implementations before any service call can fire.
@@ -76,6 +78,12 @@ const PushNotificationTapHandler: React.FC = () => {
     return null;
 };
 
+/** Keeps the iOS app-icon badge in step with what needs the person's attention. No UI of its own. */
+const BadgeSync: React.FC = () => {
+    useBadgeSync();
+    return null;
+};
+
 export default function RootLayout() {
     const [fontsLoaded, fontError] = useFonts({
         DMSans_400Regular,
@@ -99,6 +107,7 @@ export default function RootLayout() {
                 persistOptions={{ persister, maxAge: MAX_CACHE_AGE_MS }}
             >
                 <AuthProvider>
+                    <AppLockProvider>
                     <StatusBar style="dark" />
                     <KeyboardDoneBar />
                     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.canvas } }}>
@@ -133,6 +142,8 @@ export default function RootLayout() {
                         <Stack.Screen name="products/[id]" options={{ animation: 'slide_from_bottom' }} />
                         <Stack.Screen name="settings/profile" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="settings/kyc-profile" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="settings/preferences" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="settings/security" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="settings/general" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="settings/team" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="settings/integrations" options={{ animation: 'slide_from_right' }} />
@@ -154,6 +165,8 @@ export default function RootLayout() {
                     <WalkthroughRoot />
                     <SessionGate />
                     <PushNotificationTapHandler />
+                    <BadgeSync />
+                    </AppLockProvider>
                 </AuthProvider>
             </PersistQueryClientProvider>
         </SafeAreaProvider>

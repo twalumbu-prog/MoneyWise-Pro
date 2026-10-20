@@ -80,7 +80,59 @@ export interface MoneyWiseRecipient {
     verified: boolean;
 }
 
+export type NotifyChannel = 'BOTH' | 'APP' | 'EMAIL';
+export type SalaryDestination = 'PERSONAL_WALLET' | 'BANK';
+
+/** A person's own settings (Settings → Preferences in the personal app). */
+export interface UserPreferences {
+    notifications: { channel: NotifyChannel };
+    ai: { assistant_model: string | null; categorization_model: string | null };
+    payroll: { destination: SalaryDestination };
+}
+
+export interface PreferencesResponse {
+    preferences: UserPreferences;
+    options: {
+        assistantModels: { id: string; label: string; vendor: string; blurb: string; tier: 'fast' | 'balanced' | 'deep' }[];
+        categorizationModels: { id: string; label: string }[];
+    };
+    salary: {
+        /** The person is on an employer's payroll (a staff record is linked to their account). */
+        available: boolean;
+        employers: string[];
+        personalAccount: { id: string; name: string } | null;
+        bankSummary: string | null;
+    };
+}
+
 export const userService = {
+    getMyPreferences(): Promise<PreferencesResponse> {
+        return apiJson<PreferencesResponse>('/users/me/preferences');
+    },
+
+    /** Partial update: send only what changed. */
+    updateMyPreferences(patch: {
+        notifications?: { channel?: NotifyChannel };
+        ai?: { assistant_model?: string | null; categorization_model?: string | null };
+        payroll?: { destination?: SalaryDestination };
+    }): Promise<{ preferences: UserPreferences }> {
+        return apiJson('/users/me/preferences', { method: 'PUT', body: JSON.stringify(patch) });
+    },
+
+    /** Emails a 6-digit code to the account address so a forgotten app PIN can be reset. */
+    requestPinRecovery(): Promise<{ sentTo: string; expiresInSeconds: number }> {
+        return apiJson('/users/me/pin-recovery/request', { method: 'POST' });
+    },
+
+    verifyPinRecovery(code: string): Promise<{ ok: true }> {
+        return apiJson('/users/me/pin-recovery/verify', { method: 'POST', body: JSON.stringify({ code }) });
+    },
+
+    /** Everything needing attention, per area — the numbers behind the in-app and app-icon badges. */
+    getNotificationCounts(): Promise<{ requisitions: number; approvals: number; vouchers: number; disbursements: number; settings: number; wallets: number }> {
+        return apiJson('/users/notifications');
+    },
+
     getAll(): Promise<UserProfile[]> {
         return apiJson<UserProfile[]>('/users');
     },

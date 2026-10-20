@@ -11,7 +11,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     X, ArrowRight, ArrowLeft, Plus, Minus, Trash2, User, List, AlertCircle, ArrowDownToLine,
     CheckCircle, Smartphone, Building2, Mail, ChevronDown, Search,
-    ShieldCheck, BookUser,
+    ShieldCheck, BookUser, Check,
 } from 'lucide-react-native';
 import {
     requisitionService, departmentService, lencoService, cashbookService, userService,
@@ -144,6 +144,8 @@ export default function NewRequisitionScreen() {
     const [resolvedName, setResolvedName] = useState('');
     const [confirmingName, setConfirmingName] = useState(false);
     const [autoAuthorize] = useState(true);
+    // Personal accounts finish with one plain success screen instead of the approval/disbursal workflow.
+    const [sentInfo, setSentInfo] = useState<{ amount: number; to: string } | null>(null);
     const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
     const [selectedWalletBalance, setSelectedWalletBalance] = useState<number | null>(null);
     const [walletPickerOpen, setWalletPickerOpen] = useState(false);
@@ -516,7 +518,13 @@ export default function NewRequisitionScreen() {
             }
 
             qc.invalidateQueries({ queryKey: ['requisitions'] });
-            safeBack();
+            qc.invalidateQueries({ queryKey: ['wallet'] });
+            qc.invalidateQueries({ queryKey: ['cashbook-entries'] });
+            if (isPersonal && autoAuthorize && userRole === 'ADMIN' && !useMyAccount) {
+                setSentInfo({ amount: getTotal(), to: recipientNameToUse || 'the recipient' });
+            } else {
+                safeBack();
+            }
         } catch (e: any) {
             setError(e?.message ?? 'Submission failed. Please try again.');
             if (e?.activeRequisitionId) setActiveRequisitionId(e.activeRequisitionId);
@@ -526,6 +534,25 @@ export default function NewRequisitionScreen() {
     };
 
     const total = getTotal();
+
+    if (sentInfo) {
+        return (
+            <View style={[styles.root, { alignItems: 'center', paddingHorizontal: 28, paddingTop: insets.top + 96, paddingBottom: Math.max(insets.bottom, 20) + 12 }]}>
+                <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
+                <View style={{ width: 88, height: 88, borderRadius: 44, borderWidth: 3, borderColor: colors.positive, alignItems: 'center', justifyContent: 'center' }}>
+                    <Check size={42} color={colors.positive} strokeWidth={2.5} />
+                </View>
+                <Text style={{ fontFamily: fonts.bodyBold, fontSize: 24, color: colors.navy, marginTop: 22 }}>Money sent</Text>
+                <Text style={{ fontFamily: fonts.body, fontSize: 15, color: colors.textMuted, textAlign: 'center', marginTop: 8, lineHeight: 22 }}>
+                    {formatKwacha(sentInfo.amount)} was sent to {sentInfo.to}.
+                </Text>
+                <View style={{ flex: 1 }} />
+                <Pressable onPress={() => safeBack()} style={({ pressed }) => [{ alignSelf: 'stretch', minHeight: 52, borderRadius: radius.pill, backgroundColor: colors.blue, alignItems: 'center', justifyContent: 'center' }, pressed && { opacity: 0.85 }]}>
+                    <Text style={{ fontFamily: fonts.bodyBold, fontSize: 15, color: '#FFFFFF' }}>Done</Text>
+                </Pressable>
+            </View>
+        );
+    }
 
     return (
         <KeyboardAvoidingView style={styles.root} behavior="padding">

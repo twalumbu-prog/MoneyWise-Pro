@@ -40,6 +40,10 @@ export type {
     CreateUserResult,
     MutationAck,
     PaymentInfo,
+    UserPreferences,
+    PreferencesResponse,
+    NotifyChannel,
+    SalaryDestination,
     MyProfile,
     MoneyWiseRecipient,
 } from './services/user.service';

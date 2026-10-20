@@ -12,7 +12,8 @@ Notifications.setNotificationHandler({
         shouldShowBanner: true,
         shouldShowList: true,
         shouldPlaySound: true,
-        shouldSetBadge: false,
+        // The server includes each person's attention count in the push; applying it is what puts the red number on the app icon.
+        shouldSetBadge: true,
     }),
 });
 

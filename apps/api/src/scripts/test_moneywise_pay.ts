@@ -121,6 +121,20 @@ async function main() {
             const { data: r2 } = await supabase.from('requisitions').select('estimated_total').eq('id', reqId).single();
             must(Number((r2 as any).estimated_total) === 100, `requisition total must stay K100, was K${(r2 as any).estimated_total}`);
         });
+
+        await step('8. payroll-style: each employee has their own reference, is credited once, and no other row is re-tagged', async () => {
+            stub({});
+            const ref = `MWPAY-P-${reqId.slice(0, 8)}-ITEM0001`;
+            const r = await moneyWisePayService.sendOnUs({ senderOrgId: sender, recipientOrgId: recipient, amount: 250, requisitionId: reqId, reference: ref });
+            must(r.reference === ref && transferCalls[0].payload.reference === ref, 'per-item reference not used');
+            const { data: before } = await supabase.from('cashbook_entries').select('id').eq('organization_id', recipient).eq('external_reference', ref);
+            must((before || []).length === 0, 'credited before confirmation was recorded');
+            await moneyWisePayService.remember(ref, { recipientOrgId: recipient, senderName: 'Employer Ltd', amount: 250 });
+            await moneyWisePayService.creditByReference(ref);
+            await moneyWisePayService.creditByReference(ref);
+            const { data: rows } = await supabase.from('cashbook_entries').select('debit, description').eq('organization_id', recipient).eq('external_reference', ref);
+            must((rows || []).length === 1 && Number(rows![0].debit) === 250 && String(rows![0].description).includes('Employer Ltd'), 'recipient should have exactly one K250 inflow');
+        });
     } finally {
         L.getAccountBalance = saved.bal; L.getAccountDetails = saved.det; L.getTransferStatus = saved.st; L.transferToLencoMerchant = saved.tx;
         for (const org of [sender, recipient]) {
@@ -131,6 +145,7 @@ async function main() {
             await supabase.from('cashbook_entries').delete().eq('organization_id', org);
         }
         await supabase.from('app_settings').delete().like('key', `mwpay:MWPAY-${reqId.slice(0, 8)}%`);
+        await supabase.from('app_settings').delete().like('key', `mwpay:MWPAY-P-${reqId.slice(0, 8)}%`);
         await supabase.from('disbursements').delete().eq('requisition_id', reqId);
         await supabase.from('line_items').delete().eq('requisition_id', reqId);
         await supabase.from('requisition_messages').delete().eq('requisition_id', reqId);

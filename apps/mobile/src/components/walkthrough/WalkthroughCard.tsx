@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
-import { ChevronRight, Circle, Play, Trophy } from 'lucide-react-native';
+import { ChevronRight, Circle, Play, Trophy, X } from 'lucide-react-native';
 import { useWalkthrough } from '../../hooks/useWalkthrough';
 import { walkthroughUi } from '../../lib/walkthroughUi';
 import { colors, fonts } from '../../theme/tokens';
@@ -11,7 +11,7 @@ import { colors, fonts } from '../../theme/tokens';
  * renders nothing at all if progress can't be loaded.
  */
 export const WalkthroughCard: React.FC = () => {
-    const { showCard, next, completed, total, type } = useWalkthrough();
+    const { showCard, next, completed, total, type, setCardHidden } = useWalkthrough();
     const pct = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
@@ -28,7 +28,10 @@ export const WalkthroughCard: React.FC = () => {
         <View style={styles.card}>
             <View style={styles.titleRow}>
                 <View style={styles.titleIcon}><Trophy size={16} color="#1E40AF" strokeWidth={1.8} /></View>
-                <Text style={styles.title}>Welcome to Moneywise</Text>
+                <Text style={[styles.title, { flex: 1 }]}>Welcome to Moneywise</Text>
+                <Pressable onPress={() => setCardHidden(true)} hitSlop={12} style={styles.close} accessibilityRole="button" accessibilityLabel="Dismiss getting started">
+                    <X size={16} color="#737373" strokeWidth={2} />
+                </Pressable>
             </View>
             <Text style={styles.intro}>{intro}</Text>
 
@@ -71,6 +74,7 @@ const styles = StyleSheet.create({
         marginBottom: 14,
     },
     titleRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    close: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center', marginRight: -4, marginTop: -2 },
     titleIcon: { width: 24, alignItems: 'center' },
     title: { fontFamily: fonts.bodyBold, fontSize: 14, color: '#000000' },
     intro: { fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: '#525252', marginTop: -4 },

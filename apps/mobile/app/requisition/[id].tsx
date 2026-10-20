@@ -12,6 +12,7 @@ import {
 } from 'core';
 import type { RequisitionMessage } from 'core';
 import { useAuth } from '../../src/context/AuthContext';
+import { usePersonalAccount } from '../../src/hooks/usePersonalAccount';
 import { RequisitionProgress } from '../../src/components/requisitions/RequisitionProgress';
 import { RequisitionMessageCard } from '../../src/components/requisitions/RequisitionMessageCard';
 import { RequisitionAttachments } from '../../src/components/requisitions/RequisitionAttachments';
@@ -35,6 +36,7 @@ export default function RequisitionDetailScreen() {
     const safeBack = useGoBack();
     const qc = useQueryClient();
     const { user, userRole } = useAuth();
+    const { isPersonal } = usePersonalAccount();
     const scrollRef = useRef<ScrollView>(null);
     const [draft, setDraft] = useState('');
     const [actingOn, setActingOn] = useState<'APPROVE' | 'REJECT' | null>(null);
@@ -61,7 +63,17 @@ export default function RequisitionDetailScreen() {
         enabled: !!id && tab === 'chat',
         refetchInterval: 3000,
     });
-    const messages: RequisitionMessage[] = messagesData ?? [];
+    // Personal accounts see the outcome, not the approval/categorisation workflow behind it: chat the person wrote,
+    // the payout result, and the payout prompt only while a payment still needs sending.
+    const allMessages: RequisitionMessage[] = messagesData ?? [];
+    const messages: RequisitionMessage[] = !isPersonal ? allMessages : allMessages.filter((m) => {
+        if (m.message_type !== 'SYSTEM') return true;
+        const stage = m.metadata?.stage;
+        const content = m.content?.trim() ?? '';
+        if (stage === 'DISBURSAL_SUMMARY' || content.startsWith('Funds Disbursed:') || content.startsWith('Disbursement Processing:')) return true;
+        if (stage === 'DISBURSAL' || content === 'How would you like to disburse these funds?') return req?.status === 'AUTHORISED';
+        return false;
+    });
 
     useEffect(() => {
         if (messages.length > 0) {
@@ -145,9 +157,9 @@ export default function RequisitionDetailScreen() {
                 </Pressable>
             </View>
 
-            {req && <RequisitionProgress currentStatus={req.status} isPrivileged={isPrivilegedRole(userRole)} />}
+            {req && !isPersonal && <RequisitionProgress currentStatus={req.status} isPrivileged={isPrivilegedRole(userRole)} />}
 
-            {req && (
+            {req && !isPersonal && (
                 <View style={styles.tabRow}>
                     {(['chat', 'attachments', 'audit'] as Tab[]).map((t) => (
                         <Pressable key={t} style={[styles.tabBtn, tab === t && styles.tabBtnActive]} onPress={() => setTab(t)}>
