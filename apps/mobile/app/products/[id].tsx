@@ -2,15 +2,15 @@ import { useEffect, useState } from 'react';
 import { KB_DONE_ID } from '../../src/components/KeyboardDoneBar';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet,
-    ActivityIndicator, Alert, Image, KeyboardAvoidingView, 
+    ActivityIndicator, Alert, Image, KeyboardAvoidingView, Switch,
 } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Camera } from 'lucide-react-native';
+import { Camera, X } from 'lucide-react-native';
 import {
     productService, formatKwacha, requireCapability, PRODUCT_TYPE_OPTIONS,
 } from 'core';
-import type { ProductType } from 'core';
+import type { ProductType, CheckoutField } from 'core';
 import { uploadToBucket } from '../../src/lib/uploads';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../../src/theme/tokens';
@@ -37,6 +37,22 @@ export default function ProductEditScreen() {
     const [type, setType] = useState<ProductType>('PRODUCT');
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [uploadingImage, setUploadingImage] = useState(false);
+    // Buyer-info fields shown on the store's own page before payment. `optionsText`
+    // is the raw comma-separated input for choice fields (parsed on save).
+    type UiField = CheckoutField & { optionsText?: string };
+    const [collectInfo, setCollectInfo] = useState(false);
+    const [fields, setFields] = useState<UiField[]>([]);
+    const newId = () => `f_${Math.random().toString(36).slice(2, 9)}`;
+    const addField = (preset: 'name' | 'email' | 'size' | 'custom') => {
+        const f: UiField =
+            preset === 'name' ? { id: newId(), label: 'Full name', type: 'text', required: true }
+            : preset === 'email' ? { id: newId(), label: 'Email address', type: 'text', required: true }
+            : preset === 'size' ? { id: newId(), label: 'Size', type: 'select', required: true, optionsText: 'S, M, L' }
+            : { id: newId(), label: '', type: 'text', required: true };
+        setFields((prev) => [...prev, f]);
+    };
+    const patchField = (fid: string, patch: Partial<UiField>) =>
+        setFields((prev) => prev.map((f) => (f.id === fid ? { ...f, ...patch } : f)));
 
     useEffect(() => {
         if (existing) {
@@ -45,11 +61,26 @@ export default function ProductEditScreen() {
             setPrice(String(existing.price ?? ''));
             setType(existing.product_type ?? 'PRODUCT');
             setImageUrl(existing.image_url ?? null);
+            const cf = Array.isArray(existing.checkout_fields) ? existing.checkout_fields : [];
+            setFields(cf.map((f) => ({ ...f, optionsText: (f.options || []).join(', ') })));
+            setCollectInfo(cf.length > 0);
         }
     }, [existing]);
 
     const numericPrice = Number(price) || 0;
-    const valid = name.trim().length > 0 && (type === 'DONATION' || numericPrice > 0);
+    const canCollectInfo = type !== 'DONATION';
+    const cleanFields: CheckoutField[] = fields
+        .map(({ optionsText, ...f }) => ({
+            ...f,
+            label: f.label.trim(),
+            ...(f.type === 'select'
+                ? { options: (optionsText ?? '').split(',').map((o) => o.trim()).filter(Boolean) }
+                : {}),
+        }))
+        .filter((f) => f.label);
+    const infoActive = collectInfo && canCollectInfo;
+    const infoValid = !infoActive || (cleanFields.length > 0 && cleanFields.every((f) => f.type !== 'select' || (f.options?.length ?? 0) > 0));
+    const valid = name.trim().length > 0 && (type === 'DONATION' || numericPrice > 0) && infoValid;
 
     const save = useMutation({
         mutationFn: () => {
@@ -59,6 +90,7 @@ export default function ProductEditScreen() {
                 price: numericPrice,
                 product_type: type,
                 image_url: imageUrl,
+                checkout_fields: infoActive ? cleanFields : [],
             };
             return isNew ? productService.createProduct(payload) : productService.updateProduct(String(id), payload);
         },
@@ -140,6 +172,69 @@ export default function ProductEditScreen() {
                     )}
                 </View>
 
+                {canCollectInfo && (
+                    <View style={styles.card}>
+                        <View style={styles.toggleRow}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.toggleTitle}>Collect customer information</Text>
+                                <Text style={styles.toggleHint}>Buyers fill these in on their own page right before paying (e.g. name, size)</Text>
+                            </View>
+                            <Switch value={collectInfo} onValueChange={setCollectInfo} trackColor={{ true: colors.blue }} />
+                        </View>
+
+                        {collectInfo && (
+                            <View style={{ marginTop: 14, gap: 10 }}>
+                                {fields.map((f) => (
+                                    <View key={f.id} style={styles.fieldBox}>
+                                        <View style={styles.fieldTop}>
+                                            <TextInput
+                                                style={[styles.input, { flex: 1 }]} value={f.label}
+                                                onChangeText={(v) => patchField(f.id, { label: v })}
+                                                placeholder="Field label, e.g. Full name" placeholderTextColor={colors.textFaint}
+                                            />
+                                            <Pressable hitSlop={8} onPress={() => setFields((prev) => prev.filter((x) => x.id !== f.id))}>
+                                                <X size={16} color={colors.textFaint} />
+                                            </Pressable>
+                                        </View>
+                                        <View style={styles.chips}>
+                                            {(['text', 'select'] as const).map((t) => (
+                                                <Pressable
+                                                    key={t}
+                                                    onPress={() => patchField(f.id, { type: t, ...(t === 'select' && f.optionsText === undefined ? { optionsText: '' } : {}) })}
+                                                    style={[styles.chip, f.type === t && styles.chipActive]}
+                                                >
+                                                    <Text style={[styles.chipText, f.type === t && styles.chipTextActive]}>{t === 'text' ? 'Text' : 'Choices'}</Text>
+                                                </Pressable>
+                                            ))}
+                                            <Pressable onPress={() => patchField(f.id, { required: !f.required })} style={[styles.chip, f.required && styles.chipActive]}>
+                                                <Text style={[styles.chipText, f.required && styles.chipTextActive]}>Required</Text>
+                                            </Pressable>
+                                        </View>
+                                        {f.type === 'select' && (
+                                            <TextInput
+                                                style={styles.input} value={f.optionsText ?? ''}
+                                                onChangeText={(v) => patchField(f.id, { optionsText: v })}
+                                                placeholder="Options, separated by commas (S, M, L, XL)" placeholderTextColor={colors.textFaint}
+                                            />
+                                        )}
+                                    </View>
+                                ))}
+                                <View style={styles.chips}>
+                                    <Pressable style={styles.chip} onPress={() => addField('name')}><Text style={styles.chipText}>+ Name</Text></Pressable>
+                                    {type === 'PRODUCT' && (
+                                        <Pressable style={styles.chip} onPress={() => addField('size')}><Text style={styles.chipText}>+ Sizes</Text></Pressable>
+                                    )}
+                                    <Pressable style={styles.chip} onPress={() => addField('email')}><Text style={styles.chipText}>+ Email</Text></Pressable>
+                                    <Pressable style={[styles.chip, styles.chipActive]} onPress={() => addField('custom')}><Text style={styles.chipTextActive}>+ Custom field</Text></Pressable>
+                                </View>
+                                {!infoValid && (
+                                    <Text style={styles.toggleHint}>Add at least one field, and give every choices field some options.</Text>
+                                )}
+                            </View>
+                        )}
+                    </View>
+                )}
+
                 {numericPrice > 0 && (
                     <View style={styles.previewCard}>
                         <Text style={styles.previewLabel}>Price shown to customers</Text>
@@ -186,6 +281,11 @@ const styles = StyleSheet.create({
         borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.md,
         paddingHorizontal: 14, paddingVertical: 11,
     },
+    toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    toggleTitle: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text },
+    toggleHint: { fontFamily: fonts.body, fontSize: 11, color: colors.textFaint, marginTop: 2 },
+    fieldBox: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 12, gap: 10 },
+    fieldTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
     multiline: { minHeight: 80, textAlignVertical: 'top' },
     previewCard: {
         backgroundColor: colors.surface, borderRadius: radius.lg, padding: 18,

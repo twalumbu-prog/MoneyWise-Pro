@@ -42,6 +42,7 @@ export const InflowDetailSheet: React.FC<{ inflow: InflowRow | null; onClose: ()
     const StatusIcon = cfg.icon;
     const deliverySale = sales.find((s) => s.order_details);
     const delivery = deliverySale?.order_details;
+    const infoSales = sales.filter((s) => s.customer_responses && s.customer_responses.length > 0);
 
     return (
         <Modal visible={!!inflow} transparent animationType="slide" onRequestClose={onClose}>
@@ -115,6 +116,22 @@ export const InflowDetailSheet: React.FC<{ inflow: InflowRow | null; onClose: ()
                             <View style={styles.customerCard}>
                                 <Text style={styles.customerName}>{sales[0].customer_name}</Text>
                                 <Text style={styles.customerPhone}>{sales[0].customer_phone}</Text>
+                            </View>
+                        </View>
+                    )}
+
+                    {!loading && infoSales.length > 0 && (
+                        <View>
+                            <Text style={styles.sectionTitle}>Order Information</Text>
+                            <View style={styles.deliveryCard}>
+                                {infoSales.map((s) => (
+                                    <View key={s.id} style={{ gap: 3 }}>
+                                        <Text style={styles.deliveryModeText}>{s.products?.name || 'Item'}</Text>
+                                        {s.customer_responses!.map((r) => (
+                                            <Text key={r.id} style={styles.deliveryAddressSub}>{r.label}: {r.value}</Text>
+                                        ))}
+                                    </View>
+                                ))}
                             </View>
                         </View>
                     )}
