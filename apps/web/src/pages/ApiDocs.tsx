@@ -167,6 +167,10 @@ X-Api-Key: mwp_live_YOUR_API_KEY
       },
       "wallet_id": "01948d3c-9a2d-7bb0-8041-698fbfad4b3c",
       "reference": "LNC-PAY-89211",
+      "external_reference": null,
+      "payer_name": "Mutale Banda",
+      "payment_channel": null,
+      "requisition_id": null,
       "created_at": "2026-10-14T11:20:00Z"
     }
   ],
@@ -434,7 +438,7 @@ const ENDPOINTS: EndpointDoc[] = [
         path: '/v1/balance',
         title: 'Get Balance Summary',
         scope: 'read',
-        description: 'Returns the consolidated organization balance summed across all active wallets, plus individual wallet breakdowns.',
+        description: 'Returns the total across your internal MoneyWise wallets with a per-wallet breakdown. External accounts (banks, mobile money) are listed separately: their ledger_balance is what MoneyWise has recorded against the account, not the bank\'s own balance. Once a bank statement is imported, statement_balance and difference show how the two compare.',
         exampleCurl: `curl -X GET "https://moneywise.blueopus.cloud/api/v1/balance" \\
   -H "Authorization: Bearer mwp_live_..."`,
         exampleResponse: `{
@@ -451,8 +455,166 @@ const ENDPOINTS: EndpointDoc[] = [
       "name": "Petty Cash",
       "balance": 4850.00
     }
-  ]
+  ],
+  "external_wallets": [
+    {
+      "id": "b3184aed-8806-46ec-9723-0625256f9866",
+      "name": "Zanaco",
+      "ledger_balance": 918860.00,
+      "statement_balance": 921310.00,
+      "difference": 2450.00
+    }
+  ],
+  "external_ledger_total": 918860.00
 }`
+    },
+    {
+        id: 'list-external-wallets',
+        category: 'Finance',
+        method: 'GET',
+        path: '/v1/external-wallets',
+        title: 'List External Accounts',
+        scope: 'read',
+        description: 'Lists your external accounts (banks, mobile money, custom) with the balance MoneyWise has recorded against each and a summary of any imported bank statement. ledger_balance is a running total of the payments recorded against the account in MoneyWise; it is not the bank\'s own balance. statement.difference = statement.latest_balance - ledger_balance (null until a statement with balances has been imported).',
+        exampleCurl: `curl -X GET "https://moneywise.blueopus.cloud/api/v1/external-wallets" \\
+  -H "Authorization: Bearer mwp_live_..."`,
+        exampleResponse: `{
+  "data": [
+    {
+      "id": "b3184aed-8806-46ec-9723-0625256f9866",
+      "name": "Zanaco",
+      "provider_type": "BANK",
+      "provider_name": "Zanaco",
+      "currency": "ZMW",
+      "ledger_balance": 918860.00,
+      "ledger_entries": 1242,
+      "last_entry_date": "2026-10-19",
+      "statement": {
+        "lines": 310,
+        "latest_date": "2026-10-20",
+        "latest_balance": 921310.00,
+        "difference": 2450.00
+      }
+    }
+  ],
+  "count": 1
+}`
+    },
+    {
+        id: 'get-external-wallet',
+        category: 'Finance',
+        method: 'GET',
+        path: '/v1/external-wallets/:id',
+        title: 'Get an External Account',
+        scope: 'read',
+        description: 'One external account, in the same shape as the list.',
+        pathParams: [
+            { name: 'id', type: 'UUID', required: true, description: 'External account ID.' }
+        ],
+        exampleCurl: `curl -X GET "https://moneywise.blueopus.cloud/api/v1/external-wallets/b3184aed-8806-46ec-9723-0625256f9866" \\
+  -H "Authorization: Bearer mwp_live_..."`,
+        exampleResponse: `{
+  "id": "b3184aed-8806-46ec-9723-0625256f9866",
+  "name": "Zanaco",
+  "provider_type": "BANK",
+  "provider_name": "Zanaco",
+  "currency": "ZMW",
+  "ledger_balance": 918860.00,
+  "ledger_entries": 1242,
+  "last_entry_date": "2026-10-19",
+  "statement": { "lines": 310, "latest_date": "2026-10-20", "latest_balance": 921310.00, "difference": 2450.00 }
+}`
+    },
+    {
+        id: 'get-statement-lines',
+        category: 'Finance',
+        method: 'GET',
+        path: '/v1/external-wallets/:id/statement-lines',
+        title: 'List Bank Statement Lines',
+        scope: 'read',
+        description: 'The bank statement lines imported for an external account, newest first. These are the bank\'s own lines, kept separate from MoneyWise\'s accounting ledger, so you can reconcile the two.',
+        pathParams: [
+            { name: 'id', type: 'UUID', required: true, description: 'External account ID.' }
+        ],
+        queryParams: [
+            { name: 'start_date', type: 'string', description: 'YYYY-MM-DD.' },
+            { name: 'end_date', type: 'string', description: 'YYYY-MM-DD.' },
+            { name: 'limit', type: 'integer', description: 'Default 50, maximum 200.' },
+            { name: 'cursor', type: 'string', description: 'next_cursor from the previous page.' }
+        ],
+        exampleCurl: `curl -X GET "https://moneywise.blueopus.cloud/api/v1/external-wallets/b3184aed-8806-46ec-9723-0625256f9866/statement-lines?limit=2" \\
+  -H "Authorization: Bearer mwp_live_..."`,
+        exampleResponse: `{
+  "data": [
+    {
+      "id": "a30c7f87-4cbe-4b3a-9398-d83b8389caea",
+      "date": "2026-10-04",
+      "description": "EFT RECEIVED",
+      "reference": "TRF002",
+      "money_in": 500.00,
+      "money_out": 0,
+      "balance": 1979.50,
+      "currency": "ZMW",
+      "import_batch_id": "3456dca7-1342-4012-b35b-59551a9ca078",
+      "imported_at": "2026-10-21T17:19:45Z"
+    }
+  ],
+  "count": 1,
+  "next_cursor": null
+}`
+    },
+    {
+        id: 'import-statement-lines',
+        category: 'Finance',
+        method: 'POST',
+        path: '/v1/external-wallets/:id/statement-lines',
+        title: 'Import Bank Statement Lines',
+        scope: 'write',
+        description: 'Imports up to 500 statement lines per request. It is safe to re-send the same statement: lines already imported are skipped (reported as duplicates_skipped), and two genuinely identical lines on one day are kept as two. Statement lines never change MoneyWise balances or accounting; they are evidence to reconcile against. Send one line per movement (money_in or money_out, not both).',
+        pathParams: [
+            { name: 'id', type: 'UUID', required: true, description: 'External account ID.' }
+        ],
+        bodyParams: [
+            { name: 'lines', type: 'array', required: true, description: '1–500 line objects (below).' },
+            { name: 'lines[].date', type: 'string', required: true, description: 'YYYY-MM-DD.' },
+            { name: 'lines[].money_in', type: 'number', required: false, description: 'Credit to the account (money received).' },
+            { name: 'lines[].money_out', type: 'number', required: false, description: 'Debit from the account (money paid out, fees).' },
+            { name: 'lines[].balance', type: 'number', required: false, description: 'The statement\'s running balance after the line (enables the ledger comparison).' },
+            { name: 'lines[].description', type: 'string', required: false, description: 'Up to 300 characters.' },
+            { name: 'lines[].reference', type: 'string', required: false, description: 'Up to 100 characters (e.g. the bank reference).' },
+            { name: 'lines[].external_id', type: 'string', required: false, description: 'Your own unique id for the line; pins its identity if you have one.' }
+        ],
+        exampleCurl: `curl -X POST "https://moneywise.blueopus.cloud/api/v1/external-wallets/b3184aed-8806-46ec-9723-0625256f9866/statement-lines" \\
+  -H "Authorization: Bearer mwp_live_..." \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "lines": [
+      { "date": "2026-10-01", "description": "FEES TRF", "reference": "TRF001", "money_in": 1000, "balance": 1000 },
+      { "date": "2026-10-03", "description": "BANK CHARGES", "money_out": 20.5, "balance": 979.5 }
+    ]
+  }'`,
+        exampleResponse: `{
+  "import_batch_id": "239c3b37-1d4c-4b91-8eab-4abef32bff52",
+  "received": 2,
+  "imported": 2,
+  "duplicates_skipped": 0
+}`
+    },
+    {
+        id: 'delete-statement-import',
+        category: 'Finance',
+        method: 'DELETE',
+        path: '/v1/external-wallets/:id/statement-imports/:batchId',
+        title: 'Undo a Statement Import',
+        scope: 'write',
+        description: 'Deletes every line that came in with one import (the import_batch_id returned when you imported), e.g. after importing the wrong file. Only that batch is affected.',
+        pathParams: [
+            { name: 'id', type: 'UUID', required: true, description: 'External account ID.' },
+            { name: 'batchId', type: 'UUID', required: true, description: 'The import_batch_id from the import response.' }
+        ],
+        exampleCurl: `curl -X DELETE "https://moneywise.blueopus.cloud/api/v1/external-wallets/b3184aed-8806-46ec-9723-0625256f9866/statement-imports/239c3b37-1d4c-4b91-8eab-4abef32bff52" \\
+  -H "Authorization: Bearer mwp_live_..."`,
+        exampleResponse: `{ "deleted": 2 }`
     },
     {
         id: 'get-transactions',
@@ -471,7 +633,8 @@ const ENDPOINTS: EndpointDoc[] = [
             { name: 'status', type: 'string', description: 'Transaction status: COMPLETED, PENDING, or REVERSED.' },
             { name: 'wallet_id', type: 'UUID', description: 'Limit to transactions in a specific wallet.' },
             { name: 'account_id', type: 'UUID', description: 'Limit to transactions linked to a specific Chart of Accounts ID.' },
-            { name: 'ledger', type: 'string', description: 'Account ledger type (defaults to MONEYWISE_WALLET).' }
+            { name: 'ledger', type: 'string', description: 'Account ledger type (defaults to MONEYWISE_WALLET).' },
+            { name: 'external_wallet_id', type: 'UUID', description: 'Return the transactions recorded against an external account (id from GET /v1/external-wallets) instead of the internal wallet ledger.' }
         ],
         exampleCurl: `curl -X GET "https://moneywise.blueopus.cloud/api/v1/transactions?limit=25&type=INFLOW" \\
   -H "Authorization: Bearer mwp_live_..."`,
@@ -1055,6 +1218,8 @@ export const ApiDocs: React.FC = () => {
                                                             ? 'bg-indigo-100 text-indigo-700'
                                                             : ep.method === 'PATCH'
                                                             ? 'bg-amber-100 text-amber-700'
+                                                            : ep.method === 'DELETE'
+                                                            ? 'bg-red-100 text-red-700'
                                                             : 'bg-emerald-100 text-emerald-700'
                                                     }`}
                                                 >
@@ -1450,6 +1615,8 @@ curl -X POST https://moneywise.blueopus.cloud/api/oauth/revoke \\
                                                     ? 'bg-indigo-600 text-white'
                                                     : ep.method === 'PATCH'
                                                     ? 'bg-amber-600 text-white'
+                                                    : ep.method === 'DELETE'
+                                                    ? 'bg-red-600 text-white'
                                                     : 'bg-emerald-600 text-white'
                                             }`}
                                         >

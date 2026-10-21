@@ -10,19 +10,7 @@ import { supabase } from '../lib/supabase';
 import { cashbookService } from '../services/cashbook.service';
 import { getFrontendUrl } from '../utils/frontendUrl';
 
-const CURRENCY = 'ZMW';
-const DATE_RE = /^\d{4}-\d{2}-\d{2}/;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-const clampLimit = (raw: unknown, def = 50, max = 200) => {
-    const n = parseInt(String(raw ?? ''), 10);
-    return Number.isFinite(n) && n > 0 ? Math.min(n, max) : def;
-};
-
-const fail = (res: any, status: number, message: string, err?: { message?: string }) => {
-    if (err) console.error(`[PublicAPI] ${message}:`, err.message);
-    return res.status(status).json({ error: message });
-};
+import { CURRENCY, DATE_RE, UUID_RE, clampLimit, fail, loadExternalWallets } from './publicApiShared';
 
 // ── Organisation ─────────────────────────────────────────────────────────────
 
@@ -75,12 +63,23 @@ export const getWallets = async (req: any, res: any) => {
 
 export const getBalanceSummary = async (req: any, res: any) => {
     try {
-        const wallets = await loadWalletsWithBalances(req.user.organization_id);
+        const orgId = req.user.organization_id;
+        const [wallets, external] = await Promise.all([loadWalletsWithBalances(orgId), loadExternalWallets(orgId)]);
         const total = wallets.reduce((sum, w) => sum + w.balance, 0);
         res.json({
+            // Internal MoneyWise wallets only (unchanged). External accounts are listed separately below
+            // because their ledger_balance is what MoneyWise has recorded against the account, not the bank's balance.
             total_balance: Math.round(total * 100) / 100,
             currency: CURRENCY,
             wallets: wallets.map(w => ({ id: w.id, name: w.name, balance: w.balance })),
+            external_wallets: external.map(w => ({
+                id: w.id,
+                name: w.name,
+                ledger_balance: w.ledger_balance,
+                statement_balance: w.statement.latest_balance,
+                difference: w.statement.difference,
+            })),
+            external_ledger_total: Math.round(external.reduce((sum, w) => sum + w.ledger_balance, 0) * 100) / 100,
         });
     } catch (err: any) {
         fail(res, 500, 'Failed to fetch balance', err);
@@ -101,8 +100,8 @@ const decodeCursor = (cursor: string) => {
 
 export const getTransactions = async (req: any, res: any) => {
     const orgId = req.user.organization_id;
-    const { start_date, end_date, type, wallet_id, account_id, status, cursor } = req.query as Record<string, string>;
-    const accountType = (req.query.ledger as string) || 'MONEYWISE_WALLET';
+    const { start_date, end_date, type, wallet_id, account_id, status, cursor, external_wallet_id } = req.query as Record<string, string>;
+    let accountType = (req.query.ledger as string) || 'MONEYWISE_WALLET';
     const limit = clampLimit(req.query.limit);
 
     if (start_date && !DATE_RE.test(start_date)) return fail(res, 400, '`start_date` must be YYYY-MM-DD');
@@ -110,9 +109,17 @@ export const getTransactions = async (req: any, res: any) => {
     if (wallet_id && !UUID_RE.test(wallet_id)) return fail(res, 400, '`wallet_id` must be a UUID');
     if (account_id && !UUID_RE.test(account_id)) return fail(res, 400, '`account_id` must be a UUID');
 
+    // An external account's entries are its own ledger; naming the account is friendlier than passing its id as `ledger`.
+    if (external_wallet_id) {
+        if (!UUID_RE.test(external_wallet_id)) return fail(res, 400, '`external_wallet_id` must be a UUID');
+        const { data: ext } = await supabase.from('external_wallets').select('id').eq('id', external_wallet_id).eq('organization_id', orgId).maybeSingle();
+        if (!ext) return fail(res, 404, 'External wallet not found');
+        accountType = ext.id;
+    }
+
     let query = supabase
         .from('cashbook_entries')
-        .select('id, date, created_at, description, debit, credit, balance_after, entry_type, status, account_type, wallet_id, reference_number, external_reference, accounts!account_id(id, code, name)')
+        .select('id, date, created_at, description, debit, credit, balance_after, entry_type, status, account_type, wallet_id, requisition_id, reference_number, external_reference, sender_name, mf_payment_channel, accounts!account_id(id, code, name)')
         .eq('organization_id', orgId)
         .eq('account_type', accountType)
         .order('date', { ascending: false })
@@ -155,6 +162,10 @@ export const getTransactions = async (req: any, res: any) => {
         account: e.accounts ? { id: e.accounts.id, code: e.accounts.code, name: e.accounts.name } : null,
         wallet_id: e.wallet_id ?? null,
         reference: e.reference_number ?? e.external_reference ?? null,
+        external_reference: e.external_reference ?? null,
+        payer_name: e.sender_name ?? null,
+        payment_channel: e.mf_payment_channel ?? null,
+        requisition_id: e.requisition_id ?? null,
         created_at: e.created_at,
     }));
 

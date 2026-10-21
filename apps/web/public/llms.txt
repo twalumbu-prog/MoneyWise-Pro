@@ -285,6 +285,17 @@ Apps can connect to an organisation without API keys. Authorization code flow, P
 - Request Body (JSON, any subset): `name`, `description`, `price`, `category`, `wallet_id` (null = main wallet), `income_account_id` (null = automatic), `is_active` (false stops new payment links). Existing payment links keep their own amount.
 - Response (200 OK): the updated product object. 404 if the product is not in your organization.
 
+#### Balance (external accounts)
+- `GET /v1/balance` now also returns `external_wallets` (id, name, `ledger_balance`, `statement_balance`, `difference`) and `external_ledger_total`. `total_balance` is unchanged and covers the internal MoneyWise wallets only. An external account's `ledger_balance` is what MoneyWise has recorded against it (a running total of payments booked to the account), NOT the bank's own balance.
+
+#### External accounts and bank statements
+- `GET /v1/external-wallets` (read): your banks / mobile money / custom accounts: `id, name, provider_type, provider_name, currency, ledger_balance, ledger_entries, last_entry_date, statement{lines, latest_date, latest_balance, difference}`. `difference = statement.latest_balance - ledger_balance` (null until a statement with balances is imported).
+- `GET /v1/external-wallets/:id` (read): one account.
+- `GET /v1/transactions?external_wallet_id=<id>` (read): the transactions MoneyWise recorded against that account. Transactions now also carry `external_reference`, `payer_name`, `payment_channel`, `requisition_id`.
+- `GET /v1/external-wallets/:id/statement-lines` (read): imported bank statement lines, newest first. Query: `start_date`, `end_date`, `limit` (max 200), `cursor`. Each: `id, date, description, reference, money_in, money_out, balance, currency, import_batch_id, imported_at`. Response: `{ data, count, next_cursor }`.
+- `POST /v1/external-wallets/:id/statement-lines` (write): import up to 500 lines per request: `{ "lines": [ { "date": "YYYY-MM-DD", "description", "reference", "money_in" | "money_out", "balance", "external_id" } ] }`. Idempotent: re-sending a statement skips lines already imported (`duplicates_skipped`); identical lines on the same day are kept as separate lines. One line per movement (money_in or money_out, not both). Returns `{ import_batch_id, received, imported, duplicates_skipped }`. Statement lines never change MoneyWise balances or accounting.
+- `DELETE /v1/external-wallets/:id/statement-imports/:batchId` (write): undo one import. Returns `{ deleted }`.
+
 #### 9. List Payment Links
 - Method: GET
 - Path: /v1/payment-links

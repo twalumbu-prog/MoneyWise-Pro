@@ -20,6 +20,13 @@ import {
     getPaymentLinks,
     createPaymentLink,
 } from '../controllers/publicApi.controller';
+import {
+    listExternalWallets,
+    getExternalWallet,
+    getStatementLines,
+    importStatementLines,
+    deleteStatementImport,
+} from '../controllers/externalWallets.controller';
 
 const router = Router();
 
@@ -31,6 +38,11 @@ router.get('/organization', requireScope('read'), getOrganization);
 // ── Finance ───────────────────────────────────────────────────────────────────
 router.get('/wallets', requireScope('read'), getWallets);
 router.get('/balance', requireScope('read'), getBalanceSummary);
+router.get('/external-wallets', requireScope('read'), listExternalWallets);
+router.get('/external-wallets/:id', requireScope('read'), getExternalWallet);
+router.get('/external-wallets/:id/statement-lines', requireScope('read'), getStatementLines);
+router.post('/external-wallets/:id/statement-lines', requireScope('write'), importStatementLines);
+router.delete('/external-wallets/:id/statement-imports/:batchId', requireScope('write'), deleteStatementImport);
 router.get('/transactions', requireScope('read'), getTransactions);
 router.get('/accounts', requireScope('read'), getAccounts);
 
