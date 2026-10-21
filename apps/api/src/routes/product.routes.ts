@@ -7,6 +7,8 @@ import {
     deleteProduct,
     getProductSales,
     getSalesByReference,
+    getInflowDetail,
+    setSaleDelivery,
 } from '../controllers/product.controller';
 
 const router = Router();
@@ -21,5 +23,7 @@ router.get('/:id/sales', getProductSales);
 // Fetch all product_sales rows for a cashbook entry (by external_reference).
 // Used by the inflow detail drawer in the requisition inbox.
 router.get('/sales-by-reference/:reference', getSalesByReference);
+router.get('/inflow-detail', getInflowDetail);
+router.patch('/sales/:id/delivery', setSaleDelivery);
 
 export default router;

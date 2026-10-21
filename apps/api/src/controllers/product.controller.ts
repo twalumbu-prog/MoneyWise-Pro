@@ -399,3 +399,106 @@ export const getSalesByReference = async (req: any, res: Response): Promise<any>
         res.status(500).json({ error: 'Failed to fetch sales', details: error.message });
     }
 };
+
+
+/**
+ * GET /organizations/products/inflow-detail?reference=&entryId=
+ * Everything the inflow detail view and receipt need for one money-in record:
+ * the ledger entry (wallet, categorisation account, payer), the product sale lines
+ * with the buyer's checkout answers + delivery status, and the double-entry
+ * journal that records how it was treated in the books.
+ */
+export const getInflowDetail = async (req: any, res: Response): Promise<any> => {
+    try {
+        const organization_id = req.user.organization_id;
+        if (!organization_id) return res.status(400).json({ error: 'User organization context missing' });
+
+        const reference = typeof req.query.reference === 'string' ? req.query.reference : '';
+        const entryId = typeof req.query.entryId === 'string' ? req.query.entryId : '';
+        if (!reference && !entryId) return res.status(400).json({ error: 'reference or entryId is required' });
+
+        const ENTRY_SELECT = 'id, description, debit, date, created_at, reference_number, external_reference, account_type, status, sender_name, sender_phone, qb_sync_status, wallet_id, account_id, accounts!account_id(id, code, name, category), organization_wallets:wallet_id(id, name), users!created_by(name)';
+
+        // Entries: the exact row the user tapped, plus any siblings sharing its reference (split-routed sales).
+        const entries: any[] = [];
+        const seen = new Set<string>();
+        const collect = (rows: any[] | null) => (rows || []).forEach(r => { if (!seen.has(r.id)) { seen.add(r.id); entries.push(r); } });
+
+        if (entryId) {
+            const { data } = await supabase.from('cashbook_entries').select(ENTRY_SELECT)
+                .eq('organization_id', organization_id).eq('id', entryId);
+            collect(data);
+        }
+        const refs = [reference, ...entries.flatMap(e => [e.external_reference, e.reference_number])].filter(Boolean) as string[];
+        const uniqueRefs = Array.from(new Set(refs));
+        if (uniqueRefs.length) {
+            const list = uniqueRefs.map(r => `"${r.replace(/"/g, '')}"`).join(',');
+            const { data } = await supabase.from('cashbook_entries').select(ENTRY_SELECT)
+                .eq('organization_id', organization_id).eq('entry_type', 'INFLOW')
+                .or(`external_reference.in.(${list}),reference_number.in.(${list})`);
+            collect(data);
+        }
+
+        const { data: sales } = uniqueRefs.length
+            ? await supabase.from('product_sales')
+                .select('*, products(id, name, description, image_url, product_type, price, requires_delivery)')
+                .eq('organization_id', organization_id).in('reference', uniqueRefs)
+                .order('created_at', { ascending: true })
+            : { data: [] as any[] };
+
+        // Accounting treatment: journals generated from these ledger rows (or sharing the reference).
+        const entryIds = entries.map(e => e.id);
+        const journalSelect = 'id, entry_date, description, reference_number, source_type, journal_lines(id, debit, credit, description, accounts(id, code, name, category))';
+        const journals: any[] = [];
+        const seenJ = new Set<string>();
+        const addJ = (rows: any[] | null) => (rows || []).forEach(j => { if (!seenJ.has(j.id)) { seenJ.add(j.id); journals.push(j); } });
+        if (entryIds.length) {
+            const { data } = await supabase.from('journal_entries').select(journalSelect)
+                .eq('organization_id', organization_id).in('source_id', entryIds);
+            addJ(data);
+        }
+        if (journals.length === 0 && uniqueRefs.length) {
+            const { data } = await supabase.from('journal_entries').select(journalSelect)
+                .eq('organization_id', organization_id).in('reference_number', uniqueRefs);
+            addJ(data);
+        }
+
+        const { data: org } = await supabase.from('organizations').select('name, logo_url').eq('id', organization_id).single();
+
+        res.json({ organization: org || null, entries, sales: sales || [], journals });
+    } catch (error: any) {
+        console.error('[Products] Get inflow detail error:', error);
+        res.status(500).json({ error: 'Failed to fetch inflow detail', details: error.message });
+    }
+};
+
+/**
+ * PATCH /organizations/products/sales/:id/delivery  { delivered: boolean }
+ * Marks a product sale line as delivered (or back to pending).
+ */
+export const setSaleDelivery = async (req: any, res: Response): Promise<any> => {
+    try {
+        const organization_id = req.user.organization_id;
+        if (!organization_id) return res.status(400).json({ error: 'User organization context missing' });
+        const delivered = req.body?.delivered === true;
+
+        const { data, error } = await supabase
+            .from('product_sales')
+            .update({
+                delivery_status: delivered ? 'DELIVERED' : 'PENDING',
+                delivered_at: delivered ? new Date().toISOString() : null,
+                delivered_by: delivered ? req.user.id : null,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', req.params.id)
+            .eq('organization_id', organization_id)
+            .select('id, delivery_status, delivered_at')
+            .single();
+
+        if (error) throw error;
+        res.json(data);
+    } catch (error: any) {
+        console.error('[Products] Set delivery error:', error);
+        res.status(500).json({ error: 'Failed to update delivery status', details: error.message });
+    }
+};

@@ -34,6 +34,9 @@ export interface ProductSale {
     status: string;
     created_at: string;
     customer_responses?: { id: string; label: string; value: string }[] | null;
+    reference?: string;
+    delivery_status?: 'PENDING' | 'DELIVERED' | null;
+    delivered_at?: string | null;
     order_details?: {
         mode?: 'deliver' | 'pickup';
         country?: string;
@@ -50,7 +53,48 @@ export interface ProductSale {
         description?: string;
         image_url?: string | null;
         product_type?: string;
+        price?: number;
+        requires_delivery?: boolean;
     } | null;
+}
+
+export interface InflowDetailEntry {
+    id: string;
+    description: string;
+    debit: number;
+    date: string;
+    created_at?: string;
+    reference_number?: string | null;
+    external_reference?: string | null;
+    account_type?: string | null;
+    status?: string | null;
+    sender_name?: string | null;
+    sender_phone?: string | null;
+    qb_sync_status?: string | null;
+    accounts?: { id: string; code?: string; name: string; category?: string } | null;
+    organization_wallets?: { id: string; name: string } | null;
+    users?: { name: string } | null;
+}
+
+export interface InflowJournal {
+    id: string;
+    entry_date: string;
+    description?: string | null;
+    reference_number?: string | null;
+    source_type: string;
+    journal_lines: {
+        id: string;
+        debit: number;
+        credit: number;
+        accounts?: { id: string; code?: string; name: string; category?: string } | null;
+    }[];
+}
+
+export interface InflowDetail {
+    organization: { name: string; logo_url?: string | null } | null;
+    entries: InflowDetailEntry[];
+    sales: ProductSale[];
+    journals: InflowJournal[];
 }
 
 export interface BookingRange {
@@ -221,6 +265,21 @@ export const productService = {
     /** Product line items for a given inflow's receipt/reference — 404 means it wasn't a product sale. */
     getSalesByReference(reference: string): Promise<ProductSale[]> {
         return apiJson<ProductSale[]>(`/organizations/products/sales-by-reference/${encodeURIComponent(reference)}`);
+    },
+
+    /** Full detail behind one inflow: ledger entry, sold items + buyer answers, delivery state, journal. */
+    getInflowDetail(entryId: string, reference?: string): Promise<InflowDetail> {
+        const q = new URLSearchParams();
+        if (entryId) q.set('entryId', entryId);
+        if (reference) q.set('reference', reference);
+        return apiJson<InflowDetail>(`/organizations/products/inflow-detail?${q.toString()}`);
+    },
+
+    setSaleDelivery(saleId: string, delivered: boolean): Promise<{ id: string; delivery_status: string; delivered_at: string | null }> {
+        return apiJson(`/organizations/products/sales/${saleId}/delivery`, {
+            method: 'PATCH',
+            body: JSON.stringify({ delivered }),
+        });
     },
 
     /**

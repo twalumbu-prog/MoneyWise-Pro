@@ -194,6 +194,9 @@ export type {
     BookingTerminology,
     Product,
     ProductSale,
+    InflowDetail,
+    InflowDetailEntry,
+    InflowJournal,
     OrderDeliveryDetails,
     CheckoutField,
     InvoiceLinkSnapshotItem,
@@ -266,3 +269,6 @@ export {
     generateDailyHistory, generateIntradayHistory, sliceForTimeframe, formatAxisDate,
 } from './invest/chartData';
 export type { InvestProductType, PricePoint, Timeframe } from './invest/chartData';
+
+export { buildInflowReceipt, renderReceiptHtml, channelLabel, paymentMethodLabel, isDeliverable, formatReceiptDate } from './receipt/inflowReceipt';
+export type { InflowReceipt, ReceiptItem, ReceiptJournalLine } from './receipt/inflowReceipt';
