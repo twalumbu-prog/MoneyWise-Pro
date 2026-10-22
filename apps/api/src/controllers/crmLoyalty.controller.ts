@@ -91,6 +91,14 @@ export const previewCampaignAudience = async (req: any, res: Response): Promise<
             over_limit: members.length > MAX_RECIPIENTS,
             max_recipients: MAX_RECIPIENTS,
             sample: members.slice(0, 5).map(m => ({ name: m.customer.name, email: m.customer.email })),
+            list: members.slice(0, 2000).map(m => ({
+                customer_id: m.customer.id,
+                name: m.customer.name,
+                email: m.customer.email,
+                segment: m.loyalty.segment,
+                owing_status: m.customer.owing_status,
+                order_count: m.loyalty.order_count,
+            })),
         });
     } catch (error: any) {
         console.error('[CRM] previewCampaignAudience error:', error);

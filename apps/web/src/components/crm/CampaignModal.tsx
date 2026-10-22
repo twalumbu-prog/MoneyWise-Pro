@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { crmService, CampaignAudience, LoyaltyOverview, LoyaltySegment, SendCampaignResult } from '../../services/crm.service';
-import { SEGMENT_STYLE } from './loyaltyUi';
+import { SEGMENT_STYLE, SegmentBadge } from './loyaltyUi';
 import { X, Loader2, Send, Mail, CheckCircle2, AlertTriangle } from 'lucide-react';
 
 interface Props {
@@ -19,6 +19,8 @@ const TOKENS = [
     { token: '{{business}}', label: 'Business name' },
 ];
 
+type Tab = 'compose' | 'audience' | 'list';
+
 const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter(x => x !== v) : [...list, v]);
 
 export const CampaignModal: React.FC<Props> = ({ overview, organizationName, initialAudience, onClose }) => {
@@ -27,6 +29,7 @@ export const CampaignModal: React.FC<Props> = ({ overview, organizationName, ini
         segments: initialAudience?.segments || [],
         product_keys: initialAudience?.product_keys || [],
     });
+    const [tab, setTab] = useState<Tab>('compose');
     const [subject, setSubject] = useState('');
     const [body, setBody] = useState('Hi {{first_name}},\n\n');
     const [ctaLabel, setCtaLabel] = useState('');
@@ -119,11 +122,78 @@ export const CampaignModal: React.FC<Props> = ({ overview, organizationName, ini
                     <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100"><X size={16} /></button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-2 gap-6 p-6">
-                    {/* Left: audience + compose */}
-                    <div className="flex flex-col gap-5">
+                {/* Section tabs */}
+                <div className="px-6 pt-3 flex-shrink-0">
+                    <div className="h-8 p-1 bg-slate-100 rounded-[10px] flex items-center gap-1 self-start w-fit">
+                        {([['compose', 'Draft email'], ['audience', 'Audience'], ['list', `Mailing list${preview ? ` (${recipients})` : ''}`]] as [Tab, string][]).map(([id, label]) => (
+                            <button
+                                key={id}
+                                type="button"
+                                onClick={() => setTab(id)}
+                                className={`px-4 h-full rounded-lg text-[11px] font-['DM_Sans'] transition-all ${
+                                    tab === id ? 'bg-white shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)] font-bold text-gray-900' : 'font-normal text-gray-900 hover:bg-white/50'
+                                }`}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6">
+                    {tab === 'compose' && (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <div className="flex flex-col gap-5">
+                        <section className="flex flex-col gap-3">
+                            <label className={LABEL}>Write your email</label>
+                            <input className={INPUT} placeholder="Subject, e.g. A little thank-you from {{business}}" value={subject} maxLength={150} onChange={e => setSubject(e.target.value)} />
+                            <textarea rows={8} className={`${INPUT} resize-y`} value={body} onChange={e => setBody(e.target.value)} placeholder="Write your message…" />
+                            <div className="flex items-center gap-2 flex-wrap -mt-1">
+                                <span className="text-[10px] text-gray-400">Insert:</span>
+                                {TOKENS.map(t => (
+                                    <button key={t.token} type="button" onClick={() => insertToken(t.token)} className="px-2 h-6 rounded-md bg-gray-100 text-[10px] font-semibold text-gray-600 hover:bg-gray-200">{t.label}</button>
+                                ))}
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className={LABEL}>Button text <span className="normal-case text-gray-300">(optional)</span></label>
+                                    <input className={INPUT} placeholder="Shop now" value={ctaLabel} maxLength={60} onChange={e => setCtaLabel(e.target.value)} />
+                                </div>
+                                <div>
+                                    <label className={LABEL}>Button link</label>
+                                    <input className={INPUT} placeholder="https://…" value={ctaUrl} onChange={e => setCtaUrl(e.target.value)} />
+                                </div>
+                            </div>
+                        </section>
+                            </div>
+                    {/* Right: live preview */}
+                    <div className="flex flex-col gap-2">
+                        <label className={LABEL}>Preview</label>
+                        <div className="flex-1 rounded-xl bg-[#EAECEF] p-4 overflow-y-auto">
+                            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden max-w-md mx-auto">
+                                <div className="text-center pt-6 pb-2 px-6"><div className="text-lg font-extrabold tracking-tight text-gray-900">{businessName}</div></div>
+                                <div className="px-6 pb-1">
+                                    <p className="text-[10px] text-gray-400 mb-3">Subject: <span className="text-gray-700 font-semibold">{sample(subject) || '—'}</span></p>
+                                    {sample(body).split(/\n{2,}/).map((para, i) => (
+                                        <p key={i} className="text-[13px] leading-relaxed text-gray-900 mb-3 whitespace-pre-line">{para}</p>
+                                    ))}
+                                </div>
+                                {ctaUrl.trim() && (
+                                    <div className="text-center pb-4"><span className="inline-block bg-blue-600 text-white text-[13px] font-bold px-7 py-2.5 rounded-xl">{ctaLabel.trim() || 'Learn more'}</span></div>
+                                )}
+                                <div className="border-t border-gray-100 px-6 py-4 text-center text-[10px] text-gray-400">
+                                    You're receiving this because you're a customer of {businessName}. Reply to this email to be removed.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                        </div>
+                    )}
+
+                    {tab === 'audience' && (
+                        <div className="max-w-2xl flex flex-col gap-5">
                         <section>
-                            <label className={LABEL}>1. Who should receive it?</label>
+                            <label className={LABEL}>Who should receive it?</label>
                             <p className="text-[11px] text-gray-400 mb-1.5">Payment status</p>
                             <div className="flex gap-2 flex-wrap mb-3">
                                 {([['ALL', 'Everyone'], ['CLEAR', 'Clear (nothing owed)'], ['OWING', 'Owing']] as const).map(([v, l]) => (
@@ -164,50 +234,42 @@ export const CampaignModal: React.FC<Props> = ({ overview, organizationName, ini
                             </div>
                         </section>
 
-                        <section className="flex flex-col gap-3">
-                            <label className={LABEL}>2. Write your email</label>
-                            <input className={INPUT} placeholder="Subject, e.g. A little thank-you from {{business}}" value={subject} maxLength={150} onChange={e => setSubject(e.target.value)} />
-                            <textarea rows={8} className={`${INPUT} resize-y`} value={body} onChange={e => setBody(e.target.value)} placeholder="Write your message…" />
-                            <div className="flex items-center gap-2 flex-wrap -mt-1">
-                                <span className="text-[10px] text-gray-400">Insert:</span>
-                                {TOKENS.map(t => (
-                                    <button key={t.token} type="button" onClick={() => insertToken(t.token)} className="px-2 h-6 rounded-md bg-gray-100 text-[10px] font-semibold text-gray-600 hover:bg-gray-200">{t.label}</button>
-                                ))}
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className={LABEL}>Button text <span className="normal-case text-gray-300">(optional)</span></label>
-                                    <input className={INPUT} placeholder="Shop now" value={ctaLabel} maxLength={60} onChange={e => setCtaLabel(e.target.value)} />
-                                </div>
-                                <div>
-                                    <label className={LABEL}>Button link</label>
-                                    <input className={INPUT} placeholder="https://…" value={ctaUrl} onChange={e => setCtaUrl(e.target.value)} />
-                                </div>
-                            </div>
-                        </section>
-                    </div>
-
-                    {/* Right: live preview */}
-                    <div className="flex flex-col gap-2">
-                        <label className={LABEL}>Preview</label>
-                        <div className="flex-1 rounded-xl bg-[#EAECEF] p-4 overflow-y-auto">
-                            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden max-w-md mx-auto">
-                                <div className="text-center pt-6 pb-2 px-6"><div className="text-lg font-extrabold tracking-tight text-gray-900">{businessName}</div></div>
-                                <div className="px-6 pb-1">
-                                    <p className="text-[10px] text-gray-400 mb-3">Subject: <span className="text-gray-700 font-semibold">{sample(subject) || '—'}</span></p>
-                                    {sample(body).split(/\n{2,}/).map((para, i) => (
-                                        <p key={i} className="text-[13px] leading-relaxed text-gray-900 mb-3 whitespace-pre-line">{para}</p>
-                                    ))}
-                                </div>
-                                {ctaUrl.trim() && (
-                                    <div className="text-center pb-4"><span className="inline-block bg-blue-600 text-white text-[13px] font-bold px-7 py-2.5 rounded-xl">{ctaLabel.trim() || 'Learn more'}</span></div>
-                                )}
-                                <div className="border-t border-gray-100 px-6 py-4 text-center text-[10px] text-gray-400">
-                                    You're receiving this because you're a customer of {businessName}. Reply to this email to be removed.
-                                </div>
-                            </div>
                         </div>
-                    </div>
+                    )}
+
+                    {tab === 'list' && (
+                        <div className="flex flex-col gap-3">
+                            <div className="flex items-center justify-between">
+                                <p className="text-xs text-gray-500">
+                                    {previewing && !preview ? 'Loading…' : <><strong className="text-gray-900">{recipients}</strong> customer{recipients === 1 ? '' : 's'} will receive this email.</>}
+                                    {!!preview?.without_email && <span className="text-gray-400"> {preview.without_email} more match but have no email.</span>}
+                                </p>
+                                <button type="button" onClick={() => setTab('audience')} className="text-xs font-semibold text-blue-600 hover:underline">Change audience</button>
+                            </div>
+                            {preview?.over_limit && (
+                                <div className="rounded-lg px-3 py-2 text-xs bg-red-50 text-red-700 flex items-center gap-2"><AlertTriangle size={13} /> Over the {preview.max_recipients}-per-send limit — narrow the audience.</div>
+                            )}
+                            {!preview?.list.length ? (
+                                <div className="flex items-center justify-center h-32 text-sm text-gray-400">No customers with an email address match this audience.</div>
+                            ) : (
+                                <div className="rounded-xl border border-gray-100 overflow-hidden">
+                                    <div className="grid grid-cols-[1.2fr_1.6fr_auto_auto] gap-3 px-4 py-2 bg-gray-50 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
+                                        <span>Customer</span><span>Email</span><span>Group</span><span className="text-right">Purchases</span>
+                                    </div>
+                                    <div className="divide-y divide-gray-50">
+                                        {preview.list.map(r => (
+                                            <div key={r.customer_id} className="grid grid-cols-[1.2fr_1.6fr_auto_auto] gap-3 px-4 py-2.5 items-center">
+                                                <span className="text-xs font-semibold text-gray-900 truncate">{r.name}</span>
+                                                <span className="text-xs text-gray-500 truncate">{r.email}</span>
+                                                <SegmentBadge segment={r.segment} />
+                                                <span className="text-xs font-bold text-gray-800 text-right">{r.order_count}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-100 flex-shrink-0">

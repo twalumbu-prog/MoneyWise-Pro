@@ -96,6 +96,15 @@ export interface CampaignPreview {
     over_limit: boolean;
     max_recipients: number;
     sample: { name: string; email: string | null }[];
+    /** Everyone who would receive the email (capped at 2,000 rows). */
+    list: {
+        customer_id: string;
+        name: string;
+        email: string | null;
+        segment: LoyaltySegment;
+        owing_status: 'OWING' | 'CLEAR';
+        order_count: number;
+    }[];
 }
 
 export interface SendCampaignInput {
