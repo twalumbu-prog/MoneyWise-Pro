@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { crmService, Customer, CustomerTransaction } from '../../services/crm.service';
+import { CustomerLoyaltyPanel } from './CustomerLoyaltyPanel';
 import { ArrowLeft, Pencil, X, Loader2, Receipt, FileText } from 'lucide-react';
 
 interface Props {
     customerId: string;
     onBack: () => void;
     onUpdated?: () => void;
+    initialTab?: DetailTab;
 }
 
-type DetailTab = 'history' | 'profile';
+type DetailTab = 'history' | 'loyalty' | 'profile';
 
 const fmt = (n: number) => n.toLocaleString('en-ZM', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtDate = (s: string) => {
@@ -20,8 +22,8 @@ const fmtDate = (s: string) => {
 const INPUT = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 bg-white placeholder:text-gray-400';
 const LABEL = 'block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1';
 
-export const CustomerDetail: React.FC<Props> = ({ customerId, onBack, onUpdated }) => {
-    const [activeTab, setActiveTab] = useState<DetailTab>('history');
+export const CustomerDetail: React.FC<Props> = ({ customerId, onBack, onUpdated, initialTab = 'history' }) => {
+    const [activeTab, setActiveTab] = useState<DetailTab>(initialTab);
     const [editing, setEditing] = useState(false);
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState('');
@@ -84,6 +86,7 @@ export const CustomerDetail: React.FC<Props> = ({ customerId, onBack, onUpdated 
 
     const tabs: { value: DetailTab; label: string }[] = [
         { value: 'history', label: 'Transaction History' },
+        { value: 'loyalty', label: 'Loyalty' },
         { value: 'profile', label: 'Profile' },
     ];
 
@@ -223,6 +226,8 @@ export const CustomerDetail: React.FC<Props> = ({ customerId, onBack, onUpdated 
                             </div>
                         </>
                     )}
+
+                    {activeTab === 'loyalty' && <CustomerLoyaltyPanel customerId={customerId} />}
 
                     {activeTab === 'profile' && customer && (
                         <div className="flex-1 overflow-y-auto">

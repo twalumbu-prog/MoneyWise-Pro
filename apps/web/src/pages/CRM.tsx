@@ -3,12 +3,14 @@ import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { Layout } from '../components/Layout';
-import { crmService, Customer } from '../services/crm.service';
+import { crmService, Customer, LoyaltyOverview, LoyaltySegment } from '../services/crm.service';
 import { CustomerDetail } from '../components/crm/CustomerDetail';
 import { AddCustomerModal } from '../components/crm/AddCustomerModal';
 import { InvestorsPanel } from '../components/crm/InvestorsPanel';
+import { CampaignModal } from '../components/crm/CampaignModal';
+import { SegmentBadge, SEGMENT_STYLE } from '../components/crm/loyaltyUi';
 import { investmentService } from 'core';
-import { Search, SlidersHorizontal, ArrowDownUp, Plus, X, UserCheck } from 'lucide-react';
+import { Search, SlidersHorizontal, ArrowDownUp, Plus, X, UserCheck, Mail } from 'lucide-react';
 
 type FilterTab = 'ALL' | 'OWING' | 'CLEAR';
 type SortDir = 'desc' | 'asc';
@@ -16,7 +18,7 @@ type SortDir = 'desc' | 'asc';
 const fmt = (n: number) => n.toLocaleString('en-ZM', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export const CRM: React.FC = () => {
-    const { organizationId } = useAuth();
+    const { organizationId, organizationName, userRole } = useAuth();
     const queryClient = useQueryClient();
     const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
     const [filterTab, setFilterTab] = useState<FilterTab>('ALL');
@@ -27,7 +29,13 @@ export const CRM: React.FC = () => {
 
     // Investment companies also see an Investors tab (account applications from the app).
     const [searchParams] = useSearchParams();
-    const [mainTab, setMainTab] = useState<'customers' | 'investors'>(searchParams.get('tab') === 'investors' ? 'investors' : 'customers');
+    const [mainTab, setMainTab] = useState<'customers' | 'loyalty' | 'investors'>(
+        searchParams.get('tab') === 'investors' ? 'investors' : searchParams.get('tab') === 'loyalty' ? 'loyalty' : 'customers'
+    );
+    const [campaign, setCampaign] = useState<{ segments?: LoyaltySegment[] } | null>(null);
+    const [segmentFilter, setSegmentFilter] = useState<LoyaltySegment | null>(null);
+    const [detailTab, setDetailTab] = useState<'history' | 'loyalty'>('history');
+    const canEmail = userRole === 'ADMIN' || userRole === 'ACCOUNTANT';
     const { data: payoutInfo } = useQuery({
         queryKey: ['investor-payout-settings'],
         queryFn: () => investmentService.getPayoutSettings(),
@@ -44,8 +52,18 @@ export const CRM: React.FC = () => {
         retry: 1,
     });
 
+    const { data: loyalty } = useQuery<LoyaltyOverview>({
+        queryKey: ['crm-loyalty', organizationId],
+        queryFn: () => crmService.getLoyaltyOverview(),
+        enabled: !!organizationId,
+        retry: 1,
+        staleTime: 60_000,
+    });
+    const loyaltyById = new Map((loyalty?.customers || []).map(l => [l.customer_id, l]));
+
     const filteredCustomers = customers
         .filter(c => {
+            if (mainTab === 'loyalty' && segmentFilter && loyaltyById.get(c.id)?.segment !== segmentFilter) return false;
             if (filterTab === 'OWING') return c.owing_status === 'OWING';
             if (filterTab === 'CLEAR') return c.owing_status === 'CLEAR';
             return true;
@@ -73,6 +91,7 @@ export const CRM: React.FC = () => {
                     <div className="flex-1 overflow-hidden">
                         <CustomerDetail
                             customerId={selectedCustomerId}
+                            initialTab={detailTab}
                             onBack={() => setSelectedCustomerId(null)}
                             onUpdated={() => queryClient.invalidateQueries({ queryKey: ['crm-customers', organizationId] })}
                         />
@@ -103,26 +122,58 @@ export const CRM: React.FC = () => {
                             </div>
                         </div>
 
-                        {showInvestors && (
-                            <div className="h-8 p-1 bg-slate-100 rounded-[10px] flex items-center gap-1 self-start">
-                                {([['customers', 'Customers'], ['investors', 'Investors']] as const).map(([id, label]) => (
-                                    <button
-                                        key={id}
-                                        onClick={() => setMainTab(id)}
-                                        className={`px-4 h-full rounded-lg text-[11px] font-['DM_Sans'] transition-all ${
-                                            mainTab === id ? 'bg-white shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)] font-bold text-gray-900' : 'font-normal text-gray-900 hover:bg-white/50'
-                                        }`}
-                                    >
-                                        {label}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
+                        <div className="h-8 p-1 bg-slate-100 rounded-[10px] flex items-center gap-1 self-start">
+                            {([['customers', 'Customers'], ['loyalty', 'Loyalty'], ...(showInvestors ? [['investors', 'Investors']] : [])] as ['customers' | 'loyalty' | 'investors', string][]).map(([id, label]) => (
+                                <button
+                                    key={id}
+                                    onClick={() => setMainTab(id)}
+                                    className={`px-4 h-full rounded-lg text-[11px] font-['DM_Sans'] transition-all ${
+                                        mainTab === id ? 'bg-white shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)] font-bold text-gray-900' : 'font-normal text-gray-900 hover:bg-white/50'
+                                    }`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
 
                         {showInvestors && mainTab === 'investors' ? (
                             <InvestorsPanel initialOpenId={searchParams.get('application')} />
                         ) : (
                         <>
+                        {mainTab === 'loyalty' && (
+                            <div className="flex flex-col gap-2.5">
+                                <div className="flex items-center justify-between gap-3">
+                                    <p className="text-[11px] text-gray-500">Customers grouped by how often and how recently they buy. Pick a group to focus on it.</p>
+                                    {canEmail && (
+                                        <button
+                                            onClick={() => setCampaign({ segments: segmentFilter ? [segmentFilter] : [] })}
+                                            className="h-8 px-3 bg-blue-600 rounded-lg flex items-center gap-2 text-white text-xs font-bold font-['DM_Sans'] hover:bg-blue-700 transition-colors shadow-sm flex-shrink-0"
+                                        >
+                                            <Mail size={13} />
+                                            {segmentFilter ? `Email ${SEGMENT_STYLE[segmentFilter].label.toLowerCase()} customers` : 'Email customers'}
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2">
+                                    {(loyalty?.segments || []).map(s => (
+                                        <button
+                                            key={s.value}
+                                            title={s.hint}
+                                            onClick={() => setSegmentFilter(f => (f === s.value ? null : s.value))}
+                                            className={`text-left p-2.5 rounded-xl border transition-colors ${
+                                                segmentFilter === s.value ? 'border-blue-500 bg-blue-50/60' : 'border-gray-100 bg-white hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            <span className="flex items-center gap-1.5 text-[10px] font-semibold text-gray-500">
+                                                <span className={`w-1.5 h-1.5 rounded-full ${SEGMENT_STYLE[s.value].dot}`} />{s.label}
+                                            </span>
+                                            <span className="block text-lg font-bold text-gray-900 leading-tight mt-0.5">{s.count}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         {/* Toolbar Row */}
                         <div className="flex items-center justify-between gap-3 pt-1">
                             {searchOpen ? (
@@ -192,6 +243,15 @@ export const CRM: React.FC = () => {
                                         </button>
                                     </div>
 
+                                    {canEmail && mainTab === 'customers' && (
+                                        <button
+                                            onClick={() => setCampaign({})}
+                                            className="h-8 px-3 py-1 bg-white border border-gray-200 rounded-lg flex items-center gap-2 text-gray-800 text-xs font-bold font-['DM_Sans'] hover:bg-gray-50 transition-colors"
+                                        >
+                                            <Mail size={13} />
+                                            Email Customers
+                                        </button>
+                                    )}
                                     <button
                                         onClick={() => setIsAddCustomerOpen(true)}
                                         className="h-8 px-3 py-1 bg-blue-600 rounded-lg flex items-center gap-2 text-white text-xs font-bold font-['DM_Sans'] hover:bg-blue-700 transition-colors shadow-sm"
@@ -237,7 +297,7 @@ export const CRM: React.FC = () => {
                                         return (
                                             <button
                                                 key={`${customer.id}_${index}`}
-                                                onClick={() => setSelectedCustomerId(customer.id)}
+                                                onClick={() => { setDetailTab(mainTab === 'loyalty' ? 'loyalty' : 'history'); setSelectedCustomerId(customer.id); }}
                                                 className="w-full flex items-center justify-between p-3.5 bg-white hover:bg-slate-50 rounded-xl border border-gray-100 transition-colors text-left"
                                             >
                                                 <div className="flex items-center gap-3 min-w-0">
@@ -253,6 +313,23 @@ export const CRM: React.FC = () => {
                                                 </div>
 
                                                 <div className="flex items-center gap-4 flex-shrink-0">
+                                                    {(() => {
+                                                        const l = loyaltyById.get(customer.id);
+                                                        if (!l) return null;
+                                                        return (
+                                                            <div className="flex items-center gap-3">
+                                                                {mainTab === 'loyalty' && (
+                                                                    <div className="text-right hidden md:block">
+                                                                        <span className="text-[10px] text-gray-400 block">Purchases</span>
+                                                                        <span className="text-xs font-bold text-gray-800">
+                                                                            {l.order_count}{l.days_since_last_purchase !== null ? ` · ${l.days_since_last_purchase === 0 ? 'today' : `${l.days_since_last_purchase}d ago`}` : ''}
+                                                                        </span>
+                                                                    </div>
+                                                                )}
+                                                                <SegmentBadge segment={l.segment} />
+                                                            </div>
+                                                        );
+                                                    })()}
                                                     <div className="text-right hidden sm:block">
                                                         <span className="text-[10px] text-gray-400 block">Total Spent</span>
                                                         <span className="text-xs font-bold text-gray-800">K{fmt(customer.total_spend || 0)}</span>
@@ -278,6 +355,15 @@ export const CRM: React.FC = () => {
 
                     </div>
                 </div>
+
+                {campaign && (
+                    <CampaignModal
+                        overview={loyalty}
+                        organizationName={organizationName}
+                        initialAudience={campaign.segments?.length ? { segments: campaign.segments } : undefined}
+                        onClose={() => setCampaign(null)}
+                    />
+                )}
 
                 {isAddCustomerOpen && (
                     <AddCustomerModal

@@ -29,6 +29,211 @@ const makeCustomerId = (name: string, phone?: string | null, email?: string | nu
     return Buffer.from(raw).toString('hex').slice(0, 32);
 };
 
+/** Aggregates the explicit customers table + every customer-bearing transaction source into one
+ *  de-duplicated list, and hands back the raw records so other CRM features (loyalty) can reuse them. */
+export const loadCustomerData = async (organization_id: string) => {
+    // 1. Attempt to fetch from explicit customers table (if migrated)
+    let explicitCustomers: any[] = [];
+    try {
+        const { data, error } = await supabase
+            .from('customers')
+            .select('*')
+            .eq('organization_id', organization_id);
+
+        if (!error && data) {
+            explicitCustomers = data;
+        }
+    } catch {
+        // Table may not exist yet in schema cache, fallback gracefully
+    }
+
+    // 2. Fetch payment links (invoices & customer contacts)
+    const { data: links = [] } = await supabase
+        .from('payment_links')
+        .select('*, products(name)')
+        .eq('organization_id', organization_id)
+        .order('created_at', { ascending: false });
+
+    // 3. Fetch product sales (store purchases)
+    const { data: sales = [] } = await supabase
+        .from('product_sales')
+        .select('*, products(name)')
+        .eq('organization_id', organization_id)
+        .order('created_at', { ascending: false });
+
+    // 4. Fetch cashbook entries
+    const { data: cashbook = [] } = await supabase
+        .from('cashbook_entries')
+        .select('*')
+        .eq('organization_id', organization_id)
+        .order('created_at', { ascending: false });
+
+    // 5. Credit-sale invoices (accounts receivable) — outstanding balances count as owing.
+    const { data: creditInvoices = [] } = await supabase
+        .from('customer_invoices')
+        .select('id, customer_id, customer_name, customer_phone, customer_email, total, amount_paid, status')
+        .eq('organization_id', organization_id)
+        .in('status', ['OPEN', 'PARTIAL']);
+
+    const activeLinksList = (links || []).filter(l => l.status === 'ACTIVE');
+    const paidSalesList = (sales || []).filter(s => s.status !== 'FAILED');
+    const paidLinksList = (links || []).filter(l => l.status === 'PAID');
+
+    // Robust customer list aggregator
+    const customersList: CustomerWithStats[] = [];
+
+    const findExistingCustomer = (name?: string | null, phone?: string | null, email?: string | null): CustomerWithStats | undefined => {
+        const np = normalizePhone(phone);
+        const ne = (email || '').trim().toLowerCase();
+        const nn = (name || '').trim().toLowerCase();
+
+        return customersList.find(c => {
+            const cp = normalizePhone(c.phone);
+            const ce = (c.email || '').trim().toLowerCase();
+            const cn = c.name.trim().toLowerCase();
+
+            if (np && cp && np === cp) return true;
+            if (ne && ce && ne === ce) return true;
+            if (nn && cn && nn === cn) return true;
+            return false;
+        });
+    };
+
+    const upsertCustomer = (data: {
+        id?: string;
+        name: string;
+        email?: string | null;
+        phone?: string | null;
+        notes?: string | null;
+        created_at?: string;
+    }) => {
+        if (!data.name || !data.name.trim()) return;
+        const existing = findExistingCustomer(data.name, data.phone, data.email);
+        if (existing) {
+            if (!existing.phone && data.phone) existing.phone = data.phone.trim();
+            if (!existing.email && data.email) existing.email = data.email.trim();
+            if (!existing.notes && data.notes) existing.notes = data.notes.trim();
+            return;
+        }
+
+        const cleanName = data.name.trim();
+        const cleanPhone = data.phone?.trim() || null;
+        const cleanEmail = data.email?.trim() || null;
+        const deterministicId = data.id || makeCustomerId(cleanName, cleanPhone, cleanEmail);
+
+        customersList.push({
+            id: deterministicId,
+            organization_id,
+            name: cleanName,
+            email: cleanEmail,
+            phone: cleanPhone,
+            notes: data.notes || null,
+            status: 'ACTIVE',
+            owing_status: 'CLEAR',
+            owing_amount: 0,
+            open_invoices_count: 0,
+            total_spend: 0,
+            created_at: data.created_at || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+        });
+    };
+
+    // 1. Add explicit customers
+    explicitCustomers.forEach(ec => upsertCustomer(ec));
+
+    // 2. Add customers from payment links
+    (links || []).forEach(l => {
+        if (l.customer_name) {
+            upsertCustomer({
+                name: l.customer_name,
+                phone: l.customer_phone,
+                email: l.customer_email,
+                created_at: l.created_at,
+            });
+        }
+    });
+
+    // 3. Add customers from store sales
+    (sales || []).forEach(s => {
+        if (s.customer_name) {
+            upsertCustomer({
+                name: s.customer_name,
+                phone: s.customer_phone,
+                email: s.customer_email,
+                created_at: s.created_at,
+            });
+        }
+    });
+
+    // 4. Add customers from cashbook entries
+    (cashbook || []).forEach(c => {
+        if (c.sender_name) {
+            upsertCustomer({
+                name: c.sender_name,
+                phone: c.sender_phone,
+                email: c.sender_email,
+                created_at: c.created_at,
+            });
+        }
+    });
+
+    // Guarantee unique IDs across all entries
+    const seenIds = new Set<string>();
+    const uniqueCustomers = customersList.filter(c => {
+        if (seenIds.has(c.id)) return false;
+        seenIds.add(c.id);
+        return true;
+    });
+
+    const isMatch = (c: CustomerWithStats, name?: string | null, phone?: string | null, email?: string | null): boolean => {
+        const cp = normalizePhone(c.phone);
+        const ce = (c.email || '').trim().toLowerCase();
+        const cn = c.name.trim().toLowerCase();
+
+        if (cp && phone && normalizePhone(phone) === cp) return true;
+        if (ce && email && email.trim().toLowerCase() === ce) return true;
+        if (name && name.trim().toLowerCase() === cn) return true;
+        return false;
+    };
+
+    // Compute metrics for each customer
+    const result: CustomerWithStats[] = uniqueCustomers.map(customer => {
+        const matchingActiveLinks = activeLinksList.filter(l => isMatch(customer, l.customer_name, l.customer_phone, l.customer_email));
+        const matchingCredit = (creditInvoices || []).filter(i => i.customer_id === customer.id || isMatch(customer, i.customer_name, i.customer_phone, i.customer_email));
+        const openInvoicesCount = matchingActiveLinks.length + matchingCredit.length;
+        const owingAmount = matchingActiveLinks.reduce((sum, l) => sum + Number(l.amount || 0), 0)
+            + matchingCredit.reduce((sum, i) => sum + Math.max(0, Number(i.total || 0) - Number(i.amount_paid || 0)), 0);
+        const owingStatus = openInvoicesCount > 0 ? 'OWING' : 'CLEAR';
+
+        const salesSpend = paidSalesList
+            .filter(s => isMatch(customer, s.customer_name, s.customer_phone, s.customer_email))
+            .reduce((sum, s) => sum + Number(s.amount_paid || 0), 0);
+
+        const linksSpend = paidLinksList
+            .filter(l => isMatch(customer, l.customer_name, l.customer_phone, l.customer_email))
+            .reduce((sum, l) => sum + Number(l.amount || 0), 0);
+
+        const cashbookSpend = (cashbook || [])
+            .filter(c => isMatch(customer, c.sender_name, c.sender_phone, c.sender_email))
+            .reduce((sum, c) => sum + Number(c.amount || 0), 0);
+
+        const totalSpend = salesSpend + linksSpend + cashbookSpend;
+
+        return {
+            ...customer,
+            owing_status: owingStatus,
+            owing_amount: owingAmount,
+            open_invoices_count: openInvoicesCount,
+            total_spend: totalSpend,
+        };
+    });
+
+    // Sort by newest created date first
+    result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    return { customers: result, links: links || [], sales: sales || [], cashbook: cashbook || [] };
+};
+
 export const listCustomers = async (req: any, res: Response): Promise<any> => {
     try {
         const organization_id = req.user?.organization_id;
@@ -36,206 +241,8 @@ export const listCustomers = async (req: any, res: Response): Promise<any> => {
             return res.status(400).json({ error: 'Organization context missing' });
         }
 
-        // 1. Attempt to fetch from explicit customers table (if migrated)
-        let explicitCustomers: any[] = [];
-        try {
-            const { data, error } = await supabase
-                .from('customers')
-                .select('*')
-                .eq('organization_id', organization_id);
-
-            if (!error && data) {
-                explicitCustomers = data;
-            }
-        } catch {
-            // Table may not exist yet in schema cache, fallback gracefully
-        }
-
-        // 2. Fetch payment links (invoices & customer contacts)
-        const { data: links = [] } = await supabase
-            .from('payment_links')
-            .select('*, products(name)')
-            .eq('organization_id', organization_id)
-            .order('created_at', { ascending: false });
-
-        // 3. Fetch product sales (store purchases)
-        const { data: sales = [] } = await supabase
-            .from('product_sales')
-            .select('*, products(name)')
-            .eq('organization_id', organization_id)
-            .order('created_at', { ascending: false });
-
-        // 4. Fetch cashbook entries
-        const { data: cashbook = [] } = await supabase
-            .from('cashbook_entries')
-            .select('*')
-            .eq('organization_id', organization_id)
-            .order('created_at', { ascending: false });
-
-        // 5. Credit-sale invoices (accounts receivable) — outstanding balances count as owing.
-        const { data: creditInvoices = [] } = await supabase
-            .from('customer_invoices')
-            .select('id, customer_id, customer_name, customer_phone, customer_email, total, amount_paid, status')
-            .eq('organization_id', organization_id)
-            .in('status', ['OPEN', 'PARTIAL']);
-
-        const activeLinksList = (links || []).filter(l => l.status === 'ACTIVE');
-        const paidSalesList = (sales || []).filter(s => s.status !== 'FAILED');
-        const paidLinksList = (links || []).filter(l => l.status === 'PAID');
-
-        // Robust customer list aggregator
-        const customersList: CustomerWithStats[] = [];
-
-        const findExistingCustomer = (name?: string | null, phone?: string | null, email?: string | null): CustomerWithStats | undefined => {
-            const np = normalizePhone(phone);
-            const ne = (email || '').trim().toLowerCase();
-            const nn = (name || '').trim().toLowerCase();
-
-            return customersList.find(c => {
-                const cp = normalizePhone(c.phone);
-                const ce = (c.email || '').trim().toLowerCase();
-                const cn = c.name.trim().toLowerCase();
-
-                if (np && cp && np === cp) return true;
-                if (ne && ce && ne === ce) return true;
-                if (nn && cn && nn === cn) return true;
-                return false;
-            });
-        };
-
-        const upsertCustomer = (data: {
-            id?: string;
-            name: string;
-            email?: string | null;
-            phone?: string | null;
-            notes?: string | null;
-            created_at?: string;
-        }) => {
-            if (!data.name || !data.name.trim()) return;
-            const existing = findExistingCustomer(data.name, data.phone, data.email);
-            if (existing) {
-                if (!existing.phone && data.phone) existing.phone = data.phone.trim();
-                if (!existing.email && data.email) existing.email = data.email.trim();
-                if (!existing.notes && data.notes) existing.notes = data.notes.trim();
-                return;
-            }
-
-            const cleanName = data.name.trim();
-            const cleanPhone = data.phone?.trim() || null;
-            const cleanEmail = data.email?.trim() || null;
-            const deterministicId = data.id || makeCustomerId(cleanName, cleanPhone, cleanEmail);
-
-            customersList.push({
-                id: deterministicId,
-                organization_id,
-                name: cleanName,
-                email: cleanEmail,
-                phone: cleanPhone,
-                notes: data.notes || null,
-                status: 'ACTIVE',
-                owing_status: 'CLEAR',
-                owing_amount: 0,
-                open_invoices_count: 0,
-                total_spend: 0,
-                created_at: data.created_at || new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-            });
-        };
-
-        // 1. Add explicit customers
-        explicitCustomers.forEach(ec => upsertCustomer(ec));
-
-        // 2. Add customers from payment links
-        (links || []).forEach(l => {
-            if (l.customer_name) {
-                upsertCustomer({
-                    name: l.customer_name,
-                    phone: l.customer_phone,
-                    email: l.customer_email,
-                    created_at: l.created_at,
-                });
-            }
-        });
-
-        // 3. Add customers from store sales
-        (sales || []).forEach(s => {
-            if (s.customer_name) {
-                upsertCustomer({
-                    name: s.customer_name,
-                    phone: s.customer_phone,
-                    email: s.customer_email,
-                    created_at: s.created_at,
-                });
-            }
-        });
-
-        // 4. Add customers from cashbook entries
-        (cashbook || []).forEach(c => {
-            if (c.sender_name) {
-                upsertCustomer({
-                    name: c.sender_name,
-                    phone: c.sender_phone,
-                    email: c.sender_email,
-                    created_at: c.created_at,
-                });
-            }
-        });
-
-        // Guarantee unique IDs across all entries
-        const seenIds = new Set<string>();
-        const uniqueCustomers = customersList.filter(c => {
-            if (seenIds.has(c.id)) return false;
-            seenIds.add(c.id);
-            return true;
-        });
-
-        const isMatch = (c: CustomerWithStats, name?: string | null, phone?: string | null, email?: string | null): boolean => {
-            const cp = normalizePhone(c.phone);
-            const ce = (c.email || '').trim().toLowerCase();
-            const cn = c.name.trim().toLowerCase();
-
-            if (cp && phone && normalizePhone(phone) === cp) return true;
-            if (ce && email && email.trim().toLowerCase() === ce) return true;
-            if (name && name.trim().toLowerCase() === cn) return true;
-            return false;
-        };
-
-        // Compute metrics for each customer
-        const result: CustomerWithStats[] = uniqueCustomers.map(customer => {
-            const matchingActiveLinks = activeLinksList.filter(l => isMatch(customer, l.customer_name, l.customer_phone, l.customer_email));
-            const matchingCredit = (creditInvoices || []).filter(i => i.customer_id === customer.id || isMatch(customer, i.customer_name, i.customer_phone, i.customer_email));
-            const openInvoicesCount = matchingActiveLinks.length + matchingCredit.length;
-            const owingAmount = matchingActiveLinks.reduce((sum, l) => sum + Number(l.amount || 0), 0)
-                + matchingCredit.reduce((sum, i) => sum + Math.max(0, Number(i.total || 0) - Number(i.amount_paid || 0)), 0);
-            const owingStatus = openInvoicesCount > 0 ? 'OWING' : 'CLEAR';
-
-            const salesSpend = paidSalesList
-                .filter(s => isMatch(customer, s.customer_name, s.customer_phone, s.customer_email))
-                .reduce((sum, s) => sum + Number(s.amount_paid || 0), 0);
-
-            const linksSpend = paidLinksList
-                .filter(l => isMatch(customer, l.customer_name, l.customer_phone, l.customer_email))
-                .reduce((sum, l) => sum + Number(l.amount || 0), 0);
-
-            const cashbookSpend = (cashbook || [])
-                .filter(c => isMatch(customer, c.sender_name, c.sender_phone, c.sender_email))
-                .reduce((sum, c) => sum + Number(c.amount || 0), 0);
-
-            const totalSpend = salesSpend + linksSpend + cashbookSpend;
-
-            return {
-                ...customer,
-                owing_status: owingStatus,
-                owing_amount: owingAmount,
-                open_invoices_count: openInvoicesCount,
-                total_spend: totalSpend,
-            };
-        });
-
-        // Sort by newest created date first
-        result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-        res.json(result);
+        const { customers } = await loadCustomerData(organization_id);
+        res.json(customers);
     } catch (error: any) {
         console.error('[CRM] listCustomers error:', error);
         res.status(500).json({ error: 'Failed to list customers', details: error.message });

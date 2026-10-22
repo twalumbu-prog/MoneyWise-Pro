@@ -1696,6 +1696,55 @@ export const emailService = {
     },
 
     /**
+     * Bulk send of individually-addressed emails (one message per recipient, so nobody sees anyone
+     * else's address) through Resend's batch endpoint, 100 per call. Used by CRM campaigns; unlike
+     * sendEmail it never throws for a failed chunk — it reports how many went out so the caller can tell
+     * the user precisely.
+     */
+    async sendBatch(params: {
+        fromName: string;
+        replyTo?: string;
+        messages: { to: string; subject: string; html: string; text?: string }[];
+    }): Promise<{ sent: number; failed: number; skipped: boolean }> {
+        const { fromName, replyTo, messages } = params;
+        if (!process.env.RESEND_API_KEY) {
+            console.warn('[EmailService] RESEND_API_KEY not set. Skipping batch send of', messages.length, 'emails.');
+            return { sent: 0, failed: 0, skipped: true };
+        }
+
+        // Show the business as the sender while keeping the verified sending address.
+        const address = /<([^>]+)>/.exec(FROM_ADDRESS)?.[1] || FROM_ADDRESS;
+        const from = `${fromName.replace(/["<>\r\n]/g, '').trim() || 'MoneyWise'} <${address}>`;
+
+        let sent = 0;
+        let failed = 0;
+        for (let i = 0; i < messages.length; i += 100) {
+            const chunk = messages.slice(i, i + 100);
+            try {
+                const { error } = await resend.batch.send(chunk.map(m => ({
+                    from,
+                    to: [m.to],
+                    subject: m.subject,
+                    html: m.html,
+                    text: m.text || htmlToPlainText(m.html),
+                    ...(replyTo ? { replyTo } : {}),
+                })));
+                if (error) {
+                    console.error('[EmailService] Resend batch error:', error);
+                    failed += chunk.length;
+                } else {
+                    sent += chunk.length;
+                }
+            } catch (err) {
+                console.error('[EmailService] Resend batch threw:', err);
+                failed += chunk.length;
+            }
+        }
+        console.log(`[EmailService] Batch send finished: ${sent} sent, ${failed} failed`);
+        return { sent, failed, skipped: false };
+    },
+
+    /**
      * Remind requestors that their pending requisitions will be auto-categorized
      * within ~12 hours if not actioned.  One email per org, listing all pending items.
      */

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireRole } from '../middleware/auth';
 import {
     listCustomers,
     createCustomer,
@@ -8,6 +8,12 @@ import {
     deleteCustomer,
     getCustomerTransactions
 } from '../controllers/crm.controller';
+import {
+    getLoyaltyOverview,
+    getCustomerLoyalty,
+    previewCampaignAudience,
+    sendCampaign
+} from '../controllers/crmLoyalty.controller';
 
 const router = Router();
 
@@ -19,5 +25,12 @@ router.get('/customers/:id', getCustomer);
 router.patch('/customers/:id', updateCustomer);
 router.delete('/customers/:id', deleteCustomer);
 router.get('/customers/:id/transactions', getCustomerTransactions);
+
+router.get('/loyalty', getLoyaltyOverview);
+router.get('/customers/:id/loyalty', getCustomerLoyalty);
+
+// Emailing customers speaks for the business, so it is limited to the people who manage it.
+router.post('/campaigns/preview', requireRole(['ADMIN', 'ACCOUNTANT']), previewCampaignAudience);
+router.post('/campaigns/send', requireRole(['ADMIN', 'ACCOUNTANT']), sendCampaign);
 
 export default router;

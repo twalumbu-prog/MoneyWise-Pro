@@ -177,6 +177,15 @@ export type {
     CustomerTransaction,
     CreateCustomerInput,
     UpdateCustomerInput,
+    LoyaltySegment,
+    LoyaltyOverview,
+    LoyaltySummary,
+    CustomerLoyalty,
+    FavouriteProduct,
+    CampaignAudience,
+    CampaignPreview,
+    SendCampaignInput,
+    SendCampaignResult,
 } from './services/crm.service';
 
 export {
