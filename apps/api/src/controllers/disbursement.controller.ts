@@ -1154,7 +1154,18 @@ export const verifyDisbursementStatus = async (req: any, res: any): Promise<any>
                 await cashbookService.finalizeWalletDisbursementLedger(id, actualFee);
             }
 
-            return res.json({ 
+            // Lenco has confirmed the transfer: advance PROCESSING -> RECEIVED (same guarded
+            // transition as the poller). Without this the ledger was booked but the requisition
+            // stayed "Processing" forever whenever the cron poller wasn't running.
+            const { error: advanceErr } = await supabase
+                .from('requisitions')
+                .update({ status: 'RECEIVED', updated_at: new Date().toISOString() })
+                .eq('id', id)
+                .eq('status', 'PROCESSING');
+            if (advanceErr) console.error(`[Lenco Verify] Could not advance ${id} to RECEIVED:`, advanceErr.message);
+            else await maybeAutoCategorizePersonalById(id);
+
+            return res.json({
                 status: 'successful', 
                 message: 'Transaction verified as successful',
                 details: statusCheck
