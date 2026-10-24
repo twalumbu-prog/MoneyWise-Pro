@@ -9,7 +9,7 @@ import { randomBytes } from 'crypto';
 import { supabase } from '../lib/supabase';
 import { cashbookService } from '../services/cashbook.service';
 import { getFrontendUrl } from '../utils/frontendUrl';
-import { isBlueOpus, ingestProjectGeniusUsers } from '../services/blueOpusCrm.service';
+import { isBlueOpus, ingestProjectGeniusUsers, ingestProjectGeniusPayments, listUnattributedProductReceipts } from '../services/blueOpusCrm.service';
 
 import { CURRENCY, DATE_RE, UUID_RE, clampLimit, fail, loadExternalWallets } from './publicApiShared';
 
@@ -533,5 +533,34 @@ export const importProjectGeniusUsers = async (req: any, res: any) => {
         res.json(await ingestProjectGeniusUsers(users));
     } catch (error: any) {
         return fail(res, 500, 'Failed to import users', error);
+    }
+};
+
+/**
+ * POST /v1/crm/project-genius/payments — call when a payment is initiated AND again when it is confirmed (same reference = update).
+ * Body { payments: [{ reference: "PG-SUB-…", customer: { type: "school"|"teacher"|"student", id, name?, email?, phone? },
+ * amount, status: "pending"|"paid"|"failed", plan?, period_start?, period_end?, paid_at?, payer_phone? }] }.
+ * Idempotent on `reference`; also the backfill path (replay history). Creates the paying customer if new.
+ */
+export const importProjectGeniusPayments = async (req: any, res: any) => {
+    if (!isBlueOpus(req.user.organization_id)) return fail(res, 403, 'Only the Blue Opus organization can import Project Genius payments');
+    const payments = req.body?.payments;
+    if (!Array.isArray(payments) || payments.length === 0) return fail(res, 400, '`payments` must be a non-empty array');
+    if (payments.length > MAX_PG_USERS_PER_REQUEST) return fail(res, 400, `At most ${MAX_PG_USERS_PER_REQUEST} payments per request`);
+    try {
+        res.json(await ingestProjectGeniusPayments(payments));
+    } catch (error: any) {
+        return fail(res, 500, 'Failed to import payments', error);
+    }
+};
+
+/** GET /v1/crm/project-genius/unattributed-receipts — Blue Opus PG- receipts with no payer yet (the backfill checklist). */
+export const getUnattributedReceipts = async (req: any, res: any) => {
+    if (!isBlueOpus(req.user.organization_id)) return fail(res, 403, 'Only the Blue Opus organization can list these receipts');
+    try {
+        const data = await listUnattributedProductReceipts();
+        res.json({ data, count: data.length });
+    } catch (error: any) {
+        return fail(res, 500, 'Failed to list receipts', error);
     }
 };

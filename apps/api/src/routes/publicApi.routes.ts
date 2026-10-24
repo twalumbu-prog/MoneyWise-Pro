@@ -20,6 +20,8 @@ import {
     getPaymentLinks,
     createPaymentLink,
     importProjectGeniusUsers,
+    importProjectGeniusPayments,
+    getUnattributedReceipts,
 } from '../controllers/publicApi.controller';
 import {
     listExternalWallets,
@@ -65,5 +67,7 @@ router.post('/payment-links', requireScope('write'), createPaymentLink);
 // ── CRM ───────────────────────────────────────────────────────────────────────
 // Blue Opus only (enforced in the handler): Project Genius pushes its users into Blue Opus's CRM.
 router.post('/crm/project-genius/users', requireScope('write'), importProjectGeniusUsers);
+router.post('/crm/project-genius/payments', requireScope('write'), importProjectGeniusPayments);
+router.get('/crm/project-genius/unattributed-receipts', requireScope('read'), getUnattributedReceipts);
 
 export default router;

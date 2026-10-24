@@ -11,6 +11,7 @@ import {
     buildMoneyWiseRows,
     normalizeProjectGeniusUser,
     attributeSubscriptionPayments,
+    normalizeProjectGeniusPayment,
 } from '../services/blueOpusCrm.service';
 
 let failed = 0;
@@ -51,7 +52,7 @@ check('PG status mapping', normalizeProjectGeniusUser({ id: 'u3', name: 'n', sta
 // ── Payment attribution ──
 const customers = [
     { id: 'c-mw', external_source: 'MONEYWISE', external_id: 'o1' },
-    { id: 'c-pg', external_source: 'PROJECT_GENIUS', external_id: 'u-1', metadata: { payment_references: ['PG-SUB-1790000000000-8awv52'] } },
+    { id: 'c-pg', external_source: 'PROJECT_GENIUS', external_id: 'u-1', metadata: { payment_references: ['PG-SUB-1790076332695-8awv52'] } },
     { id: 'c-pg2', external_source: 'PROJECT_GENIUS', external_id: 'u-2', metadata: { payment_references: [] } },
 ];
 const invoices = [
@@ -71,6 +72,33 @@ check("other org's invoice is not attributed", !pays.some(p => p.id === 'i3'));
 check('PG receipt attributed through payment_references', pays.find(p => p.id === 'r2')?.customerId === 'c-pg' && pays.find(p => p.id === 'r2')?.amount === 500);
 check('unclaimed receipt stays unattributed', !pays.some(p => p.id === 'r3'));
 check('other PG user gets nothing', !pays.some(p => p.customerId === 'c-pg2'));
+
+// ── Pushed payment context + suffix fallback ──
+const np = normalizeProjectGeniusPayment({ reference: ' pg-sub-1790076332695-8awv52 ', customer: { type: 'school', id: 'jx7abc8awv52', name: 'Eagles Nest' }, amount: 500, status: 'PAID', plan: 'school_monthly', paid_at: '2026-09-22T12:00:00Z' })!;
+check('payment reference upper-cased, customer keyed type:id', np.context.reference === 'PG-SUB-1790076332695-8AWV52' && np.customer!.external_id === 'school:jx7abc8awv52' && np.context.status === 'paid');
+check('payment without customer or with bad type rejected', normalizeProjectGeniusPayment({ reference: 'PG-SUB-1-a' }) === null && normalizeProjectGeniusPayment({ reference: 'PG-SUB-1-a', customer: { type: 'alien', id: 'x' } }) === null);
+const pgc = [
+    { id: 'k-school', external_source: 'PROJECT_GENIUS', external_id: 'school:jx7abc8awv52', metadata: {} },
+    { id: 'k-school2', external_source: 'PROJECT_GENIUS', external_id: 'school:zzzzzzzzzzzzzz', metadata: {} },
+    { id: 'k-teacher', external_source: 'PROJECT_GENIUS', external_id: 'teacher:qq11aa', metadata: {} },
+];
+const rc = [
+    { id: 'a1', description: 'x | Ref: PG-SUB-1790076332695-8awv52', debit: 500, external_reference: 'PG-SUB-1790076332695-8awv52', created_at: '2026-09-22T12:15:00Z' }, // suffix
+    { id: 'a2', description: 'x', debit: 500, external_reference: 'PG-SUB-1790999999999-zzzzzz', created_at: '2026-10-01T00:00:00Z' }, // context overrides suffix
+    { id: 'a3', description: 'x', debit: 50, external_reference: 'PG-TEACHER-1790111111111-qq11aa', created_at: '2026-10-02T00:00:00Z' }, // teacher suffix
+    { id: 'a4', description: 'x', debit: 9, external_reference: 'PG-SUB-1790222222222-nomatc', created_at: '2026-10-03T00:00:00Z' }, // nobody
+];
+const ctx = [{ ...np.context, reference: 'PG-SUB-1790999999999-ZZZZZZ', customer_external_id: 'school:jx7abc8awv52' },
+    { ...np.context, reference: 'PG-SUB-1795555555555-NORECEIPT', status: 'paid', amount: 500, customer_external_id: 'school:zzzzzzzzzzzzzz' },
+    { ...np.context, reference: 'PG-SUB-1796666666666-PENDING', status: 'pending', customer_external_id: 'school:zzzzzzzzzzzzzz' }];
+const p2 = attributeSubscriptionPayments(pgc, [], rc, ctx);
+check('suffix resolves school when unique', p2.find(p => p.id === 'a1')?.customerId === 'k-school');
+check('pushed context beats the suffix', p2.find(p => p.id === 'a2')?.customerId === 'k-school');
+check('PG-TEACHER suffix resolves teacher', p2.find(p => p.id === 'a3')?.customerId === 'k-teacher');
+check('unmatched receipt stays unattributed', !p2.some(p => p.id === 'a4'));
+check('paid context without receipt still counts; pending does not', p2.some(p => p.id === 'ctx:PG-SUB-1795555555555-NORECEIPT' && p.paid) && !p2.some(p => p.reference === 'PG-SUB-1796666666666-PENDING'));
+const amb = attributeSubscriptionPayments([...pgc, { id: 'k-dup', external_source: 'PROJECT_GENIUS', external_id: 'school:other8awv52' }], [], [rc[0]], []);
+check('ambiguous suffix is NOT guessed', amb.length === 0);
 
 if (failed) { console.log(`\n${failed} check(s) failed`); process.exit(1); }
 console.log('\nAll checks passed');
