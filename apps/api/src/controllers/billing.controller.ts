@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { syncBlueOpusSubscribers } from '../services/blueOpusCrm.service';
 import { supabase } from '../lib/supabase';
 import { captureEvent } from '../utils/analytics';
 import { LencoService } from '../services/lenco.service';
@@ -930,7 +931,11 @@ export async function billingTick(req: Request, res: Response) {
             .eq('status', 'past_due');
         summary.pastDue = count || 0;
 
-        res.json({ success: true, autoPay, ...summary });
+        // Keep Blue Opus's CRM in step with new MoneyWise sign-ups (best effort; the tick must not fail on it).
+        let crm: any = null;
+        try { crm = await syncBlueOpusSubscribers(); } catch (e: any) { summary.errors.push(`crm-sync: ${e.message}`); }
+
+        res.json({ success: true, autoPay, crm, ...summary });
     } catch (err: any) {
         console.error('[Billing] tick failed:', err.message);
         res.status(500).json({ error: err.message });

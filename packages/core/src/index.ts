@@ -174,6 +174,8 @@ export type {
 } from './services/invoice.service';
 export type {
     Customer,
+    CrmProduct,
+    CrmProductSummary,
     CustomerTransaction,
     CreateCustomerInput,
     UpdateCustomerInput,

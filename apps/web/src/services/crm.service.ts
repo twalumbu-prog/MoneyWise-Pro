@@ -2,6 +2,8 @@
 export { crmService } from 'core';
 export type {
     Customer,
+    CrmProduct,
+    CrmProductSummary,
     CustomerTransaction,
     CreateCustomerInput,
     UpdateCustomerInput,

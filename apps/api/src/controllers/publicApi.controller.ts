@@ -9,6 +9,7 @@ import { randomBytes } from 'crypto';
 import { supabase } from '../lib/supabase';
 import { cashbookService } from '../services/cashbook.service';
 import { getFrontendUrl } from '../utils/frontendUrl';
+import { isBlueOpus, ingestProjectGeniusUsers } from '../services/blueOpusCrm.service';
 
 import { CURRENCY, DATE_RE, UUID_RE, clampLimit, fail, loadExternalWallets } from './publicApiShared';
 
@@ -511,4 +512,26 @@ export const createPaymentLink = async (req: any, res: any) => {
     if (error) return fail(res, 500, 'Failed to create payment link', error);
 
     res.status(201).json(shapeLink(data, getFrontendUrl()));
+};
+
+// ── CRM: Project Genius users (Blue Opus only) ───────────────────────────────
+
+const MAX_PG_USERS_PER_REQUEST = 1000;
+
+/**
+ * POST /v1/crm/project-genius/users — body { users: [{ id, name, email?, phone?, role?, school?, status?, created_at?,
+ * payment_references?: ["PG-SUB-…"] }] }. Idempotent upsert keyed on the Project Genius user id; safe to re-send the full list.
+ */
+export const importProjectGeniusUsers = async (req: any, res: any) => {
+    const orgId = req.user.organization_id;
+    // Project Genius belongs to Blue Opus; any other organization's key must not be able to write product customers.
+    if (!isBlueOpus(orgId)) return fail(res, 403, 'Only the Blue Opus organization can import Project Genius users');
+    const users = req.body?.users;
+    if (!Array.isArray(users) || users.length === 0) return fail(res, 400, '`users` must be a non-empty array');
+    if (users.length > MAX_PG_USERS_PER_REQUEST) return fail(res, 400, `At most ${MAX_PG_USERS_PER_REQUEST} users per request`);
+    try {
+        res.json(await ingestProjectGeniusUsers(users));
+    } catch (error: any) {
+        return fail(res, 500, 'Failed to import users', error);
+    }
 };

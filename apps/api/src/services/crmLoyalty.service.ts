@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { loadCustomerData, CustomerWithStats } from '../controllers/crm.controller';
+import { loadSubscriptionPayments, subscriptionProductItem } from './blueOpusCrm.service';
 
 /**
  * Customer loyalty, derived entirely from existing data (no new tables): every paid purchase a
@@ -32,7 +33,7 @@ const normalizePhone = (p?: string | null) => (p ? p.replace(/\D/g, '').slice(-9
 interface OrderItem { key: string; name: string; quantity: number; amount: number }
 interface Order {
     ref: string;
-    source: 'LINK' | 'INVOICE' | 'SALE' | 'CASHBOOK';
+    source: 'LINK' | 'INVOICE' | 'SALE' | 'CASHBOOK' | 'SUBSCRIPTION';
     customerId: string;
     at: number;
     amount: number;
@@ -91,6 +92,7 @@ export async function computeLoyalty(organizationId: string) {
     const byEmail = new Map<string, string>();
     const byName = new Map<string, string>();
     for (const c of customers) {
+        if (c.product) continue; // Blue Opus product customers are credited by id (below), never by name/email/phone
         const p = normalizePhone(c.phone);
         const e = (c.email || '').trim().toLowerCase();
         const n = c.name.trim().toLowerCase();
@@ -173,6 +175,20 @@ export async function computeLoyalty(organizationId: string) {
         });
     }
 
+    // Blue Opus: subscription payments of MoneyWise accounts / Project Genius users, one order per paid invoice or receipt.
+    const productCustomers = customers.filter(c => c.product);
+    if (productCustomers.length) {
+        const bySource = new Map(productCustomers.map(c => [c.id, c.product]));
+        for (const p of await loadSubscriptionPayments(organizationId, productCustomers)) {
+            if (!p.paid) continue;
+            const item = subscriptionProductItem(bySource.get(p.customerId));
+            orders.set(`sub:${p.id}`, {
+                ref: p.reference || p.id, source: 'SUBSCRIPTION', customerId: p.customerId, at: Date.parse(p.date),
+                amount: p.amount, items: [{ key: item.key, name: item.name, quantity: 1, amount: p.amount }],
+            });
+        }
+    }
+
     const now = Date.now();
     const windowStart = localDay(now - (HEATMAP_DAYS - 1) * DAY_MS);
     const grouped = new Map<string, Order[]>();
@@ -241,6 +257,8 @@ export interface CampaignAudience {
     payment?: 'ALL' | 'OWING' | 'CLEAR';
     segments?: LoyaltySegment[];
     product_keys?: string[];
+    /** Blue Opus only: restrict to one of its products' customers. */
+    product?: 'MONEYWISE' | 'PROJECT_GENIUS';
 }
 
 export interface AudienceMember { customer: CustomerWithStats; loyalty: CustomerLoyalty }
@@ -259,6 +277,7 @@ export function selectAudience(
         if (customer.status === 'INACTIVE') continue;
         const loyalty = data.byCustomer.get(customer.id);
         if (!loyalty) continue;
+        if (audience.product && customer.product !== audience.product) continue;
         if (payment !== 'ALL' && customer.owing_status !== payment) continue;
         if (segments.size && !segments.has(loyalty.segment)) continue;
         if (products.size && !loyalty.product_keys.some(k => products.has(k))) continue;

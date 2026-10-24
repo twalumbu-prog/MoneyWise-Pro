@@ -14,6 +14,16 @@ export interface Customer {
     total_spend: number;
     created_at: string;
     updated_at: string;
+    /** Blue Opus only: which of its products this customer belongs to. */
+    product?: CrmProduct | null;
+    product_label?: string | null;
+}
+
+export type CrmProduct = 'MONEYWISE' | 'PROJECT_GENIUS';
+
+export interface CrmProductSummary {
+    enabled: boolean;
+    products: { product: CrmProduct; label: string; total: number; active: number }[];
 }
 
 export interface CustomerTransaction {
@@ -87,6 +97,7 @@ export interface CampaignAudience {
     payment: 'ALL' | 'OWING' | 'CLEAR';
     segments: LoyaltySegment[];
     product_keys: string[];
+    product?: CrmProduct;
 }
 
 export interface CampaignPreview {
@@ -135,6 +146,10 @@ export interface SendCampaignResult {
 export const crmService = {
     async listCustomers(): Promise<Customer[]> {
         return apiJson<Customer[]>('/crm/customers');
+    },
+
+    async getProductSummary(): Promise<CrmProductSummary> {
+        return apiJson<CrmProductSummary>('/crm/products');
     },
 
     async getCustomer(id: string): Promise<Customer> {

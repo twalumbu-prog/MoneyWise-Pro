@@ -4,6 +4,7 @@ import { seedDefaultAccounts, seedPersonalAccounts, purgeBusinessTemplateAccount
 import { captureEvent } from '../utils/analytics';
 import { getFrontendUrl } from '../utils/frontendUrl';
 import { emailService } from '../services/email.service';
+import { syncMoneyWiseCustomerForOrg } from '../services/blueOpusCrm.service';
 
 interface RegisterUserRequest {
     email: string;
@@ -267,6 +268,10 @@ export const registerUser = async (req: any, res: any): Promise<any> => {
         if (onboardingSeedError) {
             console.error('[RegisterUser] Failed to seed onboarding progress:', onboardingSeedError.message);
         }
+
+        // New MoneyWise account → Blue Opus's CRM right away (the CRM view and billing tick also reconcile).
+        try { await syncMoneyWiseCustomerForOrg(orgData.id); }
+        catch (e: any) { console.error('[RegisterUser] Blue Opus CRM sync failed:', e?.message); }
 
         return res.status(201).json({
             message: 'User registered successfully. You can now log in.',

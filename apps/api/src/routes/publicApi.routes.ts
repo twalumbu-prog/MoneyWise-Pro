@@ -19,6 +19,7 @@ import {
     getPaymentLinkById,
     getPaymentLinks,
     createPaymentLink,
+    importProjectGeniusUsers,
 } from '../controllers/publicApi.controller';
 import {
     listExternalWallets,
@@ -60,5 +61,9 @@ router.patch('/products/:id', requireScope('write'), updateProduct);
 router.get('/payment-links', requireScope('read'), getPaymentLinks);
 router.get('/payment-links/:id', requireScope('read'), getPaymentLinkById);
 router.post('/payment-links', requireScope('write'), createPaymentLink);
+
+// ── CRM ───────────────────────────────────────────────────────────────────────
+// Blue Opus only (enforced in the handler): Project Genius pushes its users into Blue Opus's CRM.
+router.post('/crm/project-genius/users', requireScope('write'), importProjectGeniusUsers);
 
 export default router;

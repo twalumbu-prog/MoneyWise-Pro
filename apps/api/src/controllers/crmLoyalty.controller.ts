@@ -19,6 +19,7 @@ const sanitizeAudience = (raw: any): CampaignAudience => {
     const valid = new Set(LOYALTY_SEGMENTS.map(s => s.value));
     return {
         payment: ['ALL', 'OWING', 'CLEAR'].includes(raw?.payment) ? raw.payment : 'ALL',
+        product: ['MONEYWISE', 'PROJECT_GENIUS'].includes(raw?.product) ? raw.product : undefined,
         segments: (Array.isArray(raw?.segments) ? raw.segments : []).filter((s: any) => valid.has(s)) as LoyaltySegment[],
         product_keys: (Array.isArray(raw?.product_keys) ? raw.product_keys : []).map(String).slice(0, 50),
     };
@@ -37,6 +38,7 @@ export const getLoyaltyOverview = async (req: any, res: Response): Promise<any> 
             counts[l.segment] = (counts[l.segment] || 0) + 1;
             return {
                 customer_id: c.id,
+                product: c.product ?? null,
                 segment: l.segment,
                 order_count: l.order_count,
                 last_purchase_at: l.last_purchase_at,

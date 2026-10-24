@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { Layout } from '../components/Layout';
-import { crmService, Customer, LoyaltyOverview, LoyaltySegment } from '../services/crm.service';
+import { crmService, Customer, CrmProduct, CrmProductSummary, LoyaltyOverview, LoyaltySegment } from '../services/crm.service';
 import { CustomerDetail } from '../components/crm/CustomerDetail';
 import { AddCustomerModal } from '../components/crm/AddCustomerModal';
 import { InvestorsPanel } from '../components/crm/InvestorsPanel';
@@ -22,6 +22,7 @@ export const CRM: React.FC = () => {
     const queryClient = useQueryClient();
     const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
     const [filterTab, setFilterTab] = useState<FilterTab>('ALL');
+    const [productFilter, setProductFilter] = useState<CrmProduct | null>(null);
     const [search, setSearch] = useState('');
     const [searchOpen, setSearchOpen] = useState(false);
     const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -59,10 +60,19 @@ export const CRM: React.FC = () => {
         retry: 1,
         staleTime: 60_000,
     });
+    // Blue Opus only: MoneyWise vs Project Genius customer counts (the server returns enabled:false for everyone else).
+    const { data: productSummary } = useQuery<CrmProductSummary>({
+        queryKey: ['crm-products', organizationId],
+        queryFn: () => crmService.getProductSummary(),
+        enabled: !!organizationId,
+        retry: false,
+        staleTime: 60_000,
+    });
     const loyaltyById = new Map((loyalty?.customers || []).map(l => [l.customer_id, l]));
 
     const filteredCustomers = customers
         .filter(c => {
+            if (productFilter && c.product !== productFilter) return false;
             if (mainTab === 'loyalty' && segmentFilter && loyaltyById.get(c.id)?.segment !== segmentFilter) return false;
             if (filterTab === 'OWING') return c.owing_status === 'OWING';
             if (filterTab === 'CLEAR') return c.owing_status === 'CLEAR';
@@ -196,6 +206,24 @@ export const CRM: React.FC = () => {
                                     <button onClick={() => { setSearchOpen(false); setSearch(''); }} className="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
                                 </div>
                             ) : (
+                                <div className="flex items-center gap-2 flex-wrap">
+                                {productSummary?.enabled && (
+                                    <div className="h-8 p-1 bg-slate-100 rounded-[10px] flex items-center gap-1">
+                                        {[{ product: null, label: 'All products', total: null }, ...productSummary.products].map(p => (
+                                            <button
+                                                key={p.product ?? 'ALL'}
+                                                onClick={() => setProductFilter(p.product as CrmProduct | null)}
+                                                className={`px-3 h-full rounded-lg text-[10px] font-['DM_Sans'] transition-all ${
+                                                    productFilter === p.product
+                                                        ? 'bg-white shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)] font-bold text-gray-900'
+                                                        : 'font-normal text-gray-900 hover:bg-white/50'
+                                                }`}
+                                            >
+                                                {p.label}{p.total !== null && ` (${p.total})`}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
                                 <div className="h-8 p-1 bg-slate-100 rounded-[10px] flex items-center gap-2">
                                     {(['ALL', 'OWING', 'CLEAR'] as FilterTab[]).map(tab => (
                                         <button
@@ -222,6 +250,7 @@ export const CRM: React.FC = () => {
                                             )}
                                         </button>
                                     ))}
+                                </div>
                                 </div>
                             )}
 
@@ -305,7 +334,15 @@ export const CRM: React.FC = () => {
                                                         {initial}
                                                     </div>
                                                     <div className="min-w-0">
-                                                        <p className="text-xs font-semibold text-gray-900 truncate">{customer.name}</p>
+                                                        <p className="text-xs font-semibold text-gray-900 truncate">
+                                                            {customer.name}
+                                                            {customer.product_label && (
+                                                                <span className={`ml-2 px-1.5 py-0.5 rounded-md text-[9px] font-semibold align-middle ${customer.product === 'PROJECT_GENIUS' ? 'bg-violet-100 text-violet-800' : 'bg-blue-100 text-blue-800'}`}>
+                                                                    {customer.product_label}
+                                                                </span>
+                                                            )}
+                                                            {customer.status === 'INACTIVE' && <span className="ml-1.5 text-[9px] font-normal text-gray-400">inactive</span>}
+                                                        </p>
                                                         <p className="text-[10px] text-gray-400 truncate">
                                                             {customer.phone || 'No phone'} · {customer.email || 'No email'}
                                                         </p>

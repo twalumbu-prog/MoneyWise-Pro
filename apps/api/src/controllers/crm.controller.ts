@@ -1,5 +1,14 @@
 import { Response } from 'express';
 import { supabase } from '../lib/supabase';
+import {
+    isBlueOpus,
+    isProductSource,
+    productLabel,
+    ensureBlueOpusSubscribersFresh,
+    loadSubscriptionPayments,
+    syncBlueOpusSubscribers,
+    productSummary,
+} from '../services/blueOpusCrm.service';
 
 export interface CustomerWithStats {
     id: string;
@@ -15,6 +24,12 @@ export interface CustomerWithStats {
     total_spend: number;
     created_at: string;
     updated_at: string;
+    /** Blue Opus only: which Blue Opus product this customer belongs to. */
+    external_source?: string | null;
+    product?: string | null;
+    product_label?: string | null;
+    external_id?: string | null;
+    metadata?: Record<string, any> | null;
 }
 
 // Normalize phone numbers to last 9 digits for robust matching
@@ -32,6 +47,8 @@ const makeCustomerId = (name: string, phone?: string | null, email?: string | nu
 /** Aggregates the explicit customers table + every customer-bearing transaction source into one
  *  de-duplicated list, and hands back the raw records so other CRM features (loyalty) can reuse them. */
 export const loadCustomerData = async (organization_id: string) => {
+    if (isBlueOpus(organization_id)) await ensureBlueOpusSubscribersFresh();
+
     // 1. Attempt to fetch from explicit customers table (if migrated)
     let explicitCustomers: any[] = [];
     try {
@@ -88,6 +105,7 @@ export const loadCustomerData = async (organization_id: string) => {
         const nn = (name || '').trim().toLowerCase();
 
         return customersList.find(c => {
+            if (c.product) return false;
             const cp = normalizePhone(c.phone);
             const ce = (c.email || '').trim().toLowerCase();
             const cn = c.name.trim().toLowerCase();
@@ -106,9 +124,15 @@ export const loadCustomerData = async (organization_id: string) => {
         phone?: string | null;
         notes?: string | null;
         created_at?: string;
+        status?: string;
+        external_source?: string | null;
+        external_id?: string | null;
+        metadata?: Record<string, any> | null;
     }) => {
         if (!data.name || !data.name.trim()) return;
-        const existing = findExistingCustomer(data.name, data.phone, data.email);
+        // Product customers (MoneyWise accounts / Project Genius users) are distinct people even when names or emails collide.
+        const isProduct = isBlueOpus(organization_id) && isProductSource(data.external_source);
+        const existing = isProduct ? undefined : findExistingCustomer(data.name, data.phone, data.email);
         if (existing) {
             if (!existing.phone && data.phone) existing.phone = data.phone.trim();
             if (!existing.email && data.email) existing.email = data.email.trim();
@@ -128,13 +152,14 @@ export const loadCustomerData = async (organization_id: string) => {
             email: cleanEmail,
             phone: cleanPhone,
             notes: data.notes || null,
-            status: 'ACTIVE',
+            status: data.status || 'ACTIVE',
             owing_status: 'CLEAR',
             owing_amount: 0,
             open_invoices_count: 0,
             total_spend: 0,
             created_at: data.created_at || new Date().toISOString(),
             updated_at: new Date().toISOString(),
+            ...(isProduct ? { external_source: data.external_source, external_id: data.external_id ?? null, product: data.external_source, product_label: productLabel(data.external_source), metadata: data.metadata ?? null } : {}),
         });
     };
 
@@ -196,8 +221,22 @@ export const loadCustomerData = async (organization_id: string) => {
         return false;
     };
 
+    // Subscription payments (Blue Opus only) are credited to product customers by id, never by name/email.
+    const subscriptionPayments = await loadSubscriptionPayments(organization_id, uniqueCustomers.filter(c => c.product));
+
     // Compute metrics for each customer
     const result: CustomerWithStats[] = uniqueCustomers.map(customer => {
+        if (customer.product) {
+            const mine = subscriptionPayments.filter(p => p.customerId === customer.id);
+            const owing = mine.filter(p => p.status === 'OWING');
+            return {
+                ...customer,
+                owing_status: owing.length > 0 ? 'OWING' : 'CLEAR',
+                owing_amount: owing.reduce((s, p) => s + p.amount, 0),
+                open_invoices_count: owing.length,
+                total_spend: mine.filter(p => p.paid).reduce((s, p) => s + p.amount, 0),
+            };
+        }
         const matchingActiveLinks = activeLinksList.filter(l => isMatch(customer, l.customer_name, l.customer_phone, l.customer_email));
         const matchingCredit = (creditInvoices || []).filter(i => i.customer_id === customer.id || isMatch(customer, i.customer_name, i.customer_phone, i.customer_email));
         const openInvoicesCount = matchingActiveLinks.length + matchingCredit.length;
@@ -242,7 +281,8 @@ export const listCustomers = async (req: any, res: Response): Promise<any> => {
         }
 
         const { customers } = await loadCustomerData(organization_id);
-        res.json(customers);
+        const product = String(req.query?.product || '').toUpperCase();
+        res.json(isBlueOpus(organization_id) && isProductSource(product) ? customers.filter(c => c.product === product) : customers);
     } catch (error: any) {
         console.error('[CRM] listCustomers error:', error);
         res.status(500).json({ error: 'Failed to list customers', details: error.message });
@@ -310,6 +350,13 @@ export const getCustomer = async (req: any, res: Response): Promise<any> => {
     try {
         const organization_id = req.user?.organization_id;
         const { id } = req.params;
+
+        // Blue Opus product customers (MoneyWise accounts / Project Genius users) are scored from their subscription payments only.
+        if (isBlueOpus(organization_id)) {
+            const { customers } = await loadCustomerData(organization_id);
+            const product = customers.find(c => c.id === id && c.product);
+            if (product) return res.json(product);
+        }
 
         // Fetch all customers using the list aggregator to guarantee matching ID lookup
         const reqMock = { user: { organization_id } };
@@ -518,6 +565,19 @@ export const getCustomerTransactions = async (req: any, res: Response): Promise<
         const organization_id = req.user?.organization_id;
         const { id } = req.params;
 
+        // Blue Opus product customers: subscription invoices + the Blue Opus receipts that settled them.
+        if (isBlueOpus(organization_id)) {
+            const { customers } = await loadCustomerData(organization_id);
+            const product = customers.find(c => c.id === id && c.product);
+            if (product) {
+                const payments = await loadSubscriptionPayments(organization_id, [product]);
+                return res.json(payments
+                    .filter(p => p.customerId === id && p.status !== 'VOID')
+                    .map(p => ({ id: p.id, type: p.kind === 'INVOICE' ? 'INVOICE' : 'RECEIPT', date: p.date, description: p.description, amount: p.amount, status: p.status, reference: p.reference }))
+                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+            }
+        }
+
         // 1. Resolve customer
         let custName: string = '';
         let custPhone: string | null = null;
@@ -673,5 +733,28 @@ export const getCustomerTransactions = async (req: any, res: Response): Promise<
     } catch (error: any) {
         console.error('[CRM] getCustomerTransactions error:', error);
         res.status(500).json({ error: 'Failed to fetch customer transactions', details: error.message });
+    }
+};
+
+/** GET /crm/products — Blue Opus only: customer counts per product (MoneyWise vs Project Genius). */
+export const getProductSummary = async (req: any, res: Response): Promise<any> => {
+    try {
+        if (!isBlueOpus(req.user?.organization_id)) return res.json({ enabled: false, products: [] });
+        await ensureBlueOpusSubscribersFresh();
+        res.json({ enabled: true, products: await productSummary() });
+    } catch (error: any) {
+        console.error('[CRM] getProductSummary error:', error);
+        res.status(500).json({ error: 'Failed to load product summary', details: error.message });
+    }
+};
+
+/** POST /crm/products/sync — Blue Opus only: refresh MoneyWise accounts into the CRM now. */
+export const syncProductCustomers = async (req: any, res: Response): Promise<any> => {
+    try {
+        if (!isBlueOpus(req.user?.organization_id)) return res.status(403).json({ error: 'Not available for this organization' });
+        res.json(await syncBlueOpusSubscribers());
+    } catch (error: any) {
+        console.error('[CRM] syncProductCustomers error:', error);
+        res.status(500).json({ error: 'Failed to sync product customers', details: error.message });
     }
 };

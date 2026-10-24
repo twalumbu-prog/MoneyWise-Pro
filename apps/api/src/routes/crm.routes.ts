@@ -6,7 +6,9 @@ import {
     getCustomer,
     updateCustomer,
     deleteCustomer,
-    getCustomerTransactions
+    getCustomerTransactions,
+    getProductSummary,
+    syncProductCustomers
 } from '../controllers/crm.controller';
 import {
     getLoyaltyOverview,
@@ -26,6 +28,9 @@ router.get('/customers/:id', getCustomer);
 router.patch('/customers/:id', updateCustomer);
 router.delete('/customers/:id', deleteCustomer);
 router.get('/customers/:id/transactions', getCustomerTransactions);
+
+router.get('/products', getProductSummary);
+router.post('/products/sync', requireRole(['ADMIN', 'ACCOUNTANT']), syncProductCustomers);
 
 router.get('/loyalty', getLoyaltyOverview);
 router.get('/customers/:id/loyalty', getCustomerLoyalty);
