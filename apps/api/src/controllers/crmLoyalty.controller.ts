@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { supabase } from '../lib/supabase';
 import { emailService } from '../services/email.service';
+import { openRouterComplete } from '../services/ai/ai.provider';
 import {
     computeLoyalty,
     selectAudience,
@@ -219,5 +220,56 @@ export const sendCampaign = async (req: any, res: Response): Promise<any> => {
     } catch (error: any) {
         console.error('[CRM] sendCampaign error:', error);
         res.status(500).json({ error: 'Failed to send campaign', details: error.message });
+    }
+};
+
+/**
+ * POST /crm/campaigns/draft — { instructions, audience_description?, current_subject?, current_body? }
+ * Has the AI write (or revise) a campaign email from the user's instructions. Nothing is sent.
+ */
+export const draftCampaignEmail = async (req: any, res: Response): Promise<any> => {
+    try {
+        const organization_id = req.user?.organization_id;
+        if (!organization_id) return res.status(400).json({ error: 'Organization context missing' });
+
+        const instructions = String(req.body?.instructions || '').trim().slice(0, 2000);
+        if (instructions.length < 5) return res.status(400).json({ error: 'Tell the AI what the email should say' });
+        const audience = String(req.body?.audience_description || '').trim().slice(0, 500);
+        const currentSubject = String(req.body?.current_subject || '').trim().slice(0, 150);
+        const currentBody = String(req.body?.current_body || '').trim().slice(0, 5000);
+
+        const { data: org } = await supabase.from('organizations').select('name').eq('id', organization_id).maybeSingle();
+        const orgName = org?.name || 'the business';
+
+        const system = [
+            `You write marketing and customer emails for ${orgName}, a small business in Zambia. Currency is Zambian Kwacha, written like K150.`,
+            'Write warm, clear, concise plain-text emails a customer will actually read: a short greeting, 2-4 short paragraphs, a friendly sign-off from the business.',
+            'Use the placeholder {{first_name}} for the greeting (e.g. "Hi {{first_name}},"). You may also use {{business}} for the business name. Do not use any other placeholders or square brackets.',
+            'Never invent discounts, prices, dates, product names, links or facts that are not in the instructions. If a detail is missing, keep the wording general rather than guessing.',
+            'No markdown, no emojis unless asked, no HTML. Separate paragraphs with a blank line.',
+            'Reply ONLY with a JSON object: {"subject": string, "body": string}. The subject is under 70 characters.',
+        ].join('\n');
+
+        const prompt = [
+            audience ? `Audience: ${audience}` : '',
+            currentBody ? `Current draft to revise (subject: ${currentSubject || '(none)'}):\n${currentBody}\n` : '',
+            `Instructions from the business owner:\n${instructions}`,
+        ].filter(Boolean).join('\n\n');
+
+        const raw = await openRouterComplete(prompt, { system, jsonObject: true, timeoutMs: 25_000 });
+        let parsed: any;
+        try {
+            parsed = JSON.parse(raw.replace(/^```(?:json)?\s*|\s*```$/g, ''));
+        } catch {
+            return res.status(502).json({ error: 'The AI returned something unreadable. Please try again.' });
+        }
+        const subject = String(parsed?.subject || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 150);
+        const body = String(parsed?.body || '').trim();
+        if (!subject || !body) return res.status(502).json({ error: 'The AI did not produce a complete email. Please try again.' });
+        res.json({ subject, body });
+    } catch (error: any) {
+        console.error('[CRM] draftCampaignEmail error:', error);
+        const notConfigured = /not configured/i.test(error?.message || '');
+        res.status(notConfigured ? 503 : 500).json({ error: notConfigured ? 'AI drafting is not configured on this server' : 'Failed to draft the email', details: error.message });
     }
 };

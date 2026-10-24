@@ -185,6 +185,7 @@ export type {
     CampaignAudience,
     CampaignPreview,
     SendCampaignInput,
+    DraftCampaignInput,
     SendCampaignResult,
 } from './services/crm.service';
 

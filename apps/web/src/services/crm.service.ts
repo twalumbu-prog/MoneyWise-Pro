@@ -13,5 +13,6 @@ export type {
     CampaignAudience,
     CampaignPreview,
     SendCampaignInput,
+    DraftCampaignInput,
     SendCampaignResult,
 } from 'core';

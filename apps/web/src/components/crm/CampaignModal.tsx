@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { crmService, CampaignAudience, LoyaltyOverview, LoyaltySegment, SendCampaignResult } from '../../services/crm.service';
 import { SEGMENT_STYLE, SegmentBadge } from './loyaltyUi';
-import { X, Loader2, Send, Mail, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { X, Loader2, Send, Mail, CheckCircle2, AlertTriangle, Sparkles } from 'lucide-react';
 
 interface Props {
     overview?: LoyaltyOverview;
@@ -30,6 +30,11 @@ export const CampaignModal: React.FC<Props> = ({ overview, organizationName, ini
         product_keys: initialAudience?.product_keys || [],
     });
     const [tab, setTab] = useState<Tab>('compose');
+    const [aiOpen, setAiOpen] = useState(false);
+    const [aiInstructions, setAiInstructions] = useState('');
+    const [aiRevise, setAiRevise] = useState(true);
+    const [aiBusy, setAiBusy] = useState(false);
+    const [aiError, setAiError] = useState('');
     const [subject, setSubject] = useState('');
     const [body, setBody] = useState('Hi {{first_name}},\n\n');
     const [ctaLabel, setCtaLabel] = useState('');
@@ -60,6 +65,40 @@ export const CampaignModal: React.FC<Props> = ({ overview, organizationName, ini
 
     const sample = (text: string) =>
         text.replace(/\{\{\s*first_name\s*\}\}/gi, 'Alex').replace(/\{\{\s*name\s*\}\}/gi, 'Alex Sample').replace(/\{\{\s*business\s*\}\}/gi, businessName);
+
+    const audienceDescription = () => {
+        const parts: string[] = [];
+        if (audience.payment === 'OWING') parts.push('customers who currently owe the business money');
+        if (audience.payment === 'CLEAR') parts.push('customers with nothing owing');
+        const segs = (overview?.segments || []).filter(s => audience.segments.includes(s.value)).map(s => `${s.label} (${s.hint})`);
+        if (segs.length) parts.push(`loyalty groups: ${segs.join('; ')}`);
+        const prods = (overview?.products || []).filter(p => audience.product_keys.includes(p.key)).map(p => p.name);
+        if (prods.length) parts.push(`people who bought: ${prods.join(', ')}`);
+        return parts.length ? parts.join(' — ') : 'all customers';
+    };
+
+    // A real draft exists once the user has typed beyond the starter greeting.
+    const hasDraft = !!subject.trim() || body.trim().replace(/^Hi \{\{first_name\}\},?/, '').trim().length > 0;
+
+    const runAi = async () => {
+        setAiBusy(true);
+        setAiError('');
+        try {
+            const out = await crmService.draftCampaignEmail({
+                instructions: aiInstructions.trim(),
+                audience_description: audienceDescription(),
+                ...(hasDraft && aiRevise ? { current_subject: subject.trim(), current_body: body.trim() } : {}),
+            });
+            setSubject(out.subject);
+            setBody(out.body);
+            setAiOpen(false);
+            setNotice('AI draft added — read it through and edit anything before sending.');
+        } catch (err: any) {
+            setAiError(err?.message || 'The AI could not draft the email');
+        } finally {
+            setAiBusy(false);
+        }
+    };
 
     const insertToken = (token: string) => setBody(b => `${b}${b && !b.endsWith(' ') && !b.endsWith('\n') ? ' ' : ''}${token}`);
 
@@ -145,7 +184,16 @@ export const CampaignModal: React.FC<Props> = ({ overview, organizationName, ini
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                             <div className="flex flex-col gap-5">
                         <section className="flex flex-col gap-3">
-                            <label className={LABEL}>Write your email</label>
+                            <div className="flex items-center justify-between">
+                                    <label className={`${LABEL} !mb-0`}>Write your email</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setAiError(''); setAiOpen(true); }}
+                                        className="h-7 px-3 rounded-lg bg-violet-50 text-violet-700 border border-violet-100 text-[11px] font-bold flex items-center gap-1.5 hover:bg-violet-100 transition-colors"
+                                    >
+                                        <Sparkles size={12} /> Draft with AI
+                                    </button>
+                                </div>
                             <input className={INPUT} placeholder="Subject, e.g. A little thank-you from {{business}}" value={subject} maxLength={150} onChange={e => setSubject(e.target.value)} />
                             <textarea rows={8} className={`${INPUT} resize-y`} value={body} onChange={e => setBody(e.target.value)} placeholder="Write your message…" />
                             <div className="flex items-center gap-2 flex-wrap -mt-1">
@@ -300,6 +348,52 @@ export const CampaignModal: React.FC<Props> = ({ overview, organizationName, ini
                     </div>
                 </div>
             </div>
+            {aiOpen && (
+                <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-violet-100 text-violet-700 flex items-center justify-center"><Sparkles size={15} /></div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-900">Draft with AI</h3>
+                                    <p className="text-[11px] text-gray-500">Tell the AI what this email should do.</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setAiOpen(false)} disabled={aiBusy} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100"><X size={16} /></button>
+                        </div>
+                        <div className="p-6 flex flex-col gap-3">
+                            <textarea
+                                autoFocus
+                                rows={6}
+                                className={`${INPUT} resize-none`}
+                                value={aiInstructions}
+                                onChange={e => setAiInstructions(e.target.value)}
+                                placeholder="e.g. Thank them for shopping with us this year and tell them our new stock arrives on Friday. Friendly, short, and invite them to visit the shop."
+                                maxLength={2000}
+                            />
+                            <p className="text-[10px] text-gray-400 -mt-1">Sending to: {audienceDescription()}. Include any real prices, dates or offers — the AI won't make them up.</p>
+                            {hasDraft && (
+                                <label className="flex items-center gap-2 text-xs text-gray-600">
+                                    <input type="checkbox" checked={aiRevise} onChange={e => setAiRevise(e.target.checked)} />
+                                    Improve my current draft instead of starting fresh
+                                </label>
+                            )}
+                            {aiError && <p className="text-xs text-red-600 font-medium">{aiError}</p>}
+                            <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
+                                <button type="button" onClick={() => setAiOpen(false)} disabled={aiBusy} className="h-9 px-4 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
+                                <button
+                                    type="button"
+                                    onClick={runAi}
+                                    disabled={aiBusy || aiInstructions.trim().length < 5}
+                                    className="h-9 px-5 rounded-lg bg-violet-600 text-white text-xs font-bold hover:bg-violet-700 disabled:opacity-50 flex items-center gap-2"
+                                >
+                                    {aiBusy ? <><Loader2 size={12} className="animate-spin" /> Drafting…</> : <><Sparkles size={12} /> Draft email</>}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

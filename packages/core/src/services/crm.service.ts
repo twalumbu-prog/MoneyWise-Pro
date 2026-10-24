@@ -116,6 +116,13 @@ export interface SendCampaignInput {
     test_only?: boolean;
 }
 
+export interface DraftCampaignInput {
+    instructions: string;
+    audience_description?: string;
+    current_subject?: string;
+    current_body?: string;
+}
+
 export interface SendCampaignResult {
     sent: number;
     failed?: number;
@@ -175,6 +182,13 @@ export const crmService = {
 
     async sendCampaign(input: SendCampaignInput): Promise<SendCampaignResult> {
         return apiJson<SendCampaignResult>('/crm/campaigns/send', {
+            method: 'POST',
+            body: JSON.stringify(input),
+        });
+    },
+
+    async draftCampaignEmail(input: DraftCampaignInput): Promise<{ subject: string; body: string }> {
+        return apiJson<{ subject: string; body: string }>('/crm/campaigns/draft', {
             method: 'POST',
             body: JSON.stringify(input),
         });

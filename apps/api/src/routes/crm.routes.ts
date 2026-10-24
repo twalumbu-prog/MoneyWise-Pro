@@ -12,7 +12,8 @@ import {
     getLoyaltyOverview,
     getCustomerLoyalty,
     previewCampaignAudience,
-    sendCampaign
+    sendCampaign,
+    draftCampaignEmail
 } from '../controllers/crmLoyalty.controller';
 
 const router = Router();
@@ -32,5 +33,6 @@ router.get('/customers/:id/loyalty', getCustomerLoyalty);
 // Emailing customers speaks for the business, so it is limited to the people who manage it.
 router.post('/campaigns/preview', requireRole(['ADMIN', 'ACCOUNTANT']), previewCampaignAudience);
 router.post('/campaigns/send', requireRole(['ADMIN', 'ACCOUNTANT']), sendCampaign);
+router.post('/campaigns/draft', requireRole(['ADMIN', 'ACCOUNTANT']), draftCampaignEmail);
 
 export default router;
