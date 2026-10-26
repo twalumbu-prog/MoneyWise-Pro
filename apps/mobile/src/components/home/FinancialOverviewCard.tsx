@@ -6,13 +6,14 @@ import { useRouter } from 'expo-router';
 import { reportService, formatKwacha } from 'core';
 import { useAuth } from '../../context/AuthContext';
 import { extractEmojiAndName } from '../../utils/emoji';
+import { AccountGlyph } from '../AccountGlyph';
 import { HomeCard } from './HomeCard';
 import { colors, fonts } from '../../theme/tokens';
 
 const SLICE_COLORS = ['#006AFF', '#03D47C', '#FF2970', '#F59E0B', '#8B5CF6'];
 const OTHER_COLOR = '#CBD5E1';
-const SIZE = 132;
-const STROKE = 18;
+const SIZE = 120;
+const STROKE = 16;
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
@@ -92,12 +93,15 @@ export const FinancialOverviewCard: React.FC = () => {
 
                         <View style={styles.legend}>
                             {top.map((row, i) => {
-                                const { emoji, cleanName } = extractEmojiAndName(row.account_name);
+                                const { cleanName } = extractEmojiAndName(row.account_name);
                                 return (
                                     <View key={row.account_id} style={styles.legendRow}>
                                         <View style={[styles.dot, { backgroundColor: SLICE_COLORS[i] }]} />
-                                        <Text style={styles.legendName} numberOfLines={1}>{emoji ? `${emoji} ` : ''}{cleanName}</Text>
-                                        <Text style={styles.legendAmount} numberOfLines={1}>{formatKwacha(Number(row.total_amount))}</Text>
+                                        <View style={styles.glyph}><AccountGlyph name={row.account_name} type="EXPENSE" logoUrl={row.logo_url} size={15} /></View>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.legendName} numberOfLines={1}>{cleanName}</Text>
+                                            <Text style={styles.legendAmount} numberOfLines={1}>{formatKwacha(Number(row.total_amount))}</Text>
+                                        </View>
                                     </View>
                                 );
                             })}
@@ -111,16 +115,17 @@ export const FinancialOverviewCard: React.FC = () => {
 
 const styles = StyleSheet.create({
     period: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.textFaint, marginTop: -8, marginBottom: 14 },
-    body: { alignItems: 'center', gap: 20 },
+    body: { flexDirection: 'row', alignItems: 'center', gap: 16 },
     ring: { width: SIZE, height: SIZE, alignItems: 'center', justifyContent: 'center' },
     center: { position: 'absolute', alignItems: 'center', justifyContent: 'center', width: SIZE - STROKE * 2 - 8 },
     centerLabel: { fontFamily: fonts.bodyMedium, fontSize: 11, color: colors.textFaint },
     centerValue: { fontFamily: fonts.bodyBold, fontSize: 16, color: '#000000', maxWidth: '100%' },
-    legend: { alignSelf: 'stretch', gap: 12 },
-    legendRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    dot: { width: 10, height: 10, borderRadius: 5 },
-    legendName: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 14, color: '#000000' },
-    legendAmount: { fontFamily: fonts.bodyMedium, fontSize: 14, color: '#000000' },
+    legend: { flex: 1, gap: 12 },
+    legendRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    dot: { width: 8, height: 8, borderRadius: 4 },
+    glyph: { width: 22, alignItems: 'center', justifyContent: 'center' },
+    legendName: { fontFamily: fonts.bodyMedium, fontSize: 13, color: '#000000' },
+    legendAmount: { fontFamily: fonts.body, fontSize: 12, color: colors.textMuted, marginTop: 1 },
     emptyWrap: { paddingVertical: 16, alignItems: 'center' },
     empty: { fontFamily: fonts.body, fontSize: 13, color: colors.textFaint, textAlign: 'center' },
 });

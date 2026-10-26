@@ -5,7 +5,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { Inbox, CalendarDays, CircleUser, ArrowDownToLine, ArrowLeftRight, SendHorizontal } from 'lucide-react-native';
+import { Inbox, CalendarDays, User, ArrowDownToLine, ArrowLeftRight, SendHorizontal } from 'lucide-react-native';
 import { TourTarget } from '../components/walkthrough/TourTarget';
 import { AccountsCard } from '../components/home/AccountsCard';
 import { FinancialOverviewCard } from '../components/home/FinancialOverviewCard';
@@ -17,8 +17,6 @@ import { WalkthroughCard } from '../components/walkthrough/WalkthroughCard';
 import { useAttentionCount } from '../hooks/useBadgeSync';
 import { queueAssistantPrompt } from '../lib/assistantHandoff';
 import { colors, fonts } from '../theme/tokens';
-
-const ICON = '#52525B';
 
 /**
  * Home — a MoneyWise personal account's first tab: the wallets and their balances, Receive / Send, where this month's money went,
@@ -57,17 +55,17 @@ export function HomeScreen() {
             <View style={styles.header}>
                 <Text style={styles.title}>📮 Home</Text>
                 <View style={styles.actions}>
-                    <Pressable onPress={() => router.navigate('/inbox')} hitSlop={8} accessibilityRole="button" accessibilityLabel={attention > 0 ? `Inbox, ${attention} need attention` : 'Inbox'}>
-                        <Inbox size={28} color={ICON} strokeWidth={1.8} />
+                    <Pressable style={styles.iconBtn} onPress={() => router.navigate('/inbox')} accessibilityRole="button" accessibilityLabel={attention > 0 ? `Inbox, ${attention} need attention` : 'Inbox'}>
+                        <Inbox size={18} color={colors.textMuted} />
                         {attention > 0 && (
                             <View style={styles.badge}><Text style={styles.badgeText}>{attention > 99 ? '99+' : attention}</Text></View>
                         )}
                     </Pressable>
-                    <Pressable onPress={() => router.push('/schedules')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Schedules">
-                        <CalendarDays size={28} color={ICON} strokeWidth={1.8} />
+                    <Pressable style={styles.iconBtn} onPress={() => router.push('/schedules')} accessibilityRole="button" accessibilityLabel="Schedules">
+                        <CalendarDays size={18} color={colors.textMuted} />
                     </Pressable>
-                    <Pressable onPress={() => setAccountMenuOpen(true)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Account and Organizations">
-                        <CircleUser size={32} color={ICON} strokeWidth={1.8} />
+                    <Pressable style={styles.iconBtn} onPress={() => setAccountMenuOpen(true)} accessibilityRole="button" accessibilityLabel="Account and Organizations">
+                        <User size={18} color={colors.textMuted} />
                     </Pressable>
                 </View>
             </View>
@@ -126,11 +124,16 @@ export function HomeScreen() {
 
 const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.canvas },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingLeft: 20, paddingRight: 16, paddingVertical: 14 },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 12, marginBottom: 4 },
     title: { fontFamily: fonts.advercase, fontSize: 30, color: '#000000' },
-    actions: { flexDirection: 'row', alignItems: 'center', gap: 20 },
+    actions: { flexDirection: 'row', gap: 8 },
+    // Exactly the Inbox page's header buttons: 40pt circles, hairline border, 18pt icon.
+    iconBtn: {
+        width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface,
+        borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center',
+    },
     badge: {
-        position: 'absolute', top: -5, right: -7, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4,
+        position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4,
         backgroundColor: colors.danger, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.canvas,
     },
     badgeText: { fontFamily: fonts.bodyBold, fontSize: 10, color: '#FFFFFF' },
