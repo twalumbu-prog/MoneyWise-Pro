@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { Layout } from '../components/Layout';
@@ -10,7 +10,7 @@ import { InvestorsPanel } from '../components/crm/InvestorsPanel';
 import { CampaignModal } from '../components/crm/CampaignModal';
 import { SegmentBadge, SEGMENT_STYLE } from '../components/crm/loyaltyUi';
 import { investmentService } from 'core';
-import { Search, SlidersHorizontal, ArrowDownUp, Plus, X, UserCheck, Mail } from 'lucide-react';
+import { Search, SlidersHorizontal, ArrowDownUp, Plus, X, ArrowLeft, Mail } from 'lucide-react';
 
 type FilterTab = 'ALL' | 'OWING' | 'CLEAR';
 type SortDir = 'desc' | 'asc';
@@ -21,6 +21,7 @@ export const CRM: React.FC = () => {
     const { organizationId, organizationName, userRole } = useAuth();
     const queryClient = useQueryClient();
     const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+    const navigate = useNavigate();
     const [filterTab, setFilterTab] = useState<FilterTab>('ALL');
     const [productFilter, setProductFilter] = useState<CrmProduct | null>(null);
     const [search, setSearch] = useState('');
@@ -74,6 +75,7 @@ export const CRM: React.FC = () => {
         .filter(c => {
             if (productFilter && c.product !== productFilter) return false;
             if (mainTab === 'loyalty' && segmentFilter && loyaltyById.get(c.id)?.segment !== segmentFilter) return false;
+            if (mainTab === 'loyalty') return true; // owing/clear isn't part of the loyalty view
             if (filterTab === 'OWING') return c.owing_status === 'OWING';
             if (filterTab === 'CLEAR') return c.owing_status === 'CLEAR';
             return true;
@@ -122,9 +124,13 @@ export const CRM: React.FC = () => {
                         {/* Top Bar / Header */}
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                                    <UserCheck size={18} />
-                                </div>
+                                <button
+                                    onClick={() => navigate('/apps')}
+                                    aria-label="Back to apps"
+                                    className="w-8 h-8 rounded-lg hover:bg-gray-100 text-gray-700 flex items-center justify-center transition-colors"
+                                >
+                                    <ArrowLeft size={18} />
+                                </button>
                                 <div>
                                     <h1 className="text-base font-bold text-gray-900 font-['DM_Sans']">Customer Relationship Management</h1>
                                     <p className="text-[11px] text-gray-500">Track customer purchases, open invoices, and owing balances</p>
@@ -224,6 +230,7 @@ export const CRM: React.FC = () => {
                                         ))}
                                     </div>
                                 )}
+                                {mainTab === 'customers' && (
                                 <div className="h-8 p-1 bg-slate-100 rounded-[10px] flex items-center gap-2">
                                     {(['ALL', 'OWING', 'CLEAR'] as FilterTab[]).map(tab => (
                                         <button
@@ -236,21 +243,12 @@ export const CRM: React.FC = () => {
                                             }`}
                                         >
                                             {tab === 'ALL' && 'All Customers'}
-                                            {tab === 'OWING' && (
-                                                <>
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                                                    Owing (Open Invoices)
-                                                </>
-                                            )}
-                                            {tab === 'CLEAR' && (
-                                                <>
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                                    Clear
-                                                </>
-                                            )}
+                                            {tab === 'OWING' && 'Owing (Open Invoices)'}
+                                            {tab === 'CLEAR' && 'Clear'}
                                         </button>
                                     ))}
                                 </div>
+                                )}
                                 </div>
                             )}
 
@@ -346,6 +344,10 @@ export const CRM: React.FC = () => {
                                                         <p className="text-[10px] text-gray-400 truncate">
                                                             {customer.phone || 'No phone'} · {customer.email || 'No email'}
                                                         </p>
+                                                        {(() => {
+                                                            const seg = loyaltyById.get(customer.id)?.segment;
+                                                            return seg ? <SegmentBadge segment={seg} className="mt-1" /> : null;
+                                                        })()}
                                                     </div>
                                                 </div>
 
@@ -363,7 +365,6 @@ export const CRM: React.FC = () => {
                                                                         </span>
                                                                     </div>
                                                                 )}
-                                                                <SegmentBadge segment={l.segment} />
                                                             </div>
                                                         );
                                                     })()}
@@ -372,6 +373,7 @@ export const CRM: React.FC = () => {
                                                         <span className="text-xs font-bold text-gray-800">K{fmt(customer.total_spend || 0)}</span>
                                                     </div>
 
+                                                    {mainTab !== 'loyalty' && (
                                                     <span className={`pl-2 pr-2.5 py-1 rounded-[20px] inline-flex items-center gap-1.5 ${
                                                         isOwing ? 'bg-red-100 text-red-800' : 'bg-lime-300/25 text-green-900'
                                                     }`}>
@@ -380,6 +382,7 @@ export const CRM: React.FC = () => {
                                                             {isOwing ? `Owing K${fmt(customer.owing_amount)}` : 'Clear'}
                                                         </span>
                                                     </span>
+                                                    )}
                                                 </div>
                                             </button>
                                         );
