@@ -21,7 +21,7 @@ function thisMonth() {
     };
 }
 
-/** Financial Overview: the five biggest expense accounts this month, one compact line each; "See more" opens Reporting. */
+/** Financial Overview: the three biggest expense accounts this month, one compact line each; "See more" opens Reporting. */
 export const FinancialOverviewCard: React.FC = () => {
     const router = useRouter();
     const { organizationId } = useAuth();
@@ -36,7 +36,7 @@ export const FinancialOverviewCard: React.FC = () => {
     const { top, total } = useMemo(() => {
         const expenses = (data ?? []).filter((r) => r.type === 'EXPENSE' && Number(r.total_amount) > 0)
             .sort((a, b) => Number(b.total_amount) - Number(a.total_amount));
-        return { top: expenses.slice(0, 5), total: expenses.reduce((s, r) => s + Number(r.total_amount), 0) };
+        return { top: expenses.slice(0, 3), total: expenses.reduce((s, r) => s + Number(r.total_amount), 0) };
     }, [data]);
 
     return (
@@ -49,7 +49,6 @@ export const FinancialOverviewCard: React.FC = () => {
                 <Text style={styles.empty}>No spending recorded in {period.label} yet.</Text>
             ) : (
                 <View>
-                    <Text style={styles.period}>Spent in {period.label} · {formatKwacha(total)}</Text>
                     <View style={styles.list}>
                         {top.map((row) => (
                             <View key={row.account_id} style={styles.row}>
@@ -66,7 +65,6 @@ export const FinancialOverviewCard: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-    period: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.textFaint, marginTop: -8, marginBottom: 12 },
     list: { gap: 10 },
     row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
     glyph: { width: 24, alignItems: 'center', justifyContent: 'center' },
