@@ -46,6 +46,7 @@ export interface FavouriteProduct {
     times_bought: number; // distinct orders containing the product
     quantity: number;
     total_spent: number;
+    image_url?: string | null;
 }
 
 export interface CustomerLoyalty {
@@ -198,6 +199,15 @@ export async function computeLoyalty(organizationId: string) {
     }
 
     const byCustomer = new Map<string, CustomerLoyalty>();
+    const productImages = new Map<string, string>();
+    {
+        const { data: prodRows } = await supabase
+            .from('products')
+            .select('id, image_url')
+            .eq('organization_id', organizationId)
+            .not('image_url', 'is', null);
+        for (const r of (prodRows || []) as any[]) if (r.image_url) productImages.set(String(r.id), r.image_url);
+    }
     // Product options for campaign targeting: how many customers bought each.
     const productBuyers = new Map<string, { key: string; name: string; buyers: number }>();
     for (const c of customers) {
@@ -229,7 +239,8 @@ export async function computeLoyalty(organizationId: string) {
         const last = list.length ? list[list.length - 1].at : null;
         const topProducts = [...products.values()]
             .sort((a, b) => b.times_bought - a.times_bought || b.quantity - a.quantity || b.total_spent - a.total_spent)
-            .slice(0, 5);
+            .slice(0, 5)
+            .map(p => ({ ...p, image_url: productImages.get(p.key) ?? null }));
         byCustomer.set(c.id, {
             customer_id: c.id,
             segment: classifySegment(list.length, first, last, now),

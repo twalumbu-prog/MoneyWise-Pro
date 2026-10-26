@@ -160,15 +160,6 @@ export const CRM: React.FC = () => {
                             <div className="flex flex-col gap-2.5">
                                 <div className="flex items-center justify-between gap-3">
                                     <p className="text-[11px] text-gray-500">Customers grouped by how often and how recently they buy. Pick a group to focus on it.</p>
-                                    {canEmail && (
-                                        <button
-                                            onClick={() => setCampaign({ segments: segmentFilter ? [segmentFilter] : [] })}
-                                            className="h-8 px-3 bg-blue-600 rounded-lg flex items-center gap-2 text-white text-xs font-bold font-['DM_Sans'] hover:bg-blue-700 transition-colors shadow-sm flex-shrink-0"
-                                        >
-                                            <Mail size={13} />
-                                            {segmentFilter ? `Email ${SEGMENT_STYLE[segmentFilter].label.toLowerCase()} customers` : 'Email customers'}
-                                        </button>
-                                    )}
                                 </div>
                                 <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2">
                                     {(loyalty?.segments || []).map(s => (
@@ -270,13 +261,13 @@ export const CRM: React.FC = () => {
                                         </button>
                                     </div>
 
-                                    {canEmail && mainTab === 'customers' && (
+                                    {canEmail && (mainTab === 'customers' || mainTab === 'loyalty') && (
                                         <button
-                                            onClick={() => setCampaign({})}
+                                            onClick={() => setCampaign(mainTab === 'loyalty' && segmentFilter ? { segments: [segmentFilter] } : mainTab === 'loyalty' ? { segments: [] } : {})}
                                             className="h-8 px-3 py-1 bg-white border border-gray-200 rounded-lg flex items-center gap-2 text-gray-800 text-xs font-bold font-['DM_Sans'] hover:bg-gray-50 transition-colors"
                                         >
                                             <Mail size={13} />
-                                            Email Customers
+                                            {mainTab === 'loyalty' && segmentFilter ? `Email ${SEGMENT_STYLE[segmentFilter].label.toLowerCase()} customers` : 'Email Customers'}
                                         </button>
                                     )}
                                     <button

@@ -74,6 +74,7 @@ export interface FavouriteProduct {
     times_bought: number;
     quantity: number;
     total_spent: number;
+    image_url?: string | null;
 }
 
 export interface CustomerLoyalty {

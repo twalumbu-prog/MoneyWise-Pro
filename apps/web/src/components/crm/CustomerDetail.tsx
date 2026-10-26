@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { crmService, Customer, CustomerTransaction } from '../../services/crm.service';
+import { crmService, Customer, CustomerTransaction, CustomerLoyalty } from '../../services/crm.service';
 import { CustomerLoyaltyPanel } from './CustomerLoyaltyPanel';
+import { SegmentBadge } from './loyaltyUi';
 import { ArrowLeft, Pencil, X, Loader2, Receipt, FileText } from 'lucide-react';
 
 interface Props {
@@ -29,6 +30,10 @@ export const CustomerDetail: React.FC<Props> = ({ customerId, onBack, onUpdated,
     const [saveError, setSaveError] = useState('');
     const qc = useQueryClient();
 
+    const { data: loyalty } = useQuery<CustomerLoyalty>({
+        queryKey: ['crm-customer-loyalty', customerId],
+        queryFn: () => crmService.getCustomerLoyalty(customerId),
+    });
     const { data: customer } = useQuery<Customer>({
         queryKey: ['crm-customer', customerId],
         queryFn: () => crmService.getCustomer(customerId),
@@ -104,14 +109,13 @@ export const CustomerDetail: React.FC<Props> = ({ customerId, onBack, onUpdated,
                             <ArrowLeft size={14} />
                         </button>
                         <span className="text-base font-semibold text-black font-['IBM_Plex_Sans_Devanagari']">{fullName}</span>
-                        {customer && (
-                            <span className={`ml-2 px-2.5 py-0.5 rounded-full text-[10px] font-semibold inline-flex items-center gap-1.5 ${
-                                isOwing ? 'bg-red-100 text-red-800' : 'bg-lime-300/25 text-green-900'
-                            }`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${isOwing ? 'bg-red-500' : 'bg-lime-600'}`} />
-                                {isOwing ? `Owing K${fmt(customer.owing_amount)}` : 'Clear'}
+                        {customer && isOwing && (
+                            <span className="ml-2 px-2.5 py-0.5 rounded-full text-[10px] font-semibold inline-flex items-center gap-1.5 bg-red-100 text-red-800">
+                                <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                                Owing K{fmt(customer.owing_amount)}
                             </span>
                         )}
+                        {loyalty && <SegmentBadge segment={loyalty.segment} className="ml-2 !px-2.5" />}
                     </div>
                     <button
                         onClick={openEdit}
