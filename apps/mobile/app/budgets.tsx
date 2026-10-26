@@ -45,7 +45,7 @@ export default function BudgetsScreen() {
     const { organizationId } = useAuth();
     const monthRange = useMemo(() => currentMonthRange(), []);
 
-    const [activated, setActivated] = useState(() => cacheStoreSync.getItem(budgetsActivatedKey(organizationId)) === 'true');
+    const [activated, setActivated] = useState(() => cacheStoreSync.getItem(budgetsActivatedKey(organizationId)) !== 'false');
     const [amounts, setAmounts] = useState<Record<string, string>>({});
     const [saving, setSaving] = useState(false);
 

@@ -4,7 +4,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardHeight } from '../../src/hooks/useKeyboardHeight';
-import { useNavigation } from 'expo-router';
+import { useNavigation, useFocusEffect } from 'expo-router';
+import { takeAssistantPrompt } from '../../src/lib/assistantHandoff';
 import { BarChart3, PenSquare, ChevronLeft, Plus } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 import { agentClient, requireCapability } from 'core';
@@ -207,6 +208,12 @@ export default function BiScreen() {
             setAttaching(false);
         }
     }, [organizationId]);
+
+    // A question typed on Home arrives here: show the Assistant tab and send it once.
+    useFocusEffect(useCallback(() => {
+        const q = takeAssistantPrompt();
+        if (q) { setTab('assistant'); send(q); }
+    }, [send]));
 
     const stop = () => {
         abortRef.current?.abort();

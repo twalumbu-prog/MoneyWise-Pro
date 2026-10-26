@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Tabs, Redirect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Navigation, TrendingUp, Menu } from 'lucide-react-native';
+import { Navigation, TrendingUp, Menu, House } from 'lucide-react-native';
 import { isRequestorRole, onboardingService } from 'core';
 import { useAuth } from '../../src/context/AuthContext';
+import { usePersonalAccount } from '../../src/hooks/usePersonalAccount';
 import { AstroidIcon } from '../../src/components/icons/AstroidIcon';
 import { WalletCardsIcon } from '../../src/components/icons/WalletCardsIcon';
 import { colors } from '../../src/theme/tokens';
@@ -18,6 +19,8 @@ export default function TabsLayout() {
     const { userRole, session, loading, organizationId } = useAuth();
     const insets = useSafeAreaInsets();
     const isRequestor = isRequestorRole(userRole);
+    // A personal account's first tab is Home (the Inbox moves behind its bell); businesses keep the Inbox.
+    const { isPersonal } = usePersonalAccount();
     const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
     useEffect(() => {
@@ -68,8 +71,12 @@ export default function TabsLayout() {
         >
             <Tabs.Screen
                 name="index"
-                options={{ title: 'Inbox', tabBarIcon: ({ color, size }) => <Navigation color={color} size={size} /> }}
+                options={{
+                    title: isPersonal ? 'Home' : 'Inbox',
+                    tabBarIcon: ({ color, size }) => (isPersonal ? <House color={color} size={size} /> : <Navigation color={color} size={size} />),
+                }}
             />
+            <Tabs.Screen name="inbox" options={{ href: null }} />
             <Tabs.Screen
                 name="wallet"
                 options={{

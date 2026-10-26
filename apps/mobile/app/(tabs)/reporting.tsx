@@ -131,9 +131,9 @@ export default function ReportingScreen() {
     // Budgets: device-local "activated" toggle set on the Budgets settings
     // screen. Re-read on focus so returning from there reflects the change
     // immediately without needing a full remount.
-    const [budgetsActivated, setBudgetsActivated] = useState(() => cacheStoreSync.getItem(budgetsActivatedKey(organizationId)) === 'true');
+    const [budgetsActivated, setBudgetsActivated] = useState(() => cacheStoreSync.getItem(budgetsActivatedKey(organizationId)) !== 'false');
     useFocusEffect(useCallback(() => {
-        setBudgetsActivated(cacheStoreSync.getItem(budgetsActivatedKey(organizationId)) === 'true');
+        setBudgetsActivated(cacheStoreSync.getItem(budgetsActivatedKey(organizationId)) !== 'false');
     }, [organizationId]));
 
     // Toolbar filters & settings

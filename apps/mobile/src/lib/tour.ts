@@ -21,7 +21,7 @@ const exact = (p: string) => (path: string) => path === p;
 const starts = (p: string, not?: string) => (path: string) => path.startsWith(p) && !(not && path.startsWith(not));
 
 const SEND: TourStep[] = [
-    { target: 'inbox-new', onScreen: exact('/'), route: '/', title: 'Start here', body: 'Tap + to start a new payment or request.', advance: 'tap' },
+    { target: 'inbox-new', onScreen: exact('/'), route: '/', title: 'Start here', body: 'Start a new payment or request from here.', advance: 'tap' },
     { target: 'send-form', onScreen: starts('/requisition/new'), route: '/requisition/new', title: 'Fill in the details', body: 'Enter the amount and who you are paying. Review it, then send. It is categorised for your reports automatically.', advance: 'next' },
 ];
 const DEPOSIT: TourStep[] = [

@@ -10,11 +10,10 @@ import { useAuth } from '../context/AuthContext';
  * unread updates, payouts to send…). Kept in step with the server every minute and whenever the app opens; while the app is
  * closed, each push notification carries the up-to-date number itself (see push.service on the API). Cleared on sign-out.
  */
-export function useBadgeSync() {
+function useAttentionQuery() {
     const { session, organizationId } = useAuth();
     const signedIn = !!session && !!organizationId;
-
-    const { data, refetch } = useQuery({
+    const query = useQuery({
         queryKey: ['badge-total', organizationId],
         queryFn: async () => {
             const c = await userService.getNotificationCounts();
@@ -25,6 +24,16 @@ export function useBadgeSync() {
         refetchIntervalInBackground: false,
         retry: false,
     });
+    return { signedIn, ...query };
+}
+
+/** How many things need the person's attention right now (the same number as the app-icon badge). */
+export function useAttentionCount(): number {
+    return useAttentionQuery().data ?? 0;
+}
+
+export function useBadgeSync() {
+    const { signedIn, data, refetch } = useAttentionQuery();
 
     useEffect(() => {
         const sub = AppState.addEventListener('change', (s) => { if (s === 'active' && signedIn) void refetch(); });
