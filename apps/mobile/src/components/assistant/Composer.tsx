@@ -1,17 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { TourTarget } from '../walkthrough/TourTarget';
 import { KB_DONE_ID } from '../KeyboardDoneBar';
 import {
     View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, Modal,
-    ScrollView, Alert,
+    ScrollView,
 } from 'react-native';
 import {
     ArrowUp, Square, ChevronDown, Check, Paperclip, Mic, X,
 } from 'lucide-react-native';
-import {
-    ExpoSpeechRecognitionModule,
-    useSpeechRecognitionEvent,
-} from 'expo-speech-recognition';
+import { useDictation } from '../../hooks/useDictation';
+import { VoiceWave } from './VoiceWave';
 import type { AssistantModel } from 'core';
 import { VendorLogo } from './VendorLogos';
 import { colors, radius, fonts } from '../../theme/tokens';
@@ -49,49 +47,10 @@ export const Composer: React.FC<{
 }) => {
     const canSend = (value.trim().length > 0 || !!attachment) && !busy;
     const [modelMenuOpen, setModelMenuOpen] = useState(false);
-    const [listening, setListening] = useState(false);
-    const baseTextRef = useRef('');
+    // Dictation (speech to text), shared with the box on Home.
+    const { listening, level, toggle: toggleDictation } = useDictation(value, onChange);
 
     const active = models.find((m) => m.id === selectedModel);
-
-    // ── Dictation ────────────────────────────────────────────────────────────
-    // expo-speech-recognition, not the Web Speech API web uses — there is no
-    // browser here. Same idea: interim results replace what was dictated so
-    // far, appended after whatever text existed before recording started.
-    useSpeechRecognitionEvent('result', (event) => {
-        const transcript = event.results[0]?.transcript ?? '';
-        const prefix = baseTextRef.current;
-        onChange(prefix ? `${prefix} ${transcript}` : transcript);
-    });
-    useSpeechRecognitionEvent('error', () => setListening(false));
-    useSpeechRecognitionEvent('end', () => setListening(false));
-
-    useEffect(() => () => {
-        if (listening) ExpoSpeechRecognitionModule.stop();
-    }, [listening]);
-
-    const toggleDictation = async () => {
-        if (listening) {
-            ExpoSpeechRecognitionModule.stop();
-            setListening(false);
-            return;
-        }
-        const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-        if (!perm.granted) {
-            Alert.alert(
-                'Microphone access needed',
-                'MoneyWise needs microphone and speech recognition access to dictate a question. Enable it in Settings > MoneyWise.',
-            );
-            return;
-        }
-        baseTextRef.current = value;
-        ExpoSpeechRecognitionModule.start({
-            lang: 'en-US',
-            interimResults: true,
-            continuous: true,
-        });
-        setListening(true);
-    };
 
     return (
         <TourTarget id="assistant-composer">
@@ -148,7 +107,7 @@ export const Composer: React.FC<{
                             onPress={toggleDictation}
                             accessibilityLabel={listening ? 'Stop dictation' : 'Dictate'}
                         >
-                            <Mic size={15} color={listening ? '#FFFFFF' : colors.textMuted} />
+                            {listening ? <VoiceWave level={level} /> : <Mic size={15} color={colors.textMuted} />}
                         </Pressable>
                     )}
                     {busy ? (

@@ -5,7 +5,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { Inbox, CalendarDays, User, ArrowDownToLine, ArrowLeftRight, SendHorizontal } from 'lucide-react-native';
+import { Inbox, CalendarDays, User, ArrowDownToLine, ArrowLeftRight, ArrowUp, Mic } from 'lucide-react-native';
+import { useDictation } from '../hooks/useDictation';
+import { VoiceWave } from '../components/assistant/VoiceWave';
 import { TourTarget } from '../components/walkthrough/TourTarget';
 import { AccountsCard } from '../components/home/AccountsCard';
 import { FinancialOverviewCard } from '../components/home/FinancialOverviewCard';
@@ -31,6 +33,7 @@ export function HomeScreen() {
     const [accountMenuOpen, setAccountMenuOpen] = useState(false);
     const [question, setQuestion] = useState('');
     const [refreshing, setRefreshing] = useState(false);
+    const { listening, level, toggle: toggleDictation } = useDictation(question, setQuestion);
 
     const ask = () => {
         const q = question.trim();
@@ -110,8 +113,16 @@ export function HomeScreen() {
                         onSubmitEditing={ask}
                         accessibilityLabel="Ask the Assistant"
                     />
-                    <Pressable onPress={ask} disabled={!question.trim()} style={({ pressed }) => [styles.send, !question.trim() && { opacity: 0.45 }, pressed && { opacity: 0.85 }]} accessibilityRole="button" accessibilityLabel="Send to the Assistant">
-                        <SendHorizontal size={20} color="#FFFFFF" strokeWidth={2} />
+                    <Pressable
+                        style={[styles.mic, listening && styles.micListening]}
+                        onPress={toggleDictation}
+                        accessibilityRole="button"
+                        accessibilityLabel={listening ? 'Stop dictation' : 'Dictate'}
+                    >
+                        {listening ? <VoiceWave level={level} /> : <Mic size={15} color={colors.textMuted} />}
+                    </Pressable>
+                    <Pressable onPress={() => { if (listening) void toggleDictation(); ask(); }} disabled={!question.trim()} style={[styles.send, !question.trim() && styles.sendDisabled]} accessibilityRole="button" accessibilityLabel="Send to the Assistant">
+                        <ArrowUp size={17} color="#FFFFFF" />
                     </Pressable>
                 </View>
             </View>
@@ -147,9 +158,13 @@ const styles = StyleSheet.create({
     quickDivider: { width: StyleSheet.hairlineWidth * 2, height: 22, backgroundColor: '#D4D4D4' },
     assistantWrap: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12 },
     assistant: {
-        flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#FFFFFF', borderRadius: 32, minHeight: 56, paddingLeft: 24, paddingRight: 8,
+        flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFFFFF', borderRadius: 32, minHeight: 56, paddingLeft: 24, paddingRight: 11,
         borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', ...cardShadow,
     },
     assistantInput: { flex: 1, fontFamily: fonts.body, fontSize: 14, color: colors.text, paddingVertical: 10 },
-    send: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.blue, alignItems: 'center', justifyContent: 'center' },
+    // The Assistant composer's own mic and send buttons.
+    mic: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.canvasAlt, alignItems: 'center', justifyContent: 'center' },
+    micListening: { backgroundColor: '#EF4444' },
+    send: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.blue, alignItems: 'center', justifyContent: 'center' },
+    sendDisabled: { opacity: 0.3 },
 });
