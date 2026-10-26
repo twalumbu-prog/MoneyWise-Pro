@@ -40,6 +40,8 @@ import invoiceRoutes from './routes/invoice.routes';
 import scheduleRoutes from './routes/schedule.routes';
 import automationRoutes from './routes/automation.routes';
 import billingRoutes from './routes/billing.routes';
+import cronRoutes from './routes/cron.routes';
+import { cronHeartbeat } from './middleware/cronHeartbeat';
 import investRoutes from './routes/invest.routes';
 import savingsRoutes from './routes/savings.routes';
 import developerRoutes from './routes/developer.routes';
@@ -525,6 +527,9 @@ app.use(express.json({
 // invalidation so other signed-in devices refresh live (see lib/realtimeBroadcast).
 app.use(broadcastAfterWrite);
 
+// Heartbeats for calls dispatched by the internal scheduler (X-Cron-Job + shared secret only).
+app.use(cronHeartbeat);
+
 // Routes
 app.use('/auth', authRoutes);
 app.use('/requisitions', requisitionRoutes);
@@ -549,6 +554,7 @@ app.use('/invoices', invoiceRoutes);
 app.use('/schedules', scheduleRoutes);
 app.use('/automations', automationRoutes);
 app.use('/billing', billingRoutes);
+app.use('/cron', cronRoutes);
 app.use('/investments', investRoutes);
 app.use('/savings', savingsRoutes);
 app.use('/developer', developerRoutes);

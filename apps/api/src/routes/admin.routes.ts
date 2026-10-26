@@ -28,6 +28,7 @@ import {
 } from '../controllers/admin.analytics.controller';
 import { getVercelLogs } from '../controllers/admin.logs.controller';
 import { getLedgerAudit, healLedger } from '../controllers/admin.ledger.controller';
+import { getCronHealth } from '../controllers/cron.controller';
 
 const router = Router();
 
@@ -36,6 +37,7 @@ router.use(requireAuth, requireSuperAdmin);
 
 router.get('/me', whoami);
 router.get('/ledger-health', getLedgerHealth);
+router.get('/cron-health', getCronHealth);
 router.get('/reconciliation', getReconciliationList);
 router.get('/reconciliation/:orgId', getOrgReconciliation);
 router.get('/reconciliation/:orgId/raw-lenco-txns', getRawLencoTxns);
