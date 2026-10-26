@@ -32,7 +32,15 @@ export function useDictation(value: string, onChange: (v: string) => void) {
         setLevel(Math.max(0, Math.min(1, event.value / 8)));
     });
     const finish = () => { if (mine()) owner = null; setListening(false); setLevel(0); };
-    useSpeechRecognitionEvent('error', () => { if (mine()) finish(); });
+    useSpeechRecognitionEvent('error', (event) => {
+        if (!mine()) return;
+        console.warn('[Dictation] stopped:', event.error, event.message);
+        finish();
+        // Silence or the person stopping it is not a problem worth an alert; anything else is, or the button just looks broken.
+        if (event.error !== 'no-speech' && event.error !== 'aborted' && event.error !== 'speech-timeout') {
+            Alert.alert('Dictation stopped', event.message || 'The microphone could not be used just now. Please try again.');
+        }
+    });
     useSpeechRecognitionEvent('end', () => { if (mine()) finish(); });
 
     // Leaving the screen stops a recording it started.

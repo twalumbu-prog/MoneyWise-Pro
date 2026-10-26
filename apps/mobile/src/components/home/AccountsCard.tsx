@@ -56,7 +56,7 @@ export const AccountsCard: React.FC = () => {
 const styles = StyleSheet.create({
     row: { flexDirection: 'row', alignItems: 'center', gap: 14 },
     logo: { width: 32, height: 32, borderRadius: 10, backgroundColor: colors.tabActiveBg, alignItems: 'center', justifyContent: 'center' },
-    name: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 16, color: '#000000' },
-    amount: { fontFamily: fonts.bodyMedium, fontSize: 16, color: '#000000' },
+    name: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 14, color: '#000000' },
+    amount: { fontFamily: fonts.bodyMedium, fontSize: 14, color: '#000000' },
     empty: { fontFamily: fonts.body, fontSize: 13, color: colors.textFaint },
 });
