@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { emailService } from '../services/email.service';
-import { healMissingPlatformFeesForAllOrgs } from '../services/reconciliation.service';
+import { healMissingPlatformFeesWithinBudget } from '../services/reconciliation.service';
 import { autoCompleteRequisition, sendAutoCategorizationReminder } from './requisition.controller';
 
 /**
@@ -102,9 +102,9 @@ export const autoCompleteSweep = async (req: any, res: any) => {
 export const healFeesCron = async (req: any, res: any) => {
     if (!isCronCall(req)) return res.status(401).json({ error: 'Unauthorized' });
     try {
-        const results = await healMissingPlatformFeesForAllOrgs();
+        const { results, orgsChecked, orgsTotal } = await healMissingPlatformFeesWithinBudget(35_000);
         const totalPosted = results.reduce((s, r) => s + r.totalPosted, 0);
-        return res.json({ orgsWithHealing: results.length, totalPosted: Math.round(totalPosted * 100) / 100 });
+        return res.json({ orgsChecked, orgsTotal, orgsWithHealing: results.length, totalPosted: Math.round(totalPosted * 100) / 100 });
     } catch (e: any) {
         console.error('[Cron] heal-fees failed:', e.message);
         return res.status(500).json({ error: e.message });

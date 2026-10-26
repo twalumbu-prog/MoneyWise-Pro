@@ -839,6 +839,39 @@ export async function healMissingPlatformFees(orgId: string, opts: { apply?: boo
     };
 }
 
+/**
+ * Time-boxed variant for the scheduler (the API is killed at 45s, and a sequential pass over every org can
+ * exceed that). Starts at a persisted cursor and stops starting new orgs once the budget is spent, so no org
+ * is starved by always sitting at the back of the queue. Healing is idempotent, so partial passes are safe.
+ */
+export async function healMissingPlatformFeesWithinBudget(budgetMs: number): Promise<{ results: FeeHealResult[]; orgsChecked: number; orgsTotal: number }> {
+    const deadline = Date.now() + budgetMs;
+    const linked = (await fetchOrgRows()).filter(o => o.lenco_subaccount_id);
+    const results: FeeHealResult[] = [];
+    if (linked.length === 0) return { results, orgsChecked: 0, orgsTotal: 0 };
+
+    const KEY = 'fee_heal_cursor';
+    const { data: cur } = await supabase.from('app_settings').select('value').eq('key', KEY).maybeSingle();
+    const start = Number(cur?.value?.next) % linked.length || 0;
+
+    let checked = 0;
+    for (; checked < linked.length && Date.now() < deadline; checked++) {
+        const org = linked[(start + checked) % linked.length];
+        try {
+            const r = await healMissingPlatformFees(org.id);
+            if (r.posted.length) results.push(r);
+        } catch (err: any) {
+            console.error(`[FeeHeal] org ${org.id} failed:`, err?.message || err);
+        }
+    }
+
+    await supabase.from('app_settings').upsert(
+        { key: KEY, value: { next: (start + checked) % linked.length }, description: 'Where the next fee-heal pass resumes (rotating, time-boxed)', updated_at: new Date().toISOString() },
+        { onConflict: 'key' }
+    );
+    return { results, orgsChecked: checked, orgsTotal: linked.length };
+}
+
 /** Runs healMissingPlatformFees for every linked org — the cron entry point. */
 export async function healMissingPlatformFeesForAllOrgs(): Promise<FeeHealResult[]> {
     const orgs = await fetchOrgRows();
