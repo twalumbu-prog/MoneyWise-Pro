@@ -55,7 +55,8 @@ export type Widget =
     | { type: 'table'; spec: TableSpec }
     | { type: 'kpi'; spec: KpiSpec }
     | { type: 'file'; spec: FileSpec }
-    | { type: 'qr'; spec: QrSpec };
+    | { type: 'qr'; spec: QrSpec }
+    | { type: 'choices'; spec: ChoiceSpec };
 
 export interface ChartSpec {
     kind: 'bar' | 'line' | 'area' | 'pie' | 'donut';
@@ -87,6 +88,24 @@ export interface TableSpec {
  * changes. `url` is a signed Supabase Storage URL, time-limited — see
  * SIGNED_URL_TTL_SECONDS in tools/export.tools.ts.
  */
+/**
+ * A list to pick from — e.g. which loan provider. Tapping an option sends its `reply` as the person's next message.
+ * `logo` is a known provider key (unifi, lolc, …) the apps ship an image for; `logoUrl` is a hosted image.
+ */
+export interface ChoiceOption {
+    label: string;
+    sublabel?: string;
+    badge?: string;
+    logo?: string;
+    logoUrl?: string | null;
+    reply: string;
+}
+
+export interface ChoiceSpec {
+    title: string;
+    options: ChoiceOption[];
+}
+
 /** A scannable code — e.g. the person's pay link — with the link itself to copy or share. */
 export interface QrSpec {
     value: string;

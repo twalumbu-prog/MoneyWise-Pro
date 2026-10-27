@@ -541,7 +541,7 @@ export const AssistantChat: React.FC<Props> = ({ onChatStateChange, seedPrompt, 
                     >
                         <div className="mx-auto max-w-3xl space-y-6 py-4">
                             {messages.map(m => (
-                                <MessageBubble key={m.id} message={m}>
+                                <MessageBubble key={m.id} message={m} onChoose={send}>
                                     {pending?.messageId === m.id && (
                                         <ApprovalCard
                                             toolName={pending.toolName}

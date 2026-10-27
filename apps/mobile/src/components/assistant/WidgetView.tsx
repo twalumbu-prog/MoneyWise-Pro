@@ -1,8 +1,10 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { ChevronRight, Check } from 'lucide-react-native';
 import Svg, { Rect, Line, Text as SvgText } from 'react-native-svg';
 import { formatKwacha } from 'core';
-import type { Widget } from 'core';
+import type { Widget, ChoiceSpec } from 'core';
+import { LoanLogo } from '../loans/LoanLogo';
 import QRCode from 'react-native-qrcode-svg';
 import { colors, fonts, radius } from '../../theme/tokens';
 
@@ -17,12 +19,13 @@ import { colors, fonts, radius } from '../../theme/tokens';
  * back to the same bar rendering; a request for those kinds is rare in
  * practice and the fallback is still a correct, readable comparison.
  */
-export const WidgetView: React.FC<{ widget: Widget }> = ({ widget }) => {
+export const WidgetView: React.FC<{ widget: Widget; onChoose?: (reply: string) => void }> = ({ widget, onChoose }) => {
     if (widget.type === 'kpi') return <KpiWidget spec={widget.spec} />;
     if (widget.type === 'table') return <TableWidget spec={widget.spec} />;
     if (widget.type === 'chart') return <ChartWidget spec={widget.spec} />;
     if (widget.type === 'file') return <FileWidget spec={widget.spec} />;
     if (widget.type === 'qr') return <QrWidget spec={widget.spec} />;
+    if (widget.type === 'choices') return <ChoicesWidget spec={widget.spec} onChoose={onChoose} />;
     return null;
 };
 
@@ -140,7 +143,50 @@ const QrWidget: React.FC<{ spec: { value: string; title: string; caption?: strin
     </View>
 );
 
+/** A list to pick from (e.g. loan providers). Tapping one sends its reply as the next message; the list then shows the pick. */
+const ChoicesWidget: React.FC<{ spec: ChoiceSpec; onChoose?: (reply: string) => void }> = ({ spec, onChoose }) => {
+    const [picked, setPicked] = useState<number | null>(null);
+    return (
+        <View style={[styles.card, styles.choicesCard]}>
+            <Text style={[styles.title, styles.choicesTitle]}>{spec.title}</Text>
+            {spec.options.map((o, i) => {
+                const chosen = picked === i;
+                return (
+                    <Pressable
+                        key={i}
+                        disabled={picked !== null || !onChoose}
+                        onPress={() => { setPicked(i); onChoose?.(o.reply); }}
+                        style={({ pressed }) => [styles.choice, i > 0 && styles.choiceDivider, pressed && styles.choicePressed, picked !== null && !chosen && styles.choiceDim]}
+                        accessibilityRole="button" accessibilityLabel={o.label}
+                    >
+                        <LoanLogo logo={o.logo ?? null} orgLogoUrl={o.logoUrl} size={34} />
+                        <View style={{ flex: 1 }}>
+                            <View style={styles.choiceLabelRow}>
+                                <Text style={styles.choiceLabel} numberOfLines={1}>{o.label}</Text>
+                                {!!o.badge && <View style={styles.choiceBadge}><Text style={styles.choiceBadgeText}>{o.badge}</Text></View>}
+                            </View>
+                            {!!o.sublabel && <Text style={styles.choiceSub} numberOfLines={2}>{o.sublabel}</Text>}
+                        </View>
+                        {chosen ? <Check size={16} color={colors.blue} /> : <ChevronRight size={16} color={colors.textFaint} />}
+                    </Pressable>
+                );
+            })}
+        </View>
+    );
+};
+
 const styles = StyleSheet.create({
+    choicesCard: { paddingHorizontal: 0, paddingBottom: 4 },
+    choicesTitle: { paddingHorizontal: 14, marginBottom: 4 },
+    choice: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 10 },
+    choiceDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+    choicePressed: { backgroundColor: colors.canvasAlt },
+    choiceDim: { opacity: 0.45 },
+    choiceLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    choiceLabel: { flexShrink: 1, fontFamily: fonts.bodyBold, fontSize: 13, color: colors.text },
+    choiceBadge: { backgroundColor: colors.tabActiveBg, borderRadius: radius.pill, paddingHorizontal: 7, paddingVertical: 2 },
+    choiceBadgeText: { fontFamily: fonts.bodyBold, fontSize: 9, color: colors.blue, textTransform: 'uppercase', letterSpacing: 0.4 },
+    choiceSub: { fontFamily: fonts.body, fontSize: 11, color: colors.textMuted, lineHeight: 15, marginTop: 1 },
     qrCard: { alignItems: 'center', gap: 10 },
     qrBox: { padding: 12, backgroundColor: '#FFFFFF', borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
     qrLink: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.blue, textAlign: 'center' },

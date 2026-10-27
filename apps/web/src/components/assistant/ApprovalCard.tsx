@@ -36,6 +36,11 @@ const ACTION_LABELS: Record<string, string> = {
     withdraw_from_savings: 'Withdraw from savings',
     send_money: 'Send money',
     invest: 'Invest',
+    request_loan: 'Apply for a loan',
+    request_salary_advance: 'Request salary advance',
+    add_group_member: 'Add to group savings',
+    join_group_savings: 'Join group savings',
+    leave_group_savings: 'Leave group savings',
 };
 
 interface Props {

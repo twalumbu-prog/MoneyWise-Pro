@@ -37,7 +37,24 @@ export interface KpiSpec {
     items: Array<{ label: string; value: string; delta?: number; hint?: string }>;
 }
 
-/** A generated download (PDF report or Excel export). `url` is a time-limited signed link. */
+/**
+ * A list to pick from — e.g. which loan provider. Tapping an option sends its `reply` as the person's next message.
+ * `logo` is a known provider key (unifi, lolc, …) the apps ship an image for; `logoUrl` is a hosted image.
+ */
+export interface ChoiceOption {
+    label: string;
+    sublabel?: string;
+    badge?: string;
+    logo?: string;
+    logoUrl?: string | null;
+    reply: string;
+}
+
+export interface ChoiceSpec {
+    title: string;
+    options: ChoiceOption[];
+}
+
 /** A scannable code — e.g. the person's pay link — with the link itself to copy or share. */
 export interface QrSpec {
     value: string;
@@ -45,6 +62,7 @@ export interface QrSpec {
     caption?: string;
 }
 
+/** A generated download (PDF report or Excel export). `url` is a time-limited signed link. */
 export interface FileSpec {
     name: string;
     url: string;
@@ -57,7 +75,8 @@ export type Widget =
     | { type: 'table'; spec: TableSpec }
     | { type: 'kpi'; spec: KpiSpec }
     | { type: 'file'; spec: FileSpec }
-    | { type: 'qr'; spec: QrSpec };
+    | { type: 'qr'; spec: QrSpec }
+    | { type: 'choices'; spec: ChoiceSpec };
 
 export interface Proposal {
     summary: string;

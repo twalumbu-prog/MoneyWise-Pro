@@ -137,7 +137,9 @@ const getPayLink: ToolDefinition = {
     },
 };
 
-async function pots(ctx: AgentContext) {
+export const savingsInviteLink = (code: string) => `${getFrontendUrl()}/savings/join/${code}`;
+
+export async function pots(ctx: AgentContext) {
     const o = await savingsService.list(ctx.organizationId, ctx.userId);
     return [...o.goals, ...o.wishlist, ...o.groups];
 }
@@ -431,16 +433,17 @@ function toPatch(args: any) {
 
 const createSavingsPot: ToolDefinition = {
     name: 'create_savings_pot',
-    description: 'Start a savings pot: a GOAL (an amount by a date, e.g. "save K5,000 for a laptop by December") or a WISHLIST item. Group savings with other people are set up in the app.',
+    description: 'Start a savings pot: a GOAL (an amount by a date, e.g. "save K5,000 for a laptop by December"), a WISHLIST item, or GROUP savings that other people join and contribute to (e.g. a chilimba or a shared trip). WISHLIST and GROUP need a target amount. After a GROUP is created, offer get_group_invite or add_group_member.',
     effect: 'write',
     allowedRoles: ALL_ROLES,
     parameters: {
         type: 'object',
         properties: {
-            kind: { type: 'string', enum: ['GOAL', 'WISHLIST'] },
+            kind: { type: 'string', enum: ['GOAL', 'WISHLIST', 'GROUP'] },
             name: { type: 'string' },
             targetAmount: { type: 'number' },
-            targetDate: { type: 'string', description: 'YYYY-MM-DD (optional).' },
+            targetDate: { type: 'string', description: 'YYYY-MM-DD (optional, must be in the future).' },
+            frequency: { type: 'string', enum: ['DAILY', 'WEEKLY', 'MONTHLY'], description: 'Optional: how often people put money in.' },
         },
         required: ['kind', 'name'],
     },
@@ -448,23 +451,28 @@ const createSavingsPot: ToolDefinition = {
         const name = String(args.name ?? '').trim();
         if (name.length < 2) invalid('Name the pot.');
         if (args.targetDate && !/^\d{4}-\d{2}-\d{2}$/.test(args.targetDate)) invalid('targetDate must be YYYY-MM-DD.');
-        return proposal(`Create a savings ${args.kind === 'WISHLIST' ? 'wishlist item' : 'goal'}: ${name}`, [
+        if (args.targetDate && args.targetDate <= ctx.today) invalid('The goal date must be in the future.');
+        if ((args.kind === 'WISHLIST' || args.kind === 'GROUP') && !(Number(args.targetAmount) > 0)) invalid('How much do they need to save in total?');
+        const what = args.kind === 'WISHLIST' ? 'wishlist item' : args.kind === 'GROUP' ? 'group savings' : 'goal';
+        return proposal(`Create ${args.kind === 'GROUP' ? '' : 'a savings '}${what}: ${name}`, [
             { label: 'Name', value: name },
             ...(args.targetAmount ? [{ label: 'Target', value: kwacha(args.targetAmount) }] : []),
             ...(args.targetDate ? [{ label: 'By', value: args.targetDate }] : []),
+            ...(args.frequency ? [{ label: 'Contributions', value: String(args.frequency).toLowerCase() }] : []),
+            ...(args.kind === 'GROUP' ? [{ label: 'Members', value: 'Join with an invite link; pay in by mobile money or wallet' }] : []),
         ]);
     },
     execute: async (ctx, args) => {
         const pot: any = await savingsService.create({
-            orgId: ctx.organizationId, userId: ctx.userId, kind: args.kind, name: String(args.name).trim(), targetAmount: args.targetAmount, targetDate: args.targetDate,
+            orgId: ctx.organizationId, userId: ctx.userId, kind: args.kind, name: String(args.name).trim(), targetAmount: args.targetAmount, targetDate: args.targetDate, frequency: args.frequency,
         });
-        return { created: true, pot: { name: pot?.name ?? args.name } };
+        return { created: true, pot: { name: pot?.name ?? args.name, kind: args.kind, invite_link: pot?.inviteCode ? savingsInviteLink(pot.inviteCode) : undefined } };
     },
 };
 
 // ── Money ──────────────────────────────────────────────────────────────────────
 
-async function findPot(ctx: AgentContext, said: string) {
+export async function findPot(ctx: AgentContext, said: string) {
     const items = await pots(ctx);
     const hit = byName(items, said, (g) => g.name);
     if (!hit) return invalid(`No savings pot called "${said}". Pots: ${items.map((g) => g.name).join(', ') || 'none yet'}.`);

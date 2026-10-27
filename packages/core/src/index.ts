@@ -125,6 +125,8 @@ export type {
 export { lencoService } from './services/lenco.service';
 export { investmentService } from './services/investment.service';
 export { savingsService } from './services/savings.service';
+export { momoCaptureService } from './services/momoCapture.service';
+export type { MomoCapture, MomoCaptureSettings, MomoCaptureSource, MomoCaptureStatus } from './services/momoCapture.service';
 export type {
     SavingsKind, SavingsFrequency, SavingsItem, SavingsOverview, SavingsDetail, SavingsMember, SavingsContribution, SavingsMemberSummary,
     SavingsInvitePreview, SavingsPerson,
@@ -254,7 +256,7 @@ export type { UserRole } from './reference/roles';
 
 export { agentClient } from './agent/client';
 export type {
-    ChartSpec, TableSpec, KpiSpec, FileSpec, QrSpec, Widget, Proposal,
+    ChartSpec, TableSpec, KpiSpec, FileSpec, QrSpec, ChoiceSpec, ChoiceOption, Widget, Proposal,
     AgentEvent, AssistantModel, StoredMessage, ThreadSummary,
 } from './agent/client';
 

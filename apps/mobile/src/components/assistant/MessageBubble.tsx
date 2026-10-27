@@ -13,7 +13,7 @@ export interface ChatMessage {
     activity?: 'thinking' | 'working';
 }
 
-export const MessageBubble: React.FC<{ message: ChatMessage }> = ({ message }) => {
+export const MessageBubble: React.FC<{ message: ChatMessage; onChoose?: (reply: string) => void }> = ({ message, onChoose }) => {
     const isUser = message.role === 'user';
     const showTyping = message.streaming && !message.content;
 
@@ -33,7 +33,7 @@ export const MessageBubble: React.FC<{ message: ChatMessage }> = ({ message }) =
                         : <AssistantMarkdown content={message.content} streaming={message.streaming} />
                 )}
             </View>
-            {message.widgets.map((w, i) => <WidgetView key={i} widget={w} />)}
+            {message.widgets.map((w, i) => <WidgetView key={i} widget={w} onChoose={onChoose} />)}
         </View>
     );
 };

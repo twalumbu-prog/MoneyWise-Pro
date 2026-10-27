@@ -164,6 +164,7 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             insertData.staff_name = staff_name || personalPayout?.name || null;
             insertData.employee_id = employee_id || personalPayout?.employeeId || null;
             insertData.loan_amount = loan_amount ?? null;
+            if (type === 'LOAN') insertData.repayment_period = Number(repayment_period) || null;
 
             try {
                 insertData.payroll_staff_id = await resolveStaffFromFreeText(organization_id, {

@@ -309,7 +309,7 @@ export default function BiScreen() {
                             contentContainerStyle={styles.list}
                             keyboardShouldPersistTaps="handled"
                             keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-                            renderItem={({ item }) => <MessageBubble message={item} />}
+                            renderItem={({ item }) => <MessageBubble message={item} onChoose={(reply) => send(reply)} />}
                             onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
                         />
                     )}

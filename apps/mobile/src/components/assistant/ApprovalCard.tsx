@@ -30,6 +30,11 @@ const ACTION_LABELS: Record<string, string> = {
     withdraw_from_savings: 'Withdraw from savings',
     send_money: 'Send money',
     invest: 'Invest',
+    request_loan: 'Apply for a loan',
+    request_salary_advance: 'Request salary advance',
+    add_group_member: 'Add to group savings',
+    join_group_savings: 'Join group savings',
+    leave_group_savings: 'Leave group savings',
 };
 
 /**
@@ -40,6 +45,7 @@ function useStrongConfirm() {
     const { user } = useAuth();
     const { config, biometric } = useAppLock();
     const [pinFor, setPinFor] = useState<((ok: boolean) => void) | null>(null);
+    const [pinWhat, setPinWhat] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [errorKey, setErrorKey] = useState(0);
     const insets = useSafeAreaInsets();
@@ -48,13 +54,13 @@ function useStrongConfirm() {
 
     const confirm = (what: string) => new Promise<boolean>((resolve) => {
         if (!user?.id || !config.enabled) {
-            Alert.alert('Confirm payment', `${what}\n\nThis can't be reversed.`, [
+            Alert.alert('Please confirm', `${what}\n\nThis can't be reversed.`, [
                 { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
                 { text: 'Confirm', onPress: () => resolve(true) },
             ], { cancelable: true, onDismiss: () => resolve(false) });
             return;
         }
-        const askPin = () => { setError(null); setPinFor(() => resolve); };
+        const askPin = () => { setError(null); setPinWhat(what); setPinFor(() => resolve); };
         if (canBio) promptBiometric(what).then((ok) => (ok ? resolve(true) : askPin()));
         else askPin();
     });
@@ -76,9 +82,9 @@ function useStrongConfirm() {
                     <X size={22} color={colors.textMuted} />
                 </Pressable>
                 <PinEntry
-                    title="Enter your PIN" subtitle="Confirm this payment" error={error} errorKey={errorKey} onComplete={submit}
+                    title="Enter your PIN" subtitle={pinWhat} error={error} errorKey={errorKey} onComplete={submit}
                     leftSlot={canBio ? (
-                        <Pressable onPress={() => promptBiometric('Confirm payment').then((ok) => ok && close(true))} hitSlop={8} accessibilityLabel={`Use ${label}`}>
+                        <Pressable onPress={() => promptBiometric(pinWhat || 'Confirm').then((ok) => ok && close(true))} hitSlop={8} accessibilityLabel={`Use ${label}`}>
                             {biometric.kind === 'face' ? <ScanFace size={30} color={colors.blue} /> : <Fingerprint size={30} color={colors.blue} />}
                         </Pressable>
                     ) : undefined}

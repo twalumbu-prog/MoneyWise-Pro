@@ -83,7 +83,7 @@ const CopyButton: React.FC<{ text: string }> = ({ text }) => {
     );
 };
 
-export const MessageBubble: React.FC<{ message: ChatMessage; children?: React.ReactNode }> = ({ message, children }) => {
+export const MessageBubble: React.FC<{ message: ChatMessage; children?: React.ReactNode; onChoose?: (reply: string) => void }> = ({ message, children, onChoose }) => {
     if (message.role === 'user') {
         return (
             <div className="flex justify-end">
@@ -116,7 +116,7 @@ export const MessageBubble: React.FC<{ message: ChatMessage; children?: React.Re
                 )}
 
                 {message.widgets.map((w, i) => (
-                    <WidgetRenderer key={i} widget={w} />
+                    <WidgetRenderer key={i} widget={w} onChoose={onChoose} />
                 ))}
 
                 {message.content && (

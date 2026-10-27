@@ -17,8 +17,10 @@ import { exportTools } from './tools/export.tools';
 import { automationTools } from './tools/automation.tools';
 import { manualEntryTools } from './tools/manualEntry.tools';
 import { personalTools } from './tools/personal.tools';
+import { loanTools } from './tools/loans.tools';
+import { groupSavingsTools } from './tools/groupSavings.tools';
 
-const ALL_TOOLS: ToolDefinition[] = [...readTools, ...vizTools, ...guideTools, ...reconcileTools, ...exportTools, ...automationTools, ...manualEntryTools, ...personalTools, ...writeTools];
+const ALL_TOOLS: ToolDefinition[] = [...readTools, ...vizTools, ...guideTools, ...reconcileTools, ...exportTools, ...automationTools, ...manualEntryTools, ...personalTools, ...loanTools, ...groupSavingsTools, ...writeTools];
 
 const BY_NAME = new Map(ALL_TOOLS.map(t => [t.name, t]));
 

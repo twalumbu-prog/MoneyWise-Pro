@@ -5,14 +5,14 @@
  * renders nothing rather than being trusted.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
     Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
     Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { Download, FileSpreadsheet, FileText } from 'lucide-react';
-import type { ChartSpec, FileSpec, KpiSpec, TableSpec, Widget } from 'core';
+import type { ChartSpec, ChoiceSpec, FileSpec, KpiSpec, TableSpec, Widget } from 'core';
 
 // A single ordered palette keeps every chart in the conversation consistent.
 const PALETTE = ['#006AFF', '#00C48C', '#FFB020', '#7C3AED', '#F0507E', '#14B8A6', '#F97316', '#6366F1'];
@@ -315,13 +315,54 @@ const QrWidget: React.FC<{ spec: { value: string; title: string; caption?: strin
     </div>
 );
 
-export const WidgetRenderer: React.FC<{ widget: Widget }> = ({ widget }) => {
+/** Logos the web ships for the outside loan providers (public/loan-logos). */
+const PROVIDER_LOGOS: Record<string, string> = {
+    unifi: '/loan-logos/unifi.jpeg', lolc: '/loan-logos/lolc.jpg', finca: '/loan-logos/finca.png',
+    agora: '/loan-logos/agora.png', bayport: '/loan-logos/bayport.jpeg', mfz: '/loan-logos/microfinance-zambia.jpeg',
+};
+
+/** A list to pick from (e.g. loan providers). Clicking one sends its reply as the next message. */
+const ChoicesWidget: React.FC<{ spec: ChoiceSpec; onChoose?: (reply: string) => void }> = ({ spec, onChoose }) => {
+    const [picked, setPicked] = useState<number | null>(null);
+    return (
+        <div className="my-4 max-w-md overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-[0_2px_16px_rgba(0,0,0,0.03)]">
+            <p className="px-4 pb-2 pt-4 text-sm font-semibold text-gray-900">{spec.title}</p>
+            {spec.options.map((o, i) => {
+                const src = (o.logo && PROVIDER_LOGOS[o.logo]) || o.logoUrl || null;
+                return (
+                    <button
+                        key={i}
+                        type="button"
+                        disabled={picked !== null || !onChoose}
+                        onClick={() => { setPicked(i); onChoose?.(o.reply); }}
+                        className={`flex w-full items-center gap-3 border-t border-gray-50 px-4 py-2.5 text-left transition-colors hover:bg-gray-50 disabled:cursor-default disabled:hover:bg-transparent ${picked !== null && picked !== i ? 'opacity-40' : ''}`}
+                    >
+                        {src
+                            ? <img src={src} alt="" className="h-8 w-8 flex-shrink-0 rounded-lg object-contain" />
+                            : <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-blue-50 text-xs font-bold text-blue-600">{o.label.slice(0, 1)}</div>}
+                        <span className="min-w-0 flex-1">
+                            <span className="flex items-center gap-1.5">
+                                <span className="truncate text-[13px] font-semibold text-gray-900">{o.label}</span>
+                                {o.badge && <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-600">{o.badge}</span>}
+                            </span>
+                            {o.sublabel && <span className="block text-[11px] text-gray-500">{o.sublabel}</span>}
+                        </span>
+                        <span className="text-xs text-gray-300">{picked === i ? '✓' : '›'}</span>
+                    </button>
+                );
+            })}
+        </div>
+    );
+};
+
+export const WidgetRenderer: React.FC<{ widget: Widget; onChoose?: (reply: string) => void }> = ({ widget, onChoose }) => {
     switch (widget.type) {
         case 'chart': return <ChartWidget spec={widget.spec} />;
         case 'table': return <TableWidget spec={widget.spec} />;
         case 'kpi': return <KpiWidget spec={widget.spec} />;
         case 'file': return <FileWidget spec={widget.spec} />;
         case 'qr': return <QrWidget spec={widget.spec} />;
+        case 'choices': return <ChoicesWidget spec={widget.spec} onChoose={onChoose} />;
         default: return null;
     }
 };
