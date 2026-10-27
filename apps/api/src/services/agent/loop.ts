@@ -73,7 +73,7 @@ export interface PendingApproval {
     args: Record<string, any>;
     /** The card the user was shown, stored verbatim so the audit row records
      *  what was actually approved rather than what we'd re-render today. */
-    proposal: { summary: string; preview: Array<{ label: string; value: string }>; warning?: string };
+    proposal: { summary: string; preview: Array<{ label: string; value: string }>; warning?: string; strongAuth?: boolean };
 }
 
 export interface AgentRunResult {

@@ -34,6 +34,11 @@ export interface ToolProposal {
     preview: Array<{ label: string; value: string }>;
     /** Extra caution note shown in amber on the card. */
     warning?: string;
+    /**
+     * The change moves real money out of the person's account (sending, investing, paying into someone else's pot). The app asks
+     * for their PIN / Face ID — or an explicit second confirmation when no PIN is set — before the approval is sent.
+     */
+    strongAuth?: boolean;
 }
 
 export function isProposal(v: unknown): v is ToolProposal {
@@ -49,7 +54,8 @@ export type Widget =
     | { type: 'chart'; spec: ChartSpec }
     | { type: 'table'; spec: TableSpec }
     | { type: 'kpi'; spec: KpiSpec }
-    | { type: 'file'; spec: FileSpec };
+    | { type: 'file'; spec: FileSpec }
+    | { type: 'qr'; spec: QrSpec };
 
 export interface ChartSpec {
     kind: 'bar' | 'line' | 'area' | 'pie' | 'donut';
@@ -81,6 +87,13 @@ export interface TableSpec {
  * changes. `url` is a signed Supabase Storage URL, time-limited — see
  * SIGNED_URL_TTL_SECONDS in tools/export.tools.ts.
  */
+/** A scannable code — e.g. the person's pay link — with the link itself to copy or share. */
+export interface QrSpec {
+    value: string;
+    title: string;
+    caption?: string;
+}
+
 export interface FileSpec {
     name: string;
     url: string;

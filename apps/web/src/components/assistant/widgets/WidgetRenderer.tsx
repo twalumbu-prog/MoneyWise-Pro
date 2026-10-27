@@ -6,6 +6,7 @@
  */
 
 import React from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import {
     Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
     Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -305,12 +306,22 @@ const FileWidget: React.FC<{ spec: FileSpec }> = ({ spec }) => {
     );
 };
 
+const QrWidget: React.FC<{ spec: { value: string; title: string; caption?: string } }> = ({ spec }) => (
+    <div className="my-4 flex max-w-xs flex-col items-center gap-3 rounded-2xl border border-gray-100 bg-white p-5 shadow-[0_2px_16px_rgba(0,0,0,0.03)]">
+        <p className="text-sm font-semibold text-gray-900">{spec.title}</p>
+        <QRCodeSVG value={spec.value} size={168} />
+        <a href={spec.value} target="_blank" rel="noopener noreferrer" className="break-all text-center text-xs font-medium text-blue-600">{spec.value}</a>
+        {spec.caption && <p className="text-center text-xs text-gray-500">{spec.caption}</p>}
+    </div>
+);
+
 export const WidgetRenderer: React.FC<{ widget: Widget }> = ({ widget }) => {
     switch (widget.type) {
         case 'chart': return <ChartWidget spec={widget.spec} />;
         case 'table': return <TableWidget spec={widget.spec} />;
         case 'kpi': return <KpiWidget spec={widget.spec} />;
         case 'file': return <FileWidget spec={widget.spec} />;
+        case 'qr': return <QrWidget spec={widget.spec} />;
         default: return null;
     }
 };

@@ -25,6 +25,17 @@ const ACTION_LABELS: Record<string, string> = {
     categorize_transactions: 'Classify all',
     post_to_quickbooks: 'Post to QuickBooks',
     update_org_settings: 'Change settings',
+    record_manual_transactions: 'Record transactions',
+    create_wallet: 'Create wallet',
+    create_external_account: 'Add external account',
+    set_budgets: 'Set budgets',
+    update_my_preferences: 'Update preferences',
+    create_savings_pot: 'Create savings pot',
+    transfer_between_wallets: 'Move money between wallets',
+    add_to_savings: 'Add to savings',
+    withdraw_from_savings: 'Withdraw from savings',
+    send_money: 'Send money',
+    invest: 'Invest',
 };
 
 interface Props {
@@ -127,7 +138,7 @@ export const ApprovalCard: React.FC<Props> = ({ toolName, proposal, status, onDe
             {!decided && (
                 <div className="flex items-center gap-2 px-4 pb-4 pt-1">
                     <button
-                        onClick={() => onDecide(true)}
+                        onClick={() => { if (proposal.strongAuth && !window.confirm(`${proposal.summary}\n\nThis can't be reversed. Confirm?`)) return; onDecide(true); }}
                         disabled={busy}
                         className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#006AFF] px-4 py-2.5 text-[13px] font-black text-white shadow-lg shadow-blue-500/20 transition-all hover:bg-[#0057d4] disabled:opacity-60"
                     >

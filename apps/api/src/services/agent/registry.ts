@@ -16,8 +16,9 @@ import { reconcileTools } from './tools/reconcile.tools';
 import { exportTools } from './tools/export.tools';
 import { automationTools } from './tools/automation.tools';
 import { manualEntryTools } from './tools/manualEntry.tools';
+import { personalTools } from './tools/personal.tools';
 
-const ALL_TOOLS: ToolDefinition[] = [...readTools, ...vizTools, ...guideTools, ...reconcileTools, ...exportTools, ...automationTools, ...manualEntryTools, ...writeTools];
+const ALL_TOOLS: ToolDefinition[] = [...readTools, ...vizTools, ...guideTools, ...reconcileTools, ...exportTools, ...automationTools, ...manualEntryTools, ...personalTools, ...writeTools];
 
 const BY_NAME = new Map(ALL_TOOLS.map(t => [t.name, t]));
 

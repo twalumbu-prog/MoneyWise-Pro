@@ -3,6 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Rect, Line, Text as SvgText } from 'react-native-svg';
 import { formatKwacha } from 'core';
 import type { Widget } from 'core';
+import QRCode from 'react-native-qrcode-svg';
 import { colors, fonts, radius } from '../../theme/tokens';
 
 /**
@@ -21,6 +22,7 @@ export const WidgetView: React.FC<{ widget: Widget }> = ({ widget }) => {
     if (widget.type === 'table') return <TableWidget spec={widget.spec} />;
     if (widget.type === 'chart') return <ChartWidget spec={widget.spec} />;
     if (widget.type === 'file') return <FileWidget spec={widget.spec} />;
+    if (widget.type === 'qr') return <QrWidget spec={widget.spec} />;
     return null;
 };
 
@@ -129,7 +131,20 @@ const FileWidget: React.FC<{ spec: any }> = ({ spec }) => (
     </View>
 );
 
+const QrWidget: React.FC<{ spec: { value: string; title: string; caption?: string } }> = ({ spec }) => (
+    <View style={[styles.card, styles.qrCard]}>
+        <Text style={styles.title}>{spec.title}</Text>
+        <View style={styles.qrBox}><QRCode value={spec.value} size={168} color="#020617" backgroundColor="#FFFFFF" /></View>
+        <Text style={styles.qrLink} selectable numberOfLines={2}>{spec.value}</Text>
+        {!!spec.caption && <Text style={styles.qrCaption}>{spec.caption}</Text>}
+    </View>
+);
+
 const styles = StyleSheet.create({
+    qrCard: { alignItems: 'center', gap: 10 },
+    qrBox: { padding: 12, backgroundColor: '#FFFFFF', borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
+    qrLink: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.blue, textAlign: 'center' },
+    qrCaption: { fontFamily: fonts.body, fontSize: 11, color: colors.textMuted, textAlign: 'center' },
     card: {
         backgroundColor: colors.surface, borderRadius: radius.md, padding: 16,
         borderWidth: 1, borderColor: colors.border, marginTop: 8, maxWidth: 300,

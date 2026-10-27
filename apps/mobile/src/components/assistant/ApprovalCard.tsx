@@ -1,7 +1,12 @@
 import { useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
-import { Check, X, ShieldCheck, ChevronDown, AlertTriangle } from 'lucide-react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, Modal, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Check, X, ShieldCheck, ChevronDown, AlertTriangle, Lock, ScanFace, Fingerprint } from 'lucide-react-native';
 import type { Proposal } from 'core';
+import { useAuth } from '../../context/AuthContext';
+import { useAppLock } from '../../context/AppLockContext';
+import { verifyPin, promptBiometric, biometricLabel } from '../../lib/appLock';
+import { PinEntry } from '../security/PinEntry';
 import { colors, fonts, radius } from '../../theme/tokens';
 
 const ACTION_LABELS: Record<string, string> = {
@@ -14,7 +19,75 @@ const ACTION_LABELS: Record<string, string> = {
     categorize_transaction: 'Classify transaction',
     categorize_requisition_expense: 'Classify expense line item',
     update_org_settings: 'Change settings',
+    record_manual_transactions: 'Record transactions',
+    create_wallet: 'Create wallet',
+    create_external_account: 'Add external account',
+    set_budgets: 'Set budgets',
+    update_my_preferences: 'Update preferences',
+    create_savings_pot: 'Create savings pot',
+    transfer_between_wallets: 'Move money between wallets',
+    add_to_savings: 'Add to savings',
+    withdraw_from_savings: 'Withdraw from savings',
+    send_money: 'Send money',
+    invest: 'Invest',
 };
+
+/**
+ * Cards that move money out of the account (`strongAuth`) need the person themselves, not just a tap: Face ID when they
+ * turned it on, otherwise their app PIN, and a plain "are you sure" when they have no PIN at all.
+ */
+function useStrongConfirm() {
+    const { user } = useAuth();
+    const { config, biometric } = useAppLock();
+    const [pinFor, setPinFor] = useState<((ok: boolean) => void) | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [errorKey, setErrorKey] = useState(0);
+    const insets = useSafeAreaInsets();
+    const canBio = config.biometric && biometric.available;
+    const label = biometricLabel(biometric.kind, Platform.OS === 'ios');
+
+    const confirm = (what: string) => new Promise<boolean>((resolve) => {
+        if (!user?.id || !config.enabled) {
+            Alert.alert('Confirm payment', `${what}\n\nThis can't be reversed.`, [
+                { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+                { text: 'Confirm', onPress: () => resolve(true) },
+            ], { cancelable: true, onDismiss: () => resolve(false) });
+            return;
+        }
+        const askPin = () => { setError(null); setPinFor(() => resolve); };
+        if (canBio) promptBiometric(what).then((ok) => (ok ? resolve(true) : askPin()));
+        else askPin();
+    });
+
+    const close = (ok: boolean) => { pinFor?.(ok); setPinFor(null); };
+    const submit = async (pin: string) => {
+        if (!user?.id) return close(false);
+        const r = await verifyPin(user.id, pin);
+        if (r.ok) return close(true);
+        setError(r.lockedForSeconds ? `Too many tries. Wait ${r.lockedForSeconds}s.` : 'Wrong PIN');
+        setErrorKey((k) => k + 1);
+        if (r.lockedForSeconds) setTimeout(() => close(false), 1200);
+    };
+
+    const sheet = (
+        <Modal visible={!!pinFor} animationType="slide" onRequestClose={() => close(false)}>
+            <View style={[styles.pinSheet, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]}>
+                <Pressable onPress={() => close(false)} hitSlop={10} style={styles.pinClose} accessibilityLabel="Cancel">
+                    <X size={22} color={colors.textMuted} />
+                </Pressable>
+                <PinEntry
+                    title="Enter your PIN" subtitle="Confirm this payment" error={error} errorKey={errorKey} onComplete={submit}
+                    leftSlot={canBio ? (
+                        <Pressable onPress={() => promptBiometric('Confirm payment').then((ok) => ok && close(true))} hitSlop={8} accessibilityLabel={`Use ${label}`}>
+                            {biometric.kind === 'face' ? <ScanFace size={30} color={colors.blue} /> : <Fingerprint size={30} color={colors.blue} />}
+                        </Pressable>
+                    ) : undefined}
+                />
+            </View>
+        </Modal>
+    );
+    return { confirm, sheet };
+}
 
 /**
  * The gate between the agent and your data. Shows exactly what will be
@@ -31,6 +104,11 @@ export const ApprovalCard: React.FC<{
     const busy = status === 'approving';
     const [expanded, setExpanded] = useState(false);
     const actionLabel = ACTION_LABELS[toolName] ?? 'Confirm change';
+    const strong = useStrongConfirm();
+    const approve = async () => {
+        if (proposal.strongAuth && !(await strong.confirm(proposal.summary))) return;
+        onDecide(true);
+    };
 
     if (decided && !expanded) {
         const approved = status === 'approved';
@@ -51,6 +129,7 @@ export const ApprovalCard: React.FC<{
 
     return (
         <View style={styles.card}>
+            {strong.sheet}
             <View style={styles.header}>
                 <ShieldCheck size={16} color={colors.blue} />
                 <Text style={styles.headerText}>{actionLabel}</Text>
@@ -88,10 +167,15 @@ export const ApprovalCard: React.FC<{
                     </Pressable>
                     <Pressable
                         style={[styles.btn, styles.btnApprove]}
-                        onPress={() => onDecide(true)}
+                        onPress={approve}
                         disabled={busy}
                     >
-                        {busy ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.btnApproveText}>Approve</Text>}
+                        {busy ? <ActivityIndicator size="small" color="#FFFFFF" /> : (
+                            <View style={styles.approveInner}>
+                                {proposal.strongAuth && <Lock size={13} color="#FFFFFF" />}
+                                <Text style={styles.btnApproveText}>{proposal.strongAuth ? 'Confirm' : 'Approve'}</Text>
+                            </View>
+                        )}
                     </Pressable>
                 </View>
             )}
@@ -124,6 +208,9 @@ const styles = StyleSheet.create({
     btnDeclineText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.textMuted },
     btnApprove: { backgroundColor: colors.blue },
     btnApproveText: { fontFamily: fonts.bodyBold, fontSize: 13, color: '#FFFFFF' },
+    approveInner: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    pinSheet: { flex: 1, backgroundColor: colors.surface, paddingHorizontal: 24 },
+    pinClose: { alignSelf: 'flex-end', padding: 4 },
     collapsed: {
         flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: radius.md,
         paddingHorizontal: 12, paddingVertical: 9, marginVertical: 8, borderWidth: 1,

@@ -38,6 +38,13 @@ export interface KpiSpec {
 }
 
 /** A generated download (PDF report or Excel export). `url` is a time-limited signed link. */
+/** A scannable code — e.g. the person's pay link — with the link itself to copy or share. */
+export interface QrSpec {
+    value: string;
+    title: string;
+    caption?: string;
+}
+
 export interface FileSpec {
     name: string;
     url: string;
@@ -49,12 +56,15 @@ export type Widget =
     | { type: 'chart'; spec: ChartSpec }
     | { type: 'table'; spec: TableSpec }
     | { type: 'kpi'; spec: KpiSpec }
-    | { type: 'file'; spec: FileSpec };
+    | { type: 'file'; spec: FileSpec }
+    | { type: 'qr'; spec: QrSpec };
 
 export interface Proposal {
     summary: string;
     preview: Array<{ label: string; value: string }>;
     warning?: string;
+    /** Moves real money: confirm with PIN / Face ID (or a second explicit confirmation) before approving. */
+    strongAuth?: boolean;
 }
 
 export type AgentEvent =

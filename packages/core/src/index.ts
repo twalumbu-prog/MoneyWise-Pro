@@ -254,7 +254,7 @@ export type { UserRole } from './reference/roles';
 
 export { agentClient } from './agent/client';
 export type {
-    ChartSpec, TableSpec, KpiSpec, FileSpec, Widget, Proposal,
+    ChartSpec, TableSpec, KpiSpec, FileSpec, QrSpec, Widget, Proposal,
     AgentEvent, AssistantModel, StoredMessage, ThreadSummary,
 } from './agent/client';
 
