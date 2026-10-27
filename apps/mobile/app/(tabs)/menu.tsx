@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import {
     ShieldCheck, ShoppingBag, LayoutGrid, TrendingUp, Landmark, Store,
     User, Settings as SettingsIcon, Users, LogOut, Plug, FolderTree, FileText, Lock, UserX, SlidersHorizontal,
+    MessageSquareText,
 } from 'lucide-react-native';
 import { userService, investmentService } from 'core';
 import { useQuery } from '@tanstack/react-query';
@@ -153,6 +154,18 @@ export default function MenuScreen() {
                         <View style={styles.rowMain}>
                             <Text style={styles.rowLabel}>Preferences</Text>
                             <Text style={styles.rowSub}>Notifications, AI models & salary</Text>
+                        </View>
+                    </Pressable>
+                )}
+                {!isPersonal && (
+                    <Pressable
+                        onPress={() => router.push('/settings/momo-capture')}
+                        style={({ pressed }) => [styles.row, styles.rowBorder, pressed && { opacity: 0.6 }]}
+                    >
+                        <MessageSquareText size={18} color={colors.blue} />
+                        <View style={styles.rowMain}>
+                            <Text style={styles.rowLabel}>Mobile money capture</Text>
+                            <Text style={styles.rowSub}>Book MoMo & Airtel SMS automatically</Text>
                         </View>
                     </Pressable>
                 )}

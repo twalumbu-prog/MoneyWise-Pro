@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { clearCaptureDevice } from '../lib/momoCapture';
 import { AppState } from 'react-native';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
@@ -423,6 +424,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const signOut = async () => {
+        clearCaptureDevice();
         Promise.race([
             (async () => {
                 const result = await registerForPushNotificationsAsync();

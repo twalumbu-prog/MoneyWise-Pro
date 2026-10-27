@@ -4,6 +4,9 @@ node_modules/
 dist/
 ios/
 android/
+# Local Expo modules keep their native source in modules/<name>/android — only the generated app project is ignored.
+!/modules/*/android/
+/modules/*/android/build/
 *.log
 
 # Local env (contains project keys)

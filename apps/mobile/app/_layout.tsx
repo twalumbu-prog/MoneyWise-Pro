@@ -21,6 +21,7 @@ import { AuthProvider, useAuth } from '../src/context/AuthContext';
 import { queryClient, persister, MAX_CACHE_AGE_MS } from '../src/lib/queryClient';
 import { useNotificationNavigation } from '../src/hooks/useNotificationNavigation';
 import { useBadgeSync } from '../src/hooks/useBadgeSync';
+import { useMomoCaptureFlush } from '../src/hooks/useMomoCaptureFlush';
 import { AppLockProvider } from '../src/context/AppLockContext';
 import { colors } from '../src/theme/tokens';
 
@@ -81,6 +82,12 @@ const PushNotificationTapHandler: React.FC = () => {
 /** Keeps the iOS app-icon badge in step with what needs the person's attention. No UI of its own. */
 const BadgeSync: React.FC = () => {
     useBadgeSync();
+    return null;
+};
+
+/** Sends any mobile money messages the Android listeners queued while offline. No UI of its own. */
+const MomoCaptureFlush: React.FC = () => {
+    useMomoCaptureFlush();
     return null;
 };
 
@@ -166,6 +173,7 @@ export default function RootLayout() {
                     <SessionGate />
                     <PushNotificationTapHandler />
                     <BadgeSync />
+                    <MomoCaptureFlush />
                     </AppLockProvider>
                 </AuthProvider>
             </PersistQueryClientProvider>

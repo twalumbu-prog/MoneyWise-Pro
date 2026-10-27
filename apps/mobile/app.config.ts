@@ -31,6 +31,13 @@ const PERSONAL_TEAM_BUILD = process.env.MONEYWISE_PERSONAL_TEAM_BUILD === '1';
 /** Team ID for Stephen Kapambwe's personal Apple ID — local dev builds only. */
 const PERSONAL_TEAM_ID = 'K87UMM96D7';
 
+/**
+ * Mobile money capture reads incoming MoMo/Airtel/Zamtel SMS (modules/momo-capture). RECEIVE_SMS/READ_SMS are
+ * restricted on Google Play until the SMS permissions declaration is approved, so a Play build can set
+ * MOMO_SMS_CAPTURE=0 to ship without them; the notification-access route keeps working either way.
+ */
+const MOMO_SMS_CAPTURE = process.env.MOMO_SMS_CAPTURE !== '0';
+
 const PLUGINS: ExpoConfig['plugins'] = [
     'expo-router',
     'expo-secure-store',
@@ -102,7 +109,8 @@ const config: ExpoConfig = {
     name: 'MoneyWise Pro',
     slug: 'moneywise-pro',
     // 0.2.0: adds a native module (expo-local-authentication). runtimeVersion follows this, so OTA updates for 0.1.x binaries stop here.
-    version: '0.2.0',
+    // 0.3.0: adds the local momo-capture native module (SMS receiver + notification listener).
+    version: '0.3.0',
     orientation: 'portrait',
     scheme: 'moneywise',
     userInterfaceStyle: 'light',
@@ -148,6 +156,7 @@ const config: ExpoConfig = {
         // used as the foreground layer as-is rather than a transparent cutout
         // over adaptiveIcon's backgroundColor.
         adaptiveIcon: { foregroundImage: './assets/icon.png', backgroundColor: '#EEF5FF' },
+        ...(MOMO_SMS_CAPTURE ? { permissions: ['android.permission.RECEIVE_SMS', 'android.permission.READ_SMS'] } : {}),
         intentFilters: [
             {
                 action: 'VIEW',
@@ -179,6 +188,8 @@ const config: ExpoConfig = {
         supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? '',
         supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '',
         webOrigin: WEB_ORIGIN,
+        // iCloud link to the "MoneyWise MoMo Capture" shortcut (see docs/momo-capture.md). Empty until it's published.
+        momoShortcutUrl: process.env.EXPO_PUBLIC_MOMO_SHORTCUT_URL ?? '',
         eas: { projectId: 'd844c494-6997-4b34-aad1-194ddb3e6362' },
     },
 };

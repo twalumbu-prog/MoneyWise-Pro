@@ -47,6 +47,7 @@ import savingsRoutes from './routes/savings.routes';
 import developerRoutes from './routes/developer.routes';
 import publicApiRoutes from './routes/publicApi.routes';
 import oauthRoutes from './routes/oauth.routes';
+import momoCaptureRoutes from './routes/momoCapture.routes';
 import { broadcastAfterWrite } from './lib/realtimeBroadcast';
 
 dotenv.config();
@@ -560,6 +561,7 @@ app.use('/savings', savingsRoutes);
 app.use('/developer', developerRoutes);
 app.use('/v1', publicApiRoutes);
 app.use('/oauth', oauthRoutes);
+app.use('/momo-capture', momoCaptureRoutes);
 // NOTE: /developer and /v1 (API-key feature) are unhooked until developer.routes.ts,
 // publicApi.routes.ts and the api_keys migration are committed — index.ts imported files
 // that only existed locally, which broke every API deploy from 125c6dd on.

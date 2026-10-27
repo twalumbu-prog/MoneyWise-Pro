@@ -1,7 +1,7 @@
 import { View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator, Alert } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, Smartphone, Mail, Wallet, Check } from 'lucide-react-native';
+import { Bell, Smartphone, Mail, Wallet, Check, MessageSquareText, ChevronRight } from 'lucide-react-native';
 import { userService } from 'core';
 import type { NotifyChannel, SalaryDestination, PreferencesResponse } from 'core';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
@@ -80,6 +80,18 @@ export default function PreferencesScreen() {
                         ))}
                     </View>
                     <Text style={styles.hint}>Applies to updates about your personal account — payments in, money sent and requests.</Text>
+
+                    <Text style={[styles.sectionLabel, { marginTop: 24 }]}>MOBILE MONEY CAPTURE</Text>
+                    <View style={styles.card}>
+                        <Pressable onPress={() => router.push('/settings/momo-capture')} style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]}>
+                            <MessageSquareText size={18} color={colors.blue} />
+                            <View style={styles.rowMain}>
+                                <Text style={styles.rowLabel}>Capture MoMo & Airtel messages</Text>
+                                <Text style={styles.rowSub}>Book mobile money transactions from the SMS on this phone</Text>
+                            </View>
+                            <ChevronRight size={18} color={colors.textFaint} />
+                        </Pressable>
+                    </View>
 
                     <Text style={[styles.sectionLabel, { marginTop: 24 }]}>AI MODELS</Text>
                     <View style={[styles.card, { padding: 16 }]}>
