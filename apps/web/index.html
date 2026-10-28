@@ -20,6 +20,21 @@
     }
   </style>
   <script src="https://pay.lenco.co/js/v1/inline.js"></script>
+  <script>
+    // On a pay page, let Safari offer "OPEN" in the MoneyWise app (or "VIEW" in the App Store when it isn't installed). The page's
+    // own address is handed to the app, marked as coming from Safari so the app can send the person back here afterwards.
+    (function () {
+      try {
+        if (!/^\/(pl|pay)\//.test(location.pathname)) return;
+        var u = new URL(location.href);
+        u.searchParams.set('src', 'safari');
+        var m = document.createElement('meta');
+        m.name = 'apple-itunes-app';
+        m.content = 'app-id=6818773296, app-argument=' + u.toString();
+        document.head.appendChild(m);
+      } catch (e) { /* the banner is only a convenience */ }
+    })();
+  </script>
 </head>
 
 <body>

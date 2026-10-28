@@ -3,7 +3,10 @@
     "details": [
       {
         "appIDs": ["9VM62949TC.cloud.blueopus.moneywise"],
-        "components": [{ "/": "/*" }]
+        "components": [
+          { "/": "/paid", "exclude": true, "comment": "The return page after paying from the app opens in Safari, not back in the app" },
+          { "/": "/*" }
+        ]
       }
     ]
   }

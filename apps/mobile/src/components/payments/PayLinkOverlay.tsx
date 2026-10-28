@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Linking } from 'react-native';
 import { View, Text, TextInput, Pressable, StyleSheet, Animated, Easing, ActivityIndicator, Image, KeyboardAvoidingView, Platform, Keyboard, BackHandler } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -13,6 +14,7 @@ import { setPendingPayLink } from '../../lib/pendingPayLink';
 import { showSendResult } from '../../lib/sendResult';
 import { hapticSuccess, hapticError } from '../../lib/haptics';
 import { cameFromAnotherApp } from '../../lib/appOrigin';
+import { WEB_ORIGIN } from '../../platform';
 import { SlideToPay } from './SlideToPay';
 import { SuccessMark } from './SuccessMark';
 import { colors, fonts, radius } from '../../theme/tokens';
@@ -22,7 +24,7 @@ import { colors, fonts, radius } from '../../theme/tokens';
  * /pay/<username>). It shows who is being paid and how much, then "Slide to pay"; letting go of the slider asks for the app PIN or
  * Face ID / fingerprint (the same check as signing in), and only then is the money sent from the person's wallet.
  */
-export const PayLinkOverlay: React.FC<{ token?: string; username?: string }> = ({ token, username }) => {
+export const PayLinkOverlay: React.FC<{ token?: string; username?: string; fromSafari?: boolean }> = ({ token, username, fromSafari }) => {
     const insets = useSafeAreaInsets();
     const goBack = useGoBack();
     const qc = useQueryClient();
@@ -50,12 +52,24 @@ export const PayLinkOverlay: React.FC<{ token?: string; username?: string }> = (
         ]).start();
     }, [fade, rise]);
 
+    // Opened from the website's own pay page (its "OPEN" banner)? iPhone can't put this sheet over Safari, so when it closes the person
+    // is sent back to Safari: to the page they were on, or to a "payment sent" page after paying. `x-safari-https` makes sure it opens
+    // in Safari; a plain https link to our own domain would just open this app again.
+    const paidSummary = useRef<{ to: string; amount: number } | null>(null);
+    const backToSafari = () => {
+        const host = WEB_ORIGIN.replace(/^https?:\/\//, '').replace(/\/$/, '');
+        const path = paidSummary.current
+            ? `/paid?to=${encodeURIComponent(paidSummary.current.to)}&amount=${paidSummary.current.amount}`
+            : token ? `/pl/${encodeURIComponent(token)}` : `/pay/${encodeURIComponent(username ?? '')}`;
+        Linking.openURL(`x-safari-https://${host}${path}`).catch(() => Linking.openURL(`${WEB_ORIGIN.replace(/\/$/, '')}${path}`).catch(() => {}));
+    };
+
     const close = () => {
         Keyboard.dismiss();
         Animated.parallel([
             Animated.timing(fade, { toValue: 0, duration: 160, useNativeDriver: true }),
             Animated.timing(rise, { toValue: 0, duration: 200, useNativeDriver: true }),
-        ]).start(() => { if (Platform.OS === 'android' && openedFromOutside) BackHandler.exitApp(); else goBack(); });
+        ]).start(() => { if (Platform.OS === 'android' && openedFromOutside) BackHandler.exitApp(); else { if (Platform.OS === 'ios' && fromSafari) backToSafari(); goBack(); } });
     };
 
     const { data: target, isLoading, error: loadError, refetch } = useQuery<PayTarget>({
@@ -86,6 +100,7 @@ export const PayLinkOverlay: React.FC<{ token?: string; username?: string }> = (
             qc.invalidateQueries({ queryKey: ['cashbook-entries'] });
             if (r.status === 'paid') {
                 hapticSuccess();
+                paidSummary.current = { to: target.recipient.name, amount: r.total };
                 // A personal account gets the "money sent" popup (account it was filed under, budget left) on the screen it returns to.
                 if (isPersonal) { showSendResult({ requisitionId: r.requisitionId, amount: r.total, recipient: r.recipient }); close(); return; }
                 setPhase('paid');
@@ -143,7 +158,7 @@ export const PayLinkOverlay: React.FC<{ token?: string; username?: string }> = (
                             <SuccessMark draw={draw} size={72} />
                             <Text style={styles.stateTitle}>Paid</Text>
                             <Text style={styles.stateBody}>{formatKwacha(total)} sent to {target.recipient.name}.</Text>
-                            <Pressable onPress={close} style={styles.primary}><Text style={styles.primaryText}>Done</Text></Pressable>
+                            <Pressable onPress={close} style={styles.primary}><Text style={styles.primaryText}>{Platform.OS === 'ios' && fromSafari ? 'Back to Safari' : 'Done'}</Text></Pressable>
                         </View>
                     ) : phase === 'processing' ? (
                         <View style={styles.centre}>

@@ -21,6 +21,7 @@ const PrivacyPolicy = React.lazy(() => import('./pages/PrivacyPolicy').then(m =>
 const DeleteAccount = React.lazy(() => import('./pages/DeleteAccount').then(m => ({ default: m.DeleteAccount })));
 const Support = React.lazy(() => import('./pages/Support').then(m => ({ default: m.Support })));
 const TermsOfService = React.lazy(() => import('./pages/TermsOfService').then(m => ({ default: m.TermsOfService })));
+const PaidReturn = React.lazy(() => import('./pages/PaidReturn').then(m => ({ default: m.PaidReturn })));
 const Disconnect = React.lazy(() => import('./pages/Disconnect').then(m => ({ default: m.Disconnect })));
 const Join = React.lazy(() => import('./pages/Join').then(m => ({ default: m.Join })));
 const ResetPassword = React.lazy(() => import('./pages/ResetPassword').then(m => ({ default: m.ResetPassword })));
@@ -207,6 +208,7 @@ function App() {
                         <Route path="/support" element={<Support />} />
                         <Route path="/terms" element={<TermsOfService />} />
                         <Route path="/disconnect" element={<Disconnect />} />
+                        <Route path="/paid" element={<PaidReturn />} />
                         <Route path="/pay/:wallet_id" element={<PayEntry />} />
                         {/* Friendly store link: /<business-username>/store → that org's Main wallet catalogue */}
                         <Route path="/:username/store" element={<PublicStore />} />
