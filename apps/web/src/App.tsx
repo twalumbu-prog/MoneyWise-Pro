@@ -44,6 +44,7 @@ import { OAuthAuthorize, OAUTH_RETURN_KEY } from './pages/OAuthAuthorize';
 import { Loader2 } from 'lucide-react';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { RealtimeCacheSync } from './components/RealtimeCacheSync';
+import { ReferralClaimer } from './components/ReferralClaimer';
 import { UpdatePrompt } from './components/UpdatePrompt';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -191,6 +192,7 @@ function App() {
         <AuthProvider>
             {/* Live cross-device cache invalidation (no-op while signed out) */}
             <RealtimeCacheSync />
+            <ReferralClaimer />
             <Router>
                 <AchievementsProvider>
                     <SpeedInsightsRouteTracker />

@@ -16,6 +16,7 @@ import { LencoService } from './lenco.service';
 import { ensureValidLencoAccountId } from './lencoAccountLink.service';
 import { cashbookService } from './cashbook.service';
 import { employerLoanLedger } from './employerLoanLedger.service';
+import { rewardsService } from './rewards.service';
 
 const LENCO_ACCOUNT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UUID_RE = LENCO_ACCOUNT_ID;
@@ -195,6 +196,12 @@ export const moneyWisePayService = {
             await supabase.from('cashbook_entries').update({ external_reference: senderTag })
                 .eq('organization_id', opts.tag.orgId).eq('requisition_id', opts.tag.requisitionId)
                 .eq('entry_type', 'DISBURSEMENT').is('external_reference', null);
+        }
+
+        // A personal account paying a business earns that business's reward points. Never blocks or fails the payment.
+        if (opts.tag && !opts.loan) {
+            rewardsService.awardMoneyWisePay({ requisitionId: opts.tag.requisitionId, recipientOrgId: memo.recipientOrgId, amount: Number(memo.amount), ref })
+                .catch((e) => console.error('[Rewards] MoneyWise Pay award failed:', e.message));
         }
 
         console.log(`[MoneyWise Pay] K${memo.amount} credited to ${memo.recipientOrgId} after Lenco confirmed ${ref}.`);

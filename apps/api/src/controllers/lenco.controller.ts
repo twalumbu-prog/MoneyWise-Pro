@@ -1,3 +1,4 @@
+import { normalizeZambiaPhone } from '../utils/zambiaPhone';
 import { matchesRecordedInternalTransfer } from '../services/internalTransferMatch.service';
 import { isPlatformSweepDebit } from '../services/ledgerGuardian/core';
 import { recordSyncFailure, claimDebitBooking, releaseDebitClaim, runGuardianCycle, guardianMode, runOrgGuardian } from '../services/ledgerGuardian/guardian.service';
@@ -1617,7 +1618,7 @@ export const getQuickLinkPurposes = async (req: Request, res: Response) => {
  */
 export const initiateQuickLinkIntent = async (req: Request, res: Response) => {
     try {
-        const { reference, amount, walletId, purpose, isCustomPurpose } = req.body;
+        const { reference, amount, walletId, purpose, isCustomPurpose, payerPhone, referralCode } = req.body;
         if (!reference || !amount || !walletId || !purpose) {
             return res.status(400).json({ error: 'reference, amount, walletId, and purpose are required' });
         }
@@ -1655,13 +1656,25 @@ export const initiateQuickLinkIntent = async (req: Request, res: Response) => {
             throw entryError;
         }
 
-        const { error: trackingError } = await supabase.from('quick_link_payments').insert({
+        const trackingRow = {
             reference,
             organization_id: wallet.organization_id,
             wallet_id: walletId,
             purpose_label: purpose,
             is_custom: !!isCustomPurpose
+        };
+        // Who paid and which friend's invite brought them (Rewards). Kept optional: if those columns aren't there yet,
+        // the purpose-tracking row is still written exactly as before.
+        const payer = normalizeZambiaPhone(typeof payerPhone === 'string' ? payerPhone : '');
+        const refCode = typeof referralCode === 'string' ? referralCode.trim().toUpperCase().slice(0, 12) : '';
+        let { error: trackingError } = await supabase.from('quick_link_payments').insert({
+            ...trackingRow,
+            ...(/^0\d{9}$/.test(payer) ? { payer_phone: payer } : {}),
+            ...(refCode ? { referral_code: refCode } : {}),
         });
+        if (trackingError && (payer || refCode)) {
+            ({ error: trackingError } = await supabase.from('quick_link_payments').insert(trackingRow));
+        }
         if (trackingError) {
             // Non-fatal — the payment intent itself is already logged; worst case
             // is this one transaction doesn't get learned/auto-classified.

@@ -1,17 +1,20 @@
 import { View, Text, ScrollView, Pressable, StyleSheet, Alert, Linking, Image } from 'react-native';
 import { TourTarget } from '../../src/components/walkthrough/TourTarget';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
     ShieldCheck, ShoppingBag, LayoutGrid, TrendingUp, Landmark, Store,
     User, Settings as SettingsIcon, Users, LogOut, Plug, FolderTree, FileText, Lock, UserX, SlidersHorizontal,
-    MessageSquareText,
+    MessageSquareText, Trophy,
 } from 'lucide-react-native';
-import { userService, investmentService } from 'core';
+import { userService, investmentService, rewardsService } from 'core';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../src/context/AuthContext';
 import { usePersonalAccount } from '../../src/hooks/usePersonalAccount';
 import { OtherServiceIcon } from '../../src/components/icons/OtherServiceIcon';
+import { SegmentedToggle } from '../../src/components/rewards/RewardsUI';
+import { RewardsTab, REWARDS_OVERVIEW_KEY } from '../../src/components/rewards/RewardsTab';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
 /**
@@ -25,6 +28,11 @@ export default function MenuScreen() {
     const { user, userRole, userName, organizationName, signOut } = useAuth();
 
     const { isPersonal, logoUrl } = usePersonalAccount();
+
+    // General (settings, as always) or Rewards. The blue dot says a reward is ready to redeem.
+    const [tab, setTab] = useState<'general' | 'rewards'>('general');
+    const { data: rewards } = useQuery({ queryKey: REWARDS_OVERVIEW_KEY, queryFn: () => rewardsService.overview(), staleTime: 60_000, retry: false });
+    const rewardReady = !!rewards?.businesses.some((b) => b.rewardReady && b.redeemable);
 
     // Only an admin of an investment company has investor deposits to forward.
     const { data: payoutSettings } = useQuery({
@@ -113,6 +121,12 @@ export default function MenuScreen() {
                 </View>
             </View>
 
+            <SegmentedToggle
+                value={tab} onChange={setTab}
+                options={[{ value: 'general', label: 'General', icon: SettingsIcon }, { value: 'rewards', label: 'Rewards', icon: Trophy, dot: rewardReady }]}
+            />
+
+            {tab === 'rewards' ? <RewardsTab /> : (<>
             <View style={styles.card}>
                 <Text style={styles.cardTitle}>Other Services</Text>
                 <View style={styles.grid}>
@@ -301,6 +315,7 @@ export default function MenuScreen() {
                 <LogOut size={17} color={colors.danger} />
                 <Text style={styles.signOutText}>Sign Out</Text>
             </Pressable>
+            </>)}
         </ScrollView>
     );
 }

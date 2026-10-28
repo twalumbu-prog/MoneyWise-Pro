@@ -460,6 +460,9 @@ export const QuickPay: React.FC = () => {
                 walletId: wallet.id,
                 purpose: purposeLabel,
                 isCustomPurpose: !!customPurpose.trim(),
+                // Rewards: who is paying, and the friend whose invite link brought them here (/pay/<business>?ref=CODE).
+                payerPhone: checkoutPhone,
+                referralCode: new URLSearchParams(window.location.search).get('ref') || undefined,
             });
 
             const initRes = await axios.post(`${API_URL}/lenco/public-collection/mobile-money`, {

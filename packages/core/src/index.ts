@@ -125,6 +125,8 @@ export type {
 export { lencoService } from './services/lenco.service';
 export { investmentService } from './services/investment.service';
 export { savingsService } from './services/savings.service';
+export { rewardsService } from './services/rewards.service';
+export type { RewardCard, RewardsOverview, RewardDetail, RewardPointEntry, RewardAchievement, RewardInvite, RewardVoucher, RewardProgramSettings } from './services/rewards.service';
 export { momoCaptureService } from './services/momoCapture.service';
 export type { MomoCapture, MomoCaptureSettings, MomoCaptureSource, MomoCaptureStatus } from './services/momoCapture.service';
 export type {
