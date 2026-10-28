@@ -63,7 +63,7 @@ import pool from './db';
 // each cold Vercel instance otherwise opened a fresh direct connection and reran
 // ~15 sequential DDL statements just to find out they were all no-ops, which is
 // what was exhausting Postgres's connection limit under concurrent traffic.
-const MIGRATION_VERSION = 4;
+const MIGRATION_VERSION = 5;
 
 const runMigration = async () => {
     const directUrl = process.env.DIRECT_DATABASE_URL;
@@ -510,6 +510,20 @@ const runMigration = async () => {
             ALTER TABLE public.reward_redemptions ENABLE ROW LEVEL SECURITY;
             ALTER TABLE public.reward_codes ENABLE ROW LEVEL SECURITY;
             ALTER TABLE public.reward_referrals ENABLE ROW LEVEL SECURITY;
+        `);
+
+        // What an investment is worth now (Home → Investments slide): the latest recorded value per company.
+        await migrationPool.query(`
+            CREATE TABLE IF NOT EXISTS public.investment_valuations (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                investor_organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+                investment_target_id UUID NOT NULL REFERENCES public.investment_targets(id) ON DELETE CASCADE,
+                value NUMERIC(16,2) NOT NULL CHECK (value >= 0),
+                recorded_by UUID,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            );
+            CREATE INDEX IF NOT EXISTS idx_investment_valuations_lookup ON public.investment_valuations(investor_organization_id, investment_target_id, created_at DESC);
+            ALTER TABLE public.investment_valuations ENABLE ROW LEVEL SECURITY;
         `);
 
         // Per-person preferences (Settings → Preferences, personal app).

@@ -124,6 +124,7 @@ export type {
 
 export { lencoService } from './services/lenco.service';
 export { investmentService } from './services/investment.service';
+export type { Portfolio, PortfolioHolding } from './services/investment.service';
 export { savingsService } from './services/savings.service';
 export { rewardsService } from './services/rewards.service';
 export type { RewardCard, RewardsOverview, RewardDetail, RewardPointEntry, RewardAchievement, RewardInvite, RewardVoucher, RewardProgramSettings } from './services/rewards.service';

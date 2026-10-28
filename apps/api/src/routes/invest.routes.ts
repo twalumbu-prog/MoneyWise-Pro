@@ -5,6 +5,7 @@ import {
     listMyInvestorAccounts, connectInvestorAccount, applyForInvestorAccount, extractInvestorId,
     listInvestorApplications, getInvestorApplication, reviewInvestorApplication,
     getPayoutSettings, savePayoutSettings, applyWithKycProfile, getMyKycProfile, saveMyKycProfile,
+    getMyPortfolio, setHoldingValue,
 } from '../controllers/invest.controller';
 
 const router = Router();
@@ -18,6 +19,8 @@ router.post('/confirm/:reference', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN'
 
 // Investor side: connect / register an account with a company.
 router.get('/my-accounts', listMyInvestorAccounts);
+router.get('/portfolio', getMyPortfolio);
+router.put('/portfolio/:targetId/value', requireRole(['ADMIN', 'ACCOUNTANT']), setHoldingValue);
 router.post('/accounts/connect', connectInvestorAccount);
 router.post('/accounts/apply', applyForInvestorAccount);
 router.post('/accounts/extract-id', extractInvestorId);

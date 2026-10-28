@@ -10,7 +10,7 @@ import { useDictation } from '../hooks/useDictation';
 import { VoiceWave } from '../components/assistant/VoiceWave';
 import { TourTarget } from '../components/walkthrough/TourTarget';
 import { AccountsCard } from '../components/home/AccountsCard';
-import { FinancialOverviewCard } from '../components/home/FinancialOverviewCard';
+import { HomeInsightsCard } from '../components/home/HomeInsightsCard';
 import { OtherServicesCard } from '../components/home/OtherServicesCard';
 import { ReceiveMoneySheet } from '../components/home/ReceiveMoneySheet';
 import { cardShadow } from '../components/home/HomeCard';
@@ -47,7 +47,9 @@ export function HomeScreen() {
         setRefreshing(true);
         await Promise.all([
             qc.invalidateQueries({ queryKey: ['cashbook-entries', 'overview'] }),
-            qc.invalidateQueries({ queryKey: ['home-overview'] }),
+            qc.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).startsWith('home-') }),
+            qc.invalidateQueries({ queryKey: ['requisitions'] }),
+            qc.invalidateQueries({ queryKey: ['savings'] }),
             qc.invalidateQueries({ queryKey: ['badge-total'] }),
         ]);
         setRefreshing(false);
@@ -97,7 +99,7 @@ export function HomeScreen() {
                     </TourTarget>
                 </View>
 
-                <FinancialOverviewCard />
+                <HomeInsightsCard />
                 <OtherServicesCard />
             </ScrollView>
 

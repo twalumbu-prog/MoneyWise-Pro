@@ -17,6 +17,26 @@ export interface InvestmentTarget {
     factSheetUrl: string | null;
 }
 
+/** One company the person has invested with: what went in, what it is worth now, and the gain or loss. */
+export interface PortfolioHolding {
+    targetId: string;
+    name: string;
+    logoUrl: string | null;
+    invested: number;
+    currentValue: number;
+    gain: number;
+    /** Percent, negative for a loss. */
+    gainPct: number;
+    /** False until a current value has been recorded (the holding then shows as unchanged). */
+    valued: boolean;
+    valuedAt: string | null;
+}
+
+export interface Portfolio {
+    holdings: PortfolioHolding[];
+    totals: { invested: number; currentValue: number; gain: number; gainPct: number };
+}
+
 export type InvestorAccountStatus = 'PENDING_REVIEW' | 'INFO_REQUESTED' | 'ACTIVE' | 'REJECTED' | 'SUSPENDED';
 
 /** The caller's account / application with one company. */
@@ -119,6 +139,13 @@ export const investmentService = {
     // ── Investor accounts ────────────────────────────────────────────────────
 
     /** The caller's account or application with each company they have approached. */
+    getPortfolio(): Promise<Portfolio> {
+        return apiJson<Portfolio>('/investments/portfolio');
+    },
+    /** Records what one holding is worth today (there is no live price feed from the companies). */
+    setHoldingValue(targetId: string, value: number): Promise<PortfolioHolding> {
+        return apiJson<PortfolioHolding>(`/investments/portfolio/${encodeURIComponent(targetId)}/value`, { method: 'PUT', body: JSON.stringify({ value }) });
+    },
     getMyAccounts(): Promise<MyInvestorAccount[]> {
         return apiJson<MyInvestorAccount[]>('/investments/my-accounts');
     },

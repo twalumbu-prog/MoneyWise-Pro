@@ -1,13 +1,12 @@
 import { useMemo } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
 import { reportService, formatKwacha } from 'core';
-import { useAuth } from '../../context/AuthContext';
-import { extractEmojiAndName } from '../../utils/emoji';
-import { AccountGlyph } from '../AccountGlyph';
-import { HomeCard } from './HomeCard';
-import { colors, fonts } from '../../theme/tokens';
+import { useAuth } from '../../../context/AuthContext';
+import { extractEmojiAndName } from '../../../utils/emoji';
+import { AccountGlyph } from '../../AccountGlyph';
+import { colors, fonts } from '../../../theme/tokens';
+import { slideStyles } from './shared';
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
@@ -21,9 +20,8 @@ function thisMonth() {
     };
 }
 
-/** Financial Overview: the three biggest expense accounts this month, one compact line each; "See more" opens Reporting. */
-export const FinancialOverviewCard: React.FC = () => {
-    const router = useRouter();
+/** Slide 1 — Financial Overview: the three biggest expense accounts this month, one compact line each. */
+export const OverviewSlide: React.FC = () => {
     const { organizationId } = useAuth();
     const period = useMemo(thisMonth, []);
 
@@ -39,28 +37,20 @@ export const FinancialOverviewCard: React.FC = () => {
         return { top: expenses.slice(0, 3), total: expenses.reduce((s, r) => s + Number(r.total_amount), 0) };
     }, [data]);
 
+    if (isLoading) return <View style={slideStyles.centre}><ActivityIndicator color={colors.blue} /></View>;
+    if (isError) return <View style={slideStyles.centre}><Text style={slideStyles.empty}>Couldn’t load your spending. Pull to refresh on Reporting.</Text></View>;
+    if (total <= 0) return <View style={slideStyles.centre}><Text style={slideStyles.empty}>No spending recorded in {period.label} yet.</Text></View>;
+
     return (
-        <HomeCard title="Financial Overview" actionLabel="See more" onAction={() => router.navigate('/reporting')}>
-            {isLoading ? (
-                <ActivityIndicator color={colors.blue} style={{ paddingVertical: 12 }} />
-            ) : isError ? (
-                <Text style={styles.empty}>Couldn’t load your spending. Pull to refresh on Reporting.</Text>
-            ) : total <= 0 ? (
-                <Text style={styles.empty}>No spending recorded in {period.label} yet.</Text>
-            ) : (
-                <View>
-                    <View style={styles.list}>
-                        {top.map((row) => (
-                            <View key={row.account_id} style={styles.row}>
-                                <View style={styles.glyph}><AccountGlyph name={row.account_name} type="EXPENSE" logoUrl={row.logo_url} size={15} /></View>
-                                <Text style={styles.name} numberOfLines={1}>{extractEmojiAndName(row.account_name).cleanName}</Text>
-                                <Text style={styles.amount} numberOfLines={1}>{formatKwacha(Number(row.total_amount))}</Text>
-                            </View>
-                        ))}
-                    </View>
+        <View style={styles.list}>
+            {top.map((row) => (
+                <View key={row.account_id} style={styles.row}>
+                    <View style={styles.glyph}><AccountGlyph name={row.account_name} type="EXPENSE" logoUrl={row.logo_url} size={15} /></View>
+                    <Text style={styles.name} numberOfLines={1}>{extractEmojiAndName(row.account_name).cleanName}</Text>
+                    <Text style={styles.amount} numberOfLines={1}>{formatKwacha(Number(row.total_amount))}</Text>
                 </View>
-            )}
-        </HomeCard>
+            ))}
+        </View>
     );
 };
 
@@ -70,5 +60,4 @@ const styles = StyleSheet.create({
     glyph: { width: 24, alignItems: 'center', justifyContent: 'center' },
     name: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 14, color: '#000000' },
     amount: { fontFamily: fonts.bodyMedium, fontSize: 14, color: '#000000' },
-    empty: { fontFamily: fonts.body, fontSize: 13, color: colors.textFaint },
 });

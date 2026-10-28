@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase';
 import { cashbookService } from '../services/cashbook.service';
 import { investmentService, WalletInvestError } from '../services/investment.service';
 import { investorAccountService, InvestorAccountError } from '../services/investorAccount.service';
+import { investmentPortfolioService, PortfolioError } from '../services/investmentPortfolio.service';
 
 /**
  * Real (non-demo) investment targets shown at the top of the Invest feature.
@@ -345,4 +346,25 @@ export const savePayoutSettings = async (req: any, res: any): Promise<any> => {
             bankName, branch, accountNumber, accountName, forwardDeposits: forwardDeposits === true,
         }));
     } catch (error: any) { sendAccountError(res, error, 'Failed to save payout settings'); }
+};
+
+/** The caller's holdings: invested, current value and gain/loss per company. */
+export const getMyPortfolio = async (req: any, res: any): Promise<any> => {
+    try {
+        res.json(await investmentPortfolioService.getPortfolio(req.user.organization_id));
+    } catch (error: any) {
+        console.error('[Invest] portfolio failed:', error);
+        res.status(500).json({ error: 'Could not load your investments. Please try again.' });
+    }
+};
+
+/** Record what one holding is worth now (there is no live price feed from the companies). */
+export const setHoldingValue = async (req: any, res: any): Promise<any> => {
+    try {
+        res.json(await investmentPortfolioService.setValue(req.user.organization_id, req.user.id, String(req.params.targetId), req.body?.value));
+    } catch (error: any) {
+        if (error instanceof PortfolioError) return res.status(error.httpStatus).json({ error: error.message });
+        console.error('[Invest] set value failed:', error);
+        res.status(500).json({ error: 'Could not save the value. Please try again.' });
+    }
 };
