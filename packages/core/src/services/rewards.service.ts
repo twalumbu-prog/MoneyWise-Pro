@@ -49,8 +49,48 @@ export interface RewardAchievement {
     points?: number;
 }
 
+export type RewardType = 'AMOUNT_OFF' | 'PERCENT_OFF' | 'FREE_ITEM';
+
+/** One reward as a customer sees it: what it gives, what it applies to, and whether their points reach it. */
+export interface RewardOption {
+    id: string;
+    title: string;
+    type: RewardType;
+    value: number;
+    points: number;
+    products: string[];
+    /** "Anything" or the product names. */
+    appliesTo: string;
+    affordable: boolean;
+    pointsToGo: number;
+}
+
+/** A reward a business has defined (business side). */
+export interface RewardItem {
+    id: string;
+    organization_id: string;
+    title: string;
+    reward_type: RewardType;
+    value: number;
+    points_cost: number;
+    product_ids: string[];
+    active: boolean;
+    products: { id: string; name: string }[];
+    summary: string;
+}
+
+export interface RewardItemInput {
+    title?: string;
+    reward_type: RewardType;
+    value?: number;
+    points_cost: number;
+    product_ids?: string[];
+    active?: boolean;
+}
+
 export interface RewardDetail {
     card: RewardCard;
+    rewards: RewardOption[];
     program: { threshold: number; rewardTitle: string; rewardValue: number; pointsPerKwacha: number; referralPoints: number; enabled: boolean } | null;
     points: RewardPointEntry[];
     achievements: RewardAchievement[];
@@ -90,11 +130,11 @@ export const rewardsService = {
     claimReferral(code: string): Promise<{ referrerName: string }> {
         return apiJson('/rewards/referral/claim', { method: 'POST', body: JSON.stringify({ code }) });
     },
-    redeemables(): Promise<{ ready: RewardCard[]; vouchers: RewardVoucher[] }> {
+    redeemables(): Promise<{ programmes: { card: RewardCard; rewards: RewardOption[] }[]; ready: RewardCard[]; vouchers: RewardVoucher[] }> {
         return apiJson('/rewards/redeemables');
     },
-    redeem(scope: string): Promise<{ id: string; code: string; title: string; value: number; business: string; balance: number }> {
-        return apiJson(`/rewards/programs/${encodeURIComponent(scope)}/redeem`, { method: 'POST' });
+    redeem(scope: string, rewardId?: string): Promise<{ id: string; code: string; title: string; value: number; business: string; balance: number; appliesTo: string | null }> {
+        return apiJson(`/rewards/programs/${encodeURIComponent(scope)}/redeem`, { method: 'POST', body: JSON.stringify({ rewardId }) });
     },
     /** The signed-in business's own programme settings. */
     getProgram(): Promise<RewardProgramSettings> {
@@ -102,6 +142,19 @@ export const rewardsService = {
     },
     updateProgram(patch: Partial<Omit<RewardProgramSettings, 'organization_id'>>): Promise<RewardProgramSettings> {
         return apiJson('/rewards/program', { method: 'PUT', body: JSON.stringify(patch) });
+    },
+    /** The signed-in business's rewards (what customers can redeem points for). */
+    listItems(): Promise<RewardItem[]> {
+        return apiJson('/rewards/items');
+    },
+    createItem(input: RewardItemInput): Promise<RewardItem> {
+        return apiJson('/rewards/items', { method: 'POST', body: JSON.stringify(input) });
+    },
+    updateItem(id: string, patch: Partial<RewardItemInput>): Promise<RewardItem> {
+        return apiJson(`/rewards/items/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(patch) });
+    },
+    deleteItem(id: string): Promise<{ ok: true }> {
+        return apiJson(`/rewards/items/${encodeURIComponent(id)}`, { method: 'DELETE' });
     },
     /** A business marks a customer's voucher code as used. */
     useVoucher(code: string): Promise<{ title: string; value: number; customer: string }> {

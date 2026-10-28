@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requireAuth, requireRole } from '../middleware/auth';
 import {
-    getOverview, getDetail, getInvite, claimReferral, getRedeemables, redeem, getProgram, updateProgram, useVoucher,
+    getOverview, getDetail, getInvite, claimReferral, getRedeemables, redeem, getProgram, updateProgram, useVoucher, listRewardItems, createRewardItem, updateRewardItem, deleteRewardItem,
 } from '../controllers/rewards.controller';
 
 const router = Router();
@@ -18,6 +18,10 @@ router.post('/programs/:scope/redeem', redeem);
 // The business's side
 router.get('/program', getProgram);
 router.put('/program', requireRole(['ADMIN']), updateProgram);
+router.get('/items', listRewardItems);
+router.post('/items', requireRole(['ADMIN']), createRewardItem);
+router.put('/items/:id', requireRole(['ADMIN']), updateRewardItem);
+router.delete('/items/:id', requireRole(['ADMIN']), deleteRewardItem);
 router.post('/vouchers/use', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER']), useVoucher);
 
 export default router;

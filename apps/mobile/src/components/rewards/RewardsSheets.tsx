@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import { X, Copy, Check, Share2, Gift } from 'lucide-react-native';
-import { rewardsService, type RewardCard } from 'core';
+import { rewardsService, type RewardCard, type RewardOption } from 'core';
 import { ProgrammeLogo, ProgressBar, fmtPoints } from './RewardsUI';
 import { colors, fonts, radius } from '../../theme/tokens';
 
@@ -90,21 +90,22 @@ export const RedeemSheet: React.FC<{ visible: boolean; scope?: string; onClose: 
     const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['rewards', 'redeemables'], queryFn: () => rewardsService.redeemables(), enabled: visible });
     const { data: overview } = useQuery({ queryKey: ['rewards', 'overview'], queryFn: () => rewardsService.overview(), enabled: visible });
 
-    const ready = (data?.ready ?? []).filter((c) => !scope || c.id === scope);
+    const programmes = (data?.programmes ?? []).filter((p) => !scope || p.card.id === scope);
+    const anyReady = programmes.some((p) => p.rewards.some((r) => r.affordable));
     const vouchers = (data?.vouchers ?? []).filter((v) => !scope || v.organizationId === scope);
-    const closest: RewardCard[] = (overview?.businesses ?? []).filter((b) => b.threshold && !b.rewardReady && (!scope || b.id === scope)).sort((a, b) => b.progress - a.progress).slice(0, 3);
+    const closest: RewardCard[] = (overview?.businesses ?? []).filter((b) => b.threshold && !b.rewardReady && !programmes.some((p) => p.card.id === b.id) && (!scope || b.id === scope)).sort((a, b) => b.progress - a.progress).slice(0, 3);
 
-    const redeem = (card: RewardCard) => {
-        Alert.alert(`Redeem ${card.rewardTitle ?? 'reward'}?`, `This uses ${fmtPoints(card.threshold ?? 0)} of your ${card.name} points. You'll get a code to show ${card.name}.`, [
+    const redeem = (card: RewardCard, reward: RewardOption) => {
+        Alert.alert(`Redeem ${reward.title}?`, `This uses ${fmtPoints(reward.points)} of your ${card.name} points${reward.products.length ? ` and applies to ${reward.appliesTo}` : ''}. You'll get a code to show ${card.name}.`, [
             { text: 'Cancel', style: 'cancel' },
             {
                 text: 'Redeem',
                 onPress: async () => {
-                    setBusy(card.id);
+                    setBusy(reward.id);
                     try {
-                        const r = await rewardsService.redeem(card.id);
+                        const r = await rewardsService.redeem(card.id, reward.id);
                         await Promise.all([qc.invalidateQueries({ queryKey: ['rewards'] }), refetch()]);
-                        Alert.alert('Reward ready', `Show this code to ${r.business}:\n\n${r.code}\n\n${r.title}`);
+                        Alert.alert('Reward ready', `Show this code to ${r.business}:\n\n${r.code}\n\n${r.title}${r.appliesTo ? `\nApplies to ${r.appliesTo}` : ''}`);
                     } catch (e: any) {
                         Alert.alert('Couldn’t redeem', e?.message ?? 'Please try again.');
                     } finally { setBusy(null); }
@@ -125,28 +126,39 @@ export const RedeemSheet: React.FC<{ visible: boolean; scope?: string; onClose: 
                     </View>
                 ) : (
                     <>
-                        {ready.length > 0 && <Text style={styles.section}>Ready to redeem</Text>}
-                        {ready.map((c) => (
-                            <View key={c.id} style={styles.redeemRow}>
-                                <ProgrammeLogo card={c} size={40} />
-                                <View style={{ flex: 1 }}>
-                                    <Text style={styles.rowName} numberOfLines={1}>{c.name}</Text>
-                                    <Text style={styles.rowSub} numberOfLines={2}>{c.rewardTitle} · {fmtPoints(c.threshold ?? 0)} pts</Text>
+                        {programmes.map((p) => (
+                            <View key={p.card.id} style={{ marginBottom: 10 }}>
+                                <View style={styles.rowTop}>
+                                    <ProgrammeLogo card={p.card} size={32} />
+                                    <Text style={[styles.rowName, { flex: 1 }]} numberOfLines={1}>{p.card.name}</Text>
+                                    <Text style={styles.rowSub}>{fmtPoints(p.card.balance)} pts</Text>
                                 </View>
-                                <Pressable disabled={busy !== null} onPress={() => redeem(c)} style={({ pressed }) => [styles.redeemBtn, pressed && { opacity: 0.85 }, busy !== null && { opacity: 0.5 }]}>
-                                    {busy === c.id ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.redeemBtnText}>Redeem</Text>}
-                                </Pressable>
+                                {p.rewards.map((r) => (
+                                    <View key={r.id} style={styles.redeemRow}>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.rowName} numberOfLines={2}>{r.title}</Text>
+                                            <Text style={styles.rowSub} numberOfLines={2}>{fmtPoints(r.points)} pts · {r.appliesTo === 'Anything' ? 'Applies to anything' : r.appliesTo}</Text>
+                                        </View>
+                                        {r.affordable ? (
+                                            <Pressable disabled={busy !== null} onPress={() => redeem(p.card, r)} style={({ pressed }) => [styles.redeemBtn, pressed && { opacity: 0.85 }, busy !== null && { opacity: 0.5 }]}>
+                                                {busy === r.id ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.redeemBtnText}>Redeem</Text>}
+                                            </Pressable>
+                                        ) : (
+                                            <View style={[styles.redeemBtn, { backgroundColor: colors.canvasAlt }]}><Text style={[styles.redeemBtnText, { color: colors.textFaint }]}>{fmtPoints(r.pointsToGo)} to go</Text></View>
+                                        )}
+                                    </View>
+                                ))}
                             </View>
                         ))}
-                        {ready.length === 0 && (
+                        {!anyReady && (
                             <View style={styles.empty}>
                                 <Gift size={28} color={colors.textFaint} />
                                 <Text style={styles.emptyTitle}>No rewards ready yet</Text>
                                 <Text style={styles.muted}>Keep buying from the businesses you love — rewards unlock as your points grow.</Text>
                             </View>
                         )}
-                        {ready.length === 0 && closest.length > 0 && <Text style={styles.section}>Closest to a reward</Text>}
-                        {ready.length === 0 && closest.map((c) => (
+                        {closest.length > 0 && <Text style={styles.section}>Closest to a reward</Text>}
+                        {closest.map((c) => (
                             <View key={c.id} style={{ gap: 6, paddingVertical: 6 }}>
                                 <View style={styles.rowTop}><ProgrammeLogo card={c} size={32} /><Text style={[styles.rowName, { flex: 1 }]} numberOfLines={1}>{c.name}</Text><Text style={styles.rowSub}>{fmtPoints(c.pointsToNext ?? 0)} pts to go</Text></View>
                                 <ProgressBar progress={c.progress} />

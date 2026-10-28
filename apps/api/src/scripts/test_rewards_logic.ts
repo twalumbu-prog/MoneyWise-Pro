@@ -202,6 +202,58 @@ async function main() {
         must(o.businesses.length === 1 && o.businesses[0].id === 'B', JSON.stringify(o.businesses.map((b) => b.id)));
     });
 
+    await step('a personal account is never listed as a business — flagged or recognised by its name', async () => {
+        set('organizations', [...db.organizations, { id: 'P9', name: "Old Style's Personal Account", is_personal: false }, { id: 'P8', name: 'Flagged', is_personal: true }]);
+        db.reward_ledger.push({ id: 'x1', user_id: 'U1', organization_id: 'P9', points: 40, kind: 'PURCHASE', ref: 'T:p9', created_at: new Date().toISOString() }, { id: 'x2', user_id: 'U1', organization_id: 'P8', points: 40, kind: 'PURCHASE', ref: 'T:p8', created_at: new Date().toISOString() });
+        const o = await R.getOverview('U1');
+        must(!o.businesses.some((b) => b.id === 'P9' || b.id === 'P8'), JSON.stringify(o.businesses.map((b) => b.id)));
+        must(o.businesses.some((b) => b.id === 'B'), 'real business still listed');
+    });
+    let freeId = '', pctId = '';
+    await step('a business defines rewards: money off, percent off, free item; validated and limited to its own products', async () => {
+        set('products', [{ id: 'PR1', organization_id: 'B', name: 'Latte' }, { id: 'PR2', organization_id: 'B', name: 'Muffin' }, { id: 'PX', organization_id: 'B2', name: 'Other shop' }]);
+        const money = await R.createRewardItem('B', { reward_type: 'AMOUNT_OFF', value: 10, points_cost: 100, product_ids: ['PR1', 'PR2'] });
+        const pct = await R.createRewardItem('B', { reward_type: 'PERCENT_OFF', value: 20, points_cost: 300, title: '20% off any drink' });
+        const free = await R.createRewardItem('B', { reward_type: 'FREE_ITEM', points_cost: 400, product_ids: ['PR1'] });
+        freeId = free.id; pctId = pct.id;
+        must(money.title === 'K10 off Latte & Muffin' && free.title === 'Free Latte' && pct.title === '20% off any drink', `${money.title} | ${free.title} | ${pct.title}`);
+        must((await refusal(R.createRewardItem('B', { reward_type: 'FREE_ITEM', points_cost: 50 }))).includes('which product'), 'free needs a product');
+        must((await refusal(R.createRewardItem('B', { reward_type: 'PERCENT_OFF', value: 150, points_cost: 50 }))).includes('between 1 and 100'), 'percent range');
+        must((await refusal(R.createRewardItem('B', { reward_type: 'AMOUNT_OFF', value: 5, points_cost: 0 }))).includes('Points needed'), 'cost');
+        must((await refusal(R.createRewardItem('B', { reward_type: 'AMOUNT_OFF', value: 5, points_cost: 50, product_ids: ['PX'] }))).includes('isn’t in your shop'), 'other shop product');
+        const list = await R.listRewardItems('B');
+        must(list.length === 3 && list[0].summary === 'K10 off Latte & Muffin', JSON.stringify(list.map((l) => l.summary)));
+    });
+    await step('the redeem popup lists every reward with what the points balance reaches', async () => {
+        const red = await R.getRedeemables('U1');
+        const prog = red.programmes.find((p) => p.card.id === 'B')!;
+        const bal = prog.card.balance;
+        must(prog.rewards.map((r) => r.affordable).join() === [bal >= 100, bal >= 300, bal >= 400].join(), JSON.stringify(prog.rewards));
+        must(prog.rewards[0].appliesTo === 'Latte, Muffin' && prog.rewards[1].appliesTo === 'Anything' && prog.rewards[2].pointsToGo === Math.max(0, 400 - bal), JSON.stringify(prog.rewards));
+        must(red.ready.some((c) => c.id === 'B') === bal >= 100, 'ready when any reward is reachable');
+    });
+    await step('redeeming a chosen reward spends its own cost and the voucher remembers its products', async () => {
+        await R.sync('U1', true); // redeeming always re-counts first, so measure after the same re-count
+        const before = (await R.getRedeemables('U1')).programmes.find((p) => p.card.id === 'B')!;
+        const r = await R.redeem('U1', 'B', before.rewards[0].id);
+        must(r.title === 'K10 off Latte & Muffin' && r.balance === before.card.balance - 100 && r.appliesTo === 'Latte, Muffin', JSON.stringify(r));
+        must((await refusal(R.redeem('U1', 'B', freeId))).includes('You need 400 points'), 'too few for the free item');
+        must((await refusal(R.redeem('U1', 'B', 'nope'))).includes('available any more'), 'unknown reward');
+        const v = db.reward_redemptions.find((x) => x.code === r.code)!;
+        must(v.reward_type === 'AMOUNT_OFF' && v.product_names === 'Latte, Muffin' && v.points === 100, JSON.stringify(v));
+    });
+    await step('switching a reward off hides it; a business with only switched-off rewards offers nothing (the old reward does not return)', async () => {
+        await R.updateRewardItem('B', pctId, { active: false });
+        const prog = (await R.getRedeemables('U1')).programmes.find((p) => p.card.id === 'B')!;
+        must(prog.rewards.length === 2, 'inactive hidden');
+        for (const i of await R.listRewardItems('B')) await R.updateRewardItem('B', i.id, { active: false });
+        const red = await R.getRedeemables('U1');
+        must(!red.programmes.some((p) => p.card.id === 'B') && !red.ready.some((c) => c.id === 'B'), 'old default must not reappear');
+        must((await refusal(R.updateRewardItem('B2', freeId, { active: true }))).includes('not found'), 'another business cannot edit it');
+        await R.deleteRewardItem('B', freeId);
+        must((await R.listRewardItems('B')).length === 2, 'deleted');
+    });
+
     const bad = results.filter((r) => !r).length;
     console.log(`${results.length - bad}/${results.length} passed`);
     process.exit(bad ? 1 : 0);

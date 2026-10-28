@@ -7,6 +7,7 @@ import { crmService, Customer, CrmProduct, CrmProductSummary, LoyaltyOverview, L
 import { CustomerDetail } from '../components/crm/CustomerDetail';
 import { AddCustomerModal } from '../components/crm/AddCustomerModal';
 import { InvestorsPanel } from '../components/crm/InvestorsPanel';
+import { RewardsPanel } from '../components/crm/RewardsPanel';
 import { CampaignModal } from '../components/crm/CampaignModal';
 import { SegmentBadge, SEGMENT_STYLE } from '../components/crm/loyaltyUi';
 import { investmentService } from 'core';
@@ -31,8 +32,8 @@ export const CRM: React.FC = () => {
 
     // Investment companies also see an Investors tab (account applications from the app).
     const [searchParams] = useSearchParams();
-    const [mainTab, setMainTab] = useState<'customers' | 'loyalty' | 'investors'>(
-        searchParams.get('tab') === 'investors' ? 'investors' : searchParams.get('tab') === 'loyalty' ? 'loyalty' : 'customers'
+    const [mainTab, setMainTab] = useState<'customers' | 'loyalty' | 'rewards' | 'investors'>(
+        searchParams.get('tab') === 'investors' ? 'investors' : searchParams.get('tab') === 'rewards' ? 'rewards' : searchParams.get('tab') === 'loyalty' ? 'loyalty' : 'customers'
     );
     const [campaign, setCampaign] = useState<{ segments?: LoyaltySegment[] } | null>(null);
     const [segmentFilter, setSegmentFilter] = useState<LoyaltySegment | null>(null);
@@ -139,7 +140,7 @@ export const CRM: React.FC = () => {
                         </div>
 
                         <div className="h-8 p-1 bg-slate-100 rounded-[10px] flex items-center gap-1 self-start">
-                            {([['customers', 'Customers'], ['loyalty', 'Loyalty'], ...(showInvestors ? [['investors', 'Investors']] : [])] as ['customers' | 'loyalty' | 'investors', string][]).map(([id, label]) => (
+                            {([['customers', 'Customers'], ['loyalty', 'Loyalty'], ['rewards', 'Rewards'], ...(showInvestors ? [['investors', 'Investors']] : [])] as ['customers' | 'loyalty' | 'rewards' | 'investors', string][]).map(([id, label]) => (
                                 <button
                                     key={id}
                                     onClick={() => setMainTab(id)}
@@ -152,7 +153,9 @@ export const CRM: React.FC = () => {
                             ))}
                         </div>
 
-                        {showInvestors && mainTab === 'investors' ? (
+                        {mainTab === 'rewards' ? (
+                            <RewardsPanel canEdit={userRole === 'ADMIN'} />
+                        ) : showInvestors && mainTab === 'investors' ? (
                             <InvestorsPanel initialOpenId={searchParams.get('application')} />
                         ) : (
                         <>

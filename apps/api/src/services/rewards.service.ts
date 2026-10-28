@@ -83,6 +83,110 @@ export async function updateProgram(orgId: string, patch: any): Promise<Program>
     return getProgram(orgId);
 }
 
+
+// ── Rewards a business offers ──────────────────────────────────────────────────
+
+export type RewardType = 'AMOUNT_OFF' | 'PERCENT_OFF' | 'FREE_ITEM';
+export interface RewardItem { id: string; organization_id: string; title: string; reward_type: RewardType; value: number; points_cost: number; product_ids: string[]; active: boolean }
+export const LEGACY_REWARD_ID = 'default';
+const TYPES: RewardType[] = ['AMOUNT_OFF', 'PERCENT_OFF', 'FREE_ITEM'];
+const missingTable = (e: any) => e && (e.code === '42P01' || e.code === 'PGRST205' || /reward_items/.test(String(e.message ?? '')) && /does not exist|schema cache/.test(String(e.message ?? '')));
+
+const toItem = (r: any): RewardItem => ({
+    id: r.id, organization_id: r.organization_id, title: r.title, reward_type: r.reward_type, value: Number(r.value) || 0,
+    points_cost: Number(r.points_cost), product_ids: r.product_ids ?? [], active: r.active !== false,
+});
+
+/** Every reward row a business has made (active or not). Empty, not an error, until the table exists. */
+async function rawItems(orgIds: string[]): Promise<RewardItem[]> {
+    if (orgIds.length === 0) return [];
+    const { data, error } = await supabase.from('reward_items').select('*').in('organization_id', orgIds).order('points_cost', { ascending: true });
+    if (error) { if (missingTable(error)) return []; throw new Error(error.message); }
+    return (data ?? []).map(toItem);
+}
+
+/**
+ * The rewards customers can redeem at each business, cheapest first. A business that has never defined any gets the single reward
+ * from its original programme settings, so nothing disappears for businesses that haven't set the new ones up yet. A business that
+ * has defined rewards (even if all are switched off) uses only those.
+ */
+async function offeredRewards(orgIds: string[]): Promise<Map<string, RewardItem[]>> {
+    const rows = await rawItems(orgIds);
+    const out = new Map<string, RewardItem[]>();
+    for (const id of orgIds) {
+        const mine = rows.filter((r) => r.organization_id === id);
+        if (mine.length > 0) { out.set(id, mine.filter((r) => r.active)); continue; }
+        const p = await getProgram(id);
+        out.set(id, p.enabled ? [{ id: LEGACY_REWARD_ID, organization_id: id, title: p.reward_title, reward_type: 'AMOUNT_OFF', value: p.reward_value, points_cost: p.reward_threshold, product_ids: [], active: true }] : []);
+    }
+    return out;
+}
+
+async function productNames(orgId: string, ids: string[]): Promise<string[]> {
+    if (ids.length === 0) return [];
+    const { data } = await supabase.from('products').select('id, name').eq('organization_id', orgId).in('id', ids);
+    const byId = new Map((data ?? []).map((p: any) => [p.id, p.name as string]));
+    return ids.map((i) => byId.get(i)).filter((n): n is string => !!n);
+}
+
+/** "K25 off", "10% off Haircut", "Free Coffee". */
+export function describeReward(r: Pick<RewardItem, 'reward_type' | 'value'>, names: string[]): string {
+    const on = names.length === 0 ? '' : names.length <= 2 ? ` ${names.join(' & ')}` : ` ${names[0]} & ${names.length - 1} more`;
+    if (r.reward_type === 'FREE_ITEM') return `Free${on || ' item'}`;
+    if (r.reward_type === 'PERCENT_OFF') return `${r.value}% off${on}`;
+    return `K${r.value.toLocaleString('en-US')} off${on}`;
+}
+
+export async function listRewardItems(orgId: string) {
+    const items = await rawItems([orgId]);
+    const ids = [...new Set(items.flatMap((i) => i.product_ids))];
+    const { data } = ids.length ? await supabase.from('products').select('id, name').eq('organization_id', orgId).in('id', ids) : { data: [] as any[] };
+    const names = new Map((data ?? []).map((p: any) => [p.id, p.name as string]));
+    return items.map((i) => ({ ...i, products: i.product_ids.map((id) => ({ id, name: names.get(id) ?? 'Removed product' })), summary: describeReward(i, i.product_ids.map((id) => names.get(id)).filter((n): n is string => !!n)) }));
+}
+
+async function cleanItem(orgId: string, input: any, cur?: RewardItem) {
+    const type = (input.reward_type ?? cur?.reward_type) as RewardType;
+    if (!TYPES.includes(type)) throw new RewardsError('Choose what the customer gets: money off, a percentage off, or a free item.');
+    const cost = Math.round(Number(input.points_cost ?? cur?.points_cost));
+    if (!Number.isFinite(cost) || cost < 1 || cost > 1_000_000) throw new RewardsError('Points needed must be between 1 and 1,000,000.');
+    let value = type === 'FREE_ITEM' ? 0 : round2(Number(input.value ?? cur?.value));
+    if (type === 'AMOUNT_OFF' && !(value > 0 && value <= 1_000_000)) throw new RewardsError('Enter how much money comes off.');
+    if (type === 'PERCENT_OFF' && !(value > 0 && value <= 100)) throw new RewardsError('A percentage off must be between 1 and 100.');
+    const wanted: string[] = input.product_ids === undefined ? (cur?.product_ids ?? []) : [...new Set((Array.isArray(input.product_ids) ? input.product_ids : []).map(String))] as string[];
+    if (wanted.length > 0) {
+        const { data } = await supabase.from('products').select('id').eq('organization_id', orgId).in('id', wanted);
+        if ((data ?? []).length !== wanted.length) throw new RewardsError('One of the selected products isn’t in your shop any more.');
+    }
+    if (type === 'FREE_ITEM' && wanted.length === 0) throw new RewardsError('Choose which product is given free.');
+    const names = await productNames(orgId, wanted);
+    const typed = String(input.title ?? '').trim();
+    const title = (typed || (cur && input.title === undefined ? cur.title : '') || describeReward({ reward_type: type, value }, names)).slice(0, 80);
+    return { title, reward_type: type, value, points_cost: cost, product_ids: wanted, active: input.active === undefined ? (cur?.active ?? true) : !!input.active };
+}
+
+export async function createRewardItem(orgId: string, input: any) {
+    const row = { organization_id: orgId, ...(await cleanItem(orgId, input)) };
+    const { data, error } = await supabase.from('reward_items').insert(row).select('*').single();
+    if (error) { if (missingTable(error)) throw new RewardsError('Rewards need a one-time database update first. Please ask support to apply it.', 503); throw new Error(error.message); }
+    return toItem(data);
+}
+
+export async function updateRewardItem(orgId: string, id: string, input: any) {
+    const cur = (await rawItems([orgId])).find((r) => r.id === id);
+    if (!cur) throw new RewardsError('Reward not found.', 404);
+    const row = { ...(await cleanItem(orgId, input, cur)), updated_at: new Date().toISOString() };
+    const { data, error } = await supabase.from('reward_items').update(row).eq('id', id).eq('organization_id', orgId).select('*').single();
+    if (error) throw new Error(error.message);
+    return toItem(data);
+}
+
+/** Vouchers already issued keep their own copy of the title and products, so removing a reward never breaks them. */
+export async function deleteRewardItem(orgId: string, id: string) {
+    const { error } = await supabase.from('reward_items').delete().eq('id', id).eq('organization_id', orgId);
+    if (error) throw new Error(error.message);
+}
+
 // ── Earning ────────────────────────────────────────────────────────────────────
 
 /** Writes one ledger row. Returns false when this exact event was already counted. */
@@ -105,10 +209,15 @@ async function ownOrgIds(userId: string): Promise<Set<string>> {
     return s;
 }
 
+export const isPersonalOrg = (o: { is_personal?: boolean | null; name?: string | null }) =>
+    o?.is_personal === true || /workspace|personal account|individual/i.test(String(o?.name ?? ''));
+
 async function businessInfo(orgIds: string[]) {
     if (orgIds.length === 0) return new Map<string, any>();
     const { data } = await supabase.from('organizations').select('id, name, logo_url, is_personal').in('id', orgIds);
-    return new Map((data ?? []).map((o: any) => [o.id, o]));
+    // The flag is only set on workspaces made by the app; an older personal account can be recognised only by its name (the app
+    // tells them apart the same way). Either way it is a person, not a business, so it never gets a rewards programme.
+    return new Map((data ?? []).map((o: any) => [o.id, { ...o, is_personal: isPersonalOrg(o) }]));
 }
 
 async function contactsOf(userId: string): Promise<{ email: string | null; phones: string[] }> {
@@ -329,15 +438,18 @@ async function totalsFor(userId: string): Promise<Map<string, Totals>> {
     return m;
 }
 
-function cardOf(id: string, name: string, logoUrl: string | null, t: Totals, program: Program | null) {
-    const threshold = program?.reward_threshold ?? 0;
+function cardOf(id: string, name: string, logoUrl: string | null, t: Totals, rewards: RewardItem[] | null) {
+    // The reward to work towards: the cheapest one not yet affordable, or the cheapest overall once everything is.
+    const costs = (rewards ?? []).map((r) => r.points_cost).sort((a, b) => a - b);
+    const threshold = costs.find((c) => c > t.balance) ?? costs[0] ?? 0;
+    const target = (rewards ?? []).filter((r) => r.points_cost === threshold)[0];
     const progress = threshold > 0 ? Math.min(1, Math.max(0, t.balance) / threshold) : 0;
     return {
         id, name, logoUrl, isPlatform: id === PLATFORM,
         balance: t.balance, lifetime: t.lifetime, tier: tierFor(t.lifetime), status: `${tierFor(t.lifetime)} member`,
         threshold: threshold || null, progress, pointsToNext: threshold > 0 ? Math.max(0, threshold - t.balance) : null,
-        rewardReady: threshold > 0 && t.balance >= threshold, rewardTitle: program?.reward_title ?? null,
-        redeemable: !!program && program.enabled,
+        rewardReady: costs.length > 0 && t.balance >= costs[0], rewardTitle: target?.title ?? null,
+        redeemable: costs.length > 0,
         lastActivity: t.last,
     };
 }
@@ -347,10 +459,13 @@ export async function getOverview(userId: string) {
     const totals = await totalsFor(userId);
     const orgIds = [...totals.keys()].filter((k) => k !== PLATFORM);
     const orgs = await businessInfo(orgIds);
-    const businesses = await Promise.all(orgIds.map(async (id) => {
+    // A person's own (personal) account is never a business, even if points were once recorded against it.
+    const shown = orgIds.filter((id) => orgs.has(id) && orgs.get(id).is_personal !== true);
+    const offered = await offeredRewards(shown);
+    const businesses = shown.map((id) => {
         const o = orgs.get(id);
-        return cardOf(id, o?.name ?? 'Business', o?.logo_url ?? null, totals.get(id)!, await getProgram(id));
-    }));
+        return cardOf(id, o.name ?? 'Business', o.logo_url ?? null, totals.get(id)!, offered.get(id) ?? []);
+    });
     businesses.sort((a, b) => (b.lastActivity ?? '').localeCompare(a.lastActivity ?? ''));
     const platform = cardOf(PLATFORM, 'MoneyWise', null, totals.get(PLATFORM) ?? { balance: 0, lifetime: 0, last: null }, null);
     return { platform, businesses, code: await getReferralCode(userId) };
@@ -360,11 +475,11 @@ export async function getDetail(userId: string, scope: string) {
     await sync(userId);
     const orgId = scope === PLATFORM ? null : scope;
     const totals = (await totalsFor(userId)).get(scope) ?? { balance: 0, lifetime: 0, last: null };
-    let name = 'MoneyWise', logoUrl: string | null = null, program: Program | null = null;
+    let name = 'MoneyWise', logoUrl: string | null = null, program: Program | null = null, rewards: RewardItem[] | null = null;
     if (orgId) {
         const org = (await businessInfo([orgId])).get(orgId);
         if (!org || org.is_personal === true) throw new RewardsError('Business not found.', 404);
-        name = org.name; logoUrl = org.logo_url ?? null; program = await getProgram(orgId);
+        name = org.name; logoUrl = org.logo_url ?? null; program = await getProgram(orgId); rewards = (await offeredRewards([orgId])).get(orgId) ?? [];
     }
     let q = supabase.from('reward_ledger').select('id, points, kind, description, amount, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(200);
     q = orgId ? q.eq('organization_id', orgId) : q.is('organization_id', null);
@@ -394,11 +509,30 @@ export async function getDetail(userId: string, scope: string) {
     achievements.sort((a, b) => String(b.at).localeCompare(String(a.at)));
 
     return {
-        card: cardOf(scope, name, logoUrl, totals, program),
-        program: program ? { threshold: program.reward_threshold, rewardTitle: program.reward_title, rewardValue: program.reward_value, pointsPerKwacha: program.points_per_kwacha, referralPoints: program.referral_points, enabled: program.enabled } : null,
+        card: cardOf(scope, name, logoUrl, totals, rewards),
+        rewards: rewards ? await rewardOptions(orgId!, rewards, totals.balance) : [],
+        program: program ? { threshold: rewards?.[0]?.points_cost ?? program.reward_threshold, rewardTitle: rewards?.[0]?.title ?? program.reward_title, rewardValue: program.reward_value, pointsPerKwacha: program.points_per_kwacha, referralPoints: program.referral_points, enabled: program.enabled } : null,
         points: rows.map((r) => ({ id: r.id, points: r.points, kind: r.kind, description: r.description, amount: r.amount == null ? null : Number(r.amount), at: r.created_at })),
         achievements,
     };
+}
+
+/** What a customer sees when choosing: each reward with what it gives, what it applies to, and whether their points reach it. */
+async function rewardOptions(orgId: string, rewards: RewardItem[], balance: number) {
+    const names = new Map<string, string>();
+    const ids = [...new Set(rewards.flatMap((r) => r.product_ids))];
+    if (ids.length) {
+        const { data } = await supabase.from('products').select('id, name').eq('organization_id', orgId).in('id', ids);
+        for (const p of data ?? []) names.set((p as any).id, (p as any).name);
+    }
+    return rewards.map((r) => {
+        const products = r.product_ids.map((i) => names.get(i)).filter((n): n is string => !!n);
+        return {
+            id: r.id, title: r.title, type: r.reward_type, value: r.value, points: r.points_cost, products,
+            appliesTo: products.length === 0 ? 'Anything' : products.join(', '),
+            affordable: balance >= r.points_cost, pointsToGo: Math.max(0, r.points_cost - balance),
+        };
+    });
 }
 
 // ── Redeeming ──────────────────────────────────────────────────────────────────
@@ -407,26 +541,30 @@ const VOUCHER_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const voucherCode = () => `RW-${Array.from(crypto.randomBytes(6)).map((b) => VOUCHER_CHARS[b % VOUCHER_CHARS.length]).join('')}`;
 
 /** Spends the business's "points for a reward" and issues a voucher the person shows at the business. */
-export async function redeem(userId: string, orgId: string) {
+export async function redeem(userId: string, orgId: string, rewardId?: string) {
     if (orgId === PLATFORM) throw new RewardsError("MoneyWise points can't be redeemed yet. Redeem the points you've earned with a business.");
     await sync(userId, true);
     const org = (await businessInfo([orgId])).get(orgId);
     if (!org || org.is_personal === true) throw new RewardsError('Business not found.', 404);
-    const program = await getProgram(orgId);
-    if (!program.enabled) throw new RewardsError(`${org.name} isn't offering rewards right now.`);
+    const offered = (await offeredRewards([orgId])).get(orgId) ?? [];
+    if (offered.length === 0) throw new RewardsError(`${org.name} isn't offering rewards right now.`);
+    const reward = rewardId ? offered.find((r) => r.id === rewardId) : offered[0];
+    if (!reward) throw new RewardsError("That reward isn't available any more.", 404);
     const balance = ((await totalsFor(userId)).get(orgId)?.balance) ?? 0;
-    if (balance < program.reward_threshold) throw new RewardsError(`You need ${program.reward_threshold.toLocaleString('en-US')} points for ${program.reward_title} — you have ${balance.toLocaleString('en-US')}.`);
+    if (balance < reward.points_cost) throw new RewardsError(`You need ${reward.points_cost.toLocaleString('en-US')} points for ${reward.title} — you have ${balance.toLocaleString('en-US')}.`);
+    const names = await productNames(orgId, reward.product_ids);
 
     let redemption: any = null;
     for (let i = 0; i < 5 && !redemption; i++) {
         const { data, error } = await supabase.from('reward_redemptions').insert({
-            user_id: userId, organization_id: orgId, points: program.reward_threshold, title: program.reward_title, value: program.reward_value, code: voucherCode(), status: 'ISSUED',
+            user_id: userId, organization_id: orgId, points: reward.points_cost, title: reward.title, value: reward.value, code: voucherCode(), status: 'ISSUED',
+            ...(reward.id === LEGACY_REWARD_ID ? {} : { reward_id: reward.id, reward_type: reward.reward_type, product_names: names.join(', ') || null }),
         }).select('*').single();
         if (!error) redemption = data;
         else if ((error as any).code !== '23505') throw new Error(error.message);
     }
     if (!redemption) throw new Error('Could not issue the reward. Please try again.');
-    await addLedger({ user_id: userId, organization_id: orgId, kind: 'REDEMPTION', ref: `RDM:${redemption.id}`, points: -program.reward_threshold, description: `Redeemed: ${program.reward_title}` });
+    await addLedger({ user_id: userId, organization_id: orgId, kind: 'REDEMPTION', ref: `RDM:${redemption.id}`, points: -reward.points_cost, description: `Redeemed: ${reward.title}` });
     // Two taps at once could both pass the balance check: if the balance went negative, undo this one.
     const after = ((await totalsFor(userId)).get(orgId)?.balance) ?? 0;
     if (after < 0) {
@@ -434,7 +572,7 @@ export async function redeem(userId: string, orgId: string) {
         await supabase.from('reward_redemptions').delete().eq('id', redemption.id);
         throw new RewardsError("Your points changed while redeeming. Please try again.", 409);
     }
-    return { id: redemption.id, code: redemption.code, title: redemption.title, value: Number(redemption.value), business: org.name, balance: after };
+    return { id: redemption.id, code: redemption.code, title: redemption.title, value: Number(redemption.value), business: org.name, balance: after, appliesTo: names.join(', ') || null };
 }
 
 /** The business marks a customer's voucher as used. */
@@ -456,10 +594,16 @@ export async function getRedeemables(userId: string) {
     const overview = await getOverview(userId);
     const { data: vouchers } = await supabase.from('reward_redemptions').select('id, organization_id, title, value, code, created_at').eq('user_id', userId).eq('status', 'ISSUED').order('created_at', { ascending: false });
     const orgs = await businessInfo([...new Set((vouchers ?? []).map((v: any) => v.organization_id))]);
+    // Every business that offers rewards, with each reward and whether this person's points reach it, so the popup can show what
+    // they can redeem now and what is still ahead.
+    const offered = await offeredRewards(overview.businesses.map((b) => b.id));
+    const programmes = (await Promise.all(overview.businesses.map(async (b) => ({ card: b, rewards: await rewardOptions(b.id, offered.get(b.id) ?? [], b.balance) }))))
+        .filter((p) => p.rewards.length > 0);
     return {
+        programmes,
         ready: overview.businesses.filter((b) => b.rewardReady && b.redeemable),
         vouchers: (vouchers ?? []).map((v: any) => ({ id: v.id, organizationId: v.organization_id, business: orgs.get(v.organization_id)?.name ?? 'Business', logoUrl: orgs.get(v.organization_id)?.logo_url ?? null, title: v.title, value: Number(v.value), code: v.code, at: v.created_at })),
     };
 }
 
-export const rewardsService = { getProgram, updateProgram, awardMoneyWisePay, syncPurchases, syncReferrals, sync, getOverview, getDetail, getInvite, getReferralCode, claimReferral, redeem, useVoucher, getRedeemables };
+export const rewardsService = { getProgram, updateProgram, awardMoneyWisePay, syncPurchases, syncReferrals, sync, getOverview, getDetail, getInvite, getReferralCode, claimReferral, redeem, useVoucher, getRedeemables, listRewardItems, createRewardItem, updateRewardItem, deleteRewardItem };

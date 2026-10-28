@@ -31,7 +31,7 @@ export const getRedeemables = async (req: Request, res: Response) => {
 };
 
 export const redeem = async (req: Request, res: Response) => {
-    try { res.json(await rewardsService.redeem(me(req).id, String(req.params.scope))); } catch (e) { fail(res, e, 'redeem'); }
+    try { res.json(await rewardsService.redeem(me(req).id, String(req.params.scope), req.body?.rewardId ? String(req.body.rewardId) : undefined)); } catch (e) { fail(res, e, 'redeem'); }
 };
 
 /** The business's own programme settings (any member can read; only an admin changes them). */
@@ -45,4 +45,18 @@ export const updateProgram = async (req: Request, res: Response) => {
 /** A customer shows their voucher code; the business marks it used. */
 export const useVoucher = async (req: Request, res: Response) => {
     try { res.json(await rewardsService.useVoucher(me(req).organization_id, me(req).id, String(req.body?.code ?? ''))); } catch (e) { fail(res, e, 'use that reward'); }
+};
+
+/** The business's own list of rewards (any member can read; only an admin changes them). */
+export const listRewardItems = async (req: Request, res: Response) => {
+    try { res.json(await rewardsService.listRewardItems(me(req).organization_id)); } catch (e) { fail(res, e, 'load the rewards'); }
+};
+export const createRewardItem = async (req: Request, res: Response) => {
+    try { res.json(await rewardsService.createRewardItem(me(req).organization_id, req.body ?? {})); } catch (e) { fail(res, e, 'add the reward'); }
+};
+export const updateRewardItem = async (req: Request, res: Response) => {
+    try { res.json(await rewardsService.updateRewardItem(me(req).organization_id, String(req.params.id), req.body ?? {})); } catch (e) { fail(res, e, 'save the reward'); }
+};
+export const deleteRewardItem = async (req: Request, res: Response) => {
+    try { await rewardsService.deleteRewardItem(me(req).organization_id, String(req.params.id)); res.json({ ok: true }); } catch (e) { fail(res, e, 'delete the reward'); }
 };
