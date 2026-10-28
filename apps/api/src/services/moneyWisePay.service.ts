@@ -204,6 +204,9 @@ export const moneyWisePayService = {
                 .catch((e) => console.error('[Rewards] MoneyWise Pay award failed:', e.message));
         }
 
+        // A payment that was a pay link (slide to pay): now that the money is in, settle the link (mark it paid, route revenue, receipts).
+        import('./payLink.service').then((m) => m.finalizeByReference(ref)).catch((e) => console.error('[PayLink] settlement failed:', e?.message));
+
         console.log(`[MoneyWise Pay] K${memo.amount} credited to ${memo.recipientOrgId} after Lenco confirmed ${ref}.`);
     },
 };

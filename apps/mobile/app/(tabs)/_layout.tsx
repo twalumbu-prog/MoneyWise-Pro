@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Tabs, Redirect } from 'expo-router';
+import { Tabs, Redirect, router } from 'expo-router';
+import { takePendingPayLink } from '../../src/lib/pendingPayLink';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Navigation, TrendingUp, Menu, House } from 'lucide-react-native';
 import { isRequestorRole, onboardingService } from 'core';
@@ -22,6 +23,13 @@ export default function TabsLayout() {
     // A personal account's first tab is Home (the Inbox moves behind its bell); businesses keep the Inbox.
     const { isPersonal } = usePersonalAccount();
     const [needsOnboarding, setNeedsOnboarding] = useState(false);
+
+    // A pay link that was opened before signing in: now that the person is in, open it.
+    useEffect(() => {
+        if (!session || !organizationId) return;
+        const path = takePendingPayLink();
+        if (path) setTimeout(() => router.push(path as any), 400);
+    }, [session, organizationId]);
 
     useEffect(() => {
         if (!session || userRole !== 'ADMIN' || !organizationId) {

@@ -4,7 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
-import { X, Copy, Check, Share2 } from 'lucide-react-native';
+import { router } from 'expo-router';
+import { X, Copy, Check, Share2, ArrowDownToLine } from 'lucide-react-native';
 import { organizationService } from 'core';
 import { WEB_ORIGIN } from '../../platform';
 import { useAuth } from '../../context/AuthContext';
@@ -69,6 +70,15 @@ export const ReceiveMoneySheet: React.FC<{ visible: boolean; onClose: () => void
                                     <Text style={styles.btnDarkText}>Share</Text>
                                 </Pressable>
                             </View>
+                            {/* Putting money in yourself: the same deposit flow as the Wallet page. */}
+                            <Pressable
+                                onPress={() => { onClose(); router.push('/wallet/deposit'); }}
+                                style={({ pressed }) => [styles.btn, styles.btnDeposit, pressed && { opacity: 0.8 }]}
+                                accessibilityRole="button"
+                            >
+                                <ArrowDownToLine size={16} color={colors.blue} />
+                                <Text style={styles.btnDepositText}>Deposit money</Text>
+                            </Pressable>
                         </>
                     )}
                 </View>
@@ -99,4 +109,6 @@ const styles = StyleSheet.create({
     btnLightText: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.navy },
     btnDark: { backgroundColor: colors.blue },
     btnDarkText: { fontFamily: fonts.bodyBold, fontSize: 14, color: '#FFFFFF' },
+    btnDeposit: { alignSelf: 'stretch', flex: 0, marginTop: 12, backgroundColor: colors.tabActiveBg, borderWidth: 1, borderColor: '#BFDBFE' },
+    btnDepositText: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.blue },
 });
