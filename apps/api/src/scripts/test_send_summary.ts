@@ -41,6 +41,18 @@ async function main() {
             const s = await getSendSummary(orgId, STEPHEN, id, 2500);
             must(s.status === 'pending' && s.account === null && s.budget === null, JSON.stringify(s));
         });
+        await step('the fee line (already under Transaction Charges) is never taken for the payment\'s account — it waits for the real classification', async () => {
+            const { data: tc } = await supabase.from('accounts').insert({ organization_id: orgId, code: 'QB-28', name: 'Transaction Charges', type: 'EXPENSE', is_active: true }).select('id').single();
+            // The state right after money goes out: the fee line is filed, the item itself is not yet.
+            const id = await mkReq([{ description: 'Groceries for the home' }, { description: 'Withdrawal Fee (MONEYWISE_PAY)', account_id: (tc as any).id, estimated_amount: 0 }]); created.push(id);
+            const early = await getSendSummary(orgId, STEPHEN, id, 2500);
+            must(early.status === 'pending' && early.account === null, `must not answer from the fee line: ${JSON.stringify(early)}`);
+            // The AI then files the item: now it is ready, and it is the groceries account.
+            await supabase.from('line_items').update({ account_id: accId }).eq('requisition_id', id).eq('description', 'Groceries for the home');
+            const done = await getSendSummary(orgId, STEPHEN, id, 4000);
+            must(done.status === 'ready' && done.account?.id === accId, JSON.stringify(done));
+            must(done.amount === 100, `amount ${done.amount}`);
+        });
         await step('someone else\'s payment is not readable', async () => {
             let msg = ''; try { await getSendSummary('00000000-0000-0000-0000-000000000000', STEPHEN, created[0], 500); } catch (e: any) { msg = e.message; }
             must(msg === 'Payment not found.', msg);

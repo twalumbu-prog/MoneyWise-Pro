@@ -12,6 +12,13 @@ import { getExpenditure } from '../controllers/report.controller';
 import { callHandler } from './agent/internalCall';
 
 const round2 = (n: number) => Math.round(Number(n) * 100) / 100;
+
+/**
+ * The bank / platform fee line that comes with a payment ("Withdrawal Fee (MONEYWISE_PAY)"). It is filed under Transaction Charges
+ * the moment the money goes out — before the AI has decided what the payment itself was for — so it must never be mistaken for
+ * the account the payment was classified to. (Same test the live classifier uses to recognise fee lines.)
+ */
+export const isFeeLine = (description: string) => /\b(fee|fees|charge|charges|withdrawal)\b/i.test(description ?? '') && /(fee|charge)/i.test(description ?? '');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export class SendSummaryError extends Error { constructor(message: string, public httpStatus = 400) { super(message); } }
@@ -47,14 +54,15 @@ export async function getSendSummary(orgId: string, userId: string, requisitionI
         account: null, spentBefore: null, spentAfter: null, budget: null, month: month.label,
     };
 
-    // Wait for the line item(s) to be filed under an account, starting the categorisation if nothing has.
+    // Wait for the payment's own line item(s) — not its fee line — to be filed under an account, starting the categorisation if
+    // nothing has.
     const deadline = Date.now() + waitMs;
     let items: any[] = [];
     let nudged = false;
     for (;;) {
-        const { data } = await supabase.from('line_items').select('account_id, estimated_amount, actual_amount').eq('requisition_id', requisitionId);
-        items = (data ?? []) as any[];
-        if (items.some((i) => i.account_id)) break;
+        const { data } = await supabase.from('line_items').select('description, account_id, estimated_amount, actual_amount').eq('requisition_id', requisitionId);
+        items = ((data ?? []) as any[]).filter((i) => !isFeeLine(i.description));
+        if (items.length > 0 && items.every((i) => i.account_id)) break;
         if (Date.now() >= deadline) return base;
         if (!nudged) { nudged = true; void maybeAutoCategorizePersonal(requisitionId, orgId, userId).catch(() => undefined); }
         await sleep(1000);
