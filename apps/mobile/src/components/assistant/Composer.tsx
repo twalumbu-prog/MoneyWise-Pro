@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { TourTarget } from '../walkthrough/TourTarget';
 import { KB_DONE_ID } from '../KeyboardDoneBar';
 import {
@@ -48,7 +48,11 @@ export const Composer: React.FC<{
     const canSend = (value.trim().length > 0 || !!attachment) && !busy;
     const [modelMenuOpen, setModelMenuOpen] = useState(false);
     // Dictation (speech to text), shared with the box on Home.
-    const { listening, level, toggle: toggleDictation } = useDictation(value, onChange);
+    const { listening, level, toggle: toggleDictation, stop: stopDictation } = useDictation(value, onChange);
+
+    // Whatever way a message goes out (Send, or something else starting it), the microphone must not keep listening.
+    useEffect(() => { if (busy) stopDictation(); }, [busy, stopDictation]);
+    const send = () => { stopDictation(); onSend(); };
 
     const active = models.find((m) => m.id === selectedModel);
 
@@ -117,7 +121,7 @@ export const Composer: React.FC<{
                     ) : (
                         <Pressable
                             style={[styles.send, !canSend && styles.sendDisabled]}
-                            onPress={onSend}
+                            onPress={send}
                             disabled={!canSend}
                             accessibilityLabel="Send"
                         >

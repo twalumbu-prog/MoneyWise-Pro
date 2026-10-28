@@ -33,9 +33,11 @@ export function HomeScreen() {
     const [accountMenuOpen, setAccountMenuOpen] = useState(false);
     const [question, setQuestion] = useState('');
     const [refreshing, setRefreshing] = useState(false);
-    const { listening, level, toggle: toggleDictation } = useDictation(question, setQuestion);
+    const { listening, level, toggle: toggleDictation, stop: stopDictation } = useDictation(question, setQuestion);
 
     const ask = () => {
+        // Sending (by the button or the keyboard's Send key) closes the microphone, so nothing is dictated into the cleared box.
+        stopDictation();
         const q = question.trim();
         if (!q) return;
         queueAssistantPrompt(q);
@@ -123,7 +125,7 @@ export function HomeScreen() {
                     >
                         {listening ? <VoiceWave level={level} /> : <Mic size={15} color={colors.textMuted} />}
                     </Pressable>
-                    <Pressable onPress={() => { if (listening) void toggleDictation(); ask(); }} disabled={!question.trim()} style={[styles.send, !question.trim() && styles.sendDisabled]} accessibilityRole="button" accessibilityLabel="Send to the Assistant">
+                    <Pressable onPress={ask} disabled={!question.trim()} style={[styles.send, !question.trim() && styles.sendDisabled]} accessibilityRole="button" accessibilityLabel="Send to the Assistant">
                         <ArrowUp size={17} color="#FFFFFF" />
                     </Pressable>
                 </View>
