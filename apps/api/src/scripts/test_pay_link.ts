@@ -16,6 +16,8 @@ import { whatsappService } from '../services/whatsapp.service';
 import { emailService } from '../services/email.service';
 import { pushService } from '../services/push.service';
 import { payLinkService, PayLinkError } from '../services/payLink.service';
+import { LencoService } from '../services/lenco.service';
+import { calculatePlatformFee } from '../lib/platformFee';
 
 const results: boolean[] = [];
 const must = (c: any, m: string) => { if (!c) throw new Error(m); };
@@ -55,12 +57,13 @@ async function main() {
 
     const ctx: any = { organizationId: payer.id, userId: STEPHEN, role: 'ADMIN', today };
     const calls: string[] = [];
+    let lastRequisition: any = null;
     let lencoStatus = 'successful';
     const original = internalCall.callHandler;
     (internalCall as any).callHandler = async (handler: any, c: any, opts: any = {}) => {
         if (handler === createRequisition) {
             const { data } = await supabase.from('requisitions').insert({ organization_id: c.organizationId, requestor_id: c.userId, status: 'AUTHORISED', description: opts.body.description, estimated_total: opts.body.estimated_total, type: 'EXPENSE' }).select('id').single();
-            calls.push('create'); return { status: 201, body: { id: (data as any).id, reference_number: 'REQ-TEST' } };
+            calls.push('create'); lastRequisition = opts.body; return { status: 201, body: { id: (data as any).id, reference_number: 'REQ-TEST' } };
         }
         if (handler === autoAuthorizeAndDisburse) {
             const id = opts.params.id as string; const ref = `MWPAY-${id.slice(0, 8)}`;
@@ -70,6 +73,12 @@ async function main() {
         }
         return original(handler, c, opts);
     };
+    // The commission sweep talks to Lenco: replace both calls so no real transfer is ever attempted.
+    const L: any = LencoService;
+    const savedLenco = { st: L.getTransferStatus, tx: L.transferToLencoMerchant };
+    const sweeps: { amount: number; reference: string; till: string }[] = [];
+    L.getTransferStatus = async (ref: string) => (sweeps.some((s) => s.reference === ref) ? { status: 'successful' } : null);
+    L.transferToLencoMerchant = async (p: any) => { sweeps.push({ amount: p.amount, reference: p.reference, till: p.tillNumber }); return { status: 'successful', reference: p.reference }; };
     const notified: string[] = [];
     for (const [svc, fns] of [[whatsappService, ['notifyPaymentLinkPaid', 'notifyPublicSalePaid']], [emailService, ['notifyPaymentLinkPaid', 'notifyPublicSalePaid']], [pushService, ['notifyPaymentLinkPaid', 'notifyPublicSalePaid']]] as any[]) {
         for (const f of fns) (svc as any)[f] = async (...a: any[]) => { notified.push(f); };
@@ -79,12 +88,12 @@ async function main() {
     try {
         await step('resolving a payment link: who, how much, can it be paid, and the payer\'s wallets with balances', async () => {
             const r = await payLinkService.resolvePayTarget(payer.id, { token: linkToken });
-            must(r.status === 'READY' && r.amount === 100 && r.amountEditable === false && r.recipient.orgId === biz.id && !r.own, JSON.stringify(r));
+            must(r.status === 'READY' && r.amount === 100 && r.fee === 2.5 && r.total === 102.5 && r.amountEditable === false && r.recipient.orgId === biz.id && !r.own, JSON.stringify(r));
             must(r.wallets.length === 1 && r.wallets[0].balance === 500 && r.wallets[0].is_main, JSON.stringify(r.wallets));
         });
         await step('a quick link resolves with an amount the payer chooses; unknown / not-ready / own / booking links are not payable', async () => {
             const q = await payLinkService.resolvePayTarget(payer.id, { username: `ZZBIZ${stamp}` });
-            must(q.kind === 'QUICK' && q.status === 'READY' && q.amount === null && q.amountEditable === true && q.recipient.orgId === biz.id, JSON.stringify(q));
+            must(q.kind === 'QUICK' && q.status === 'READY' && q.amount === null && q.fee === 0 && q.total === null && q.amountEditable === true && q.recipient.orgId === biz.id, JSON.stringify(q));
             must((await refusal(payLinkService.resolvePayTarget(payer.id, { token: 'nope-not-a-link' })))?.httpStatus === 404, 'unknown link');
             const b = await mkLink({ items: [{ product_id: productId, name: 'Stay', quantity: 2, unit_price: 50, check_in: '2026-12-01', check_out: '2026-12-03' }] });
             const br = await payLinkService.resolvePayTarget(payer.id, { token: b });
@@ -105,11 +114,11 @@ async function main() {
         let reference = '';
         await step('paying a payment link: recipient credited once, link PAID and tied to the payment, sale completed, receipts sent', async () => {
             const r = await payLinkService.payWithWallet(ctx, { token: linkToken });
-            must(r.status === 'paid' && r.amount === 100 && r.recipient.includes('ZZ PayLink biz'), JSON.stringify(r));
+            must(r.status === 'paid' && r.amount === 100 && r.fee === 2.5 && r.total === 102.5 && r.recipient.includes('ZZ PayLink biz'), JSON.stringify(r));
             reference = r.reference!;
             must(/^MWPAY-/.test(reference), `reference ${reference}`);
             const { data: inflow } = await supabase.from('cashbook_entries').select('debit, status').eq('organization_id', biz.id).eq('external_reference', reference);
-            must((inflow || []).length === 1 && Number((inflow as any)[0].debit) === 100, `inflow ${JSON.stringify(inflow)}`);
+            must((inflow || []).length === 1 && Number((inflow as any)[0].debit) === 100, `the business is credited the amount, not the fee: ${JSON.stringify(inflow)}`);
             const { data: link } = await supabase.from('payment_links').select('status, reference').eq('token', linkToken).maybeSingle();
             must((link as any).status === 'PAID' && (link as any).reference === reference, JSON.stringify(link));
             if (productId) {
@@ -117,6 +126,10 @@ async function main() {
                 must((sales || []).length === 1 && (sales as any)[0].status === 'COMPLETED' && Number((sales as any)[0].amount_paid) === 100, `sales ${JSON.stringify(sales)}`);
             }
             must(notified.includes('notifyPaymentLinkPaid'), `receipts not sent: ${notified.join()}`);
+            // Fees, exactly as for a payment link paid any other way
+            must(lastRequisition.estimated_total === 102.5, `payer is charged amount + fee: ${lastRequisition.estimated_total}`);
+            must(lastRequisition.items.length === 2 && lastRequisition.items[1].description === 'MoneyWise processing fee' && lastRequisition.items[1].estimated_amount === 2.5, JSON.stringify(lastRequisition.items));
+            must(sweeps.length === 1 && sweeps[0].amount === 2.5 && sweeps[0].reference === `SPLIT-${reference}` && sweeps[0].till === '9838830', `fee must be forwarded once to the settlement till: ${JSON.stringify(sweeps)}`);
             const { data: memo } = await supabase.from('app_settings').select('key').in('key', [`paylink:${reference}`, `paylink-lock:${linkToken}`]);
             must((memo || []).length === 0, 'bookkeeping rows must be cleaned up');
         });
@@ -127,7 +140,9 @@ async function main() {
         });
         await step('a quick link: the payer\'s amount and reason go through; the page stays open; recipient credited', async () => {
             const r = await payLinkService.payWithWallet(ctx, { username: `zzbiz${stamp}`, amount: 25.5, purpose: 'Lunch order' });
-            must(r.status === 'paid' && r.amount === 25.5, JSON.stringify(r));
+            const sweepsBefore = sweeps.length;
+            must(r.status === 'paid' && r.amount === 25.5 && r.fee === 0 && r.total === 25.5, JSON.stringify(r));
+            must(lastRequisition.estimated_total === 25.5 && lastRequisition.items.length === 1 && sweeps.length === sweepsBefore, 'a quick link carries no MoneyWise fee');
             const { data: inflow } = await supabase.from('cashbook_entries').select('debit').eq('organization_id', biz.id).eq('external_reference', r.reference!);
             must((inflow || []).length === 1 && Number((inflow as any)[0].debit) === 25.5, JSON.stringify(inflow));
             const { data: req } = await supabase.from('requisitions').select('description').eq('id', r.requisitionId).maybeSingle();
@@ -148,8 +163,18 @@ async function main() {
             const { data: after } = await supabase.from('payment_links').select('status').eq('token', t).maybeSingle();
             must((after as any).status === 'PAID', 'settles once confirmed');
             await payLinkService.finalizeByReference(r.reference!);   // a repeat is harmless
+            must(sweeps.filter((x) => x.reference === `SPLIT-${r.reference}`).length === 1, 'the fee is forwarded exactly once, however many times it settles')
             const { data: inflow } = await supabase.from('cashbook_entries').select('id').eq('organization_id', biz.id).eq('external_reference', r.reference!);
             must((inflow || []).length === 1, 'credited exactly once');
+        });
+        await step('the balance check includes the fee: a K495 link needs K504.90, so K500 is not enough', async () => {
+            const t = await mkLink({ amount: 495 });
+            const e = await refusal(payLinkService.payWithWallet(ctx, { token: t }));
+            must(e?.code === 'INSUFFICIENT' && /MoneyWise fee/.test(e.message) && e.message.includes('504.90'), `${e?.code}: ${e?.message}`);
+        });
+        await step('the fee tiers match the public pay pages (shared calculatePlatformFee)', async () => {
+            const cases: [number, number][] = [[50, 1.25], [100, 2.5], [101, 2.02], [500, 10], [501, 9.02], [750, 13.5], [751, 11.26], [2500, 37.5], [2501, 25.01], [5000, 50], [5001, 45.01], [7500, 67.5], [7501, 75], [50000, 75]];
+            for (const [amt, fee] of cases) must(calculatePlatformFee(amt) === fee, `K${amt} → ${calculatePlatformFee(amt)}, expected ${fee}`);
         });
         await step('a business that can\'t receive MoneyWise payments is refused', async () => {
             const { data: l } = await supabase.from('payment_links').insert({ organization_id: noLenco.id, wallet_id: noLenco.walletId, token: `zznl${stamp}`, customer_name: 'x', customer_phone: '0971111111', amount: 10, status: 'ACTIVE' }).select('token').single();
@@ -158,6 +183,7 @@ async function main() {
         });
     } finally {
         (internalCall as any).callHandler = original;
+        L.getTransferStatus = savedLenco.st; L.transferToLencoMerchant = savedLenco.tx;
         const orgs = [payer.id, biz.id, noLenco.id];
         const { data: refs } = await supabase.from('app_settings').select('key').or('key.like.paylink:%,key.like.paylink-lock:%,key.like.mwpay:MWPAY-%');
         for (const org of orgs) {

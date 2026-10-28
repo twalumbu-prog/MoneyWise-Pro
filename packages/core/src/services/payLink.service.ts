@@ -11,6 +11,9 @@ export interface PayTarget {
     recipient: { orgId: string; name: string; logoUrl: string | null };
     /** Fixed for a payment link; null for a quick link (the payer chooses). */
     amount: number | null;
+    /** MoneyWise's fee on top (payment links only) and the total taken from the wallet (amount + fee). */
+    fee: number;
+    total: number | null;
     amountEditable: boolean;
     purpose: string | null;
     /** The link belongs to the payer's own organization. */
@@ -22,7 +25,11 @@ export interface PayResult {
     status: 'paid' | 'processing';
     requisitionId: string;
     reference: string | null;
+    /** What the business receives. */
     amount: number;
+    fee: number;
+    /** What was taken from the wallet (amount + fee). */
+    total: number;
     recipient: string;
 }
 

@@ -76,7 +76,7 @@ export const ReceiveMoneySheet: React.FC<{ visible: boolean; onClose: () => void
                                 style={({ pressed }) => [styles.btn, styles.btnDeposit, pressed && { opacity: 0.8 }]}
                                 accessibilityRole="button"
                             >
-                                <ArrowDownToLine size={16} color={colors.blue} />
+                                <ArrowDownToLine size={16} color="#FFFFFF" />
                                 <Text style={styles.btnDepositText}>Deposit money</Text>
                             </Pressable>
                         </>
@@ -109,6 +109,6 @@ const styles = StyleSheet.create({
     btnLightText: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.navy },
     btnDark: { backgroundColor: colors.blue },
     btnDarkText: { fontFamily: fonts.bodyBold, fontSize: 14, color: '#FFFFFF' },
-    btnDeposit: { alignSelf: 'stretch', flex: 0, marginTop: 12, backgroundColor: colors.tabActiveBg, borderWidth: 1, borderColor: '#BFDBFE' },
-    btnDepositText: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.blue },
+    btnDeposit: { alignSelf: 'stretch', flex: 0, marginTop: 12, backgroundColor: '#000000' },
+    btnDepositText: { fontFamily: fonts.bodyBold, fontSize: 14, color: '#FFFFFF' },
 });

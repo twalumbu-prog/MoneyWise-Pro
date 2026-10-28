@@ -166,17 +166,25 @@ export const moneyWisePayService = {
             .eq('organization_id', memo.recipientOrgId).eq('external_reference', ref).limit(1);
         if (already && already.length > 0) return;
 
+        let platformFee = 0;
         if (opts.loan) {
             await employerLoanLedger.bookLoanReceived({ recipientOrgId: memo.recipientOrgId, kind: opts.loan.kind, employerName: opts.loan.employerName, amount: Number(memo.amount), ref });
         } else {
             const { data: recWallet } = await supabase.from('organization_wallets').select('id')
                 .eq('organization_id', memo.recipientOrgId).eq('is_main', true).maybeSingle();
 
+            // A pay link with a MoneyWise fee on top: the payer sent amount + fee, the business is credited the amount only, and the
+            // fee is forwarded to the MoneyWise settlement account (payLink.service.finalizeByReference) — exactly like a payment
+            // link paid by mobile money, where the wallet mirrors the Lenco balance after the sweep.
+            const { data: plRow } = await supabase.from('app_settings').select('value').eq('key', `paylink:${ref.replace(/-R\d+$/, '')}`).maybeSingle();
+            platformFee = Math.max(0, Number((plRow?.value as any)?.fee) || 0);
+            const bookedAmount = Math.round((Number(memo.amount) - platformFee) * 100) / 100;
+
             await cashbookService.createEntry(memo.recipientOrgId, {
                 entry_type: 'INFLOW',
                 account_type: 'MONEYWISE_WALLET',
                 wallet_id: recWallet?.id || null,
-                debit: Number(memo.amount),
+                debit: bookedAmount,
                 credit: 0,
                 description: `MoneyWise Pay from ${memo.senderName || 'a MoneyWise user'}`,
                 reference_number: ref,
@@ -200,7 +208,7 @@ export const moneyWisePayService = {
 
         // A personal account paying a business earns that business's reward points. Never blocks or fails the payment.
         if (opts.tag && !opts.loan) {
-            rewardsService.awardMoneyWisePay({ requisitionId: opts.tag.requisitionId, recipientOrgId: memo.recipientOrgId, amount: Number(memo.amount), ref })
+            rewardsService.awardMoneyWisePay({ requisitionId: opts.tag.requisitionId, recipientOrgId: memo.recipientOrgId, amount: Number(memo.amount) - platformFee, ref })
                 .catch((e) => console.error('[Rewards] MoneyWise Pay award failed:', e.message));
         }
 

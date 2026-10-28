@@ -85,7 +85,7 @@ export async function getSendSummary(orgId: string, userId: string, requisitionI
     const budgetAmount = b ? round2(Number((b as any).amount)) : null;
 
     return {
-        ...base, status: 'ready', amount: round2(base.amount || payment),
+        ...base, status: 'ready', amount: payment,
         account: { id: (acc as any).id, name: (acc as any).name, code: (acc as any).code ?? null },
         spentBefore, spentAfter,
         budget: budgetAmount && budgetAmount > 0

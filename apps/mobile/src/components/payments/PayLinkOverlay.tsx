@@ -65,13 +65,15 @@ export const PayLinkOverlay: React.FC<{ token?: string; username?: string }> = (
 
     const wallet = target?.wallets.find((w) => w.id === (walletId ?? target.wallets.find((x) => x.is_main)?.id ?? target.wallets[0]?.id));
     const amount = target ? (target.amountEditable ? Number(amountText.replace(/,/g, '')) || 0 : (target.amount ?? 0)) : 0;
-    const short = !!wallet && amount > 0 && wallet.balance + 0.005 < amount;
+    const fee = target && !target.amountEditable ? target.fee : 0;
+    const total = Math.round((amount + fee) * 100) / 100;
+    const short = !!wallet && total > 0 && wallet.balance + 0.005 < total;
     const canPay = !!target && target.status === 'READY' && !target.own && amount > 0 && !!wallet && !short && phase === 'ready';
 
     const pay = async () => {
         if (!target || !wallet) return;
         setError(null);
-        const ok = await strong.confirm(`Pay ${formatKwacha(amount)} to ${target.recipient.name}`);
+        const ok = await strong.confirm(`Pay ${formatKwacha(total)} to ${target.recipient.name}`);
         if (!ok) { setResetKey((k) => k + 1); return; }
         setPhase('paying');
         try {
@@ -82,7 +84,7 @@ export const PayLinkOverlay: React.FC<{ token?: string; username?: string }> = (
             if (r.status === 'paid') {
                 hapticSuccess();
                 // A personal account gets the "money sent" popup (account it was filed under, budget left) on the screen it returns to.
-                if (isPersonal) { showSendResult({ requisitionId: r.requisitionId, amount: r.amount, recipient: r.recipient }); close(); return; }
+                if (isPersonal) { showSendResult({ requisitionId: r.requisitionId, amount: r.total, recipient: r.recipient }); close(); return; }
                 setPhase('paid');
                 Animated.sequence([Animated.delay(200), Animated.timing(draw, { toValue: 1, duration: 300, easing: Easing.bezier(0, 0, 0.58, 1), useNativeDriver: false })]).start();
             } else {
@@ -137,14 +139,14 @@ export const PayLinkOverlay: React.FC<{ token?: string; username?: string }> = (
                         <View style={styles.centre}>
                             <SuccessMark draw={draw} size={72} />
                             <Text style={styles.stateTitle}>Paid</Text>
-                            <Text style={styles.stateBody}>{formatKwacha(amount)} sent to {target.recipient.name}.</Text>
+                            <Text style={styles.stateBody}>{formatKwacha(total)} sent to {target.recipient.name}.</Text>
                             <Pressable onPress={close} style={styles.primary}><Text style={styles.primaryText}>Done</Text></Pressable>
                         </View>
                     ) : phase === 'processing' ? (
                         <View style={styles.centre}>
                             <ActivityIndicator color={colors.blue} />
                             <Text style={styles.stateTitle}>Payment on its way</Text>
-                            <Text style={styles.stateBody}>{formatKwacha(amount)} to {target.recipient.name} is being confirmed. You'll see it in your wallet shortly — don't pay again.</Text>
+                            <Text style={styles.stateBody}>{formatKwacha(total)} to {target.recipient.name} is being confirmed. You'll see it in your wallet shortly — don't pay again.</Text>
                             <Pressable onPress={close} style={styles.primary}><Text style={styles.primaryText}>Done</Text></Pressable>
                         </View>
                     ) : (
@@ -165,6 +167,13 @@ export const PayLinkOverlay: React.FC<{ token?: string; username?: string }> = (
                                 </View>
                             ) : (
                                 <Text style={styles.amount}>{formatKwacha(amount)}</Text>
+                            )}
+                            {fee > 0 && (
+                                <View style={styles.feeBox}>
+                                    <View style={styles.feeRow}><Text style={styles.feeLabel}>Amount</Text><Text style={styles.feeValue}>{formatKwacha(amount)}</Text></View>
+                                    <View style={styles.feeRow}><Text style={styles.feeLabel}>MoneyWise fee</Text><Text style={styles.feeValue}>{formatKwacha(fee)}</Text></View>
+                                    <View style={[styles.feeRow, styles.feeTotal]}><Text style={styles.feeTotalLabel}>Total</Text><Text style={styles.feeTotalValue}>{formatKwacha(total)}</Text></View>
+                                </View>
                             )}
                             {target.amountEditable && (
                                 <TextInput value={note} onChangeText={setNote} placeholder="What is it for? (optional)" placeholderTextColor={colors.textFaint} style={styles.note} maxLength={120} editable={phase === 'ready'} />
@@ -197,7 +206,7 @@ export const PayLinkOverlay: React.FC<{ token?: string; username?: string }> = (
                             {!!error && <Text style={styles.error}>{error}</Text>}
 
                             <View style={{ marginTop: 16 }}>
-                                <SlideToPay label={amount > 0 ? `Slide to pay ${formatKwacha(amount)}` : 'Enter an amount'} disabled={!canPay} busy={phase === 'paying'} resetKey={resetKey} onComplete={pay} />
+                                <SlideToPay label={amount > 0 ? `Slide to pay ${formatKwacha(total)}` : 'Enter an amount'} disabled={!canPay} busy={phase === 'paying'} resetKey={resetKey} onComplete={pay} />
                             </View>
                             <View style={styles.secure}><ShieldCheck size={13} color={colors.textFaint} /><Text style={styles.secureText}>You'll confirm with your PIN or Face ID</Text></View>
                         </>
@@ -234,6 +243,13 @@ const styles = StyleSheet.create({
     currency: { fontFamily: fonts.bodyBold, fontSize: 30, color: colors.textMuted },
     amountInput: { fontFamily: fonts.bodyBold, fontSize: 40, color: colors.navy, minWidth: 120, textAlign: 'center', padding: 0 },
     note: { marginTop: 10, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 11, fontFamily: fonts.body, fontSize: 14, color: colors.text, textAlign: 'center' },
+    feeBox: { marginTop: 12, paddingHorizontal: 14, paddingVertical: 10, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, gap: 6 },
+    feeRow: { flexDirection: 'row', justifyContent: 'space-between' },
+    feeLabel: { fontFamily: fonts.body, fontSize: 13, color: colors.textMuted },
+    feeValue: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.text },
+    feeTotal: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: 6 },
+    feeTotalLabel: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text },
+    feeTotalValue: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text },
     fromRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16, paddingVertical: 12, paddingHorizontal: 14, borderRadius: radius.md, backgroundColor: colors.canvasAlt, borderWidth: 1, borderColor: colors.border },
     fromLabel: { fontFamily: fonts.body, fontSize: 11, color: colors.textFaint },
     fromName: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text },
