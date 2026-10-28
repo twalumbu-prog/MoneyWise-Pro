@@ -163,7 +163,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFFFFF', borderRadius: 32, minHeight: 56, paddingLeft: 24, paddingRight: 11,
         borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', ...cardShadow,
     },
-    assistantInput: { flex: 1, fontFamily: fonts.body, fontSize: 14, color: colors.text, paddingVertical: 10 },
+    assistantInput: { flex: 1, fontFamily: fonts.body, fontSize: 14, color: colors.text, paddingVertical: 10, letterSpacing: 0 },
     // The Assistant composer's own mic and send buttons.
     mic: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.canvasAlt, alignItems: 'center', justifyContent: 'center' },
     micListening: { backgroundColor: '#EF4444' },
