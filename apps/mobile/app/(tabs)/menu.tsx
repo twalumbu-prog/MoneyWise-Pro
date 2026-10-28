@@ -6,7 +6,7 @@ import { useRouter } from 'expo-router';
 import {
     ShieldCheck, ShoppingBag, LayoutGrid, TrendingUp, Landmark, Store,
     User, Settings as SettingsIcon, Users, LogOut, Plug, FolderTree, FileText, Lock, UserX, SlidersHorizontal,
-    MessageSquareText, Trophy,
+    MessageSquareText, Trophy, Gift,
 } from 'lucide-react-native';
 import { userService, investmentService, rewardsService } from 'core';
 import { useQuery } from '@tanstack/react-query';
@@ -180,6 +180,18 @@ export default function MenuScreen() {
                         <View style={styles.rowMain}>
                             <Text style={styles.rowLabel}>Mobile money capture</Text>
                             <Text style={styles.rowSub}>Book MoMo & Airtel SMS automatically</Text>
+                        </View>
+                    </Pressable>
+                )}
+                {!isPersonal && ['ADMIN', 'ACCOUNTANT', 'CASHIER'].includes(userRole ?? '') && (
+                    <Pressable
+                        onPress={() => router.push('/settings/customer-rewards')}
+                        style={({ pressed }) => [styles.row, styles.rowBorder, pressed && { opacity: 0.6 }]}
+                    >
+                        <Gift size={18} color={colors.blue} />
+                        <View style={styles.rowMain}>
+                            <Text style={styles.rowLabel}>Customer rewards</Text>
+                            <Text style={styles.rowSub}>Reward rules & customer vouchers</Text>
                         </View>
                     </Pressable>
                 )}

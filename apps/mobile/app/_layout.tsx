@@ -151,6 +151,7 @@ export default function RootLayout() {
                         <Stack.Screen name="settings/profile" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="settings/kyc-profile" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="settings/preferences" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="settings/customer-rewards" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="settings/security" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="settings/general" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="settings/team" options={{ animation: 'slide_from_right' }} />
