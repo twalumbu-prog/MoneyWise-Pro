@@ -140,7 +140,7 @@ export const SendResultHost: React.FC = () => {
                                 <View style={styles.emoji}><Text style={{ fontSize: 18 }}>{account!.emoji ?? '🏷️'}</Text></View>
                                 <View style={{ flex: 1 }}>
                                     <Text style={styles.filed}>Filed under</Text>
-                                    <Text style={styles.acctName} numberOfLines={1}>{account!.cleanName}</Text>
+                                    <Text style={styles.acctName} numberOfLines={2}>{account!.cleanName}</Text>
                                 </View>
                                 <View style={styles.chip}><TrendingUp size={12} color={colors.blue} /><Text style={styles.chipText}>+{formatKwacha(summary!.amount)}</Text></View>
                             </View>
