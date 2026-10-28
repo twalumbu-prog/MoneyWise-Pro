@@ -843,20 +843,6 @@ export default function NewRequisitionScreen() {
                                                         <Text style={styles.recipientHandleText}>
                                                             {selectedRecipient.username ? `@${selectedRecipient.username}` : (selectedRecipient.email || selectedRecipient.phone)}
                                                         </Text>
-                                                        <View style={styles.recipientMetaRow}>
-                                                            <View style={[
-                                                                styles.accountTypeBadge,
-                                                                selectedRecipient.account_type === 'PERSONAL' ? styles.typePersonal : styles.typeBusiness
-                                                            ]}>
-                                                                <Text style={[
-                                                                    styles.accountTypeText,
-                                                                    selectedRecipient.account_type === 'PERSONAL' ? { color: colors.blue } : { color: '#059669' }
-                                                                ]}>
-                                                                    {selectedRecipient.account_type === 'PERSONAL' ? 'Personal Workspace' : 'Business'}
-                                                                </Text>
-                                                            </View>
-                                                            <Text style={styles.recipientOrgText}>· {selectedRecipient.organization_name}</Text>
-                                                        </View>
                                                     </View>
                                                 </View>
 

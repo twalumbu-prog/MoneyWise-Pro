@@ -84,7 +84,8 @@ export const SendResultHost: React.FC = () => {
     // The summary arrived: count the spend up, fill the bar, then bring in the budget note.
     useEffect(() => {
         if (!summary || summary.status !== 'ready' || summary.spentBefore === null || summary.spentAfter === null) return;
-        const from = summary.spentBefore, to = summary.spentAfter;
+        // The bar fills from the very start of the track, and the figure counts up with it from zero.
+        const from = 0, to = summary.spentAfter;
         setShown(from);
         const id = count.addListener(({ value }) => setShown(from + (to - from) * value));
         const mine = run.current;
@@ -108,7 +109,7 @@ export const SendResultHost: React.FC = () => {
     const pct = (v: number) => (budget ? Math.min(1, v / budget.amount) : 0);
     const barColor = !budget ? colors.blue : budget.over ? colors.danger : budget.percentUsed >= 80 ? '#F59E0B' : colors.blue;
     const barWidth = budget && summary
-        ? count.interpolate({ inputRange: [0, 1], outputRange: [`${pct(summary.spentBefore ?? 0) * 100}%`, `${pct(summary.spentAfter ?? 0) * 100}%`] })
+        ? count.interpolate({ inputRange: [0, 1], outputRange: ['0%', `${pct(summary.spentAfter ?? 0) * 100}%`] })
         : '0%';
 
     const tone = !budget ? 'neutral' : budget.over ? 'over' : budget.percentUsed >= 80 ? 'warn' : 'ok';
@@ -176,12 +177,17 @@ export const SendResultHost: React.FC = () => {
                                 </View>
                                 <View style={styles.chip}><TrendingUp size={12} color={colors.blue} /><Text style={styles.chipText}>+{formatKwacha(summary!.amount)}</Text></View>
                             </View>
-                            <Text style={styles.spentLabel}>Spent on {account!.cleanName} in {summary!.month}</Text>
+                            <Text style={styles.spentLabel}>Spent on {account!.cleanName}</Text>
                             <Text style={styles.spent}>{formatKwacha(shown)}</Text>
                             {budget && (
                                 <View>
                                     <View style={styles.track}><Animated.View style={[styles.fill, { width: barWidth as any, backgroundColor: barColor }]} /></View>
-                                    <Text style={styles.budgetOf}>of {formatKwacha(budget.amount)} budget</Text>
+                                    <View style={styles.leftRow}>
+                                        <Text style={[styles.leftText, budget.over && { color: colors.danger }]}>
+                                            {budget.over ? `${formatKwacha(Math.abs(budget.remaining))} over budget` : `${formatKwacha(budget.remaining)} left to spend`}
+                                        </Text>
+                                        <Text style={styles.budgetOf}>of {formatKwacha(budget.amount)}</Text>
+                                    </View>
                                 </View>
                             )}
                         </View>
@@ -222,7 +228,9 @@ const styles = StyleSheet.create({
     spent: { fontFamily: fonts.bodyBold, fontSize: 28, color: colors.navy, marginTop: -4 },
     track: { height: 8, backgroundColor: '#E5E7EB', borderRadius: 8, overflow: 'hidden' },
     fill: { height: 8, borderRadius: 8 },
-    budgetOf: { fontFamily: fonts.body, fontSize: 11.5, color: colors.textFaint, marginTop: 5, textAlign: 'right' },
+    leftRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 },
+    leftText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.positiveInk },
+    budgetOf: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint },
     waitingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
     waiting: { fontFamily: fonts.body, fontSize: 13, color: colors.textMuted, textAlign: 'center', lineHeight: 18 },
     done: { alignSelf: 'stretch', marginTop: 18, minHeight: 48, borderRadius: radius.pill, backgroundColor: colors.blue, alignItems: 'center', justifyContent: 'center' },
