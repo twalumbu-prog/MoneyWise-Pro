@@ -30,6 +30,7 @@ import {
     resolveRecipientName,
     getMyAccountability,
     recordLoanRecovery,
+    getSendSummaryHandler,
     getLoanBalance,
 } from '../controllers/requisition.controller';
 import {
@@ -70,6 +71,7 @@ router.post('/maintenance/backfill-audit', backfillAuditScores);
 router.get('/disbursements/history', getDisbursementHistory);
 router.post('/:id/disburse', disburseRequisition);
 router.post('/:id/auto-disburse', autoAuthorizeAndDisburse);
+router.get('/:id/send-summary', getSendSummaryHandler);
 router.post('/:id/disburse-payroll', disbursePayrollRequisition);
 router.post('/:id/loan-recovery', requireRole(['ADMIN', 'ACCOUNTANT']), recordLoanRecovery);
 router.get('/:id/loan-balance', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER', 'MANAGER']), getLoanBalance);

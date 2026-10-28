@@ -34,6 +34,19 @@ interface CreateRequisitionData {
     recipient_name?: string;
 }
 
+/** What a personal payment did to the books: the account it was filed under, this month's spend there, and the budget left. */
+export interface SendSummary {
+    status: 'ready' | 'pending';
+    requisitionId: string;
+    amount: number;
+    description: string | null;
+    account: { id: string; name: string; code: string | null } | null;
+    spentBefore: number | null;
+    spentAfter: number | null;
+    budget: { amount: number; remaining: number; over: boolean; percentUsed: number } | null;
+    month: string;
+}
+
 export interface Requisition {
     id: string;
     requestor_id: string;
@@ -216,6 +229,13 @@ export const requisitionService = {
             throw new Error(err.message || err.error || 'Failed to acknowledge receipt');
         }
 
+        return response.json();
+    },
+
+    /** Waits (server-side, up to ~14s) for the payment to be filed under an account, then reports spend and budget. */
+    async getSendSummary(id: string): Promise<SendSummary> {
+        const response = await apiFetch(`/requisitions/${id}/send-summary`);
+        if (!response.ok) throw new Error('Could not load the payment summary');
         return response.json();
     },
 

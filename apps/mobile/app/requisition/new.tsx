@@ -10,7 +10,7 @@ import { useRouter, Stack, useFocusEffect } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     X, ArrowRight, ArrowLeft, Plus, Minus, Trash2, User, List, AlertCircle, ArrowDownToLine,
-    CheckCircle, Smartphone, Building2, Mail, ChevronDown, Search,
+    CheckCircle, Check, Smartphone, Building2, Mail, ChevronDown, Search,
     ShieldCheck, BookUser,
 } from 'lucide-react-native';
 import {
@@ -24,6 +24,7 @@ import { BankAvatar } from '../../src/components/BankAvatar';
 import { cacheStoreSync } from '../../src/platform/storage';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 import { useGoBack } from '../../src/hooks/useGoBack';
+import { showSendResult } from '../../src/lib/sendResult';
 import { ContactSuggestions, ContactPickerSheet, useContactBook } from '../../src/components/payments/ContactPicker';
 import { InlineSearchSelect } from '../../src/components/InlineSearchSelect';
 import { useKeyboardHeight } from '../../src/hooks/useKeyboardHeight';
@@ -379,6 +380,10 @@ export default function NewRequisitionScreen() {
         ? lineItems.reduce((s, i) => s + Number(i.estimated_amount), 0)
         : (Number(manualAmount) || 0);
 
+    // The picked wallet's balance, freshest first (re-read each time the screen is shown), like the web picker's "K… available".
+    const selectedWalletRow = wallets.find((w) => w.id === selectedWalletId);
+    const selectedWalletLine = walletBalanceText(selectedWalletBalance ?? selectedWalletRow?.balance);
+
     const isWalletBalanceInsufficient = autoAuthorize && !useMyAccount &&
         !!selectedWalletId && selectedWalletBalance !== null && getTotal() > selectedWalletBalance;
 
@@ -475,6 +480,8 @@ export default function NewRequisitionScreen() {
                 recipient_organization_id: paymentMethod === 'moneywise' ? (selectedRecipient?.organization_id || undefined) : undefined,
             };
             const created = await requisitionService.create(data);
+            let sentRequisitionId: string | null = null;
+            const sentRecipientName = recipientNameToUse || null;
 
             if (autoAuthorize && userRole === 'ADMIN' && !useMyAccount) {
                 try {
@@ -507,6 +514,7 @@ export default function NewRequisitionScreen() {
                             }
                         }
                     }
+                    sentRequisitionId = created.id;
                 } catch (disbErr: any) {
                     setActiveRequisitionId(created.id);
                     setError(`${disbErr.message || 'Disbursement failed.'} The requisition was created — open it to disburse manually.`);
@@ -516,6 +524,10 @@ export default function NewRequisitionScreen() {
             }
 
             qc.invalidateQueries({ queryKey: ['requisitions'] });
+            qc.invalidateQueries({ queryKey: ['wallets'] });
+            // A personal payment that has gone out: show the "money sent" popup (account it was filed under + budget left) on the
+            // screen we return to.
+            if (isPersonal && sentRequisitionId) showSendResult({ requisitionId: sentRequisitionId, amount: getTotal(), recipient: sentRecipientName });
             safeBack();
         } catch (e: any) {
             setError(e?.message ?? 'Submission failed. Please try again.');
@@ -1071,7 +1083,10 @@ export default function NewRequisitionScreen() {
                                     <View style={styles.reviewCard}>
                                         <Text style={styles.label}>Send From Wallet</Text>
                                         <Pressable style={[styles.selectInput, { marginTop: 8 }]} onPress={() => setWalletPickerOpen(true)}>
-                                            <Text style={styles.selectInputText}>{wallets.find((w) => w.id === selectedWalletId)?.name || 'Select Wallet'}</Text>
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={styles.selectInputText}>{wallets.find((w) => w.id === selectedWalletId)?.name || 'Select Wallet'}</Text>
+                                                {!!selectedWalletLine && <Text style={styles.selectInputSub}>{selectedWalletLine}</Text>}
+                                            </View>
                                             <ChevronDown size={16} color={colors.textFaint} />
                                         </Pressable>
                                     </View>
@@ -1175,7 +1190,7 @@ export default function NewRequisitionScreen() {
                 visible={walletPickerOpen}
                 onClose={() => setWalletPickerOpen(false)}
                 title="Select Wallet"
-                items={wallets.map((w) => ({ id: w.id, label: w.name }))}
+                items={wallets.map((w) => ({ id: w.id, label: w.name, sublabel: walletBalanceText(w.balance), selected: w.id === selectedWalletId }))}
                 onSelect={(item) => { setSelectedWalletId(item.id); setWalletPickerOpen(false); }}
             />
         </KeyboardAvoidingView>
@@ -1199,9 +1214,13 @@ const ToggleRow: React.FC<{
     </Pressable>
 );
 
+/** "K27.50 available", or nothing when the balance isn't known. */
+const walletBalanceText = (balance: unknown): string | null =>
+    balance === null || balance === undefined || Number.isNaN(Number(balance)) ? null : `${formatKwacha(Number(balance))} available`;
+
 const PickerSheet: React.FC<{
     visible: boolean; onClose: () => void; title: string;
-    items: { id: string; label: string }[]; searchable?: boolean;
+    items: { id: string; label: string; /** A second line under the label, e.g. a wallet's balance. */ sublabel?: string | null; selected?: boolean }[]; searchable?: boolean;
     onSelect: (item: { id: string; label: string }) => void;
     /** Optional leading icon per row, e.g. a bank logo — keyed by the row's label. */
     renderIcon?: (label: string) => React.ReactNode;
@@ -1234,7 +1253,11 @@ const PickerSheet: React.FC<{
                         renderItem={({ item }) => (
                             <Pressable style={styles.pickerRow} onPress={() => onSelect(item)}>
                                 {renderIcon?.(item.label)}
-                                <Text style={styles.pickerRowText}>{item.label}</Text>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.pickerRowText}>{item.label}</Text>
+                                    {!!item.sublabel && <Text style={styles.pickerRowSub}>{item.sublabel}</Text>}
+                                </View>
+                                {item.selected && <Check size={16} color={colors.blue} />}
                             </Pressable>
                         )}
                     />
@@ -1295,7 +1318,7 @@ const styles = StyleSheet.create({
     },
     selectInput: {
         flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.canvasAlt,
-        borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, paddingHorizontal: 18, height: 52,
+        borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, paddingHorizontal: 18, minHeight: 52, paddingVertical: 6,
     },
     selectInputMain: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
     selectInputText: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.text },
@@ -1408,6 +1431,8 @@ const styles = StyleSheet.create({
     pickerList: { paddingBottom: 32 },
     pickerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 24, paddingVertical: 14 },
     pickerRowText: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.text },
+    pickerRowSub: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint, marginTop: 2 },
+    selectInputSub: { fontFamily: fonts.body, fontSize: 11.5, color: colors.textFaint, marginTop: 1 },
     // MoneyWise Pay Styles
     verifiedRecipientCard: {
         backgroundColor: colors.surface,

@@ -23,6 +23,7 @@ import { useNotificationNavigation } from '../src/hooks/useNotificationNavigatio
 import { useBadgeSync } from '../src/hooks/useBadgeSync';
 import { useMomoCaptureFlush } from '../src/hooks/useMomoCaptureFlush';
 import { AppLockProvider } from '../src/context/AppLockContext';
+import { SendResultHost } from '../src/components/payments/SendResultHost';
 import { colors } from '../src/theme/tokens';
 
 // Hand `core` its native implementations before any service call can fire.
@@ -117,6 +118,7 @@ export default function RootLayout() {
                     <AppLockProvider>
                     <StatusBar style="dark" />
                     <KeyboardDoneBar />
+                    <SendResultHost />
                     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.canvas } }}>
                         <Stack.Screen name="index" />
                         <Stack.Screen name="(auth)" />

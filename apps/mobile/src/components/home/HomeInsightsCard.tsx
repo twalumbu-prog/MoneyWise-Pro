@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Pressable, ScrollView, StyleSheet, LayoutAnimation, LayoutChangeEvent, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
+import { View, Pressable, ScrollView, StyleSheet, LayoutChangeEvent, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { investmentService } from 'core';
@@ -19,9 +19,9 @@ type Route = '/reporting' | '/inbox' | '/savings' | '/schedules' | '/apps/invest
 
 /**
  * The Home information card. One white card whose header (title + "See more") follows the slide on show:
- * Financial Overview → Updates → Savings → Coming up → Investments (only when the person has invested). It moves on by
- * itself every few seconds, like the highlights on Reporting, and stops for good the moment the person swipes — until they leave
- * Home and come back (or sign out and in again).
+ * Financial Overview → Updates → Savings → Coming up → Investments (only when the person has invested). The card keeps the
+ * height of its tallest slide, so nothing below it jumps. It moves on by itself every few seconds, like the highlights on
+ * Reporting, and stops for good the moment the person swipes — until they leave Home and come back (or sign out and in again).
  */
 export const HomeInsightsCard: React.FC = () => {
     const router = useRouter();
@@ -32,8 +32,6 @@ export const HomeInsightsCard: React.FC = () => {
     const [active, setActive] = useState(0);
     const [focused, setFocused] = useState(true);
     const [stopped, setStopped] = useState(false);
-    // Each slide's own height: the card is as tall as the slide on show (not the tallest one), and eases between them.
-    const [heights, setHeights] = useState<Record<string, number>>({});
 
     // Coming back to Home (from another tab or page) lets the card move by itself again; leaving it pauses it.
     useFocusEffect(useCallback(() => { setFocused(true); setStopped(false); return () => setFocused(false); }, []));
@@ -56,7 +54,6 @@ export const HomeInsightsCard: React.FC = () => {
     const shown = slides[Math.min(active, count - 1)];
 
     const goTo = useCallback((i: number, animated = true) => {
-        if (animated) LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         activeRef.current = i;
         setActive(i);
         scroll.current?.scrollTo({ x: i * width, animated });
@@ -74,7 +71,7 @@ export const HomeInsightsCard: React.FC = () => {
     const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
         if (width === 0) return;
         const i = Math.min(count - 1, Math.max(0, Math.round(e.nativeEvent.contentOffset.x / width)));
-        if (i !== activeRef.current) { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); activeRef.current = i; setActive(i); }
+        if (i !== activeRef.current) { activeRef.current = i; setActive(i); }
     };
 
     return (
@@ -90,17 +87,9 @@ export const HomeInsightsCard: React.FC = () => {
                         onScroll={onScroll}
                         onScrollBeginDrag={() => setStopped(true)}
                         nestedScrollEnabled
-                        style={heights[shown.key] ? { height: heights[shown.key] } : undefined}
                     >
-                        {slides.map((s) => (
-                            <View
-                                key={s.key}
-                                style={{ width, alignSelf: 'flex-start' }}
-                                onLayout={(e: LayoutChangeEvent) => { const h = Math.ceil(e.nativeEvent.layout.height); setHeights((prev) => (prev[s.key] === h ? prev : { ...prev, [s.key]: h })); }}
-                            >
-                                {s.node}
-                            </View>
-                        ))}
+                        {/* Every slide stretches to the tallest one, so the card keeps one height whichever slide is showing. */}
+                        {slides.map((s) => <View key={s.key} style={{ width }}>{s.node}</View>)}
                     </ScrollView>
                 )}
             </View>

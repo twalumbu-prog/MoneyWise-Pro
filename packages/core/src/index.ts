@@ -231,6 +231,7 @@ export {
 export type {
     Requisition,
     RequisitionMessage,
+    SendSummary,
 } from './services/requisition.service';
 
 export {

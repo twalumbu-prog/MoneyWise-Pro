@@ -1,4 +1,5 @@
 import { getEmployersForUser } from '../services/userPreferences.service';
+import { getSendSummary, SendSummaryError } from '../services/sendSummary.service';
 import { employerLoanLedger, LoanRecoveryError } from '../services/employerLoanLedger.service';
 import { maybeAutoCategorizePersonalById } from '../services/personalRequisitionClassifier.service';
 import { Response } from 'express';
@@ -3529,5 +3530,17 @@ export const getLoanBalance = async (req: any, res: any): Promise<any> => {
         res.json({ owed: bal.owed, recovered: bal.recovered, outstanding: bal.outstanding, status: bal.status, type: bal.type });
     } catch (error: any) {
         res.status(500).json({ error: 'Could not load the balance', details: error.message });
+    }
+};
+
+/** After a personal payment goes out: the account it was filed under, spending on it this month, and the budget left. */
+export const getSendSummaryHandler = async (req: any, res: any): Promise<any> => {
+    try {
+        const summary = await getSendSummary(req.user.organization_id, req.user.id, String(req.params.id));
+        res.json(summary);
+    } catch (error: any) {
+        if (error instanceof SendSummaryError) return res.status(error.httpStatus).json({ error: error.message });
+        console.error('[SendSummary] failed:', error);
+        res.status(500).json({ error: 'Could not load the payment summary.' });
     }
 };
