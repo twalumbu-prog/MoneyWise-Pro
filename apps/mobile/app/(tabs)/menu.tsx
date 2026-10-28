@@ -14,6 +14,7 @@ import { useAuth } from '../../src/context/AuthContext';
 import { usePersonalAccount } from '../../src/hooks/usePersonalAccount';
 import { OtherServiceIcon } from '../../src/components/icons/OtherServiceIcon';
 import { SegmentedToggle } from '../../src/components/rewards/RewardsUI';
+import { AnimatedTabContent } from '../../src/components/AnimatedTabs';
 import { RewardsTab, REWARDS_OVERVIEW_KEY } from '../../src/components/rewards/RewardsTab';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
@@ -126,6 +127,7 @@ export default function MenuScreen() {
                 options={[{ value: 'general', label: 'General', icon: SettingsIcon }, { value: 'rewards', label: 'Rewards', icon: Trophy, dot: rewardReady }]}
             />
 
+            <AnimatedTabContent tabKey={tab} index={tab === 'rewards' ? 1 : 0} style={{ gap: 14 }}>
             {tab === 'rewards' ? <RewardsTab /> : (<>
             <View style={styles.card}>
                 <Text style={styles.cardTitle}>Other Services</Text>
@@ -328,6 +330,7 @@ export default function MenuScreen() {
                 <Text style={styles.signOutText}>Sign Out</Text>
             </Pressable>
             </>)}
+            </AnimatedTabContent>
         </ScrollView>
     );
 }

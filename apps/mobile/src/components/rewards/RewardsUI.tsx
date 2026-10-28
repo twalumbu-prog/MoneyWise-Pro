@@ -1,30 +1,42 @@
 import { View, Text, Pressable, StyleSheet, Image } from 'react-native';
 import { ChevronRight, Download, Link2, Building2 } from 'lucide-react-native';
 import type { RewardCard } from 'core';
+import { AnimatedSegmented } from '../AnimatedTabs';
 import { colors, fonts } from '../../theme/tokens';
 
 export const fmtPoints = (n: number) => Math.round(n).toLocaleString('en-US');
 
-/** The General | Rewards (or Points | Achievements) pill toggle: the selected side is a white pill with the blue label. */
+/**
+ * The General | Rewards (or Points | Achievements) pill toggle. Same motion as the wallet's Main Wallets | External Accounts
+ * switch: the white pill springs from one side to the other (AnimatedSegmented).
+ */
 export function SegmentedToggle<T extends string>({ options, value, onChange }: {
     options: { value: T; label: string; icon: React.ComponentType<{ size?: number; color?: string }>; dot?: boolean }[];
     value: T;
     onChange: (v: T) => void;
 }) {
     return (
-        <View style={styles.toggle}>
-            {options.map((o) => {
+        <AnimatedSegmented
+            value={value}
+            onChange={(v) => onChange(v as T)}
+            trackStyle={styles.toggle}
+            indicatorStyle={styles.toggleIndicator}
+            itemStyle={styles.toggleItem}
+            items={options.map((o) => {
                 const on = o.value === value;
                 const Icon = o.icon;
-                return (
-                    <Pressable key={o.value} onPress={() => onChange(o.value)} style={[styles.toggleItem, on && styles.toggleItemOn]} accessibilityRole="button" accessibilityState={{ selected: on }}>
-                        <Icon size={13} color={on ? colors.blue : colors.textMuted} />
-                        <Text style={[styles.toggleText, on && { color: colors.blue }]}>{o.label}</Text>
-                        {o.dot && <View style={styles.dot} />}
-                    </Pressable>
-                );
+                return {
+                    value: o.value,
+                    content: (
+                        <View style={styles.toggleInner}>
+                            <Icon size={13} color={on ? colors.blue : colors.textMuted} />
+                            <Text style={[styles.toggleText, on && { color: colors.blue }]}>{o.label}</Text>
+                            {o.dot && <View style={styles.dot} />}
+                        </View>
+                    ),
+                };
             })}
-        </View>
+        />
     );
 }
 
@@ -88,8 +100,9 @@ export const RewardCardRow: React.FC<{ card: RewardCard; onPress: () => void }> 
 
 const styles = StyleSheet.create({
     toggle: { flexDirection: 'row', padding: 2, backgroundColor: '#E5E7EB', borderRadius: 80 },
-    toggleItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 9, borderRadius: 80 },
-    toggleItemOn: { backgroundColor: '#FFFFFF', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 2, borderWidth: 0.5, borderColor: 'rgba(0,0,0,0.05)' },
+    toggleItem: { flex: 1, paddingVertical: 9, borderRadius: 80, alignItems: 'center', justifyContent: 'center' },
+    toggleInner: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+    toggleIndicator: { borderRadius: 80, backgroundColor: '#FFFFFF', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 2, borderWidth: 0.5, borderColor: 'rgba(0,0,0,0.05)' },
     toggleText: { fontFamily: fonts.body, fontSize: 12, color: colors.textMuted },
     dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.blue },
 

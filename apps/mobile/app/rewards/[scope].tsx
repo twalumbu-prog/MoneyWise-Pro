@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Plus, Trophy, Award, Gift, Star, Medal } from 'lucide-react-native';
 import { rewardsService, type RewardDetail } from 'core';
 import { useGoBack } from '../../src/hooks/useGoBack';
+import { AnimatedTabContent } from '../../src/components/AnimatedTabs';
 import { SegmentedToggle, RewardsActionBar, ProgrammeLogo, ProgressBar, fmtPoints } from '../../src/components/rewards/RewardsUI';
 import { InviteSheet, RedeemSheet, ReferralCodeSheet } from '../../src/components/rewards/RewardsSheets';
 import { colors, fonts, radius } from '../../src/theme/tokens';
@@ -77,6 +78,7 @@ export default function RewardDetailScreen() {
                         />
                         <RewardsActionBar onRedeem={() => setSheet('redeem')} onInvite={() => setSheet('invite')} />
 
+                        <AnimatedTabContent tabKey={tab} index={tab === 'achievements' ? 1 : 0}>
                         {tab === 'points' ? (
                             <View style={styles.card}>
                                 <Text style={styles.cardTitle}>{card.isPlatform ? 'Points activity' : 'Reward balance'}</Text>
@@ -119,6 +121,7 @@ export default function RewardDetailScreen() {
                                 })}
                             </View>
                         )}
+                        </AnimatedTabContent>
                     </>
                 )}
             </ScrollView>
