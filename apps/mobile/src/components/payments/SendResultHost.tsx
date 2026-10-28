@@ -2,13 +2,39 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, View, Text, Pressable, StyleSheet, Animated, Easing, ActivityIndicator, Dimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Check, X, PiggyBank, TrendingUp, AlertTriangle, Tag } from 'lucide-react-native';
+import Svg, { Circle, Path } from 'react-native-svg';
+import { X, PiggyBank, TrendingUp, AlertTriangle, Tag } from 'lucide-react-native';
 import { requisitionService, formatKwacha, type SendSummary } from 'core';
 import { onSendResult, type SendResultPayload } from '../../lib/sendResult';
 import { extractEmojiAndName } from '../../utils/emoji';
 import { colors, fonts, radius } from '../../theme/tokens';
 
 const CARD_WIDTH = Math.min(340, Dimensions.get('window').width - 48);
+
+const AnimatedPath = Animated.createAnimatedComponent(Path);
+/** The tick's path inside the 64×64 mark, and its length (for drawing it as a stroke). */
+const TICK_PATH = 'M20 33 L29 42 L45 24';
+const TICK_LENGTH = 37;
+/** Animate UI's progress spring (stiffness 300, damping 35: settles in ~0.5s with no overshoot). */
+const PROGRESS_SPRING = { stiffness: 300, damping: 35, mass: 1, overshootClamping: true, useNativeDriver: false } as const;
+
+/** A green circular outline with a tick drawn as a stroke. The tick draws itself (Animate UI's checkbox: stroke and opacity 0 → 1 in 0.3s after a 0.2s delay, ease-out). */
+const SuccessMark: React.FC<{ draw: Animated.Value }> = ({ draw }) => (
+    <Svg width={64} height={64} viewBox="0 0 64 64">
+        <Circle cx={32} cy={32} r={29} stroke={colors.positive} strokeWidth={4} fill="none" />
+        <AnimatedPath
+            d={TICK_PATH}
+            stroke={colors.positive}
+            strokeWidth={4.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+            strokeDasharray={TICK_LENGTH}
+            strokeDashoffset={draw.interpolate({ inputRange: [0, 1], outputRange: [TICK_LENGTH, 0] })}
+            opacity={draw}
+        />
+    </Svg>
+);
 
 /**
  * The "money sent" popup. It confirms the payment, then — once the payment has been filed under one of the person's accounts —
@@ -24,7 +50,8 @@ export const SendResultHost: React.FC = () => {
     const [shown, setShown] = useState(0);              // the spend figure while it counts up
 
     const fade = useRef(new Animated.Value(0)).current;
-    const pop = useRef(new Animated.Value(0)).current;  // the success tick
+    const pop = useRef(new Animated.Value(0)).current;  // the circle appearing
+    const draw = useRef(new Animated.Value(0)).current; // the tick drawing itself
     const count = useRef(new Animated.Value(0)).current; // 0 → 1: spend counts up, bar fills
     const noteY = useRef(new Animated.Value(0)).current; // 0 hidden → 1 shown
     const run = useRef(0);
@@ -37,9 +64,13 @@ export const SendResultHost: React.FC = () => {
     useEffect(() => onSendResult(async (p) => {
         const mine = ++run.current;
         setPayload(p); setSummary(null); setFailed(false); setNoteOpen(true); setShown(0);
-        fade.setValue(0); pop.setValue(0); count.setValue(0); noteY.setValue(0);
+        fade.setValue(0); pop.setValue(0); draw.setValue(0); count.setValue(0); noteY.setValue(0);
         Animated.timing(fade, { toValue: 1, duration: 180, useNativeDriver: true }).start();
-        Animated.spring(pop, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }).start();
+        Animated.spring(pop, { toValue: 1, friction: 7, tension: 120, useNativeDriver: true }).start();
+        Animated.sequence([
+            Animated.delay(200),
+            Animated.timing(draw, { toValue: 1, duration: 300, easing: Easing.bezier(0, 0, 0.58, 1), useNativeDriver: false }),
+        ]).start();
         try {
             const s = await requisitionService.getSendSummary(p.requisitionId);
             if (run.current !== mine) return;
@@ -48,7 +79,7 @@ export const SendResultHost: React.FC = () => {
         } catch {
             if (run.current === mine) setFailed(true);
         }
-    }), [fade, pop, count, noteY]);
+    }), [fade, pop, draw, count, noteY]);
 
     // The summary arrived: count the spend up, fill the bar, then bring in the budget note.
     useEffect(() => {
@@ -59,7 +90,8 @@ export const SendResultHost: React.FC = () => {
         const mine = run.current;
         Animated.sequence([
             Animated.delay(250),
-            Animated.timing(count, { toValue: 1, duration: 1200, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
+            // The bar and the number share one spring, so the figure counts up exactly as the bar fills.
+            Animated.spring(count, { toValue: 1, ...PROGRESS_SPRING }),
         ]).start(() => {
             if (run.current !== mine) return;
             setShown(to);
@@ -125,8 +157,8 @@ export const SendResultHost: React.FC = () => {
 
             <View style={styles.center} pointerEvents="box-none">
                 <Animated.View style={[styles.card, { opacity: fade, transform: [{ scale: fade.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) }] }]}>
-                    <Animated.View style={[styles.tick, { transform: [{ scale: pop }] }]}>
-                        <Check size={30} color="#FFFFFF" strokeWidth={3} />
+                    <Animated.View style={[styles.tick, { transform: [{ scale: pop.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) }], opacity: pop }]}>
+                        <SuccessMark draw={draw} />
                     </Animated.View>
                     <Text style={styles.title}>Money sent</Text>
                     <Text style={styles.amount}>{formatKwacha(payload.amount)}</Text>
@@ -175,7 +207,7 @@ const styles = StyleSheet.create({
     backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,30,45,0.55)' },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
     card: { width: CARD_WIDTH, backgroundColor: colors.surface, borderRadius: 28, paddingHorizontal: 22, paddingTop: 26, paddingBottom: 18, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 24, shadowOffset: { width: 0, height: 10 }, elevation: 12 },
-    tick: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.positive, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+    tick: { width: 64, height: 64, marginBottom: 12 },
     title: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.textMuted, letterSpacing: 0.6, textTransform: 'uppercase' },
     amount: { fontFamily: fonts.bodyBold, fontSize: 30, color: '#000000', marginTop: 2 },
     to: { fontFamily: fonts.body, fontSize: 13, color: colors.textMuted, marginTop: 2, maxWidth: CARD_WIDTH - 44 },
