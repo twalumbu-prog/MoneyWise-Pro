@@ -24,6 +24,7 @@ import { useBadgeSync } from '../src/hooks/useBadgeSync';
 import { useMomoCaptureFlush } from '../src/hooks/useMomoCaptureFlush';
 import { AppLockProvider } from '../src/context/AppLockContext';
 import { SendResultHost } from '../src/components/payments/SendResultHost';
+import '../src/lib/appOrigin';
 import { colors } from '../src/theme/tokens';
 
 // Hand `core` its native implementations before any service call can fire.

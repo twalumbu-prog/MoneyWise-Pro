@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, TextInput, Pressable, StyleSheet, Animated, Easing, ActivityIndicator, Image, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
+import { View, Text, TextInput, Pressable, StyleSheet, Animated, Easing, ActivityIndicator, Image, KeyboardAvoidingView, Platform, Keyboard, BackHandler } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -12,6 +12,7 @@ import { usePersonalAccount } from '../../hooks/usePersonalAccount';
 import { setPendingPayLink } from '../../lib/pendingPayLink';
 import { showSendResult } from '../../lib/sendResult';
 import { hapticSuccess, hapticError } from '../../lib/haptics';
+import { cameFromAnotherApp } from '../../lib/appOrigin';
 import { SlideToPay } from './SlideToPay';
 import { SuccessMark } from './SuccessMark';
 import { colors, fonts, radius } from '../../theme/tokens';
@@ -28,6 +29,8 @@ export const PayLinkOverlay: React.FC<{ token?: string; username?: string }> = (
     const { session, loading: authLoading } = useAuth();
     const { isPersonal } = usePersonalAccount();
     const strong = useStrongConfirm();
+    // Opened from a link in another app? Remember it now, so closing can take the person back there (Android).
+    const openedFromOutside = useRef(cameFromAnotherApp()).current;
 
     const [amountText, setAmountText] = useState('');
     const [note, setNote] = useState('');
@@ -52,7 +55,7 @@ export const PayLinkOverlay: React.FC<{ token?: string; username?: string }> = (
         Animated.parallel([
             Animated.timing(fade, { toValue: 0, duration: 160, useNativeDriver: true }),
             Animated.timing(rise, { toValue: 0, duration: 200, useNativeDriver: true }),
-        ]).start(() => goBack());
+        ]).start(() => { if (Platform.OS === 'android' && openedFromOutside) BackHandler.exitApp(); else goBack(); });
     };
 
     const { data: target, isLoading, error: loadError, refetch } = useQuery<PayTarget>({

@@ -64,22 +64,25 @@ export const SlideToPay: React.FC<{
 
     // The label fades out as the thumb covers it; the fill follows the thumb.
     const labelOpacity = x.interpolate({ inputRange: [0, Math.max(1, max * 0.6)], outputRange: [1, 0], extrapolate: 'clamp' });
-    const fillWidth = Animated.add(x, THUMB + PAD);
+    // Nothing at rest; from the first nudge it covers the thumb and then keeps extending with it all the way along.
+    const span = Math.max(8, max);
+    const fillWidth = x.interpolate({ inputRange: [0, 1, span], outputRange: [0, THUMB + PAD + 1, span + THUMB + PAD], extrapolate: 'clamp' });
 
     return (
         <View style={[styles.track, disabled && { opacity: 0.45 }]} onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)} accessibilityRole="adjustable" accessibilityLabel={label}>
             <Animated.View style={[styles.fill, { width: fillWidth }]} />
             <Animated.Text style={[styles.label, { opacity: labelOpacity }]} numberOfLines={1}>{label}</Animated.Text>
             <Animated.View style={[styles.thumb, { transform: [{ translateX: x }] }]} {...pan.panHandlers}>
-                {busy ? <ActivityIndicator color="#FFFFFF" /> : <ChevronsRight size={24} color="#FFFFFF" strokeWidth={2.5} />}
+                {busy ? <ActivityIndicator color={colors.blue} /> : <ChevronsRight size={24} color={colors.blue} strokeWidth={2.5} />}
             </Animated.View>
         </View>
     );
 };
 
 const styles = StyleSheet.create({
-    track: { height: THUMB + PAD * 2, borderRadius: (THUMB + PAD * 2) / 2, backgroundColor: colors.tabActiveBg, borderWidth: 1, borderColor: '#BFDBFE', justifyContent: 'center', overflow: 'hidden' },
-    fill: { position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: '#DBEAFE', borderRadius: (THUMB + PAD * 2) / 2 },
-    label: { position: 'absolute', alignSelf: 'center', fontFamily: fonts.bodyBold, fontSize: 15, color: colors.blue, paddingLeft: THUMB / 2 },
-    thumb: { position: 'absolute', left: PAD, top: PAD, width: THUMB, height: THUMB, borderRadius: THUMB / 2, backgroundColor: colors.blue, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4 },
+    // The track is the same grey (fill and stroke) as the "From" wallet row above it; the blue fill grows behind the thumb as it slides.
+    track: { height: THUMB + PAD * 2, borderRadius: (THUMB + PAD * 2) / 2, backgroundColor: colors.canvasAlt, borderWidth: 1, borderColor: colors.border, justifyContent: 'center', overflow: 'hidden' },
+    fill: { position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: colors.blue, borderRadius: (THUMB + PAD * 2) / 2 },
+    label: { position: 'absolute', alignSelf: 'center', fontFamily: fonts.bodyBold, fontSize: 15, color: colors.textMuted, paddingLeft: THUMB / 2 },
+    thumb: { position: 'absolute', left: PAD, top: PAD, width: THUMB, height: THUMB, borderRadius: THUMB / 2, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4 },
 });
