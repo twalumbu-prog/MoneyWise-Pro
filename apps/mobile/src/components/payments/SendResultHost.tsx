@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, View, Text, Pressable, StyleSheet, Animated, Easing, ActivityIndicator, Dimensions } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { X, PiggyBank, TrendingUp, AlertTriangle, Tag } from 'lucide-react-native';
 import { requisitionService, formatKwacha, type SendSummary } from 'core';
@@ -20,8 +19,7 @@ const PROGRESS_SPRING = { stiffness: 300, damping: 35, mass: 1, overshootClampin
  * notification box slides in from the top saying how much of the budget is left; its ✕ dismisses it.
  */
 export const SendResultHost: React.FC = () => {
-    const insets = useSafeAreaInsets();
-    const [payload, setPayload] = useState<SendResultPayload | null>(null);
+        const [payload, setPayload] = useState<SendResultPayload | null>(null);
     const [summary, setSummary] = useState<SendSummary | null>(null);
     const [failed, setFailed] = useState(false);
     const [noteOpen, setNoteOpen] = useState(true);
@@ -59,7 +57,7 @@ export const SendResultHost: React.FC = () => {
         }
     }), [fade, pop, draw, count, noteY]);
 
-    // The summary arrived: count the spend up, fill the bar, then bring in the budget note.
+    // The summary arrived: count the spend up, fill the bar, then fade in the budget note under it.
     useEffect(() => {
         if (!summary || summary.status !== 'ready' || summary.spentBefore === null || summary.spentAfter === null) return;
         // The bar fills from the very start of the track, and the figure counts up with it from zero.
@@ -101,39 +99,6 @@ export const SendResultHost: React.FC = () => {
                 <Pressable style={StyleSheet.absoluteFill} onPress={close} accessibilityLabel="Close" />
             </Animated.View>
 
-            {/* The budget note: slides in from the top once the numbers have settled. ✕ closes just this note. */}
-            {ready && noteOpen && (
-                <Animated.View
-                    pointerEvents="box-none"
-                    style={[styles.noteWrap, { top: insets.top + 8, opacity: noteY, transform: [{ translateY: noteY.interpolate({ inputRange: [0, 1], outputRange: [-140, 0] }) }] }]}
-                >
-                    <View style={[styles.note, toneStyle]}>
-                        <View style={[styles.noteIcon, { backgroundColor: noteColor + '1A' }]}><NoteIcon size={18} color={noteColor} /></View>
-                        <View style={{ flex: 1, paddingRight: 20 }}>
-                            <Text style={styles.noteTitle}>{budget ? 'Budget update' : 'No budget yet'}</Text>
-                            {budget ? (
-                                <>
-                                    <Text style={styles.noteBody}>
-                                        {budget.over
-                                            ? `You're ${formatKwacha(Math.abs(budget.remaining))} over your ${account!.cleanName} budget`
-                                            : `${formatKwacha(budget.remaining)} left in your ${account!.cleanName} budget`}
-                                    </Text>
-                                    <Text style={styles.noteSub}>{formatKwacha(summary!.spentAfter ?? 0)} of {formatKwacha(budget.amount)} used this month ({budget.percentUsed}%)</Text>
-                                </>
-                            ) : (
-                                <>
-                                    <Text style={styles.noteBody}>There's no budget for {account!.cleanName} this month.</Text>
-                                    <Pressable onPress={() => { close(); router.push('/budgets'); }} hitSlop={8}><Text style={styles.noteLink}>Set a budget</Text></Pressable>
-                                </>
-                            )}
-                        </View>
-                        <Pressable onPress={() => setNoteOpen(false)} hitSlop={10} style={styles.noteClose} accessibilityLabel="Dismiss">
-                            <X size={15} color={colors.textMuted} />
-                        </Pressable>
-                    </View>
-                </Animated.View>
-            )}
-
             <View style={styles.center} pointerEvents="box-none">
                 <Animated.View style={[styles.card, { opacity: fade, transform: [{ scale: fade.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) }] }]}>
                     <Animated.View style={[styles.tick, { transform: [{ scale: pop.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) }], opacity: pop }]}>
@@ -167,6 +132,34 @@ export const SendResultHost: React.FC = () => {
                                         <Text style={styles.budgetOf}>of {formatKwacha(budget.amount)}</Text>
                                     </View>
                                 </View>
+                            )}
+                            {noteOpen && (
+                                <Animated.View style={{ opacity: noteY, transform: [{ translateY: noteY.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }] }}>
+                                    <View style={[styles.note, toneStyle]}>
+                                        <View style={[styles.noteIcon, { backgroundColor: noteColor + '1A' }]}><NoteIcon size={18} color={noteColor} /></View>
+                                        <View style={{ flex: 1, paddingRight: 20 }}>
+                                            <Text style={styles.noteTitle}>{budget ? 'Budget update' : 'No budget yet'}</Text>
+                                            {budget ? (
+                                                <>
+                                                    <Text style={styles.noteBody}>
+                                                        {budget.over
+                                                            ? `You're ${formatKwacha(Math.abs(budget.remaining))} over your ${account!.cleanName} budget`
+                                                            : `${formatKwacha(budget.remaining)} left in your ${account!.cleanName} budget`}
+                                                    </Text>
+                                                    <Text style={styles.noteSub}>{formatKwacha(summary!.spentAfter ?? 0)} of {formatKwacha(budget.amount)} used this month ({budget.percentUsed}%)</Text>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Text style={styles.noteBody}>There's no budget for {account!.cleanName} this month.</Text>
+                                                    <Pressable onPress={() => { close(); router.push('/budgets'); }} hitSlop={8}><Text style={styles.noteLink}>Set a budget</Text></Pressable>
+                                                </>
+                                            )}
+                                        </View>
+                                        <Pressable onPress={() => setNoteOpen(false)} hitSlop={10} style={styles.noteClose} accessibilityLabel="Dismiss">
+                                            <X size={15} color={colors.textMuted} />
+                                        </Pressable>
+                                    </View>
+                                </Animated.View>
                             )}
                         </View>
                     ) : failed ? (
@@ -213,13 +206,12 @@ const styles = StyleSheet.create({
     waiting: { fontFamily: fonts.body, fontSize: 13, color: colors.textMuted, textAlign: 'center', lineHeight: 18 },
     done: { alignSelf: 'stretch', marginTop: 18, minHeight: 48, borderRadius: radius.pill, backgroundColor: colors.blue, alignItems: 'center', justifyContent: 'center' },
     doneText: { fontFamily: fonts.bodyBold, fontSize: 15, color: '#FFFFFF' },
-    noteWrap: { position: 'absolute', left: 16, right: 16 },
-    note: { flexDirection: 'row', gap: 12, padding: 14, borderRadius: 20, borderWidth: 1, backgroundColor: colors.surface, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 10 },
+    note: { flexDirection: 'row', gap: 10, padding: 12, borderRadius: 16, borderWidth: 1, backgroundColor: colors.surface, marginTop: 2 },
     noteNeutral: { borderColor: colors.border },
     noteOk: { borderColor: '#BFDBFE' },
     noteWarn: { borderColor: '#FCD34D' },
     noteOver: { borderColor: '#FCA5A5' },
-    noteIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+    noteIcon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
     noteTitle: { fontFamily: fonts.bodyBold, fontSize: 11, color: colors.textFaint, letterSpacing: 0.5, textTransform: 'uppercase' },
     noteBody: { fontFamily: fonts.bodyBold, fontSize: 14.5, color: '#000000', marginTop: 2, lineHeight: 19 },
     noteSub: { fontFamily: fonts.body, fontSize: 12, color: colors.textMuted, marginTop: 2 },
