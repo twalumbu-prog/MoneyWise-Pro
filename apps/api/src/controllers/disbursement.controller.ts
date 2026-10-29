@@ -1080,7 +1080,7 @@ export async function ensureWalletTransferConfirmed(
         return {
             confirmed: false,
             status: 'failed',
-            message: `The transfer failed on Lenco: ${statusCheck.message || 'unknown error'}. The disbursement has been reversed and the requisition reset to AUTHORISED — please retry the disbursement.`
+            message: `The transfer failed on Lenco: ${statusCheck.reasonForFailure || statusCheck.message || 'unknown error'}. The disbursement has been reversed and the requisition reset to AUTHORISED — please retry the disbursement.`
         };
     }
 
@@ -1179,7 +1179,7 @@ export const verifyDisbursementStatus = async (req: any, res: any): Promise<any>
 
             return res.status(400).json({ 
                 status: 'failed', 
-                error: 'Transfer failed on Lenco: ' + (statusCheck.message || 'Unknown error'),
+                error: 'Transfer failed on Lenco: ' + (statusCheck.reasonForFailure || statusCheck.message || 'Unknown error'),
                 details: statusCheck
             });
         }

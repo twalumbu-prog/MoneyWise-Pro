@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-    View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, Alert,
+    View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, Alert, Linking,
 } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Wallet, Coins, Smartphone, Building2, AlertTriangle, Check } from 'lucide-react-native';
-import { requisitionService, cashbookService, lencoService, formatKwacha } from 'core';
+import { Wallet, Coins, Smartphone, Building2, AlertTriangle, Check, Clock, Phone, MessageCircle } from 'lucide-react-native';
+import {
+    requisitionService, cashbookService, lencoService, formatKwacha,
+    SUPPORT_PHONE_DISPLAY, SUPPORT_TEL_URL, SUPPORT_WHATSAPP_URL, NETWORK_RETRY_MINUTES, isNetworkTransferFailure, retryAfterLabel,
+} from 'core';
 import { InlineSearchSelect } from '../InlineSearchSelect';
 import { colors, fonts, radius } from '../../theme/tokens';
 
@@ -26,8 +29,17 @@ const operatorFor = (phone: string): string | null => {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Mirrors the web card's parseDisburseError so the same failure reads the same on both. */
-const explain = (raw: string, amount: number): { title: string; body: string; canRetry: boolean } => {
+const explain = (raw: string, amount: number, failedAt: number): { title: string; body: string; canRetry: boolean; isNetwork?: boolean } => {
     const msg = raw.toLowerCase();
+    // Operator/bank declined it (Lenco: "Transfer Not Successful") — nothing moved, so reassure and say when to retry.
+    if (isNetworkTransferFailure(raw)) {
+        return {
+            title: 'The payment network is busy — your money is safe',
+            body: `The mobile money network didn’t accept this transfer right now. Nothing has left your wallet and the requisition is still Authorised. This is usually temporary — please try again in ${NETWORK_RETRY_MINUTES} minutes (after ${retryAfterLabel(failedAt)}).`,
+            canRetry: false,
+            isNetwork: true,
+        };
+    }
     if (msg.includes('less than k5') || msg.includes('minimum')) {
         return { title: 'Amount too low', body: `Lenco needs at least K${LENCO_MIN_TRANSFER} per transfer. This one is ${formatKwacha(amount)} — record it as Cash / Other instead.`, canRetry: false };
     }
@@ -87,6 +99,7 @@ export const DisburseSheet: React.FC<{
     const [walletId, setWalletId] = useState<string | null>(null);
     const [status, setStatus] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const failedAt = useRef(0);
     const lookupSeq = useRef(0);
 
     // ── source wallets (with balances) and banks ──
@@ -205,10 +218,10 @@ export const DisburseSheet: React.FC<{
             );
             onDone();
         },
-        onError: (e: Error) => { setStatus(null); setError(e.message || 'An unexpected error occurred. Please try again.'); },
+        onError: (e: Error) => { failedAt.current = Date.now(); setStatus(null); setError(e.message || 'An unexpected error occurred. Please try again.'); },
     });
 
-    const parsed = error ? explain(error, amount) : null;
+    const parsed = error ? explain(error, amount, failedAt.current || Date.now()) : null;
 
     if (pay.isPending) {
         return (
@@ -341,9 +354,25 @@ export const DisburseSheet: React.FC<{
             )}
 
             {!!parsed && (
-                <View style={styles.errorCard}>
-                    <Text style={styles.errorTitle}>{parsed.title}</Text>
-                    <Text style={styles.errorBody}>{parsed.body}</Text>
+                <View style={[styles.errorCard, parsed.isNetwork && styles.netCard]}>
+                    <View style={styles.errorHead}>
+                        {parsed.isNetwork && <Clock size={15} color="#92400E" />}
+                        <Text style={[styles.errorTitle, parsed.isNetwork && styles.netTitle]}>{parsed.title}</Text>
+                    </View>
+                    <Text style={[styles.errorBody, parsed.isNetwork && styles.netBody]}>{parsed.body}</Text>
+                    {parsed.isNetwork && (
+                        <View style={styles.supportBox}>
+                            <Text style={styles.supportText}>Still not going through after {NETWORK_RETRY_MINUTES} minutes? Contact MoneyWise support:</Text>
+                            <View style={styles.errorActions}>
+                                <Pressable style={styles.supportBtn} onPress={() => Linking.openURL(SUPPORT_TEL_URL)}>
+                                    <Phone size={13} color="#78350F" /><Text style={styles.supportBtnText}>{SUPPORT_PHONE_DISPLAY}</Text>
+                                </Pressable>
+                                <Pressable style={styles.supportBtn} onPress={() => Linking.openURL(SUPPORT_WHATSAPP_URL)}>
+                                    <MessageCircle size={13} color="#78350F" /><Text style={styles.supportBtnText}>WhatsApp</Text>
+                                </Pressable>
+                            </View>
+                        </View>
+                    )}
                     <View style={styles.errorActions}>
                         {parsed.canRetry && canSubmit && (
                             <Pressable style={styles.errorBtn} onPress={() => pay.mutate()}><Text style={styles.errorBtnText}>Try again</Text></Pressable>
@@ -420,7 +449,15 @@ const styles = StyleSheet.create({
     noteTitle: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.text },
     noteBody: { fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: colors.textMuted, marginTop: 2 },
     errorCard: { marginTop: 10, padding: 14, borderRadius: radius.md, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' },
-    errorTitle: { fontFamily: fonts.bodyBold, fontSize: 13.5, color: '#991B1B' },
+    errorHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    errorTitle: { flexShrink: 1, fontFamily: fonts.bodyBold, fontSize: 13.5, color: '#991B1B' },
+    netCard: { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' },
+    netTitle: { color: '#78350F' },
+    netBody: { color: '#92400E' },
+    supportBox: { marginTop: 10, padding: 10, borderRadius: radius.md, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#FDE68A' },
+    supportText: { fontFamily: fonts.bodyMedium, fontSize: 12, lineHeight: 17, color: '#78350F' },
+    supportBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.pill, backgroundColor: '#FEF3C7' },
+    supportBtnText: { fontFamily: fonts.bodyBold, fontSize: 12, color: '#78350F' },
     errorBody: { fontFamily: fonts.body, fontSize: 12.5, lineHeight: 18, color: '#B91C1C', marginTop: 4 },
     errorActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
     errorBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.pill, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#FECACA' },

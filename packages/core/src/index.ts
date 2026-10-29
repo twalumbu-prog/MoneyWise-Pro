@@ -29,6 +29,16 @@ export type {
     StreamAdapter,
 } from './platform';
 
+export {
+    SUPPORT_PHONE,
+    SUPPORT_PHONE_DISPLAY,
+    SUPPORT_WHATSAPP_URL,
+    SUPPORT_TEL_URL,
+    NETWORK_RETRY_MINUTES,
+    isNetworkTransferFailure,
+    retryAfterLabel,
+} from './support';
+
 export { apiFetch, apiJson, setActiveOrganizationId } from './api/apiFetch';
 export { ApiError, isApiError } from './api/ApiError';
 

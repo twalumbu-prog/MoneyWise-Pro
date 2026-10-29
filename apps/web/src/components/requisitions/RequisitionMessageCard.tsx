@@ -4,7 +4,8 @@ import { supabase } from '../../lib/supabase';
 import { RequisitionMessage, requisitionService } from '../../services/requisition.service';
 import { lencoService } from '../../services/lenco.service';
 import { cashbookService } from '../../services/cashbook.service';
-import { User, ChevronDown, Loader2, Check, CheckCircle, X, FileText, Smartphone, Coins, Wallet, Building2, ArrowRight, RefreshCw, Search, Beaker, AlertTriangle, Image as ImageIcon, Plus, Sparkles, RotateCcw, Edit3, Clock } from 'lucide-react';
+import { User, ChevronDown, Loader2, Check, CheckCircle, X, FileText, Smartphone, Coins, Wallet, Building2, ArrowRight, RefreshCw, Search, Beaker, AlertTriangle, Image as ImageIcon, Plus, Sparkles, RotateCcw, Edit3, Clock, Phone, MessageCircle } from 'lucide-react';
+import { SUPPORT_PHONE_DISPLAY, SUPPORT_TEL_URL, SUPPORT_WHATSAPP_URL, NETWORK_RETRY_MINUTES, isNetworkTransferFailure, retryAfterLabel } from 'core';
 import { accountService, Account } from '../../services/account.service';
 import { integrationService } from '../../services/integration.service';
 import { useAuth } from '../../context/AuthContext';
@@ -164,6 +165,8 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     const [isProcessing, setIsProcessing] = useState(false);
     const [isSuccess, setIsSuccess] = useState(false);
     const [disburseError, setDisburseError] = useState<string | null>(null);
+    // When the last disbursal failed, so "try again after 10:12" stays fixed across re-renders.
+    const disburseFailedAt = useRef<number>(0);
     // "Paid 18 of 33 employees — continuing…" while a batch payroll runs across
     // several API calls, so a long run never looks like a stall or a failure.
     const [payrollProgress, setPayrollProgress] = useState<string | null>(null);
@@ -799,14 +802,26 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
 
         } catch (err: any) {
             console.error('[Disburse] Failed:', err);
+            disburseFailedAt.current = Date.now();
             setIsProcessing(false);
             setDisburseError(err.message || 'An unexpected error occurred. Please try again.');
             setDisburseStatusMsg(null);
         }
     };
 
-    const parseDisburseError = (raw: string): { title: string; body: string; canRetry: boolean; canChangeMethod: boolean } => {
+    const parseDisburseError = (raw: string): { title: string; body: string; canRetry: boolean; canChangeMethod: boolean; isNetwork?: boolean } => {
         const msg = raw.toLowerCase();
+
+        // Operator/bank declined it (Lenco: "Transfer Not Successful") — must precede the generic 'failed' match below.
+        if (isNetworkTransferFailure(raw)) {
+            return {
+                title: 'The payment network is busy — your money is safe',
+                body: `The mobile money network didn't accept this transfer right now. Nothing has left your wallet and the requisition is still Authorised. This is usually temporary — please try again in ${NETWORK_RETRY_MINUTES} minutes (after ${retryAfterLabel(disburseFailedAt.current || Date.now())}).`,
+                canRetry: true,
+                canChangeMethod: true,
+                isNetwork: true,
+            };
+        }
 
         if (msg.includes('less than k5') || msg.includes('minimum')) {
             return {
@@ -2162,27 +2177,44 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                     const parsed = parseDisburseError(disburseError);
                                                     return (
                                                         <div className="mt-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                                            <div className="p-5 bg-red-50 border border-red-100 rounded-[20px]">
+                                                            <div className={`p-5 rounded-[20px] border ${parsed.isNetwork ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-100'}`}>
                                                                 <div className="flex items-start space-x-3 mb-3">
-                                                                    <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                                                        <X size={14} className="text-red-600" strokeWidth={3} />
+                                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${parsed.isNetwork ? 'bg-amber-100' : 'bg-red-100'}`}>
+                                                                        {parsed.isNetwork
+                                                                            ? <Clock size={14} className="text-amber-700" strokeWidth={3} />
+                                                                            : <X size={14} className="text-red-600" strokeWidth={3} />}
                                                                     </div>
                                                                     <div>
-                                                                        <p className="text-[13px] font-bold text-red-800 leading-tight">{parsed.title}</p>
-                                                                        <p className="text-[12px] text-red-700 mt-1 leading-relaxed">{parsed.body}</p>
+                                                                        <p className={`text-[13px] font-bold leading-tight ${parsed.isNetwork ? 'text-amber-900' : 'text-red-800'}`}>{parsed.title}</p>
+                                                                        <p className={`text-[12px] mt-1 leading-relaxed ${parsed.isNetwork ? 'text-amber-800' : 'text-red-700'}`}>{parsed.body}</p>
                                                                     </div>
                                                                 </div>
+                                                                {parsed.isNetwork && (
+                                                                    <div className="mt-3 p-3 bg-white/70 border border-amber-100 rounded-2xl">
+                                                                        <p className="text-[11px] font-semibold text-amber-900">Still not going through after {NETWORK_RETRY_MINUTES} minutes? Contact MoneyWise support:</p>
+                                                                        <div className="flex flex-wrap items-center gap-2 mt-2">
+                                                                            <a href={SUPPORT_TEL_URL} className="inline-flex items-center gap-1.5 h-8 px-3 bg-amber-100 hover:bg-amber-200 text-amber-900 text-[12px] font-bold rounded-full transition-all">
+                                                                                <Phone size={12} strokeWidth={2.5} /> {SUPPORT_PHONE_DISPLAY}
+                                                                            </a>
+                                                                            <a href={SUPPORT_WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 h-8 px-3 bg-white border border-amber-200 hover:bg-amber-50 text-amber-900 text-[12px] font-bold rounded-full transition-all">
+                                                                                <MessageCircle size={12} strokeWidth={2.5} /> WhatsApp
+                                                                            </a>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
                                                                 <div className="flex items-center space-x-2 mt-4">
                                                                     {parsed.canRetry && (
                                                                         <button
                                                                             onClick={() => {
                                                                                 setDisburseError(null);
+                                                                                // Network failures retry to the same person, so keep the verified recipient.
+                                                                                if (parsed.isNetwork) return;
                                                                                 setRecipientValue('');
                                                                                 setLookupName(null);
                                                                             }}
-                                                                            className="h-9 px-5 bg-red-100 hover:bg-red-200 text-red-800 text-[12px] font-bold rounded-full transition-all"
+                                                                            className={`h-9 px-5 text-[12px] font-bold rounded-full transition-all ${parsed.isNetwork ? 'bg-amber-100 hover:bg-amber-200 text-amber-900' : 'bg-red-100 hover:bg-red-200 text-red-800'}`}
                                                                         >
-                                                                            Try Again
+                                                                            {parsed.isNetwork ? "OK, I'll try later" : 'Try Again'}
                                                                         </button>
                                                                     )}
                                                                     {parsed.canChangeMethod && (
@@ -2194,7 +2226,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                                 setLookupName(null);
                                                                                 setRecipientProvider(null);
                                                                             }}
-                                                                            className="h-9 px-5 bg-white border border-red-100 hover:bg-red-50 text-red-700 text-[12px] font-bold rounded-full transition-all"
+                                                                            className={`h-9 px-5 bg-white border text-[12px] font-bold rounded-full transition-all ${parsed.isNetwork ? 'border-amber-200 hover:bg-amber-50 text-amber-900' : 'border-red-100 hover:bg-red-50 text-red-700'}`}
                                                                         >
                                                                             Change Method
                                                                         </button>
