@@ -17,6 +17,7 @@ import { RequisitionMessageService } from './requisition_message.service';
 import { memoryService } from './ai/memory.service';
 import { decisionRouter } from './ai/decision.router';
 import { createAccountForTransaction } from './accountSuggester.service';
+import { getReceivableAccountId } from './customerInvoice.service';
 
 const MIN_CONFIDENCE = 0.5;
 const SKIP_TYPES = new Set(['PAYROLL', 'LOAN', 'ADVANCE', 'INVEST', 'INVESTMENT']);
@@ -25,6 +26,10 @@ const FINALIZABLE = ['RECEIVED', 'EXPENSED', 'CATEGORIZING'];
 const inFlight = new Set<string>();
 
 const isFeeLine = (d: string) => /\b(fee|fees|charge|charges|withdrawal)\b/i.test(d) && /(fee|charge)/i.test(d);
+// Money lent, or paid on someone's behalf, comes back — it is a receivable (asset), never an expense. The AI only
+// sees EXPENSE accounts here, so without this "Loan to Blue Opus" / "Receivable for lunch from X" became Dining etc.
+const isLendingLine = (d: string) =>
+    /\b(receivables?|loan(ed)?\s+(to|for)|lent|lend(ing)?\s+(to|for)|advanced?\s+to|on\s+behalf\s+of|owe[sd]?\s+(me|us)|to\s+be\s+(repaid|refunded|reimbursed|paid\s+back)|pay(ing)?\s+back\s+to\s+me)\b/i.test(d);
 
 export interface AutoCategorizeResult { done: boolean; reason?: string; created?: number }
 
@@ -87,6 +92,16 @@ export async function autoCategorizePersonalRequisition(requisitionId: string, o
                     accountId = feeAcct;
                     account = (await supabase.from('accounts').select('*').eq('id', feeAcct).maybeSingle()).data;
                     reasoning = 'Payment charges go to Transaction Charges.'; confidence = 1; method = 'DETERMINISTIC_RULES';
+                }
+            }
+
+            if (!accountId && isLendingLine(`${description} ${req.description || ''}`)) {
+                const arId = await getReceivableAccountId(organizationId).catch(() => null);
+                if (arId) {
+                    accountId = arId;
+                    account = (await supabase.from('accounts').select('*').eq('id', arId).maybeSingle()).data;
+                    reasoning = 'Money lent or paid on someone’s behalf is owed back to you, so it is a receivable, not an expense.';
+                    confidence = 0.95; method = 'DETERMINISTIC_RULES';
                 }
             }
 

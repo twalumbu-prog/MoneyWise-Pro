@@ -17,6 +17,7 @@ HOW TO CHOOSE WELL:
 - Identify the VENDOR/MERCHANT and the NATURE of the spend first (e.g. food vendor -> meals; airline/hotel -> travel; software vendor -> subscriptions/IT).
 - If "Learned Examples From This Organization" are provided below, they are PRIOR HUMAN-VERIFIED decisions for this exact business. Treat a close match there as the strongest possible signal and follow it.
 - Distinguish assets from expenses (e.g. a "Laptop" is usually "Office Equipment"/"Assets", not "Office Supplies").
+- Money LENT or paid on someone else's behalf that will come back ("loan to X", "receivable from X", "paid for X, to be refunded") is NOT an expense, whatever was bought: choose an Accounts Receivable / Loans Receivable account if one is listed.
 
 Output format — return ONLY a JSON object:
 - "account_code": the EXACT code of the selected account from the provided list.
