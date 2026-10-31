@@ -7,6 +7,7 @@
  * working untouched.
  */
 import crypto from 'crypto';
+import { supabase } from '../lib/supabase';
 
 export interface BankAccount { id: string; label?: string; bank_name: string; account_number: string; account_name: string; is_default: boolean }
 export interface MobileMoneyAccount { id: string; label?: string; provider: string; number: string; name: string; is_default: boolean }
@@ -121,4 +122,33 @@ export function mergePaymentInfo(existing: any, incoming: any): PaymentInfoShape
         }
     }
     return compose(banks, momos, {});
+}
+
+
+/** The payment details a person keeps for ONE company (their membership there). Empty when they have set none for it. */
+export async function getOrgPaymentInfo(userId: string, orgId: string | null | undefined): Promise<any | null> {
+    if (!orgId) return null;
+    const { data } = await supabase.from('user_organizations').select('payment_info').eq('user_id', userId).eq('organization_id', orgId).maybeSingle();
+    return (data as any)?.payment_info ?? null;
+}
+
+/** Saves the details for that one company only; other companies' details are never touched. */
+export async function saveOrgPaymentInfo(userId: string, orgId: string, incoming: any): Promise<PaymentInfoShape> {
+    const merged = mergePaymentInfo(await getOrgPaymentInfo(userId, orgId), incoming);
+    const { data, error } = await supabase.from('user_organizations').update({ payment_info: merged }).eq('user_id', userId).eq('organization_id', orgId).select('user_id');
+    if (error) throw error;
+    if (!data || data.length === 0) throw new Error('You are not a member of this organization');
+    return merged;
+}
+
+/** Every account a person has saved across all their companies (for person-level choices such as where a salary is paid). */
+export async function getAllPaymentInfo(userId: string): Promise<PaymentInfoShape> {
+    const { data } = await supabase.from('user_organizations').select('payment_info').eq('user_id', userId);
+    const banks = new Map<string, BankAccount>(), momos = new Map<string, MobileMoneyAccount>();
+    for (const row of data ?? []) {
+        const { banks: b, momos: m } = accountsOf((row as any).payment_info);
+        for (const a of b) banks.set(`${a.id}|${a.account_number}`, a);
+        for (const a of m) momos.set(`${a.id}|${a.number}`, a);
+    }
+    return compose([...banks.values()], [...momos.values()], {});
 }

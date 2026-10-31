@@ -1,7 +1,7 @@
 import { employerLoanLedger } from '../services/employerLoanLedger.service';
 import { RECOVERABLE_STATUSES, loanTermExpired, totalOwed } from '../lib/loanMath';
 import { getPreferences, getPersonalOrgForUser } from '../services/userPreferences.service';
-import { accountsOf } from '../services/paymentInfo.service';
+import { accountsOf, getAllPaymentInfo } from '../services/paymentInfo.service';
 import { Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
 import { matchStaffMember } from '../lib/staffUserMatching';
@@ -903,8 +903,7 @@ async function resolveSalaryOverrides(staffIds: string[]): Promise<Map<string, S
                 const { data: o } = await supabase.from('organizations').select('lenco_subaccount_id').eq('id', org.id).maybeSingle();
                 if ((o as any)?.lenco_subaccount_id) out.set((row as any).id, { kind: 'MONEYWISE', orgId: org.id });
             } else if (prefs.payroll.account_id) {
-                const { data: u } = await supabase.from('users').select('payment_info').eq('id', (row as any).user_id).maybeSingle();
-                const { banks, momos } = accountsOf((u as any)?.payment_info);
+                const { banks, momos } = accountsOf(await getAllPaymentInfo((row as any).user_id));
                 if (dest === 'BANK') {
                     const a = banks.find((b) => b.id === prefs.payroll.account_id);
                     if (a && a.bank_name && a.account_number) out.set((row as any).id, { kind: 'BANK', bank_name: a.bank_name, account_number: a.account_number, account_name: a.account_name });

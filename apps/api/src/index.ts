@@ -258,6 +258,15 @@ const runMigration = async () => {
             ADD COLUMN IF NOT EXISTS payment_info JSONB DEFAULT NULL;
         `);
         console.log('[Migration] payment_info column ready.');
+        // Bank / mobile-money details are per company (the membership), not per person.
+        await migrationPool.query(`
+            ALTER TABLE public.user_organizations
+            ADD COLUMN IF NOT EXISTS payment_info JSONB DEFAULT NULL;
+            UPDATE public.user_organizations uo SET payment_info = u.payment_info
+            FROM public.users u
+            WHERE u.id = uo.user_id AND uo.organization_id = u.organization_id
+              AND uo.payment_info IS NULL AND u.payment_info IS NOT NULL;
+        `);
 
         console.log('[Migration] Schema update successful.');
 

@@ -1,4 +1,4 @@
-import { mergePaymentInfo, presentPaymentInfo, accountsOf } from '../services/paymentInfo.service';
+import { mergePaymentInfo, presentPaymentInfo, accountsOf, getOrgPaymentInfo, saveOrgPaymentInfo, getAllPaymentInfo } from '../services/paymentInfo.service';
 import {
     getPreferences, updatePreferences, isStaffWithPayroll, getPersonalOrgForUser, getEmployersForUser, CATEGORIZATION_MODELS,
 } from '../services/userPreferences.service';
@@ -662,10 +662,11 @@ export const getMyProfile = async (req: AuthRequest, res: any): Promise<any> => 
         // this might fail. We'll try to select basic info first, then attempt payment_info.
         const { data, error } = await supabase
             .from('users')
-            .select('id, name, role, employee_id, payment_info')
+            .select('id, name, role, employee_id')
             .eq('id', userId)
             .single();
-        if (data) (data as any).payment_info = presentPaymentInfo((data as any).payment_info);
+        // Bank / mobile-money details belong to the company being viewed, not to the person across all companies.
+        if (data) (data as any).payment_info = presentPaymentInfo(await getOrgPaymentInfo(userId, (req as any).user.organization_id));
 
         if (error) {
             // Fallback: Try selecting without payment_info if the first one failed
@@ -697,15 +698,9 @@ export const updatePaymentInfo = async (req: AuthRequest, res: any): Promise<any
             return res.status(400).json({ error: 'payment_info must be a valid object' });
         }
 
-        const { data: current } = await supabase.from('users').select('payment_info').eq('id', userId).maybeSingle();
-        const merged = mergePaymentInfo((current as any)?.payment_info, payment_info);
-
-        const { error } = await supabase
-            .from('users')
-            .update({ payment_info: merged })
-            .eq('id', userId);
-
-        if (error) throw error;
+        const orgId = (req as any).user.organization_id;
+        if (!orgId) return res.status(400).json({ error: 'No active organization' });
+        const merged = await saveOrgPaymentInfo(userId, orgId, payment_info);
         res.json({ message: 'Payment info updated successfully', payment_info: merged });
     } catch (error: any) {
         console.error('Error updating payment info:', error);
@@ -1160,8 +1155,7 @@ export const getMyPreferences = async (req: AuthRequest, res: any): Promise<any>
             const { data } = await supabase.from('payroll_staff').select('organization:organizations(name)').eq('user_id', userId);
             employers = [...new Set((data ?? []).map((r: any) => r.organization?.name).filter(Boolean))] as string[];
         }
-        const { data: u } = await supabase.from('users').select('payment_info').eq('id', userId).maybeSingle();
-        const pi: any = (u as any)?.payment_info ?? {};
+        const pi: any = await getAllPaymentInfo(userId);
 
         res.json({
             preferences,

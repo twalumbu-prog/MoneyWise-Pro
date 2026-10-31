@@ -9,7 +9,7 @@
  *   ai.categorization_model   model used to categorise their personal transactions (one of CATEGORIZATION_MODELS)
  *   payroll.destination       PERSONAL_WALLET | BANK | MOBILE_MONEY (+ account_id) — where a salary from an employer's payroll is paid
  */
-import { accountsOf } from './paymentInfo.service';
+import { accountsOf, getAllPaymentInfo } from './paymentInfo.service';
 import { supabase } from '../lib/supabase';
 import { ASSISTANT_MODELS } from './agent/models';
 import { PROVIDER_CATALOG } from './ai/ai.settings.service';
@@ -92,8 +92,7 @@ export async function updatePreferences(userId: string, patch: any): Promise<Use
             next.payroll = { destination: dest, account_id: null };
         } else {
             // A bank / mobile-money choice must name one of the person's own saved accounts.
-            const { data: u } = await supabase.from('users').select('payment_info').eq('id', userId).maybeSingle();
-            const { banks, momos } = accountsOf((u as any)?.payment_info);
+            const { banks, momos } = accountsOf(await getAllPaymentInfo(userId));
             const list: { id: string }[] = dest === 'BANK' ? banks : momos;
             const id = patch.payroll.account_id;
             if (id === null || id === undefined) {

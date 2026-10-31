@@ -14,7 +14,7 @@
  */
 import crypto from 'crypto';
 import { supabase } from '../lib/supabase';
-import { accountsOf } from './paymentInfo.service';
+import { accountsOf, getAllPaymentInfo } from './paymentInfo.service';
 import { normalizeZambiaPhone } from '../utils/zambiaPhone';
 import { getFrontendUrl } from '../utils/frontendUrl';
 
@@ -221,8 +221,8 @@ async function businessInfo(orgIds: string[]) {
 }
 
 async function contactsOf(userId: string): Promise<{ email: string | null; phones: string[] }> {
-    const { data: u } = await supabase.from('users').select('email, payment_info').eq('id', userId).maybeSingle();
-    const { momos } = accountsOf((u as any)?.payment_info);
+    const { data: u } = await supabase.from('users').select('email').eq('id', userId).maybeSingle();
+    const { momos } = accountsOf(await getAllPaymentInfo(userId));
     const phones = [...new Set(momos.map((m) => normalizeZambiaPhone(m.number)).filter((p) => /^0\d{9}$/.test(p)))];
     return { email: (u as any)?.email ? String((u as any).email).trim().toLowerCase() : null, phones };
 }
