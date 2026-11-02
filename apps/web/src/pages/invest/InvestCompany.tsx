@@ -132,7 +132,7 @@ export const InvestCompany: React.FC = () => {
                 {/* ── DESKTOP ─────────────────────────────────────────────────── */}
                 <div className="hidden md:block overflow-y-auto flex-1">
                     <div className="px-6 py-4">
-                        <div className="w-full bg-white rounded-[20px] p-6 shadow-sm flex flex-col gap-6 min-h-[600px]">
+                        <div className="w-full bg-white rounded-[20px] p-6 shadow-sm flex flex-col gap-6 min-h-[600px] md:border md:border-gray-200">
 
                             {/* Company banner */}
                             <div className="w-full bg-slate-50 border border-[#E8EEF8] rounded-xl p-8 flex flex-col items-center gap-4">

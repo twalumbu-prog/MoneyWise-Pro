@@ -206,7 +206,7 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({
                     <button key={m} type="button" onClick={() => switchMethod(m)}
                         className={`flex-1 py-1.5 text-[11px] font-semibold rounded-lg border transition-all ${
                             paymentMethod === m
-                                ? 'bg-[#0058DB] text-white border-[#0058DB]'
+                                ? 'bg-[#0058DB] md:bg-[#0059D8] text-white border-[#0058DB]'
                                 : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
                         }`}>
                         {m === 'MOBILE_MONEY' ? 'Mobile Money' : 'Bank Transfer'}
@@ -457,7 +457,7 @@ const ScheduleModal: React.FC<ScheduleModalProps> = ({ initial, onClose, onSave,
                                     type="button"
                                     onClick={() => setPopEnabled(v => !v)}
                                     className={`relative flex-shrink-0 w-10 h-6 rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-400 ${
-                                        popEnabled ? 'bg-[#0058DB]' : 'bg-gray-300'
+                                        popEnabled ? 'bg-[#0058DB] md:bg-[#0059D8]' : 'bg-gray-300'
                                     }`}
                                     aria-pressed={popEnabled}
                                     aria-label="Send proof of payment"
@@ -521,7 +521,7 @@ const ScheduleModal: React.FC<ScheduleModalProps> = ({ initial, onClose, onSave,
                         <button type="submit"
                             data-tour-target="save-schedule-btn"
                             disabled={saving}
-                            className="h-8 pl-4 pr-3 bg-[#0058DB] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-60">
+                            className="h-8 pl-4 pr-3 bg-[#0058DB] md:bg-[#0059D8] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-60">
                             {saving && <Loader2 size={12} className="animate-spin text-white" />}
                             <span className="text-white text-xs font-bold">
                                 {initial ? 'Save Changes' : 'Add to Schedule'}
@@ -617,7 +617,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onClose, onEdit, onRunN
                             {format(parseISO(upcoming.due_date), 'EEEE, d MMMM yyyy')}
                         </p>
                         <button type="button" onClick={onRunNow} disabled={running}
-                            className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-[#0058DB] hover:opacity-90 text-white text-xs font-bold rounded-lg transition disabled:opacity-60">
+                            className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-[#0058DB] md:bg-[#0059D8] hover:opacity-90 text-white text-xs font-bold rounded-lg transition disabled:opacity-60">
                             {running ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} fill="white" />}
                             Run Now
                         </button>
@@ -705,7 +705,7 @@ const CalendarView: React.FC<{ items: ScheduledItem[] }> = ({ items }) => {
                     const todayBool = isToday(day);
                     return (
                         <div key={key} className={`bg-white min-h-[72px] p-1.5 ${todayBool ? 'ring-1 ring-inset ring-blue-300' : ''}`}>
-                            <p className={`text-[11px] font-semibold mb-1 w-5 h-5 flex items-center justify-center rounded-full ${todayBool ? 'bg-[#0058DB] text-white' : 'text-gray-600'}`}>
+                            <p className={`text-[11px] font-semibold mb-1 w-5 h-5 flex items-center justify-center rounded-full ${todayBool ? 'bg-[#0058DB] md:bg-[#0059D8] text-white' : 'text-gray-600'}`}>
                                 {day.getDate()}
                             </p>
                             <div className="space-y-0.5">
@@ -863,14 +863,14 @@ const MobileSchedules: React.FC<MobileSchedulesProps> = ({
             />
 
             {/* Card — fills remaining space */}
-            <div className="flex-1 min-h-0 bg-white rounded-[20px] shadow-[0px_2px_6px_0px_rgba(0,0,0,0.15)] p-3.5 flex flex-col gap-3 overflow-hidden">
+            <div className="flex-1 min-h-0 bg-white rounded-[20px] shadow-[0px_2px_6px_0px_rgba(0,0,0,0.15)] p-3.5 flex flex-col gap-3 overflow-hidden md:border md:border-gray-200">
 
                 {/* Category tabs — sliding highlight + scroll-aware edge fades */}
                 <div className="flex-shrink-0 relative">
                     <div
                         ref={tabsRef}
                         onScroll={updateFades}
-                        className="relative flex items-center gap-1 bg-slate-100 rounded-[10px] p-1 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+                        className="relative flex items-center gap-1 bg-slate-100 md:bg-[#F8FAFD] rounded-[10px] p-1 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
                     >
                         {/* Sliding highlight pill */}
                         <div
@@ -898,7 +898,7 @@ const MobileSchedules: React.FC<MobileSchedulesProps> = ({
                                     }`}>
                                     {tab.label}
                                     {count !== undefined && count > 0 && (
-                                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full transition-colors duration-200 ${isActive ? 'bg-[#0058DB] text-white' : 'bg-gray-200 text-gray-500'}`}>
+                                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full transition-colors duration-200 ${isActive ? 'bg-[#0058DB] md:bg-[#C3010A] text-white' : 'bg-gray-200 text-gray-500'}`}>
                                             {count}
                                         </span>
                                     )}
@@ -1067,22 +1067,22 @@ export const Schedules: React.FC = () => {
         <Layout noPadding title="Schedules" backgroundColor="bg-gray-50">
             {/* ── Desktop ── */}
             <div className="hidden md:flex flex-col h-full md:px-4 md:pb-4">
-                {/* View-toggle tabs — no border */}
+                {/* View-toggle tabs — active tab shares the card stroke */}
                 <div className="flex items-end gap-1">
                     {(['list', 'calendar'] as const).map(v => (
                         <button key={v} type="button" onClick={() => setView(v)}
-                            className={`px-5 py-2 text-xs rounded-t-xl capitalize transition-all ${
-                                view === v ? 'bg-white font-bold text-gray-900' : 'font-normal text-gray-500 hover:text-gray-700'
+                            className={`px-5 py-2 text-xs rounded-t-xl capitalize transition-all border border-b-0 ${
+                                view === v ? 'bg-white font-bold text-gray-900 border-gray-200 -mb-px relative z-10' : 'border-transparent font-normal text-gray-500 hover:text-gray-700'
                             }`}>
                             {v === 'list' ? 'List View' : 'Calendar View'}
                         </button>
                     ))}
                 </div>
 
-                {/* Main card — no border, no shadow */}
-                <div className="flex-1 bg-white rounded-tr-[20px] rounded-bl-[20px] rounded-br-[20px] flex flex-col overflow-hidden">
+                {/* Main card — stroke continues around the active tab */}
+                <div className="flex-1 bg-white rounded-tr-[20px] rounded-bl-[20px] rounded-br-[20px] border border-gray-200 flex flex-col overflow-hidden">
                     <div className="px-4 pt-4 pb-3 flex items-center gap-4 flex-shrink-0">
-                        <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 overflow-x-auto flex-shrink-0">
+                        <div className="flex items-center gap-1 bg-gray-100 md:bg-[#F8FAFD] rounded-xl p-1 overflow-x-auto flex-shrink-0">
                             {filterTabs.map(tab => {
                                 const isActive = activeCategory === tab.key;
                                 const count = (counts as any)[tab.key];
@@ -1094,7 +1094,7 @@ export const Schedules: React.FC = () => {
                                         }`}>
                                         {tab.label}
                                         {count !== undefined && count > 0 && (
-                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? 'bg-[#0058DB] text-white' : 'bg-gray-200 text-gray-500'}`}>
+                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? 'bg-[#0058DB] md:bg-[#C3010A] text-white' : 'bg-gray-200 text-gray-500'}`}>
                                                 {count}
                                             </span>
                                         )}
@@ -1106,7 +1106,7 @@ export const Schedules: React.FC = () => {
                         <button type="button"
                             data-tour-target="new-schedule-btn"
                             onClick={() => { setEditItem(null); setShowAddModal(true); }}
-                            className="h-8 pl-4 pr-3 bg-[#0058DB] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity">
+                            className="h-8 pl-4 pr-3 bg-[#0058DB] md:bg-[#0059D8] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity">
                             <Plus size={13} className="text-white" />
                             <span className="text-white text-xs font-bold">Add to Schedule</span>
                         </button>
@@ -1129,7 +1129,7 @@ export const Schedules: React.FC = () => {
                                 <button type="button"
                                     data-tour-target="new-schedule-btn"
                                     onClick={() => { setEditItem(null); setShowAddModal(true); }}
-                                    className="h-8 pl-4 pr-3 bg-[#0058DB] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity">
+                                    className="h-8 pl-4 pr-3 bg-[#0058DB] md:bg-[#0059D8] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity">
                                     <Plus size={13} className="text-white" />
                                     <span className="text-white text-xs font-bold">Add to Schedule</span>
                                 </button>

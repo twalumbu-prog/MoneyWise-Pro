@@ -117,7 +117,7 @@ export const InflowInbox: React.FC<InflowInboxProps> = ({ inflows, onRowClick })
                             {/* Unread dot */}
                             <div className="w-4 flex-shrink-0 flex items-center justify-center">
                                 {row.has_unread_updates && (
-                                    <span className="h-1.5 w-1.5 rounded-full bg-[#0058DB] shadow-sm shadow-blue-200" />
+                                    <span className="h-1.5 w-1.5 rounded-full bg-[#0058DB] md:bg-[#0059D8] shadow-sm shadow-blue-200" />
                                 )}
                             </div>
                         </div>

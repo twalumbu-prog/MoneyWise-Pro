@@ -427,7 +427,7 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
             </div>
 
             <div className="w-full max-w-md mx-auto shrink-0">
-                <div className="flex items-center gap-1 p-1 bg-[#F3F5FC] rounded-[10px]">
+                <div className="flex items-center gap-1 p-1 bg-[#F3F5FC] md:bg-[#F8FAFD] rounded-[10px]">
                     {TABS.map(tab => (
                         <button
                             key={tab.value}
@@ -493,8 +493,8 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
                                     <div className="pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <button onClick={() => { const v = !useMyAccount; setUseMyAccount(v); saveTogglePrefs({ useMyAccount: v, makeExpenseList, autoAuthorize }); }} className={`w-full flex flex-col p-4 rounded-xl border text-left transition-all ${useMyAccount ? 'bg-[#F3F5FC] border-[#006AFF]/30 shadow-sm' : 'bg-white border-gray-200 hover:border-gray-300'}`}>
                                             <div className="flex items-center justify-between mb-3">
-                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${useMyAccount ? 'bg-[#006AFF] text-white' : 'bg-gray-100 text-gray-400'}`}><User size={16} /></div>
-                                                <div className={`w-10 h-5 rounded-full transition-all relative ${useMyAccount ? 'bg-[#006AFF]' : 'bg-gray-200'}`}><div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${useMyAccount ? 'right-0.5' : 'left-0.5'}`} /></div>
+                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${useMyAccount ? 'bg-[#0059D8] text-white' : 'bg-gray-100 text-gray-400'}`}><User size={16} /></div>
+                                                <div className={`w-10 h-5 rounded-full transition-all relative ${useMyAccount ? 'bg-[#0059D8]' : 'bg-gray-200'}`}><div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${useMyAccount ? 'right-0.5' : 'left-0.5'}`} /></div>
                                             </div>
                                             <p className="text-sm font-bold text-gray-900">Send to my account</p>
                                             <p className="text-[11px] text-gray-500 mt-0.5">Use details from your profile</p>
@@ -502,8 +502,8 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
 
                                         <button onClick={() => { const v = !makeExpenseList; setMakeExpenseList(v); saveTogglePrefs({ useMyAccount, makeExpenseList: v, autoAuthorize }); }} className={`w-full flex flex-col p-4 rounded-xl border text-left transition-all ${makeExpenseList ? 'bg-[#F3F5FC] border-[#006AFF]/30 shadow-sm' : 'bg-white border-gray-200 hover:border-gray-300'}`}>
                                             <div className="flex items-center justify-between mb-3">
-                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${makeExpenseList ? 'bg-[#006AFF] text-white' : 'bg-gray-100 text-gray-400'}`}><List size={16} /></div>
-                                                <div className={`w-10 h-5 rounded-full transition-all relative ${makeExpenseList ? 'bg-[#006AFF]' : 'bg-gray-200'}`}><div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${makeExpenseList ? 'right-0.5' : 'left-0.5'}`} /></div>
+                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${makeExpenseList ? 'bg-[#0059D8] text-white' : 'bg-gray-100 text-gray-400'}`}><List size={16} /></div>
+                                                <div className={`w-10 h-5 rounded-full transition-all relative ${makeExpenseList ? 'bg-[#0059D8]' : 'bg-gray-200'}`}><div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${makeExpenseList ? 'right-0.5' : 'left-0.5'}`} /></div>
                                             </div>
                                             <p className="text-sm font-bold text-gray-900">Create item list</p>
                                             <p className="text-[11px] text-gray-500 mt-0.5">Add specific items and prices</p>
@@ -798,7 +798,7 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
                     {!isLastStage ? (
                         <button
                             onClick={handleProceed}
-                            className="h-10 px-6 rounded-xl bg-[#0058DB] text-xs font-bold text-white flex items-center gap-1.5 hover:bg-blue-700 transition-colors"
+                            className="h-10 px-6 rounded-xl bg-[#0059D8] text-xs font-bold text-white flex items-center gap-1.5 hover:bg-blue-700 transition-colors"
                         >
                             Next
                             <ArrowRight size={16} />
@@ -807,7 +807,7 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
                         <button
                             onClick={handleSubmit}
                             disabled={submitting || isWalletBalanceInsufficient}
-                            className="h-10 px-8 rounded-xl bg-[#0058DB] text-xs font-bold text-white flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                            className="h-10 px-8 rounded-xl bg-[#0059D8] text-xs font-bold text-white flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-50 transition-colors"
                         >
                             {submitting ? (
                                 <>

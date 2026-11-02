@@ -260,7 +260,7 @@ export const InvestHome: React.FC = () => {
 
                     {/* ── DESKTOP: white card ─────────────────────────────────── */}
                     <div className="hidden md:block px-6 pb-6">
-                        <div className="bg-white rounded-[20px] p-6 shadow-sm flex flex-col gap-8">
+                        <div className="bg-white rounded-[20px] p-6 shadow-sm flex flex-col gap-8 md:border md:border-gray-200">
                             {desktopFiltered.length === 0 ? (
                                 <div className="py-12 text-center text-sm text-gray-400">No results for "{search}"</div>
                             ) : desktopFiltered.map(provider => (

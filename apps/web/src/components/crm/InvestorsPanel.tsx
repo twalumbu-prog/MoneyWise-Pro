@@ -68,7 +68,7 @@ export const InvestorsPanel: React.FC<{ initialOpenId?: string | null }> = ({ in
     return (
         <>
             <div className="flex items-center justify-between gap-3 pt-1 flex-wrap">
-                <div className="p-1 bg-slate-100 rounded-[10px] flex items-center gap-1 overflow-x-auto">
+                <div className="p-1 bg-slate-100 md:bg-[#F8FAFD] rounded-[10px] flex items-center gap-1 overflow-x-auto">
                     {FILTERS.map(f => (
                         <button
                             key={f.id}

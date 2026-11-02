@@ -126,7 +126,7 @@ const RunRow: React.FC<{ run: AutomationRun; canRetry: boolean; retrying: boolea
                         )}
                         {run.status === 'FAILED' && canRetry && (
                             <button type="button" onClick={onRetry} disabled={retrying}
-                                className="ml-auto flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#0058DB] text-white text-[11px] font-bold hover:opacity-90 disabled:opacity-60 transition">
+                                className="ml-auto flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#0058DB] md:bg-[#0059D8] text-white text-[11px] font-bold hover:opacity-90 disabled:opacity-60 transition">
                                 {retrying ? <Loader2 size={11} className="animate-spin" /> : <RotateCcw size={11} />}
                                 Retry
                             </button>
@@ -227,7 +227,7 @@ const DetailPanel: React.FC<DetailProps> = ({ automation, isAdmin, running, onRu
                     </p>
                     {isAdmin && (
                         <button type="button" onClick={onRun} disabled={running}
-                            className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-[#0058DB] hover:opacity-90 text-white text-xs font-bold rounded-lg transition disabled:opacity-60">
+                            className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-[#0058DB] md:bg-[#0059D8] hover:opacity-90 text-white text-xs font-bold rounded-lg transition disabled:opacity-60">
                             {running ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} fill="white" />}
                             Run Now
                         </button>
@@ -320,7 +320,7 @@ export const AutomationsTab: React.FC<{ onCreate: () => void }> = ({ onCreate })
                 <p className="text-xs text-gray-400 flex-1">Rules that run by themselves, the same way every time.</p>
                 {isAdmin && (
                     <button type="button" onClick={onCreate}
-                        className="h-8 pl-4 pr-3 bg-[#0058DB] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity">
+                        className="h-8 pl-4 pr-3 bg-[#0058DB] md:bg-[#0059D8] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity">
                         <Plus size={13} className="text-white" />
                         <span className="text-white text-xs font-bold">New automation</span>
                     </button>
@@ -341,7 +341,7 @@ export const AutomationsTab: React.FC<{ onCreate: () => void }> = ({ onCreate })
                         </p>
                         {isAdmin && (
                             <button type="button" onClick={onCreate}
-                                className="h-8 pl-4 pr-3 bg-[#0058DB] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity">
+                                className="h-8 pl-4 pr-3 bg-[#0058DB] md:bg-[#0059D8] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity">
                                 <Sparkles size={13} className="text-white" />
                                 <span className="text-white text-xs font-bold">Create with Assistant</span>
                             </button>

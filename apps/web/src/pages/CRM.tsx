@@ -120,7 +120,7 @@ export const CRM: React.FC = () => {
                 <div className="flex-1 overflow-hidden flex flex-col px-5 pb-5 gap-2.5 pt-0">
 
                     {/* Main Card */}
-                    <div className="flex-1 bg-white rounded-[20px] flex flex-col overflow-hidden p-3.5 gap-3">
+                    <div className="flex-1 bg-white rounded-[20px] flex flex-col overflow-hidden p-3.5 gap-3 md:border md:border-gray-200">
 
                         {/* Top Bar / Header */}
                         <div className="flex items-center justify-between">
@@ -139,7 +139,7 @@ export const CRM: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="h-8 p-1 bg-slate-100 rounded-[10px] flex items-center gap-1 self-start">
+                        <div className="h-8 p-1 bg-slate-100 md:bg-[#F8FAFD] rounded-[10px] flex items-center gap-1 self-start">
                             {([['customers', 'Customers'], ['loyalty', 'Loyalty'], ['rewards', 'Rewards'], ...(showInvestors ? [['investors', 'Investors']] : [])] as ['customers' | 'loyalty' | 'rewards' | 'investors', string][]).map(([id, label]) => (
                                 <button
                                     key={id}
@@ -208,7 +208,7 @@ export const CRM: React.FC = () => {
                             ) : (
                                 <div className="flex items-center gap-2 flex-wrap">
                                 {productSummary?.enabled && (
-                                    <div className="h-8 p-1 bg-slate-100 rounded-[10px] flex items-center gap-1">
+                                    <div className="h-8 p-1 bg-slate-100 md:bg-[#F8FAFD] rounded-[10px] flex items-center gap-1">
                                         {[{ product: null, label: 'All products', total: null }, ...productSummary.products].map(p => (
                                             <button
                                                 key={p.product ?? 'ALL'}
@@ -225,7 +225,7 @@ export const CRM: React.FC = () => {
                                     </div>
                                 )}
                                 {mainTab === 'customers' && (
-                                <div className="h-8 p-1 bg-slate-100 rounded-[10px] flex items-center gap-2">
+                                <div className="h-8 p-1 bg-slate-100 md:bg-[#F8FAFD] rounded-[10px] flex items-center gap-2">
                                     {(['ALL', 'OWING', 'CLEAR'] as FilterTab[]).map(tab => (
                                         <button
                                             key={tab}

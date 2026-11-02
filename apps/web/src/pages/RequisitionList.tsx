@@ -738,7 +738,7 @@ export const RequisitionList: React.FC = () => {
                             onRefresh={() => inboxMode === 'inflows' ? (loadInflows(), refetchCreditInvoices()) : loadRequisitions()}
                             hasActiveFilters={hasActiveDesktopFilters}
                             leftContent={inboxMode === 'inflows' && !isRequestor ? (
-                                <div className="flex items-center gap-1 p-1 bg-[#F3F5FC] rounded-[10px]">
+                                <div className="flex items-center gap-1 p-1 bg-[#F3F5FC] md:bg-[#F8FAFD] rounded-[10px]">
                                     {([
                                         { value: 'cash', label: 'Cash', count: sortedInflows.length },
                                         { value: 'invoices', label: 'Invoices', count: invoiceTabCount },
@@ -1512,7 +1512,7 @@ export const RequisitionList: React.FC = () => {
                                 setFilterEndDate(tempEndDate);
                                 setIsFilterSheetOpen(false);
                             }}
-                            className="flex-1 py-4 bg-[#006AFF] hover:bg-blue-600 text-white font-bold rounded-2xl active:scale-[0.98] transition-all text-sm text-center shadow-md shadow-blue-100"
+                            className="flex-1 py-4 bg-[#006AFF] md:bg-[#0059D8] hover:bg-blue-600 text-white font-bold rounded-2xl active:scale-[0.98] transition-all text-sm text-center shadow-md shadow-blue-100"
                         >
                             Apply Filters
                         </button>
@@ -1536,7 +1536,7 @@ export const RequisitionList: React.FC = () => {
                 >
                     <button
                         onClick={() => setIsNewRequisitionOpen(true)}
-                        className="h-16 w-16 bg-[#006AFF] text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-all hover:bg-blue-600"
+                        className="h-16 w-16 bg-[#006AFF] md:bg-[#0059D8] text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-all hover:bg-blue-600"
                     >
                         <Plus size={32} />
                     </button>

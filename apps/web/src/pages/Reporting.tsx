@@ -755,14 +755,14 @@ export const Reporting: React.FC = () => {
     return (
         <Layout noPadding={true} backgroundColor="bg-gray-50 md:bg-white" title="Reports">
             {/* Desktop View */}
-            <div className="hidden md:flex flex-1 h-[calc(100vh-64px)] p-4 bg-slate-100 flex-col justify-start items-start w-full overflow-hidden">
+            <div className="hidden md:flex flex-1 h-[calc(100vh-64px)] p-4 pt-0 bg-transparent flex-col justify-start items-start w-full overflow-hidden">
                 <div className="self-stretch flex-1 flex justify-start items-start gap-2.5 w-full overflow-hidden">
-                    <div className="flex-1 h-full p-3.5 bg-white rounded-[20px] flex flex-col justify-start items-center gap-7 overflow-hidden shadow-sm w-full">
+                    <div className="flex-1 h-full p-3.5 bg-white rounded-[20px] flex flex-col justify-start items-center gap-7 overflow-hidden shadow-sm w-full md:border md:border-gray-200">
                         <div className="self-stretch h-full flex flex-col justify-start items-center gap-3 w-full">
                             
                             {/* Header Tabs */}
                             <div className="self-stretch inline-flex justify-between items-center flex-shrink-0">
-                                <div className="h-8 p-1 bg-slate-100 rounded-[10px] flex justify-start items-center gap-1">
+                                <div className="h-8 p-1 bg-slate-100 md:bg-[#F8FAFD] rounded-[10px] flex justify-start items-center gap-1">
                                     <TabPillGroup
                                         value={reportView}
                                         onChange={(v) => setReportView(v as 'NET_WORTH' | 'PROFIT_LOSS')}
@@ -808,7 +808,7 @@ export const Reporting: React.FC = () => {
                                     </div>
                                     <button
                                         onClick={openDateFilter}
-                                        className={`h-8 w-8 flex items-center justify-center rounded-[10px] transition-colors ${isDateFilterOpen || customFilter ? 'bg-[#006AFF] text-white' : 'bg-slate-100 text-gray-600 hover:bg-slate-200'}`}
+                                        className={`h-8 w-8 flex items-center justify-center rounded-[10px] transition-colors ${isDateFilterOpen || customFilter ? 'bg-[#006AFF] md:bg-[#0059D8] text-white' : 'bg-slate-100 text-gray-600 hover:bg-slate-200'}`}
                                         title="Filter by date range"
                                     >
                                         <CalendarDays size={14} />
@@ -847,7 +847,7 @@ export const Reporting: React.FC = () => {
                                                         <button
                                                             onClick={handleApplyFilter}
                                                             disabled={!filterStartInput || !filterEndInput || filterStartInput > filterEndInput}
-                                                            className="flex-1 py-2 text-xs font-bold text-white bg-[#006AFF] rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-40"
+                                                            className="flex-1 py-2 text-xs font-bold text-white bg-[#006AFF] md:bg-[#0059D8] rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-40"
                                                         >
                                                             Apply
                                                         </button>
@@ -1114,7 +1114,7 @@ export const Reporting: React.FC = () => {
                                                                         <div className="w-full space-y-2 pb-1">
                                                                             <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
                                                                                 <div 
-                                                                                    className={`h-full rounded-full transition-all duration-500 ${progressPercent > 100 ? 'bg-red-500' : 'bg-[#006AFF]'}`}
+                                                                                    className={`h-full rounded-full transition-all duration-500 ${progressPercent > 100 ? 'bg-red-500' : 'bg-[#006AFF] md:bg-[#0059D8]'}`}
                                                                                     style={{ width: `${Math.min(progressPercent, 100)}%` }}
                                                                                 />
                                                                             </div>
@@ -1203,7 +1203,7 @@ export const Reporting: React.FC = () => {
                                                                                                                     <span className="font-medium text-gray-700 truncate">{item.description}</span>
                                                                                                                     <span className="text-[10px] text-gray-400 flex items-center gap-1">
                                                                                                                         {new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                                                                                                                        {fresh && <span className="bg-[#006AFF] text-white text-[8px] font-bold px-1 py-0.5 rounded uppercase leading-none">New</span>}
+                                                                                                                        {fresh && <span className="bg-[#006AFF] md:bg-[#0059D8] text-white text-[8px] font-bold px-1 py-0.5 rounded uppercase leading-none">New</span>}
                                                                                                                     </span>
                                                                                                                 </div>
                                                                                                                 <span className="font-black whitespace-nowrap text-gray-900 mt-0.5">
@@ -1380,7 +1380,7 @@ export const Reporting: React.FC = () => {
                                             <button
                                                 onClick={handleApplyFilter}
                                                 disabled={!filterStartInput || !filterEndInput || filterStartInput > filterEndInput}
-                                                className="flex-1 py-2.5 text-xs font-bold text-white bg-[#006AFF] rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-40"
+                                                className="flex-1 py-2.5 text-xs font-bold text-white bg-[#006AFF] md:bg-[#0059D8] rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-40"
                                             >
                                                 Apply
                                             </button>
@@ -1481,7 +1481,7 @@ export const Reporting: React.FC = () => {
                                                     <button 
                                                         onClick={handleCreateGroup}
                                                         disabled={!newGroupName.trim()}
-                                                        className="p-1.5 bg-[#006AFF] text-white rounded-lg hover:bg-brand-navy transition-colors disabled:opacity-50"
+                                                        className="p-1.5 bg-[#006AFF] md:bg-[#0059D8] text-white rounded-lg hover:bg-brand-navy transition-colors disabled:opacity-50"
                                                     >
                                                         <Plus className="h-3.5 w-3.5" />
                                                     </button>
@@ -1845,7 +1845,7 @@ export const Reporting: React.FC = () => {
                                                 <div className="space-y-2 pb-1">
                                                     <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
                                                         <div 
-                                                            className={`h-full rounded-full transition-all duration-500 ${progressPercent > 100 ? 'bg-red-500' : 'bg-[#006AFF]'}`}
+                                                            className={`h-full rounded-full transition-all duration-500 ${progressPercent > 100 ? 'bg-red-500' : 'bg-[#006AFF] md:bg-[#0059D8]'}`}
                                                             style={{ width: `${Math.min(progressPercent, 100)}%` }}
                                                         />
                                                     </div>
@@ -1892,7 +1892,7 @@ export const Reporting: React.FC = () => {
                                                                         {isRowExpanded ? <ChevronDown size={15} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={15} className="text-gray-400 flex-shrink-0" />}
                                                                         {row.logo_url && <img src={row.logo_url} alt="" className="w-5 h-5 rounded-md object-contain flex-shrink-0" />}
                                                                         <span className="truncate">{row.account_name}</span>
-                                                                        {hasNew && <span className="w-1.5 h-1.5 rounded-full bg-[#006AFF] flex-shrink-0" />}
+                                                                        {hasNew && <span className="w-1.5 h-1.5 rounded-full bg-[#006AFF] md:bg-[#0059D8] flex-shrink-0" />}
                                                                     </h4>
                                                                     <span className="text-base font-medium text-black whitespace-nowrap">
                                                                         K{curr.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1938,7 +1938,7 @@ export const Reporting: React.FC = () => {
                                                                                 <div key={item.id} className="text-xs flex justify-between items-start py-1 border-b border-gray-100 last:border-0 last:pb-0">
                                                                                     <div className="flex-1 pr-3">
                                                                                         <p className={`line-clamp-1 flex items-center gap-1.5 ${fresh ? 'font-black text-gray-900' : 'font-bold text-gray-800'}`}>
-                                                                                            {fresh && <span className="w-1.5 h-1.5 rounded-full bg-[#006AFF] flex-shrink-0" />}
+                                                                                            {fresh && <span className="w-1.5 h-1.5 rounded-full bg-[#006AFF] md:bg-[#0059D8] flex-shrink-0" />}
                                                                                             {item.description}
                                                                                         </p>
                                                                                         <div className="flex items-center gap-1.5 text-[9px] text-gray-400 mt-0.5">

@@ -210,7 +210,7 @@ export const InvoicePaymentModal: React.FC<Props> = ({
                 {/* Method toggle */}
                 <div className="px-6 pt-5">
                     <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-3">Payment Method</p>
-                    <div className="flex items-center gap-1 p-1 bg-[#F3F5FC] rounded-[10px]">
+                    <div className="flex items-center gap-1 p-1 bg-[#F3F5FC] md:bg-[#F8FAFD] rounded-[10px]">
                         {tabs.map(t => (
                             <button
                                 key={t.id}

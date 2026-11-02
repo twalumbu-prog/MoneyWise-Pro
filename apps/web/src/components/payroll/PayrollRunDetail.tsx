@@ -102,7 +102,7 @@ export const PayrollRunDetail: React.FC<Props> = ({ runId, onBack, onApproved })
                 </div>
 
                 {/* Tab strip */}
-                <div className="p-1 bg-slate-100 rounded-[60px] shadow-[inset_0px_4px_4px_0px_rgba(0,0,0,0.05)] flex items-center gap-2 flex-shrink-0">
+                <div className="p-1 bg-slate-100 md:bg-[#F8FAFD] rounded-[60px] shadow-[inset_0px_4px_4px_0px_rgba(0,0,0,0.05)] flex items-center gap-2 flex-shrink-0">
                     {tabs.map(tab => (
                         <button
                             key={tab.value}

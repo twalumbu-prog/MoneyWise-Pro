@@ -85,7 +85,7 @@ const SidebarLink: React.FC<{ item: NavItem; active: boolean; collapsed: boolean
             <span className="relative flex-shrink-0">
                 <Icon size={15} className={active ? 'text-[#0058DB]' : 'text-gray-500'} />
                 {collapsed && showBadge && (
-                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#006AFF] border border-[#F3F5FC]" />
+                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#C3010A] border border-[#F8FAFD]" />
                 )}
             </span>
 
@@ -99,7 +99,7 @@ const SidebarLink: React.FC<{ item: NavItem; active: boolean; collapsed: boolean
             )}
             {/* Numeric badge — expanded sidebar only */}
             {!collapsed && showBadge && (
-                <span className="ml-auto flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-[#006AFF] text-white text-[10px] font-bold leading-none flex items-center justify-center tabular-nums">
+                <span className="ml-auto flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-[#C3010A] text-white text-[10px] font-bold leading-none flex items-center justify-center tabular-nums">
                     {badgeLabel}
                 </span>
             )}
@@ -110,7 +110,7 @@ const SidebarLink: React.FC<{ item: NavItem; active: boolean; collapsed: boolean
         item.disabled
             ? 'text-gray-300 cursor-not-allowed'
             : active
-                ? 'bg-white shadow-[0px_2px_6px_0px_rgba(0,0,0,0.06)] outline outline-[1px] outline-[#E8EEF8]'
+                ? 'bg-[#CFE4FF]'
                 : 'hover:bg-gray-100/60 text-gray-600'
     }`;
 
@@ -160,7 +160,7 @@ export const Sidebar: React.FC = () => {
 
     return (
         <aside
-            className={`hidden md:flex md:flex-col md:h-screen flex-shrink-0 bg-[#F3F5FC] transition-[width] duration-200 ${
+            className={`hidden md:flex md:flex-col md:h-screen flex-shrink-0 bg-[#F8FAFD] transition-[width] duration-200 ${
                 collapsed ? 'md:w-[76px]' : 'md:w-64'
             }`}
         >

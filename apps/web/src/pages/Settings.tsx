@@ -71,9 +71,9 @@ export const Settings: React.FC = () => {
 
     return (
         <Layout noPadding>
-            <div className="flex-1 h-full p-4 bg-slate-100 flex flex-col justify-start items-start w-full overflow-hidden">
+            <div className="flex-1 h-full p-4 bg-slate-100 md:bg-transparent md:pt-0 flex flex-col justify-start items-start w-full overflow-hidden">
                 <div className="self-stretch flex-1 flex justify-start items-start gap-2.5 w-full overflow-hidden">
-                    <div className="flex-1 h-full p-3.5 bg-white rounded-[20px] flex flex-col justify-start items-center gap-7 overflow-hidden shadow-sm w-full">
+                    <div className="flex-1 h-full p-3.5 bg-white rounded-[20px] flex flex-col justify-start items-center gap-7 overflow-hidden shadow-sm w-full md:border md:border-gray-200">
                         <div className="self-stretch h-full flex flex-col justify-start items-center gap-3 w-full">
 
                             {/* Header */}
@@ -86,7 +86,7 @@ export const Settings: React.FC = () => {
 
                             {/* Tabs Row */}
                             <div className="self-stretch flex-shrink-0 overflow-x-auto no-scrollbar">
-                                <div className="flex items-center gap-1 p-1 bg-[#F3F5FC] rounded-[10px] min-w-max">
+                                <div className="flex items-center gap-1 p-1 bg-[#F3F5FC] md:bg-[#F8FAFD] rounded-[10px] min-w-max">
                                     {[
                                         { id: 'general', label: 'General Settings', icon: <SettingsIcon className="w-2.5 h-2.5" /> },
                                         { id: 'profile', label: 'My Profile', icon: <User className="w-2.5 h-2.5" /> },

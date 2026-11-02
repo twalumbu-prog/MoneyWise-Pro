@@ -163,7 +163,7 @@ export const CampaignModal: React.FC<Props> = ({ overview, organizationName, ini
 
                 {/* Section tabs */}
                 <div className="px-6 pt-3 flex-shrink-0">
-                    <div className="h-8 p-1 bg-slate-100 rounded-[10px] flex items-center gap-1 self-start w-fit">
+                    <div className="h-8 p-1 bg-slate-100 md:bg-[#F8FAFD] rounded-[10px] flex items-center gap-1 self-start w-fit">
                         {([['compose', 'Draft email'], ['audience', 'Audience'], ['list', `Mailing list${preview ? ` (${recipients})` : ''}`]] as [Tab, string][]).map(([id, label]) => (
                             <button
                                 key={id}

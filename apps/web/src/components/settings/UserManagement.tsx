@@ -232,7 +232,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onRequestAdd }) 
                     <button
                         data-tour-target="add-team-btn"
                         onClick={() => setIsAddModalOpen(true)}
-                        className="flex-shrink-0 h-8 pl-4 pr-3 bg-[#0058DB] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity"
+                        className="flex-shrink-0 h-8 pl-4 pr-3 bg-[#0058DB] md:bg-[#0059D8] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity"
                     >
                         <span className="text-white text-xs font-bold">Add Member</span>
                         <Plus size={14} className="text-white" />
@@ -355,7 +355,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onRequestAdd }) 
                 {viewingUser && (
                     <div className="space-y-6">
                         <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl">
-                            <div className="h-16 w-16 rounded-2xl bg-[#0058DB] text-white flex items-center justify-center text-2xl font-bold">
+                            <div className="h-16 w-16 rounded-2xl bg-[#0058DB] md:bg-[#0059D8] text-white flex items-center justify-center text-2xl font-bold">
                                 {viewingUser.name.charAt(0).toUpperCase()}
                             </div>
                             <div>

@@ -571,9 +571,9 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
     }
 
     return (
-        <div className="flex-1 h-[calc(100vh-64px)] p-4 bg-gray-50 md:bg-slate-100 flex flex-col justify-start items-start w-full overflow-hidden">
+        <div className="flex-1 h-[calc(100vh-64px)] p-4 bg-gray-50 md:bg-transparent md:pt-0 flex flex-col justify-start items-start w-full overflow-hidden">
             <div className="self-stretch flex-1 flex justify-start items-start gap-2.5 w-full overflow-hidden">
-                <div className="flex-1 h-full p-3.5 bg-white rounded-[20px] flex flex-col justify-start items-stretch gap-5 overflow-hidden shadow-sm w-full relative">
+                <div className="flex-1 h-full p-3.5 bg-white rounded-[20px] flex flex-col justify-start items-stretch gap-5 overflow-hidden shadow-sm w-full md:border md:border-gray-200 relative">
                     
                     {/* Header — desktop only; mobile header is the Layout top bar */}
                     <div className="hidden md:flex justify-between items-center shrink-0 w-full p-2">
@@ -586,7 +586,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                     {/* Filters and Actions Row */}
                     <div className="flex justify-between items-center w-full shrink-0 px-2">
                         {/* Tabs */}
-                        <div className="flex items-center gap-1 p-1 bg-[#F3F5FC] rounded-[10px] overflow-x-auto no-scrollbar">
+                        <div className="flex items-center gap-1 p-1 bg-[#F3F5FC] md:bg-[#F8FAFD] rounded-[10px] overflow-x-auto no-scrollbar">
                             {[
                                 { value: 'ALL', label: 'All' },
                                 { value: 'PRODUCT', label: 'Physical' },
@@ -645,7 +645,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                         ) : isAdmin && (
                             <button
                                 onClick={handleOpenAddModal}
-                                className="hidden md:flex h-8 pl-4 pr-3 bg-[#0058DB] rounded-lg items-center gap-2 hover:opacity-90 transition-opacity flex-shrink-0"
+                                className="hidden md:flex h-8 pl-4 pr-3 bg-[#0058DB] md:bg-[#0059D8] rounded-lg items-center gap-2 hover:opacity-90 transition-opacity flex-shrink-0"
                             >
                                 <span className="text-white text-xs font-bold">Add Product</span>
                                 <Plus size={14} className="text-white" />
@@ -1179,7 +1179,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                                 </div>
                                             </div>
                                             {/* Toggle pill */}
-                                            <div className={`relative w-10 h-6 rounded-full transition-colors flex-shrink-0 ${formData.requires_delivery ? 'bg-[#0058DB]' : 'bg-gray-200'}`}>
+                                            <div className={`relative w-10 h-6 rounded-full transition-colors flex-shrink-0 ${formData.requires_delivery ? 'bg-[#0058DB] md:bg-[#0059D8]' : 'bg-gray-200'}`}>
                                                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${formData.requires_delivery ? 'translate-x-5' : 'translate-x-1'}`} />
                                             </div>
                                         </button>
@@ -1198,7 +1198,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                                         <div className="text-sm font-bold text-gray-700">Allow External Deliveries</div>
                                                         <div className="text-xs text-gray-400">Show rider service options (Yango, etc.) at checkout</div>
                                                     </div>
-                                                    <div className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ml-3 ${formData.allow_external_delivery ? 'bg-[#0058DB]' : 'bg-gray-200'}`}>
+                                                    <div className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ml-3 ${formData.allow_external_delivery ? 'bg-[#0058DB] md:bg-[#0059D8]' : 'bg-gray-200'}`}>
                                                         <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${formData.allow_external_delivery ? 'translate-x-4' : 'translate-x-0.5'}`} />
                                                     </div>
                                                 </button>
@@ -1242,7 +1242,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                                 <div className="text-sm font-bold text-gray-800">Collect customer information</div>
                                                 <div className="text-xs text-gray-400">Buyers fill these in on their own page right before paying (e.g. name, size)</div>
                                             </div>
-                                            <div className={`relative w-10 h-6 rounded-full transition-colors flex-shrink-0 ml-3 ${collectInfo ? 'bg-[#0058DB]' : 'bg-gray-200'}`}>
+                                            <div className={`relative w-10 h-6 rounded-full transition-colors flex-shrink-0 ml-3 ${collectInfo ? 'bg-[#0058DB] md:bg-[#0059D8]' : 'bg-gray-200'}`}>
                                                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${collectInfo ? 'translate-x-5' : 'translate-x-1'}`} />
                                             </div>
                                         </button>
@@ -1354,7 +1354,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                         <div className="space-y-2 mb-2">
                                             {whatsIncluded.map((item, idx) => (
                                                 <div key={idx} className="flex items-center gap-2">
-                                                    <div className="w-1.5 h-1.5 rounded-full bg-[#0058DB] flex-shrink-0 mt-0.5" />
+                                                    <div className="w-1.5 h-1.5 rounded-full bg-[#0058DB] md:bg-[#0059D8] flex-shrink-0 mt-0.5" />
                                                     <input
                                                         type="text"
                                                         value={item}
@@ -1397,7 +1397,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                         <div className="text-sm font-bold text-gray-800">Active</div>
                                         <div className="text-xs text-gray-400">Visible to customers on the payment portal</div>
                                     </div>
-                                    <div className={`relative w-10 h-6 rounded-full transition-colors flex-shrink-0 ${formData.is_active ? 'bg-[#0058DB]' : 'bg-gray-200'}`}>
+                                    <div className={`relative w-10 h-6 rounded-full transition-colors flex-shrink-0 ${formData.is_active ? 'bg-[#0058DB] md:bg-[#0059D8]' : 'bg-gray-200'}`}>
                                         <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${formData.is_active ? 'translate-x-5' : 'translate-x-1'}`} />
                                     </div>
                                 </button>

@@ -155,11 +155,11 @@ export const Payroll: React.FC = () => {
 
             <div className="flex-1 overflow-hidden flex flex-col px-5 pb-5 gap-2.5 pt-0">
                 {/* Main card */}
-                <div className="flex-1 bg-white rounded-[20px] flex flex-col overflow-hidden p-3.5 gap-3">
+                <div className="flex-1 bg-white rounded-[20px] flex flex-col overflow-hidden p-3.5 gap-3 md:border md:border-gray-200">
 
                     {/* Top toggle: Payroll History | Staff Members */}
                     <div className="flex items-center justify-between">
-                        <div className="h-8 p-1 bg-slate-100 rounded-[10px] flex items-center gap-2.5">
+                        <div className="h-8 p-1 bg-slate-100 md:bg-[#F8FAFD] rounded-[10px] flex items-center gap-2.5">
                             <button
                                 onClick={() => { setMainTab('history'); setSearch(''); setSearchOpen(false); }}
                                 className={`px-3.5 h-full rounded-lg text-[10px] font-['DM_Sans'] transition-all ${
@@ -361,7 +361,7 @@ export const Payroll: React.FC = () => {
                                             <button onClick={() => { setSearchOpen(false); setSearch(''); }} className="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
                                         </div>
                                     ) : (
-                                        <div className="h-8 p-1 bg-slate-100 rounded-[10px] flex items-center gap-2.5 overflow-x-auto max-w-[60%]">
+                                        <div className="h-8 p-1 bg-slate-100 md:bg-[#F8FAFD] rounded-[10px] flex items-center gap-2.5 overflow-x-auto max-w-[60%]">
                                             {['ALL', ...departments].map(dept => (
                                                 <button
                                                     key={dept}

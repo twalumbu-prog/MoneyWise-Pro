@@ -1206,7 +1206,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); handleActionClick('APPROVE'); }}
                                                         disabled={!!activeAction || hasFailedVerification}
-                                                        className="flex-1 flex items-center justify-center px-6 py-2 bg-[#006AFF] text-white text-[13px] font-bold rounded-full hover:bg-[#0052cc] disabled:opacity-50 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed h-11 font-black"
+                                                        className="flex-1 flex items-center justify-center px-6 py-2 bg-[#006AFF] md:bg-[#0059D8] text-white text-[13px] font-bold rounded-full hover:bg-[#0052cc] disabled:opacity-50 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed h-11 font-black"
                                                     >
                                                         {activeAction === 'APPROVE' ? <Loader2 size={16} className="animate-spin text-white" /> : 'Accept'}
                                                     </button>
@@ -1376,7 +1376,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             <button 
                                                 onClick={(e) => { e.stopPropagation(); handleActionClick('APPROVE'); }}
                                                 disabled={!!activeAction}
-                                                className="flex-1 flex items-center justify-center px-6 py-2 bg-[#006AFF] text-white text-[13px] font-bold rounded-full hover:bg-[#0052cc] disabled:opacity-50 h-11"
+                                                className="flex-1 flex items-center justify-center px-6 py-2 bg-[#006AFF] md:bg-[#0059D8] text-white text-[13px] font-bold rounded-full hover:bg-[#0052cc] disabled:opacity-50 h-11"
                                             >
                                                 {activeAction === 'APPROVE' ? <Loader2 size={16} className="animate-spin text-white" /> : 'Accept'}
                                             </button>
@@ -1752,7 +1752,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             <button
                                                 onClick={handleDisbursePayroll}
                                                 disabled={isProcessing || isVerifyingPayroll}
-                                                className="w-full flex items-center justify-center px-6 py-3 bg-[#006AFF] text-white text-[13px] font-bold rounded-full hover:bg-[#0052cc] disabled:opacity-50 h-12 font-black transition-all shadow-md shadow-blue-100"
+                                                className="w-full flex items-center justify-center px-6 py-3 bg-[#006AFF] md:bg-[#0059D8] text-white text-[13px] font-bold rounded-full hover:bg-[#0052cc] disabled:opacity-50 h-12 font-black transition-all shadow-md shadow-blue-100"
                                             >
                                                 {isProcessing ? (
                                                     <>
@@ -1957,7 +1957,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                         }}
                                                         className={`h-12 px-6 text-[13px] font-bold rounded-full transition-all flex items-center justify-center ${
                                                             isWallet 
-                                                                ? 'bg-[#006AFF] text-white shadow-lg shadow-blue-100/50' 
+                                                                ? 'bg-[#006AFF] md:bg-[#0059D8] text-white shadow-lg shadow-blue-100/50' 
                                                                 : 'bg-[#F5F5F7] text-gray-600 hover:bg-gray-200 border border-gray-100'
                                                         }`}
                                                     >
@@ -2147,7 +2147,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                     <button
                                                                         onClick={handleDisburse}
                                                                         disabled={!recipientValue || (paymentType === 'MOBILE_MONEY' && !recipientProvider) || isWalletBalanceInsufficient}
-                                                                        className="flex-[2] h-11 bg-[#006AFF] text-white text-[13px] font-bold rounded-full hover:bg-[#0052cc] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-100/50 flex items-center justify-center space-x-2"
+                                                                        className="flex-[2] h-11 bg-[#006AFF] md:bg-[#0059D8] text-white text-[13px] font-bold rounded-full hover:bg-[#0052cc] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-100/50 flex items-center justify-center space-x-2"
                                                                     >
                                                                         <span>Send Money</span>
                                                                         <ArrowRight size={18} />
@@ -2489,7 +2489,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             }
                                         }}
                                         disabled={isSavingExpenses || isManualScanning}
-                                        className="w-full mt-6 h-12 bg-[#006AFF] text-white text-[13px] font-bold rounded-full hover:bg-[#0052cc] transition-all disabled:opacity-50 shadow-lg shadow-blue-100"
+                                        className="w-full mt-6 h-12 bg-[#006AFF] md:bg-[#0059D8] text-white text-[13px] font-bold rounded-full hover:bg-[#0052cc] transition-all disabled:opacity-50 shadow-lg shadow-blue-100"
                                     >
                                         {isSavingExpenses ? <Loader2 size={18} className="animate-spin mx-auto text-white" /> : 'Confirm Expenses'}
                                     </button>
@@ -3000,7 +3000,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                 }
                                             }}
                                             disabled={isApprovingAI}
-                                            className="w-full h-12 bg-[#006AFF] text-white text-[13px] font-bold rounded-full hover:bg-blue-600 shadow-lg shadow-blue-100 transition-all flex items-center justify-center"
+                                            className="w-full h-12 bg-[#006AFF] md:bg-[#0059D8] text-white text-[13px] font-bold rounded-full hover:bg-blue-600 shadow-lg shadow-blue-100 transition-all flex items-center justify-center"
                                         >
                                             {isApprovingAI ? <Loader2 size={18} className="animate-spin" /> : 'Approve Categorizations'}
                                         </button>
@@ -3219,7 +3219,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             }
                                         }}
                                         disabled={isPostingQB || (!paymentAccountId && !isWallet)}
-                                        className="w-full h-11 bg-[#006AFF] text-white text-[13px] font-bold rounded-full hover:bg-blue-600 shadow-lg shadow-blue-100/50 transition-all flex items-center justify-center space-x-2 group"
+                                        className="w-full h-11 bg-[#006AFF] md:bg-[#0059D8] text-white text-[13px] font-bold rounded-full hover:bg-blue-600 shadow-lg shadow-blue-100/50 transition-all flex items-center justify-center space-x-2 group"
                                     >
                                         {isPostingQB ? <Loader2 size={18} className="animate-spin" /> : (
                                             <>
@@ -3783,7 +3783,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             <div className={`flex flex-col max-w-[75%] ${isOwn ? 'items-end' : 'items-start'}`}>
                 <div className={`px-4 py-2.5 rounded-[16px] text-[13px] font-medium leading-relaxed shadow-sm ${
                     isOwn 
-                        ? 'bg-[#006AFF] text-white rounded-tr-none shadow-blue-100' 
+                        ? 'bg-[#006AFF] md:bg-[#0059D8] text-white rounded-tr-none shadow-blue-100' 
                         : 'bg-white text-gray-800 rounded-tl-none border border-gray-100'
                 }`}>
                     {message.content}

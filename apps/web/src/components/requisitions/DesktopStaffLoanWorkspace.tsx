@@ -129,7 +129,7 @@ export const DesktopStaffLoanWorkspace: React.FC<DesktopStaffLoanWorkspaceProps>
                                                 onClick={() => setRepaymentPeriod(m)}
                                                 className={`py-3 rounded-xl text-sm font-bold transition-all border ${
                                                     repaymentPeriod === m
-                                                        ? 'bg-[#006AFF] text-white border-[#006AFF] shadow-md shadow-blue-100'
+                                                        ? 'bg-[#0059D8] text-white border-[#006AFF] shadow-md shadow-blue-100'
                                                         : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
                                                 }`}
                                             >
@@ -220,7 +220,7 @@ export const DesktopStaffLoanWorkspace: React.FC<DesktopStaffLoanWorkspaceProps>
                 {stage === 1 ? (
                     <button
                         onClick={handleProceed}
-                        className="h-10 px-6 rounded-xl bg-[#0058DB] text-xs font-bold text-white flex items-center gap-1.5 hover:bg-blue-700 transition-colors"
+                        className="h-10 px-6 rounded-xl bg-[#0059D8] text-xs font-bold text-white flex items-center gap-1.5 hover:bg-blue-700 transition-colors"
                     >
                         Next
                         <ArrowRight size={16} />
@@ -229,7 +229,7 @@ export const DesktopStaffLoanWorkspace: React.FC<DesktopStaffLoanWorkspaceProps>
                     <button
                         onClick={handleSubmit}
                         disabled={submitting}
-                        className="h-10 px-8 rounded-xl bg-[#0058DB] text-xs font-bold text-white flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                        className="h-10 px-8 rounded-xl bg-[#0059D8] text-xs font-bold text-white flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-50 transition-colors"
                     >
                         {submitting ? (
                             <>

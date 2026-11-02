@@ -80,7 +80,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
             <Sidebar />
 
             {/* Right column: desktop header + content, or the full mobile stack. */}
-            <div className={`flex-1 flex flex-col ${isFlexPage ? 'h-screen' : 'min-h-screen'} md:h-screen md:overflow-hidden ${backgroundColor} md:!bg-[#F3F5FC]`}>
+            <div className={`flex-1 flex flex-col ${isFlexPage ? 'h-screen' : 'min-h-screen'} md:h-screen md:overflow-hidden ${backgroundColor} md:!bg-[#F8FAFD]`}>
             <DesktopHeader title={getPageTitle()} />
 
             {/* Mobile Header */}

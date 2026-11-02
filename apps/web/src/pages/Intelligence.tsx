@@ -31,7 +31,7 @@ export const Intelligence: React.FC = () => {
               scroll internally instead of the page growing and pushing the
               composer off-screen.
             */}
-            <div className="flex min-h-[calc(100vh-120px)] flex-1 flex-col overflow-hidden bg-white md:m-4 md:min-h-0 md:h-[calc(100%-2rem)] md:rounded-[20px]">
+            <div className="flex min-h-[calc(100vh-120px)] flex-1 flex-col overflow-hidden bg-white md:mx-4 md:mb-4 md:mt-0 md:min-h-0 md:h-[calc(100%-1rem)] md:rounded-[20px] md:border md:border-gray-200">
                 {showTabs && (
                     <div className="flex flex-shrink-0 justify-center px-4 pb-3 pt-5 md:pt-6">
                         <div className="no-scrollbar relative z-20 flex w-full items-center overflow-x-auto rounded-2xl border border-gray-100/50 bg-gray-50/80 p-1 shadow-sm md:w-auto">

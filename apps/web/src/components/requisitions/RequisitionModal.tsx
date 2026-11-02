@@ -199,7 +199,7 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({
                             }`}
                         >
                             Chat History
-                            <div className={`hidden md:block absolute bottom-0 left-0 right-0 h-[2px] bg-[#006AFF] transition-opacity ${activeTab === 'chat' ? 'opacity-100' : 'opacity-0'}`} />
+                            <div className={`hidden md:block absolute bottom-0 left-0 right-0 h-[2px] bg-[#006AFF] md:bg-[#0059D8] transition-opacity ${activeTab === 'chat' ? 'opacity-100' : 'opacity-0'}`} />
                         </button>
                         <button
                             onClick={() => setActiveTab('attachments')}
@@ -210,7 +210,7 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({
                             }`}
                         >
                             Attachments
-                            <div className={`hidden md:block absolute bottom-0 left-0 right-0 h-[2px] bg-[#006AFF] transition-opacity ${activeTab === 'attachments' ? 'opacity-100' : 'opacity-0'}`} />
+                            <div className={`hidden md:block absolute bottom-0 left-0 right-0 h-[2px] bg-[#006AFF] md:bg-[#0059D8] transition-opacity ${activeTab === 'attachments' ? 'opacity-100' : 'opacity-0'}`} />
                         </button>
                         <button
                             onClick={() => setActiveTab('audit')}
@@ -229,7 +229,7 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({
                                     {Math.round(requisition.audit_score)}%
                                 </span>
                             )}
-                            <div className={`hidden md:block absolute bottom-0 left-0 right-0 h-[2px] bg-[#006AFF] transition-opacity ${activeTab === 'audit' ? 'opacity-100' : 'opacity-0'}`} />
+                            <div className={`hidden md:block absolute bottom-0 left-0 right-0 h-[2px] bg-[#006AFF] md:bg-[#0059D8] transition-opacity ${activeTab === 'audit' ? 'opacity-100' : 'opacity-0'}`} />
                         </button>
                     </div>
                 </div>

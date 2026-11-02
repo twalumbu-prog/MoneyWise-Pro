@@ -196,7 +196,7 @@ const InflowDetailDrawer: React.FC<InflowDetailDrawerProps> = ({ inflow, onClose
                                                     <button
                                                         onClick={() => toggleDelivered(sale)}
                                                         disabled={togglingId === sale.id}
-                                                        className={`text-[11px] font-bold px-3 py-1.5 rounded-full transition-colors disabled:opacity-60 ${done ? 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50' : 'bg-[#0058DB] text-white hover:bg-[#004bb8]'}`}
+                                                        className={`text-[11px] font-bold px-3 py-1.5 rounded-full transition-colors disabled:opacity-60 ${done ? 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50' : 'bg-[#0058DB] md:bg-[#0059D8] text-white hover:bg-[#004bb8]'}`}
                                                     >
                                                         {togglingId === sale.id ? '…' : done ? 'Undo' : 'Mark delivered'}
                                                     </button>
@@ -282,7 +282,7 @@ const InflowDetailDrawer: React.FC<InflowDetailDrawerProps> = ({ inflow, onClose
                     <button
                         onClick={() => receipt && downloadInflowReceiptPdf(receipt)}
                         disabled={!receipt}
-                        className="w-full flex items-center justify-center gap-2 bg-[#0058DB] hover:bg-[#004bb8] disabled:opacity-50 text-white text-sm font-bold rounded-2xl py-3 transition-colors"
+                        className="w-full flex items-center justify-center gap-2 bg-[#0058DB] md:bg-[#0059D8] hover:bg-[#004bb8] disabled:opacity-50 text-white text-sm font-bold rounded-2xl py-3 transition-colors"
                     >
                         <Download size={16} />Download receipt
                     </button>

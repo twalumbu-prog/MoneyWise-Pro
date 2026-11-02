@@ -34,7 +34,7 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({ title }) => {
     const initial = (userName || 'U').trim().charAt(0).toUpperCase();
 
     return (
-        <div className="hidden md:flex items-center justify-between h-14 px-6 flex-shrink-0 bg-[#F3F5FC]">
+        <div className="hidden md:flex items-center justify-between h-14 px-6 flex-shrink-0 bg-[#F8FAFD]">
             {/* Left: org switcher + page title */}
             <div className="flex items-center gap-3 min-w-0">
                 {organizationName && (

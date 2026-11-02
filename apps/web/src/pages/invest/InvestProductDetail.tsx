@@ -180,7 +180,7 @@ export const InvestProductDetail: React.FC = () => {
                 {/* ── DESKTOP: unchanged legacy layout ────────────────────────── */}
                 <div className="hidden md:block overflow-y-auto flex-1 bg-slate-100">
                     <div className="flex flex-col p-6">
-                        <div className="w-full bg-white rounded-[20px] p-6 shadow-sm flex flex-col gap-6 min-h-[600px]">
+                        <div className="w-full bg-white rounded-[20px] p-6 shadow-sm flex flex-col gap-6 min-h-[600px] md:border md:border-gray-200">
 
                             <div className="flex justify-between items-center pb-2">
                                 <div className="flex items-center gap-4">

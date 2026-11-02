@@ -1680,15 +1680,15 @@ Status: VERIFIED`;
 
             {/* ============ DESKTOP LAYOUT ============ */}
             {/* Desktop: sidebar-nav era Wallets page */}
-            <div className="hidden md:block px-4 py-4">
-            <div className="bg-white rounded-[20px] p-3.5 flex flex-col gap-4">
+            <div className="hidden md:block px-4 pb-4 pt-0">
+            <div className="bg-white rounded-[20px] p-3.5 flex flex-col gap-4 md:border md:border-gray-200">
 
                 {/* Row 1: Main Wallets / External Accounts toggle + action bar */}
                 <div className="flex items-center justify-between">
                     <TabPillGroup
                         value={categoryGroup}
                         onChange={(v) => handleCategoryChange(v as 'MONEYWISE' | 'EXTERNAL')}
-                        trackClassName="h-8 p-1 bg-[#F3F5FC] rounded-[10px] flex items-center gap-1"
+                        trackClassName="h-8 p-1 bg-[#F3F5FC] md:bg-[#F8FAFD] rounded-[10px] flex items-center gap-1"
                         indicatorClassName="bg-white rounded-lg shadow-sm"
                         tabs={[
                             {
@@ -1697,7 +1697,7 @@ Status: VERIFIED`;
                                 activeButtonClassName: 'text-[#111827]',
                                 label: (
                                     <>
-                                        {hasNewMoneywise && <span className="w-1.5 h-1.5 rounded-full bg-[#0058DB] flex-shrink-0" />}
+                                        {hasNewMoneywise && <span className="w-1.5 h-1.5 rounded-full bg-[#0058DB] md:bg-[#0059D8] flex-shrink-0" />}
                                         <span className={categoryGroup === 'MONEYWISE' ? 'text-[#111827]' : 'text-gray-500'}>Main Wallets</span>
                                     </>
                                 ),
@@ -1708,7 +1708,7 @@ Status: VERIFIED`;
                                 activeButtonClassName: 'text-[#111827]',
                                 label: (
                                     <>
-                                        {hasNewExternal && <span className="w-1.5 h-1.5 rounded-full bg-[#0058DB] flex-shrink-0" />}
+                                        {hasNewExternal && <span className="w-1.5 h-1.5 rounded-full bg-[#0058DB] md:bg-[#0059D8] flex-shrink-0" />}
                                         <span className={categoryGroup === 'EXTERNAL' ? 'text-[#111827]' : 'text-gray-500'}>External Accounts</span>
                                     </>
                                 ),
@@ -1881,7 +1881,7 @@ Status: VERIFIED`;
                         {categoryGroup === 'MONEYWISE' && !isRequestor && (
                             <button
                                 onClick={() => setIsCreateWalletModalOpen(true)}
-                                className="h-8 px-4 bg-[#0058DB] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity"
+                                className="h-8 px-4 bg-[#0058DB] md:bg-[#0059D8] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity"
                             >
                                 <span className="text-white text-xs font-bold">New Wallet</span>
                             </button>
@@ -2267,7 +2267,7 @@ Status: VERIFIED`;
                             <button
                                 onClick={() => postingReview.type === 'REQUISITION' ? confirmPostRequisition(postingReview.data) : confirmPostLedger(postingReview.entry!)}
                                 disabled={isPosting}
-                                className="bg-[#006AFF] hover:bg-[#0052CC] text-white px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all shadow-xl shadow-blue-200 flex items-center disabled:opacity-50 disabled:shadow-none"
+                                className="bg-[#006AFF] md:bg-[#0059D8] hover:bg-[#0052CC] text-white px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all shadow-xl shadow-blue-200 flex items-center disabled:opacity-50 disabled:shadow-none"
                             >
                                 {isPosting ? (
                                     <>
