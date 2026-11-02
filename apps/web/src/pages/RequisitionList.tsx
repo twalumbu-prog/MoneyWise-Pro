@@ -549,7 +549,7 @@ export const RequisitionList: React.FC = () => {
     return (
         <>
             <Layout noPadding={true} backgroundColor="bg-gray-50">
-            <div className={`space-y-0 ${isRequestor ? 'pb-32' : ''} md:px-4 md:pb-4`}>
+            <div className={`space-y-0 ${isRequestor ? 'pb-32' : ''} md:px-4 md:pb-4 md:flex md:flex-col md:min-h-[calc(100vh-56px)]`}>
                 {/* Helper to get counts */}
                 {(() => {
                     return (
@@ -699,9 +699,9 @@ export const RequisitionList: React.FC = () => {
                     );
                 })()}
 
-                <div className="w-full pt-6 md:pt-0">
+                <div className="w-full pt-6 md:pt-0 md:flex-1 md:flex md:flex-col">
                     {/* Desktop: unified Inbox card shell (toggle, tabs, search/sort/filter, New) */}
-                    <div className="hidden md:block">
+                    <div className="hidden md:flex md:flex-col md:flex-1">
                       {isDesktopRequisitionOpen ? (
                         <DesktopRequisitionWorkspace 
                             onClose={() => setIsDesktopRequisitionOpen(false)} 

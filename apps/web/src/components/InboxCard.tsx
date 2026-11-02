@@ -97,7 +97,7 @@ export const InboxCard: React.FC<InboxCardProps> = ({
     }, []);
 
     return (
-        <div className="bg-white rounded-[20px] p-3.5 flex flex-col gap-3 md:border md:border-gray-200">
+        <div className="bg-white rounded-[20px] p-3.5 flex flex-col gap-3 md:border md:border-gray-200 md:flex-1">
             {/* Row 1: Inflows/Outflows toggle (with counts) + New */}
             <div className="flex items-center justify-between">
                 <TabPillGroup
