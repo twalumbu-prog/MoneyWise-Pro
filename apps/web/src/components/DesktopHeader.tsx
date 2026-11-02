@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAchievements } from '../context/AchievementsContext';
 import { AchievementsDropdown } from './achievements/AchievementsDropdown';
-import { Check, ChevronDown, LogOut, Trophy } from 'lucide-react';
+import { Check, ChevronDown, ChevronsDown, LogOut, Trophy } from 'lucide-react';
 
 interface DesktopHeaderProps {
     title: string;
@@ -19,6 +19,36 @@ const OrgLogo: React.FC<{ name: string; logoUrl?: string | null; size: number }>
         <span style={{ ...box, fontSize: Math.round(size * 0.45) }} className="rounded-lg bg-[#E6F0FF] text-[#0059D8] font-bold flex items-center justify-center flex-shrink-0">
             {(name || '?').trim().charAt(0).toUpperCase()}
         </span>
+    );
+};
+
+/**
+ * A fixed-height scrolling list. While there is more below, the bottom edge fades to white with a small down arrow
+ * (click to scroll); both disappear once the end is reached.
+ */
+const ScrollFade: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const ref = useRef<HTMLDivElement>(null);
+    const [more, setMore] = useState(false);
+    const update = useCallback(() => {
+        const el = ref.current;
+        if (el) setMore(el.scrollHeight - el.scrollTop - el.clientHeight > 4);
+    }, []);
+    useEffect(() => { update(); }, [update, children]);
+    return (
+        <div className="relative">
+            <div ref={ref} onScroll={update} className="max-h-80 overflow-y-auto space-y-0.5">{children}</div>
+            <div aria-hidden={!more} className={`absolute inset-x-0 bottom-0 h-14 rounded-b-xl bg-gradient-to-t from-white via-white/80 to-transparent flex items-end justify-center pb-1 transition-opacity duration-200 ${more ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                <button
+                    type="button"
+                    tabIndex={more ? 0 : -1}
+                    aria-label="Scroll for more businesses"
+                    onClick={() => ref.current?.scrollBy({ top: 160, behavior: 'smooth' })}
+                    className="p-1 rounded-full text-[#0059D8] hover:bg-[#E6F0FF] animate-bounce"
+                >
+                    <ChevronsDown size={16} />
+                </button>
+            </div>
+        </div>
     );
 };
 
@@ -71,7 +101,7 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({ title }) => {
                                         <div className="px-3 pt-2 pb-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
                                             Your businesses
                                         </div>
-                                        <div className="max-h-80 overflow-y-auto space-y-0.5">
+                                        <ScrollFade>
                                             {activeOrgs.map((uo: any) => {
                                                 const isCurrent = uo.organization.id === organizationId;
                                                 return (
@@ -88,7 +118,7 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({ title }) => {
                                                             }
                                                         }}
                                                         className={`w-full text-left px-2.5 py-2 rounded-xl transition-colors flex items-center gap-3 ${
-                                                            isCurrent ? 'bg-[#CFE4FF] cursor-default' : 'hover:bg-[#F8FAFD]'
+                                                            isCurrent ? 'bg-white border border-gray-200 cursor-default' : 'border border-transparent hover:bg-[#F8FAFD]'
                                                         }`}
                                                     >
                                                         <OrgLogo name={uo.organization.name} logoUrl={uo.organization.logo_url} size={32} />
@@ -100,7 +130,7 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({ title }) => {
                                                     </button>
                                                 );
                                             })}
-                                        </div>
+                                        </ScrollFade>
                                     </div>
                                 </>
                             )}
