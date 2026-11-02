@@ -537,6 +537,13 @@ export const RequisitionList: React.FC = () => {
             iconColor: '#0058DB',
             onSelect: () => navigate('/sales/new?mode=credit'),
         },
+        ...(userRole === 'ADMIN' ? [{
+            label: 'E-Invoice',
+            description: 'Create an invoice and share a short payment link',
+            icon: FileText,
+            iconColor: '#7C3AED',
+            onSelect: () => navigate('/sales/new?mode=link'),
+        }] : []),
     ];
 
     return (
@@ -1259,6 +1266,21 @@ export const RequisitionList: React.FC = () => {
                                         <div className="text-xs text-[#0058DB]/70 font-medium">Invoice the customer, collect later</div>
                                     </div>
                                 </button>
+                                {userRole === 'ADMIN' && <button
+                                    onClick={() => {
+                                        setIsNewRequisitionOpen(false);
+                                        navigate('/sales/new?mode=link');
+                                    }}
+                                    className="w-full flex items-center p-4 text-left bg-white hover:bg-gray-50 rounded-2xl transition-all group active:scale-[0.98]"
+                                >
+                                    <div className="p-3 bg-white rounded-xl mr-4 shadow-sm group-hover:shadow-md transition-shadow">
+                                        <FileText className="h-6 w-6 text-violet-600" />
+                                    </div>
+                                    <div>
+                                        <div className="font-bold text-gray-900 text-base">E-Invoice</div>
+                                        <div className="text-xs text-violet-600/70 font-medium">Create an invoice, share a short pay link</div>
+                                    </div>
+                                </button>}
                                 </>
                             ) : (
                                 <div className="text-center p-4 text-gray-400 text-sm">

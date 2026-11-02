@@ -12,6 +12,7 @@ import { supabase } from '../lib/supabase';
 import { randomBytes } from 'crypto';
 import { ledgerService } from './ledger.service';
 import { emailService } from './email.service';
+import { assignShortLink, shortPathFor } from './invoiceShortLink.service';
 import { isValidZambiaMobile, normalizeZambiaPhone } from '../utils/zambiaPhone';
 
 const TOLERANCE = 0.005;
@@ -430,10 +431,16 @@ export async function ensurePayLink(orgId: string, userId: string | null, invoic
     const balance = round2(Number(inv.total) - Number(inv.amount_paid || 0));
     if (inv.status === 'PAID' || balance <= TOLERANCE) throw new InvoiceError('This invoice is already paid.');
 
+    // The link reuses the invoice's own number when it can (INV-0007 → /tec/invoice/7).
+    const preferredNo = Number(String(inv.invoice_number || '').match(/(\d+)\s*$/)?.[1]) || undefined;
+    const shortPath = async (id: string, fallbackToken: string): Promise<string> => {
+        try { return (await assignShortLink(orgId, id, preferredNo)).path; } catch { return `/pl/${fallbackToken}`; }
+    };
+
     const { data: existing } = await supabase.from('payment_links').select('id, token, amount, status')
         .eq('organization_id', orgId).eq('credit_invoice_id', invoiceId).eq('status', 'ACTIVE').order('created_at', { ascending: false });
     const current = (existing || []).find(l => Math.abs(Number(l.amount) - balance) < TOLERANCE);
-    if (current) return { ...current, amount: Number(current.amount), path: `/pl/${current.token}` };
+    if (current) return { ...current, amount: Number(current.amount), path: await shortPath(current.id, current.token) };
     if (existing?.length) await supabase.from('payment_links').update({ status: 'CANCELLED' }).in('id', existing.map(l => l.id));
 
     const { data: wallet } = await supabase.from('organization_wallets').select('id').eq('organization_id', orgId).eq('is_main', true).maybeSingle();
@@ -454,14 +461,17 @@ export async function ensurePayLink(orgId: string, userId: string | null, invoic
         credit_invoice_id: invoiceId, created_by: userId,
     }).select('id, token, amount, status').single();
     if (error || !link) throw new InvoiceError(`Could not create the payment link: ${error?.message}`, 500);
-    return { ...link, amount: Number(link.amount), path: `/pl/${link.token}` };
+    return { ...link, amount: Number(link.amount), path: await shortPath(link.id, link.token) };
 }
 
 /** The invoice's currently payable link, if any (no side effects). */
 export async function getActivePayLink(orgId: string, invoiceId: string): Promise<InvoicePayLink | null> {
-    const { data } = await supabase.from('payment_links').select('id, token, amount, status')
+    const { data } = await supabase.from('payment_links').select('id, token, amount, status, invoice_no')
         .eq('organization_id', orgId).eq('credit_invoice_id', invoiceId).eq('status', 'ACTIVE').order('created_at', { ascending: false }).limit(1).maybeSingle();
-    return data ? { ...data, amount: Number(data.amount), path: `/pl/${data.token}` } : null;
+    if (!data) return null;
+    const { invoice_no, ...link } = data as any;
+    const short = invoice_no ? await shortPathFor(orgId, invoice_no) : null;
+    return { ...link, amount: Number(link.amount), path: short || `/pl/${link.token}` };
 }
 
 /**

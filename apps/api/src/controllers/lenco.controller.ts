@@ -1,4 +1,5 @@
 import { normalizeZambiaPhone } from '../utils/zambiaPhone';
+import { resolveShortLink } from '../services/invoiceShortLink.service';
 import { matchesRecordedInternalTransfer } from '../services/internalTransferMatch.service';
 import { isPlatformSweepDebit } from '../services/ledgerGuardian/core';
 import { recordSyncFailure, claimDebitBooking, releaseDebitClaim, runGuardianCycle, guardianMode, runOrgGuardian } from '../services/ledgerGuardian/guardian.service';
@@ -919,6 +920,20 @@ export const getPublicWalletContext = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Organization not found' });
         }
         res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+};
+
+/** Public: GET /lenco/public-invoice-link/:code/:no — resolves a short invoice link (/<code>/invoice/<n>) to its payment-link token. */
+export const resolveInvoiceShortLink = async (req: Request, res: Response) => {
+    const no = Number(req.params.no);
+    if (!req.params.code || !Number.isInteger(no) || no <= 0) return res.status(404).json({ error: 'Invoice link not found' });
+    try {
+        const token = await resolveShortLink(req.params.code, no);
+        if (!token) return res.status(404).json({ error: 'Invoice link not found' });
+        res.json({ token });
+    } catch (error: any) {
+        console.error('[Lenco Invoice Short Link] resolve failed:', error?.message);
+        res.status(503).json({ error: 'Payment service is busy, please try again' });
     }
 };
 

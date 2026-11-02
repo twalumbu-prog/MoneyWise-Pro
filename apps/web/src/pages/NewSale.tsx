@@ -902,7 +902,7 @@ export const NewSale: React.FC = () => {
                 {/* ── SHOP ── */}
                 {step === 'SHOP' && (
                     <>
-                        <Header title={isCreditMode ? 'New Credit Sale' : 'New Sale'} onBack={() => navigate('/requisitions')} />
+                        <Header title={isCreditMode ? 'New Credit Sale' : isLinkMode ? 'New E-Invoice' : 'New Sale'} onBack={() => navigate('/requisitions')} />
                         <div className="px-5 pt-4 pb-2 space-y-2.5">
                             <div className="flex items-center bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3">
                                 <Search size={18} className="text-slate-400 mr-2" />
@@ -1440,7 +1440,7 @@ export const NewSale: React.FC = () => {
                 {step === 'SUCCESS' && isLinkMode && generatedLink && (
                     <div className="relative flex-1 flex flex-col items-center justify-center p-8 min-h-[70vh] text-center">
                         <button
-                            onClick={() => navigate('/cashbook')}
+                            onClick={() => navigate(linkWalletId ? '/cashbook' : '/requisitions')}
                             className="absolute top-4 right-4 p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
                             aria-label="Close"
                         >

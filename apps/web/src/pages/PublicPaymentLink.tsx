@@ -85,8 +85,9 @@ interface LinkContext {
     collections_api_enabled?: boolean;
 }
 
-export const PublicPaymentLink: React.FC = () => {
-    const { token } = useParams<{ token: string }>();
+export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenOverride }) => {
+    const { token: routeToken } = useParams<{ token: string }>();
+    const token = tokenOverride ?? routeToken;
 
     const [step, setStep] = useState<'LOADING' | 'READY' | 'CHECKOUT' | 'INACTIVE' | 'VERIFYING' | 'SUCCESS' | 'ERROR'>('LOADING');
     const [ctx, setCtx] = useState<LinkContext | null>(null);

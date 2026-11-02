@@ -655,12 +655,14 @@ export const emailService = {
         items: { name: string; quantity: number; unit_price: number; check_in?: string; check_out?: string }[];
         total: number;
         token: string;
+        /** Short path (/<code>/invoice/<n>) to link to instead of /pl/<token>. */
+        path?: string;
         /** Caller-resolved frontend origin (see utils/frontendUrl.ts) — defaults to the
          *  static env-based FRONTEND_URL if the caller doesn't have a request to detect from. */
         frontendUrl?: string;
     }) {
-        const { to, orgName, orgLogoUrl, customerName, items, total, token, frontendUrl } = params;
-        const payUrl = `${frontendUrl || FRONTEND_URL}/pl/${token}`;
+        const { to, orgName, orgLogoUrl, customerName, items, total, token, path, frontendUrl } = params;
+        const payUrl = `${frontendUrl || FRONTEND_URL}${path || `/pl/${token}`}`;
         const FONT_STACK = "'DM Sans','Figtree',-apple-system,sans-serif";
         const money = (n: number) => `K${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
 

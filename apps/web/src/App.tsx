@@ -34,6 +34,7 @@ const RunPayrollPage = React.lazy(() => import('./pages/RunPayrollPage').then(m 
 const PublicStore = React.lazy(() => import('./pages/PublicPay').then(m => ({ default: m.PublicPay })));
 const PayEntry = React.lazy(() => import('./pages/PayEntry').then(m => ({ default: m.PayEntry })));
 const SavingsJoin = React.lazy(() => import('./pages/SavingsJoin').then(m => ({ default: m.SavingsJoin })));
+const PublicInvoiceLink = React.lazy(() => import('./pages/PublicInvoiceLink').then(m => ({ default: m.PublicInvoiceLink })));
 const PublicPaymentLink = React.lazy(() => import('./pages/PublicPaymentLink').then(m => ({ default: m.PublicPaymentLink })));
 const Schedules = React.lazy(() => import('./pages/Schedules').then(m => ({ default: m.Schedules })));
 const InvestHome = React.lazy(() => import('./pages/invest/InvestHome').then(m => ({ default: m.InvestHome })));
@@ -214,6 +215,8 @@ function App() {
                         <Route path="/:username/store" element={<PublicStore />} />
                         <Route path="/:username/store/:walletSlug" element={<PublicStore />} />
                         <Route path="/pl/:token" element={<PublicPaymentLink />} />
+                        {/* Short invoice link: /<business-code>/invoice/<n> */}
+                        <Route path="/:code/invoice/:no" element={<PublicInvoiceLink />} />
                         <Route path="/savings/join/:code" element={<SavingsJoin />} />
                         <Route path="/docs/api" element={<ApiDocs />} />
                         <Route path="/oauth/authorize" element={<ProtectedRoute><OAuthAuthorize /></ProtectedRoute>} />
