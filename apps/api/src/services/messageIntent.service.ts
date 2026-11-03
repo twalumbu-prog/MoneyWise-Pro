@@ -17,30 +17,95 @@ const SYSTEM = `You read one customer message sent to a small business in Zambia
 SALE_INTENT = customer wants to buy / places an order. PAYMENT_CLAIM = customer says they have paid or are paying (mobile money, bank).
 ORDER_QUERY = asks about price, stock or an existing order. OTHER = anything else. amount only if explicitly stated.`;
 
-export async function classifyMessage(messageId: string, organizationId: string): Promise<void> {
+export async function classifyMessage(
+    messageId: string,
+    organizationId: string
+): Promise<void> {
     try {
-        const { data: msg } = await supabase.from('messaging_messages').select('*')
-            .eq('id', messageId).eq('organization_id', organizationId).maybeSingle();
-        if (!msg || msg.direction !== 'IN' || !msg.body || msg.classified_at) return;
+        const { data: msg, error: fetchError } = await supabase
+            .from('messaging_messages')
+            .select('*')
+            .eq('id', messageId)
+            .eq('organization_id', organizationId)
+            .maybeSingle();
 
-        const raw = await openRouterComplete(msg.body.slice(0, 1000), { system: SYSTEM, jsonObject: true, timeoutMs: 15_000 });
+        if (fetchError) {
+            throw new Error(`Message lookup failed: ${fetchError.message}`);
+        }
+
+        // Missing, outgoing, empty or already-classified messages
+        // do not need further processing.
+        if (!msg || msg.direction !== 'IN' || !msg.body || msg.classified_at) {
+            return;
+        }
+
+        const raw = await openRouterComplete(
+            msg.body.slice(0, 1000),
+            {
+                system: SYSTEM,
+                jsonObject: true,
+                timeoutMs: 15_000
+            }
+        );
+
         const r = JSON.parse(raw);
-        const intent = ['SALE_INTENT', 'PAYMENT_CLAIM', 'ORDER_QUERY', 'OTHER'].includes(r.intent) ? r.intent : 'OTHER';
-        const confidence = Math.max(0, Math.min(1, Number(r.confidence) || 0));
-        const amount = Number(r.amount) > 0 ? Number(r.amount) : null;
+
+        const intent = [
+            'SALE_INTENT',
+            'PAYMENT_CLAIM',
+            'ORDER_QUERY',
+            'OTHER'
+        ].includes(r.intent) ? r.intent : 'OTHER';
+
+        const confidence = Math.max(
+            0,
+            Math.min(1, Number(r.confidence) || 0)
+        );
+
+        const amount = Number(r.amount) > 0
+            ? Number(r.amount)
+            : null;
 
         const update: Record<string, any> = {
-            intent, intent_confidence: confidence, intent_amount: amount,
-            intent_summary: String(r.summary || '').slice(0, 200) || null, classified_at: new Date().toISOString(),
+            intent,
+            intent_confidence: confidence,
+            intent_amount: amount,
+            intent_summary: String(r.summary || '').slice(0, 200) || null,
+            classified_at: new Date().toISOString()
         };
 
-        if ((intent === 'SALE_INTENT' || intent === 'PAYMENT_CLAIM') && confidence >= MIN_CONFIDENCE) {
-            const match = await findInflowMatch(organizationId, msg, amount);
-            if (match) Object.assign(update, { match_status: 'SUGGESTED', matched_cashbook_entry_id: match.id, match_score: match.score });
+        if (
+            (intent === 'SALE_INTENT' || intent === 'PAYMENT_CLAIM') &&
+            confidence >= MIN_CONFIDENCE
+        ) {
+            const match = await findInflowMatch(
+                organizationId,
+                msg,
+                amount
+            );
+
+            if (match) {
+                Object.assign(update, {
+                    match_status: 'SUGGESTED',
+                    matched_cashbook_entry_id: match.id,
+                    match_score: match.score
+                });
+            }
         }
-        await supabase.from('messaging_messages').update(update).eq('id', messageId).eq('organization_id', organizationId);
+
+        const { error: updateError } = await supabase
+            .from('messaging_messages')
+            .update(update)
+            .eq('id', messageId)
+            .eq('organization_id', organizationId);
+
+        if (updateError) {
+            throw new Error(`Message classification update failed: ${updateError.message}`);
+        }
+
     } catch (e: any) {
         console.error(`[MessageIntent] ${messageId}:`, e?.message);
+        throw e;
     }
 }
 

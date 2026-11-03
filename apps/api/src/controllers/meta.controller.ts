@@ -3,7 +3,6 @@ import { supabase } from '../lib/supabase';
 import {
     isMetaConfigured, verifySignature, parseWebhook, ingestMessages, graphVersion,
 } from '../services/meta.service';
-import { classifyMessage } from '../services/messageIntent.service';
 
 /** GET /integrations/meta/status — connections for the caller's org + whether the platform is configured server-side. */
 export const getMetaStatus = async (req: Request, res: Response) => {
@@ -58,14 +57,31 @@ export const verifyMetaWebhook = (req: Request, res: Response) => {
  * POST /integrations/meta/webhook — signature-verified against the raw body (req.rawBody from the global
  * express.json verify hook), ingested, then classified. Always 200s a valid signature quickly so Meta doesn't retry.
  */
+
+/**
+ * POST /integrations/meta/webhook
+ *
+ * Verifies Meta's signature, stores incoming messages and queues
+ * their processing. AI classification is handled by a background worker.
+ */
 export const receiveMetaWebhook = async (req: Request, res: Response) => {
-    if (!verifySignature((req as any).rawBody, req.header('x-hub-signature-256'))) return res.sendStatus(401);
-    try {
-        const inserted = await ingestMessages(parseWebhook(req.body));
-        // Classification awaited (small payloads) so serverless doesn't freeze it after the response.
-        await Promise.all(inserted.map(m => classifyMessage(m.id, m.organization_id)));
-    } catch (e: any) {
-        console.error('[Meta] webhook handling failed:', e?.message);
+    if (!verifySignature(
+        (req as any).rawBody,
+        req.header('x-hub-signature-256')
+    )) {
+        return res.sendStatus(401);
     }
-    res.sendStatus(200);
+
+    try {
+        const messages = parseWebhook(req.body);
+
+        await ingestMessages(messages);
+
+        return res.sendStatus(200);
+    } catch (e: any) {
+        console.error('[Meta] webhook ingestion failed:', e?.message);
+
+        // Allow Meta to retry when a temporary database failure occurs.
+        return res.sendStatus(500);
+    }
 };

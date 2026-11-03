@@ -79,25 +79,68 @@ export function parseWebhook(payload: any): InboundMessage[] {
 }
 
 /** Stores messages for whichever org owns the receiving account; returns inserted row ids for classification. */
-export async function ingestMessages(messages: InboundMessage[]): Promise<{ id: string; organization_id: string }[]> {
-    const inserted: { id: string; organization_id: string }[] = [];
-    for (const m of messages) {
-        const { data: conn } = await supabase.from('messaging_connections').select('id, organization_id')
-            .eq('platform', m.platform).eq('external_id', m.externalAccountId).neq('status', 'DISCONNECTED').maybeSingle();
-        if (!conn) { console.warn(`[Meta] no connection for ${m.platform} ${m.externalAccountId}`); continue; }
-        const { data, error } = await supabase.from('messaging_messages').upsert({
-            organization_id: conn.organization_id, connection_id: conn.id, platform: m.platform, direction: m.direction,
-            external_message_id: m.externalMessageId, contact_id: m.contactId, contact_name: m.contactName ?? null,
-            contact_phone: m.contactPhone ?? null, message_type: m.type, body: m.body, sent_at: m.sentAt.toISOString(),
-        }, { onConflict: 'connection_id,external_message_id', ignoreDuplicates: true }).select('id').maybeSingle();
-        if (error) { console.error('[Meta] ingest failed:', error.message); continue; }
-        if (data) {
-            inserted.push({ id: data.id, organization_id: conn.organization_id });
-            await supabase.from('messaging_connections').update({ last_message_at: new Date().toISOString() }).eq('id', conn.id);
-        }
-    }
-    return inserted;
+
+export async function ingestMessages(
+    messages: InboundMessage[]
+): Promise<{ id: string; organization_id: string }[]> {
+
+    const results = await Promise.all(
+        messages.map(async (m) => {
+            const { data, error } = await supabase.rpc('ingest_meta_message', {
+                p_platform: m.platform,
+                p_external_account_id: m.externalAccountId,
+                p_external_message_id: m.externalMessageId,
+                p_contact_id: m.contactId,
+                p_contact_name: m.contactName ?? null,
+                p_contact_phone: m.contactPhone ?? null,
+                p_message_type: m.type,
+                p_body: m.body,
+                p_sent_at: m.sentAt.toISOString(),
+            });
+
+            // A database failure must propagate so Meta can retry.
+            if (error) {
+                console.error('[Meta] atomic message ingestion failed:', error.message);
+                throw new Error(`Meta message ingestion failed: ${error.message}`);
+            }
+
+            const result = data as {
+                status: 'inserted' | 'duplicate' | 'unknown_connection';
+                message_id?: string;
+                organization_id?: string;
+            } | null;
+
+            if (!result) {
+                throw new Error('[Meta] ingestion function returned an empty result');
+            }
+
+            if (result.status === 'unknown_connection') {
+                console.warn(
+                    `[Meta] no connection for ${m.platform} ${m.externalAccountId}; message discarded`
+                );
+                return null;
+            }
+
+            if (result.status === 'duplicate') {
+                return null;
+            }
+
+            if (result.status !== 'inserted' || !result.message_id || !result.organization_id) {
+                throw new Error('[Meta] ingestion function returned an unexpected result');
+            }
+
+            return {
+                id: result.message_id,
+                organization_id: result.organization_id,
+            };
+        })
+    );
+
+    return results.filter(
+        (item): item is { id: string; organization_id: string } => item !== null
+    );
 }
+
 
 /** Saves a connection with its token encrypted. Used by the (stubbed) connect callbacks. */
 export async function saveConnection(p: {

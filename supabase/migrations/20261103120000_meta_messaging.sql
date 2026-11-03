@@ -62,3 +62,14 @@ CREATE INDEX IF NOT EXISTS messaging_messages_org_intent_idx ON public.messaging
 ALTER TABLE public.messaging_connections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.messaging_messages ENABLE ROW LEVEL SECURITY;
 -- Intentionally NO policies: only the API (service role) touches these tables, scoped by organization_id in code.
+
+-- Explicit permissions: backend service role only.
+REVOKE ALL ON TABLE
+    public.messaging_connections,
+    public.messaging_messages
+FROM anon, authenticated;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
+    public.messaging_connections,
+    public.messaging_messages
+TO service_role;
