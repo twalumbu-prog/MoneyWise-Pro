@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ChevronRight, Gift, Loader2, Sparkles, Star, Medal, Ticket, Copy, Check, Trophy } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Gift, Loader2, Star, Medal, Ticket, Copy, Check, Trophy } from 'lucide-react';
 import { rewardsService, type PurchaseClaim, type RewardCard, type RewardDetail, type RewardsOverview } from 'core';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
@@ -240,8 +240,7 @@ export const Rewards: React.FC = () => {
                     <div className="space-y-4">
                         {(welcome || claimed.length > 0) && (
                             <div className="relative overflow-hidden rounded-2xl border border-[#DCE7FF] bg-gradient-to-br from-[#EEF4FF] via-white to-white p-5">
-                                <div className="flex items-start gap-3">
-                                    <span className="w-10 h-10 rounded-full bg-[#006AFF] text-white flex items-center justify-center flex-shrink-0"><Sparkles size={18} /></span>
+                                <div>
                                     <div className="min-w-0">
                                         <p className="text-[15px] font-black text-slate-900">{welcome ? `Welcome to MoneyWise${first ? `, ${first}` : ''}` : 'Points added'}</p>
                                         <p className="text-[12px] text-zinc-600 mt-0.5">

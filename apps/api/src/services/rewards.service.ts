@@ -6,7 +6,8 @@
  * the same purchase can be looked at any number of times and only ever pays once.
  *
  * Where points come from
- *   • MoneyWise Pay from a personal account to a business: credited the moment the transfer settles (awardMoneyWisePay).
+ *   • Purchases paid with MoneyWise Pay from a personal account (store cart, e-invoice, pay link; not loans or plain transfers):
+ *     credited the moment the transfer settles (awardMoneyWisePay).
  *   • Paid payment links and quick-pay page payments: found by the payer's saved phone number / email when they open Rewards
  *     (syncPurchases), so past purchases count too.
  *   • Invites: a friend who pays a business through the inviter's link earns the inviter the business's referral points; a friend
@@ -198,17 +199,6 @@ async function addLedger(row: { user_id: string; organization_id: string | null;
     throw new Error(error.message);
 }
 
-/** The person's own organizations: buying from your own business earns nothing. */
-async function ownOrgIds(userId: string): Promise<Set<string>> {
-    const [{ data: m }, { data: u }] = await Promise.all([
-        supabase.from('user_organizations').select('organization_id').eq('user_id', userId),
-        supabase.from('users').select('organization_id').eq('id', userId).maybeSingle(),
-    ]);
-    const s = new Set<string>((m ?? []).map((x: any) => x.organization_id));
-    if ((u as any)?.organization_id) s.add((u as any).organization_id);
-    return s;
-}
-
 export const isPersonalOrg = (o: { is_personal?: boolean | null; name?: string | null }) =>
     o?.is_personal === true || /workspace|personal account|individual/i.test(String(o?.name ?? ''));
 
@@ -227,14 +217,21 @@ async function contactsOf(userId: string): Promise<{ email: string | null; phone
     return { email: (u as any)?.email ? String((u as any).email).trim().toLowerCase() : null, phones };
 }
 
-/** MoneyWise Pay from a personal account to a business: the sender earns points with that business. Idempotent. */
+/** A purchase (store cart, e-invoice, pay link, quick-pay page) paid with MoneyWise Pay from a personal account: the sender earns points with that business. Idempotent. */
 export async function awardMoneyWisePay(p: { requisitionId: string; recipientOrgId: string; amount: number; ref: string }): Promise<void> {
     const { data: req } = await supabase.from('requisitions').select('requestor_id, organization_id').eq('id', p.requisitionId).maybeSingle();
     if (!req?.requestor_id) return;
     const orgs = await businessInfo([(req as any).organization_id, p.recipientOrgId]);
     const sender = orgs.get((req as any).organization_id), biz = orgs.get(p.recipientOrgId);
     if (!sender || !biz || sender.is_personal !== true || biz.is_personal === true) return;
-    if ((await ownOrgIds((req as any).requestor_id)).has(p.recipientOrgId)) return;
+    // Only purchases count: a store cart, e-invoice, payment link or quick-pay page paid with MoneyWise Pay. Money sent to a business
+    // directly (a loan, a transfer, "on behalf of") is not a purchase. The pay link's memo exists until it is settled; the link
+    // carries the payment's reference once it has been.
+    const [{ data: memo }, { data: link }] = await Promise.all([
+        supabase.from('app_settings').select('key').eq('key', `paylink:${String(p.ref).replace(/-R\d+$/, '')}`).maybeSingle(),
+        supabase.from('payment_links').select('id').eq('reference', p.ref).limit(1).maybeSingle(),
+    ]);
+    if (!memo && !link) return;
     const program = await getProgram(p.recipientOrgId);
     if (!program.enabled) return;
     await addLedger({
@@ -247,7 +244,6 @@ export async function awardMoneyWisePay(p: { requisitionId: string; recipientOrg
 export async function syncPurchases(userId: string): Promise<number> {
     const { email, phones } = await contactsOf(userId);
     if (phones.length === 0 && !email) return 0;
-    const own = await ownOrgIds(userId);
     type Found = { ref: string; orgId: string; amount: number; at: string; label: string };
     const found: Found[] = [];
 
@@ -265,7 +261,7 @@ export async function syncPurchases(userId: string): Promise<number> {
         }
     }
 
-    const candidates = found.filter((f) => f.amount > 0 && !own.has(f.orgId));
+    const candidates = found.filter((f) => f.amount > 0);
     if (candidates.length === 0) return 0;
     const orgs = await businessInfo([...new Set(candidates.map((f) => f.orgId))]);
     const programs = new Map<string, Program>();
@@ -369,7 +365,6 @@ export async function claimPurchase(userId: string, reference: string, orgId: st
     }
     const programme = await storeProgramme(orgId);
     if (!programme) throw new RewardsError('This business isn’t offering rewards right now.');
-    if ((await ownOrgIds(userId)).has(orgId)) throw new RewardsError('Purchases from your own business don’t earn points.');
     const { biz, program, rewards } = programme;
 
     const { data: holders } = await supabase.from('reward_ledger').select('user_id, ref, points').in('ref', [purchase.ledgerRef, `MWP:${String(reference).trim()}`]);

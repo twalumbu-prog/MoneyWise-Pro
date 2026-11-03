@@ -24,7 +24,7 @@ import { colors, fonts, radius } from '../../theme/tokens';
  * /pay/<username>). It shows who is being paid and how much, then "Slide to pay"; letting go of the slider asks for the app PIN or
  * Face ID / fingerprint (the same check as signing in), and only then is the money sent from the person's wallet.
  */
-export const PayLinkOverlay: React.FC<{ token?: string; username?: string; fromSafari?: boolean }> = ({ token, username, fromSafari }) => {
+export const PayLinkOverlay: React.FC<{ token?: string; username?: string; fromSafari?: boolean; returnTo?: string }> = ({ token, username, fromSafari, returnTo }) => {
     const insets = useSafeAreaInsets();
     const goBack = useGoBack();
     const qc = useQueryClient();
@@ -58,9 +58,12 @@ export const PayLinkOverlay: React.FC<{ token?: string; username?: string; fromS
     const paidSummary = useRef<{ to: string; amount: number } | null>(null);
     const backToSafari = () => {
         const host = WEB_ORIGIN.replace(/^https?:\/\//, '').replace(/\/$/, '');
-        const path = paidSummary.current
-            ? `/paid?to=${encodeURIComponent(paidSummary.current.to)}&amount=${paidSummary.current.amount}`
-            : token ? `/pl/${encodeURIComponent(token)}` : `/pay/${encodeURIComponent(username ?? '')}`;
+        // A store checkout names the page to come back to (it shows the receipt); otherwise a plain "payment sent" page.
+        const ret = returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : null;
+        const path = ret
+            ?? (paidSummary.current
+                ? `/paid?to=${encodeURIComponent(paidSummary.current.to)}&amount=${paidSummary.current.amount}`
+                : token ? `/pl/${encodeURIComponent(token)}` : `/pay/${encodeURIComponent(username ?? '')}`);
         Linking.openURL(`x-safari-https://${host}${path}`).catch(() => Linking.openURL(`${WEB_ORIGIN.replace(/\/$/, '')}${path}`).catch(() => {}));
     };
 
@@ -71,6 +74,15 @@ export const PayLinkOverlay: React.FC<{ token?: string; username?: string; fromS
             Animated.timing(rise, { toValue: 0, duration: 200, useNativeDriver: true }),
         ]).start(() => { if (Platform.OS === 'android' && openedFromOutside) BackHandler.exitApp(); else { if (Platform.OS === 'ios' && fromSafari) backToSafari(); goBack(); } });
     };
+
+    // Opened from Safari on iPhone: once the money is sent, go back to Safari by itself (the person sees the receipt there). A payment
+    // still confirming goes back too: the page waits for it.
+    useEffect(() => {
+        if (Platform.OS !== 'ios' || !fromSafari || (phase !== 'paid' && phase !== 'processing')) return;
+        const t = setTimeout(close, phase === 'paid' ? 1500 : 2200);
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [phase]);
 
     const { data: target, isLoading, error: loadError, refetch } = useQuery<PayTarget>({
         queryKey: ['pay-target', token ?? username],

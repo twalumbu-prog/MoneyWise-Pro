@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import jsPDF from 'jspdf';
 import posthog from '../lib/posthog';
@@ -207,6 +207,10 @@ export const PublicPay: React.FC = () => {
     // until the context loads; `wallet?.id` is always the real wallet UUID.
     const { wallet_id: walletParam, username: storeUsername, walletSlug } = useParams<{ wallet_id?: string; username?: string; walletSlug?: string }>();
     const wallet_id = walletParam || storeUsername;
+    // Back from the MoneyWise app after paying (?mwp=<pay-link token>): show the receipt for that payment.
+    const [searchParams, setSearchParams] = useSearchParams();
+    const returnToken = searchParams.get('mwp');
+    const returnHandled = useRef(false);
 
     // UI Steps
     //  SHOP     = product catalogue grid (entry page)
@@ -1286,6 +1290,37 @@ export const PublicPay: React.FC = () => {
         });
         setStep('SUCCESS');
     };
+
+    // The app sent the payer back here after paying: rebuild the receipt from the paid link. The payment can still be settling
+    // for a few seconds, so ask a handful of times before giving up and showing the shop.
+    useEffect(() => {
+        if (!returnToken || returnHandled.current || !org || !wallet || products.length === 0) return;
+        returnHandled.current = true;
+        resumedRef.current = true; // a second context load (StrictMode / retry) must not drop us back on the shop
+        setStep('LOADING');
+        (async () => {
+            let paid: any = null;
+            for (let i = 0; i < 10 && !paid; i++) {
+                try {
+                    const { data } = await axios.get(`${API_URL}/pay-links/store-link/${encodeURIComponent(returnToken)}`, { timeout: 15000 });
+                    if (data.paid) paid = data; else if (data.status !== 'ACTIVE') break;
+                } catch { /* try again */ }
+                if (!paid) await new Promise((r) => setTimeout(r, 2000));
+            }
+            setSearchParams((p) => { p.delete('mwp'); return p; }, { replace: true });
+            if (!paid) { setStep('SHOP'); return; }
+            const qty: Record<string, number> = {};
+            const donations: Record<string, number> = {};
+            for (const it of paid.items || []) {
+                qty[it.product_id] = (qty[it.product_id] || 0) + it.quantity;
+                if (products.find(p => p.id === it.product_id)?.product_type === 'DONATION') donations[it.product_id] = it.unit_price;
+            }
+            setSelectedQuantities(qty);
+            setDonationAmounts(donations);
+            handleMoneyWisePaid({ reference: paid.reference, referenceNumber: paid.referenceNumber });
+        })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [returnToken, org, wallet, products]);
 
     // Re-query whether the collection actually went through (used on the failed and
     // cancelled screens). Recovers a slow-but-successful payment and, crucially,

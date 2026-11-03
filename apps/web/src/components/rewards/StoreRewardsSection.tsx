@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
-import { Gift, Percent, Tag, Sparkles, Loader2, ChevronRight, Check } from 'lucide-react';
+import { Gift, Percent, Tag, Loader2, ChevronRight, Check } from 'lucide-react';
 import { rewardsService, type PurchaseClaim, type PurchasePreview, type RewardCard, type RewardOption } from 'core';
 import { useAuth } from '../../context/AuthContext';
 import { signUpForRewards } from '../../lib/rewardClaims';
@@ -122,18 +122,17 @@ export const StoreRewardsSection: React.FC<{ reference: string; organizationId: 
 
     const headline = view.points <= 0
         ? `You’re now earning with ${businessName}`
-        : view.first ? `You’ve earned your first ${fmtPoints(view.points)} points!` : `You’ve earned ${fmtPoints(view.points)} points!`;
+        : (() => {
+            const pts = `${fmtPoints(view.points)} point${Math.round(view.points) === 1 ? '' : 's'}`;
+            return view.first ? `You’ve earned your first ${pts}!` : `You’ve earned ${pts}!`;
+        })();
 
     return (
         <section className="mt-7 animate-in fade-in slide-in-from-bottom-3 duration-500" aria-label="Rewards">
             {/* Points earned + progress to the next reward */}
             <div className="relative overflow-hidden rounded-2xl border border-[#DCE7FF] bg-gradient-to-br from-[#EEF4FF] via-white to-white px-5 pt-5 pb-4">
-                <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-[#006AFF]/[0.06]" aria-hidden />
-                <div className="relative flex items-start gap-3">
-                    <span className="w-10 h-10 rounded-full bg-[#006AFF] text-white flex items-center justify-center flex-shrink-0 shadow-[0_6px_16px_-6px_rgba(0,106,255,0.7)]">
-                        <Sparkles size={18} />
-                    </span>
-                    <div className="min-w-0 flex-1">
+                <div className="relative">
+                    <div className="min-w-0">
                         <p className="text-[11px] font-bold uppercase tracking-wider text-[#006AFF] truncate">Rewards · {businessName.replace(/[.\s]+$/, '')}</p>
                         <h3 className="text-[15px] font-black text-slate-900 leading-snug mt-0.5">{headline}</h3>
                     </div>

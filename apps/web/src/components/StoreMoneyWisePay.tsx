@@ -83,7 +83,11 @@ export const StoreMoneyWisePay: React.FC<{
 
     const wallet = wallets.find((w) => w.id === walletId);
     const short = !!link && !!wallet && wallet.balance + 0.005 < link.total;
+    // QR / universal link: the phone that scans it isn't the one showing this page, so there is nowhere to return to.
     const appUrl = useMemo(() => (link ? `${window.location.origin}/pl/${link.token}` : ''), [link]);
+    // On this phone the app sends the payer back to this very page afterwards, where `mwp` makes it show the receipt.
+    const returnPath = link ? `${window.location.pathname}?mwp=${link.token}` : '';
+    const phoneUrl = (scheme: string) => `${scheme}/pl/${link!.token}?src=safari&ret=${encodeURIComponent(returnPath)}`;
 
     const pay = async () => {
         if (!link) return;
@@ -99,7 +103,7 @@ export const StoreMoneyWisePay: React.FC<{
     const openApp = () => {
         if (!link) return;
         setAppTried(true);
-        window.location.href = `moneywise://pl/${link.token}`;
+        window.location.href = phoneUrl('moneywise:/');
     };
 
     const signIn = () => window.open('/login', '_blank', 'noopener');
@@ -159,7 +163,7 @@ export const StoreMoneyWisePay: React.FC<{
                             <h4 className="mt-3 text-sm font-bold text-slate-900">Pay in the MoneyWise app</h4>
                             <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">Opens the app on this phone with {fmt(link.total)} ready to slide and pay.</p>
                             <button type="button" onClick={openApp} className="mt-4 w-full h-12 rounded-xl bg-[#006AFF] hover:bg-[#0052CC] text-white text-sm font-bold flex items-center justify-center gap-2"><ExternalLink size={15} /> Open MoneyWise</button>
-                            {appTried && <p className="mt-3 text-[11px] text-zinc-500">Nothing opened? <a href={appUrl} className="font-semibold text-[#006AFF] underline">Try this link</a>, or pay with Mobile Money instead.</p>}
+                            {appTried && <p className="mt-3 text-[11px] text-zinc-500">Nothing opened? <a href={phoneUrl(window.location.origin)} className="font-semibold text-[#006AFF] underline">Try this link</a>, or pay with Mobile Money instead.</p>}
                         </div>
                     ) : (
                         <div className="bg-white border border-slate-200 rounded-2xl px-5 py-6 text-center">

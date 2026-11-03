@@ -102,7 +102,7 @@ export async function createStoreLink(input: StoreLinkInput) {
 
 /** Public: has this store link been paid yet? Anyone holding the (unguessable) token may ask. */
 export async function storeLinkStatus(token: string) {
-    const { data: link } = await supabase.from('payment_links').select('status, reference, organization_id').eq('token', String(token ?? '')).maybeSingle();
+    const { data: link } = await supabase.from('payment_links').select('status, reference, organization_id, items').eq('token', String(token ?? '')).maybeSingle();
     if (!link) throw new PayLinkError('This payment can’t be found.', 404, 'NOT_FOUND');
     let referenceNumber: string | null = null;
     if (link.status === 'PAID' && link.reference) {
@@ -110,5 +110,8 @@ export async function storeLinkStatus(token: string) {
             .eq('organization_id', link.organization_id).eq('external_reference', link.reference).eq('entry_type', 'INFLOW').maybeSingle();
         referenceNumber = (e as any)?.reference_number ?? null;
     }
-    return { paid: link.status === 'PAID', status: link.status as string, reference: (link.reference as string | null) ?? null, referenceNumber };
+    // What was bought, so the page the app sends the payer back to can show the receipt without the original cart.
+    const items = (Array.isArray(link.items) ? link.items : []).filter((i: any) => i?.product_id)
+        .map((i: any) => ({ product_id: String(i.product_id), quantity: Number(i.quantity) || 1, unit_price: Number(i.unit_price) || 0 }));
+    return { paid: link.status === 'PAID', status: link.status as string, reference: (link.reference as string | null) ?? null, referenceNumber, items };
 }
