@@ -4,6 +4,7 @@ import { QuickBooksIntegration } from '../components/settings/integrations/Quick
 import { LencoIntegration } from '../components/settings/integrations/LencoIntegration';
 import { MetaMessagingIntegration } from '../components/settings/integrations/MetaMessagingIntegration';
 import { MasterfeesIntegration } from '../components/settings/integrations/MasterfeesIntegration';
+import { SageIntegration } from '../components/settings/integrations/SageIntegration';
 import { DeveloperAPI } from '../components/settings/DeveloperAPI';
 import { InvestorPayouts } from '../components/settings/InvestorPayouts';
 import { useQuery } from '@tanstack/react-query';
@@ -39,7 +40,7 @@ export const Settings: React.FC = () => {
         staleTime: 5 * 60_000,
     });
 
-    const [activeIntegration, setActiveIntegration] = useState<'quickbooks' | 'lenco' | 'masterfees' | 'meta' | null>(null);
+    const [activeIntegration, setActiveIntegration] = useState<'quickbooks' | 'sage' | 'lenco' | 'masterfees' | 'meta' | null>(null);
     const [integrationError, setIntegrationError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -156,6 +157,18 @@ export const Settings: React.FC = () => {
                                                             <p className="text-sm text-gray-500">Sync expenses and chart of accounts</p>
                                                         </button>
 
+                                                        {/* Sage Card */}
+                                                        <button
+                                                            onClick={() => setActiveIntegration('sage')}
+                                                            className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-green/30 transition-all text-left group"
+                                                        >
+                                                            <div className="h-12 w-12 bg-[#00D639] rounded-xl flex items-center justify-center text-white font-bold text-sm mb-4 group-hover:scale-105 transition-transform shadow-sm">
+                                                                sage
+                                                            </div>
+                                                            <h4 className="text-base font-bold text-gray-900 mb-1">Sage Accounting</h4>
+                                                            <p className="text-sm text-gray-500">Post journals to Sage Business Cloud (Pastel Online)</p>
+                                                        </button>
+
                                                         {/* Lenco Card */}
                                                         <button
                                                             onClick={() => setActiveIntegration('lenco')}
@@ -197,6 +210,8 @@ export const Settings: React.FC = () => {
                                                     onBack={() => setActiveIntegration(null)}
                                                     initialError={integrationError}
                                                 />
+                                            ) : activeIntegration === 'sage' ? (
+                                                <SageIntegration onBack={() => setActiveIntegration(null)} />
                                             ) : activeIntegration === 'meta' ? (
                                                 <MetaMessagingIntegration onBack={() => setActiveIntegration(null)} />
                                             ) : activeIntegration === 'masterfees' ? (

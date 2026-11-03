@@ -124,12 +124,16 @@ export type { OnboardingProgress, BusinessProfile, OnboardingState, PlSection, C
 export { organizationService } from './services/organization.service';
 export type { Organization } from './services/organization.service';
 
-export { integrationService, masterFeesService } from './services/integration.service';
+export { integrationService, masterFeesService, sageService } from './services/integration.service';
 export type {
     IntegrationStatus,
     MasterFeesStatus,
     MasterFeesCategory,
     MasterFeesReconciliation,
+    SageStatus,
+    SageAccount,
+    SageMapping,
+    SageSyncResult,
 } from './services/integration.service';
 
 export { lencoService } from './services/lenco.service';

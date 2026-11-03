@@ -37,6 +37,15 @@ import {
     verifyMetaWebhook,
     receiveMetaWebhook,
 } from '../controllers/meta.controller';
+import {
+    getSageStatus,
+    connectSage,
+    disconnectSage,
+    getSageAccounts,
+    getSageMappings,
+    updateSageMapping,
+    syncSageNow,
+} from '../controllers/sage.controller';
 
 const router = Router();
 
@@ -90,5 +99,14 @@ router.get('/meta/callback', metaOAuthCallback);
 router.get('/meta/status', requireAuth, getMetaStatus);
 router.get('/meta/connect/:platform', requireAuth, getMetaConnectUrl);
 router.delete('/meta/connections/:id', requireAuth, disconnectMeta);
+
+// ── Sage Accounting (Africa cloud, API v2.0.0) ───────────────────────────────
+router.get('/sage/status', requireAuth, getSageStatus);
+router.post('/sage/connect', requireAuth, connectSage);
+router.delete('/sage', requireAuth, disconnectSage);
+router.get('/sage/accounts', requireAuth, getSageAccounts);
+router.get('/sage/mappings', requireAuth, getSageMappings);
+router.put('/sage/mappings', requireAuth, updateSageMapping);
+router.post('/sage/sync', requireAuth, syncSageNow);
 
 export default router;
