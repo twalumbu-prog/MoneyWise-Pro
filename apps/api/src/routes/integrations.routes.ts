@@ -29,6 +29,15 @@ import {
     syncStudentsToCrmNow,
 } from '../controllers/masterfees.controller';
 
+import {
+    getMetaStatus,
+    getMetaConnectUrl,
+    metaOAuthCallback,
+    disconnectMeta,
+    verifyMetaWebhook,
+    receiveMetaWebhook,
+} from '../controllers/meta.controller';
+
 const router = Router();
 
 // OAuth flow
@@ -72,5 +81,14 @@ router.put('/masterfees/lenco-mode', requireAuth, updateMasterFeesLencoMode);
 router.post('/masterfees/sync', requireAuth, syncMasterFeesNow);
 router.post('/masterfees/sync-students', requireAuth, syncStudentsToCrmNow);
 router.get('/masterfees/reconcile', requireAuth, getMasterFeesReconciliation);
+
+// ── Meta messaging (WhatsApp / Facebook / Instagram) ─────────────────────────
+// Webhook + callback are unauthenticated by design: the webhook is secured by X-Hub-Signature-256.
+router.get('/meta/webhook', verifyMetaWebhook);
+router.post('/meta/webhook', receiveMetaWebhook);
+router.get('/meta/callback', metaOAuthCallback);
+router.get('/meta/status', requireAuth, getMetaStatus);
+router.get('/meta/connect/:platform', requireAuth, getMetaConnectUrl);
+router.delete('/meta/connections/:id', requireAuth, disconnectMeta);
 
 export default router;
