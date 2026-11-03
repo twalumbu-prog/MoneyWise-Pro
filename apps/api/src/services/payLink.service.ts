@@ -242,10 +242,11 @@ async function settle(reference: string): Promise<void> {
     if (!inflow || inflow.length === 0) return; // not confirmed yet: the confirmation poller will call this again
 
     if (m.kind === 'LINK' && m.token) {
-        const { data: link } = await supabase.from('payment_links').select('id, organization_id, product_id, items, amount, status, customer_name, customer_phone, customer_email, credit_invoice_id').eq('token', m.token).maybeSingle();
+        const { data: link } = await supabase.from('payment_links').select('id, organization_id, product_id, items, amount, status, customer_name, customer_phone, customer_email, credit_invoice_id, created_by, is_archived').eq('token', m.token).maybeSingle();
         if (link && link.status === 'ACTIVE') {
             // Tie the link to this payment, and record the sale(s) so revenue routing and receipts work like any paid link.
-            await supabase.from('payment_links').update({ reference }).eq('token', m.token).eq('status', 'ACTIVE');
+            // A store cart's link is created hidden; once it is being paid it belongs in the business's list like any other.
+            await supabase.from('payment_links').update({ reference, ...(link.created_by == null && link.is_archived ? { is_archived: false } : {}) }).eq('token', m.token).eq('status', 'ACTIVE');
             const { data: existing } = await supabase.from('product_sales').select('id').eq('reference', reference).limit(1);
             if (!link.credit_invoice_id && (!existing || existing.length === 0)) {
                 const items: any[] = Array.isArray(link.items) && link.items.length > 0 ? link.items : (link.product_id ? [{ product_id: link.product_id, quantity: 1, unit_price: Number(link.amount) }] : []);
@@ -253,6 +254,8 @@ async function settle(reference: string): Promise<void> {
                     organization_id: link.organization_id, product_id: i.product_id,
                     customer_name: link.customer_name || m.payerName || 'MoneyWise user', customer_phone: link.customer_phone || 'N/A', customer_email: link.customer_email || null,
                     quantity: Number(i.quantity) || 1, amount_paid: round2((Number(i.unit_price) || 0) * (Number(i.quantity) || 1)), reference, status: 'PENDING',
+                    // A store cart carries the delivery details and the buyer's answers on its lines.
+                    order_details: i.order_details ?? null, customer_responses: i.customer_responses ?? null,
                 }));
                 if (rows.length) await supabase.from('product_sales').insert(rows);
             }

@@ -347,7 +347,8 @@ export async function previewPurchase(reference: string, orgId: string) {
     if (!purchase || purchase.failed || !programme) return { enabled: false as const };
     const { biz, program, rewards } = programme;
     const points = Math.floor(purchase.amount * program.points_per_kwacha);
-    const { data: taken } = await supabase.from('reward_ledger').select('id').eq('ref', purchase.ledgerRef).limit(1);
+    // A purchase paid with MoneyWise Pay from a personal account was already credited by awardMoneyWisePay (MWP:<ref>).
+    const { data: taken } = await supabase.from('reward_ledger').select('id').in('ref', [purchase.ledgerRef, `MWP:${String(reference).trim()}`]).limit(1);
     return {
         enabled: true as const,
         pointsEarned: points,
@@ -371,10 +372,11 @@ export async function claimPurchase(userId: string, reference: string, orgId: st
     if ((await ownOrgIds(userId)).has(orgId)) throw new RewardsError('Purchases from your own business don’t earn points.');
     const { biz, program, rewards } = programme;
 
-    const { data: holders } = await supabase.from('reward_ledger').select('user_id').eq('ref', purchase.ledgerRef);
+    const { data: holders } = await supabase.from('reward_ledger').select('user_id, ref, points').in('ref', [purchase.ledgerRef, `MWP:${String(reference).trim()}`]);
     if ((holders ?? []).some((h: any) => h.user_id !== userId)) throw new RewardsError('These points have already been added to another account.', 409);
-    const points = Math.floor(purchase.amount * program.points_per_kwacha);
-    const added = await addLedger({
+    const counted = (holders ?? []).find((h: any) => h.ref.startsWith('MWP:'));
+    const points = counted ? Number((counted as any).points) : Math.floor(purchase.amount * program.points_per_kwacha);
+    const added = counted ? false : await addLedger({
         user_id: userId, organization_id: orgId, kind: 'PURCHASE', ref: purchase.ledgerRef, points,
         amount: round2(purchase.amount), description: `Purchase at ${biz.name}`, created_at: purchase.at,
     });

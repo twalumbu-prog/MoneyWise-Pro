@@ -48,6 +48,7 @@ import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs
 import { PaymentWaitingScreen, PaymentPhase } from '../components/PaymentWaitingScreen';
 import { savePendingPayment, loadPendingPayment, clearPendingPayment } from '../lib/paymentRecovery';
 import BookingCalendar from '../components/BookingCalendar';
+import { StoreMoneyWisePay } from '../components/StoreMoneyWisePay';
 import { StoreRewardsSection } from '../components/rewards/StoreRewardsSection';
 import { BookingRange, isBookingProductType, getBookingTerminology } from '../services/product.service';
 
@@ -231,7 +232,7 @@ export const PublicPay: React.FC = () => {
     const [products, setProducts] = useState<Product[]>([]);
     // Own-UX checkout (Collections API) kill-switch — see loadContext.
     const [collectionsApiEnabled, setCollectionsApiEnabled] = useState(false);
-    const [checkoutMethod, setCheckoutMethod] = useState<'mobile-money' | 'card'>('mobile-money');
+    const [checkoutMethod, setCheckoutMethod] = useState<'mobile-money' | 'card' | 'moneywise'>('mobile-money');
     const [checkoutPhone, setCheckoutPhone] = useState('');
     const [resolvedAccountName, setResolvedAccountName] = useState('');
     const [resolvingAccountName, setResolvingAccountName] = useState(false);
@@ -1257,6 +1258,35 @@ export const PublicPay: React.FC = () => {
         }
     };
 
+    // "MoneyWise" payment option: the cart as a one-time pay link, priced on the server.
+    const cartHasBooking = lineItems.some(li => li.isBooking);
+    const storeLinkBody = {
+        walletId: wallet?.id || '',
+        items: lineItems.map(li => ({
+            id: li.product.id,
+            quantity: li.quantity,
+            ...(li.isDonation ? { price: li.unitPrice } : {}),
+            ...responsesFor(li.product.id),
+        })),
+        orderDetails: deliveryDetails,
+        riderCharge: cartAllowsExternalDelivery && deliveryMode === 'deliver' ? riderDeliveryCharge : 0,
+    };
+    const storeLinkKey = JSON.stringify(storeLinkBody);
+
+    // Paid with MoneyWise Pay (here or in the app): straight to the receipt.
+    const handleMoneyWisePaid = (r: { reference: string | null; referenceNumber: string | null }) => {
+        if (r.reference) setCurrentReference(r.reference);
+        setReceiptNumber(r.referenceNumber);
+        setPaymentMethod('MoneyWise Pay');
+        setVerificationStep('SUCCESS');
+        clearPendingPayment();
+        trackEvent('public_catalogue_checkout', 'payment', 'succeeded', {
+            workflow_id: r.reference || 'moneywise-pay', organization_id: org?.id || 'unknown', wallet_id: wallet?.id,
+            subtotal, total_payable: totalPayable, payment_method: 'MoneyWise Pay',
+        });
+        setStep('SUCCESS');
+    };
+
     // Re-query whether the collection actually went through (used on the failed and
     // cancelled screens). Recovers a slow-but-successful payment and, crucially,
     // prevents a double-charge if the customer approved the prompt after cancelling.
@@ -1448,6 +1478,7 @@ export const PublicPay: React.FC = () => {
     };
 
     const handleReset = () => {
+        setPaymentMethod('Mobile Money');
         setSelectedQuantities({});
         setDonationAmounts({});
         setBookingDates({});
@@ -3571,7 +3602,7 @@ Status: VERIFIED`;
                                             : 'text-gray-800 font-normal'
                                     }`}
                                 >
-                                    <Smartphone size={16} /> Mobile Money
+                                    <Smartphone size={16} /> Mobile
                                 </button>
                                 <button
                                     onClick={() => { setCheckoutMethod('card'); setError(null); }}
@@ -3581,8 +3612,20 @@ Status: VERIFIED`;
                                             : 'text-gray-800 font-normal'
                                     }`}
                                 >
-                                    <CreditCard size={16} /> Debit Card
+                                    <CreditCard size={16} /> Card
                                 </button>
+                                {!cartHasBooking && (
+                                    <button
+                                        onClick={() => { setCheckoutMethod('moneywise'); setError(null); }}
+                                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-full text-xs leading-4 transition-all ${
+                                            checkoutMethod === 'moneywise'
+                                                ? 'bg-white text-gray-800 font-normal shadow-sm'
+                                                : 'text-gray-800 font-normal'
+                                        }`}
+                                    >
+                                        <Wallet size={16} /> MoneyWise
+                                    </button>
+                                )}
                             </div>
                         </div>
 
@@ -3641,6 +3684,12 @@ Status: VERIFIED`;
                                         </div>
                                     )}
                                 </>
+                            ) : checkoutMethod === 'moneywise' && wallet ? (
+                                <StoreMoneyWisePay
+                                    cartKey={storeLinkKey}
+                                    body={storeLinkBody}
+                                    onPaid={handleMoneyWisePaid}
+                                />
                             ) : (
                                 <div className="text-center py-10 px-4 bg-white border border-slate-100 rounded-2xl">
                                     <div className="mx-auto w-12 h-12 bg-slate-200 text-slate-500 rounded-full flex items-center justify-center mb-3">
@@ -3659,7 +3708,7 @@ Status: VERIFIED`;
                                 <ShieldCheck size={16} className="text-zinc-600" />
                                 <span className="text-xs text-zinc-600">Secure payments powered by Lenco</span>
                             </div>
-                            {checkoutMethod === 'mobile-money' ? (
+                            {checkoutMethod === 'moneywise' ? null : checkoutMethod === 'mobile-money' ? (
                                 <button
                                     onClick={handlePayMobileMoney}
                                     disabled={submitting || !detectOperator(checkoutPhone) || resolvingAccountName}
@@ -3815,14 +3864,18 @@ Status: VERIFIED`;
                                         <span className="text-xs text-zinc-600">Payment Method</span>
                                         <span className="text-xs font-semibold text-zinc-600">{paymentMethod}</span>
                                     </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-xs text-zinc-600">Account Number</span>
-                                        <span className="text-xs font-semibold text-zinc-600">{customerPhone}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-xs text-zinc-600">Account Name</span>
-                                        <span className="text-xs font-bold text-zinc-600 text-right truncate max-w-[55%]">{customerName}</span>
-                                    </div>
+                                    {paymentMethod !== 'MoneyWise Pay' && (
+                                        <>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-xs text-zinc-600">Account Number</span>
+                                                <span className="text-xs font-semibold text-zinc-600">{customerPhone}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-xs text-zinc-600">Account Name</span>
+                                                <span className="text-xs font-bold text-zinc-600 text-right truncate max-w-[55%]">{customerName}</span>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             </div>
 
