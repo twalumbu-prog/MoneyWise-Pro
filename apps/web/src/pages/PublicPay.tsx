@@ -48,6 +48,7 @@ import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs
 import { PaymentWaitingScreen, PaymentPhase } from '../components/PaymentWaitingScreen';
 import { savePendingPayment, loadPendingPayment, clearPendingPayment } from '../lib/paymentRecovery';
 import BookingCalendar from '../components/BookingCalendar';
+import { StoreRewardsSection } from '../components/rewards/StoreRewardsSection';
 import { BookingRange, isBookingProductType, getBookingTerminology } from '../services/product.service';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -880,24 +881,35 @@ export const PublicPay: React.FC = () => {
                     const rawMethod = response?.type || response?.channel || response?.method || '';
                     if (/card/i.test(rawMethod)) setPaymentMethod('Card');
                     else if (rawMethod) setPaymentMethod('Mobile Money');
+                    // Same branded waiting screen as the own-UX checkout: the widget has already taken
+                    // the payment, so it starts straight at "confirming" while we wait for the ledger.
+                    pollCancelledRef.current = false;
+                    setElapsedSeconds(0);
+                    setFailureIsDeclined(false);
+                    setRecheckNote(null);
+                    setPaymentPhase('polling');
                     setStep('VERIFYING');
                     setVerificationStep('POLLING');
-                    setAwaitingApproval(false);
+                    setAwaitingApproval(true);
 
                     // Poll verification route
                     let attempts = 0;
                     const maxAttempts = 15;
                     
                     const pollStatus = async () => {
+                        if (pollCancelledRef.current) return;
                         attempts++;
                         try {
                             const verifyRes = await axios.get(
                                 `${API_URL}/lenco/public-verify-status/${ref}?transactionId=${transactionId}&organizationId=${org.id}`
                             );
                             
+                            if (pollCancelledRef.current) return;
                             if (verifyRes.data.verified) {
                                 setVerificationStep('SUCCESS');
                                 setReceiptNumber(verifyRes.data.referenceNumber || null);
+                                setAwaitingApproval(false);
+                                setPaymentPhase('success');
                                 trackEvent('public_catalogue_checkout', 'payment', 'succeeded', {
                                     workflow_id: ref,
                                     organization_id: org.id,
@@ -908,18 +920,20 @@ export const PublicPay: React.FC = () => {
                                     payment_method: paymentMethod,
                                     duration_ms: Date.now() - checkoutStartedAt,
                                 });
-                                setStep('SUCCESS');
                                 return;
                             }
                         } catch (err) {
                             console.error('Public Verification attempt failed:', err);
                         }
 
+                        if (pollCancelledRef.current) return;
                         if (attempts < maxAttempts) {
                             setTimeout(pollStatus, 3000);
                         } else {
                             setVerificationStep('FAILED');
-                            setVerificationReason('Payment was submitted but the ledger sync is taking longer than expected. Please contact the business admin to verify.');
+                            setVerificationReason('Your payment was submitted but confirming it is taking longer than usual. Check its status below, or contact the business.');
+                            setAwaitingApproval(false);
+                            setPaymentPhase('failed');
                             trackVerificationTimeout('public_catalogue_checkout', {
                                 workflow_id: ref,
                                 organization_id: org.id,
@@ -1221,7 +1235,8 @@ export const PublicPay: React.FC = () => {
             payment_method: 'mobile-money',
         });
         try {
-            await axios.post(`${API_URL}/lenco/public-collection/cancel`, { reference: currentReference });
+            // Widget payments have no mobile money prompt to withdraw — just stop waiting.
+            if (collectionsApiEnabled) await axios.post(`${API_URL}/lenco/public-collection/cancel`, { reference: currentReference });
         } catch (err) {
             console.error('Failed to cancel payment intent:', err);
         } finally {
@@ -1257,7 +1272,7 @@ export const PublicPay: React.FC = () => {
         });
         try {
             const verifyRes = await axios.get(
-                `${API_URL}/lenco/public-verify-status/${currentReference}?organizationId=${org.id}`
+                `${API_URL}/lenco/public-verify-status/${currentReference}?organizationId=${org.id}${lastTransactionId ? `&transactionId=${lastTransactionId}` : ''}`
             );
             let outcome: 'verified' | 'declined' | 'pending' = 'pending';
             if (verifyRes.data.verified) {
@@ -1310,7 +1325,8 @@ export const PublicPay: React.FC = () => {
         setRecheckNote(null);
         setVerificationStep('POLLING');
         setError(null);
-        setStep('CHECKOUT');
+        // The widget flow has no payment-method page: it starts again from the summary.
+        setStep(collectionsApiEnabled ? 'CHECKOUT' : 'SUMMARY');
     };
 
     // Failed "Cancel" / cancelled "Back to cart" → leave the flow back to the cart.
@@ -3672,8 +3688,8 @@ Status: VERIFIED`;
                             phase={displayPaymentPhase}
                             amount={resumedPayment ? resumedPayment.amount : totalPayable}
                             businessName={org.name}
-                            payerPhone={resumedPayment ? resumedPayment.phone : checkoutPhone}
-                            operator={detectOperator(resumedPayment ? resumedPayment.phone : checkoutPhone)}
+                            payerPhone={resumedPayment ? resumedPayment.phone : (checkoutPhone || customerPhone)}
+                            operator={detectOperator(resumedPayment ? resumedPayment.phone : (checkoutPhone || customerPhone))}
                             isSlowNetwork={isSlowNetwork}
                             elapsedSeconds={elapsedSeconds}
                             reference={receiptNumber || currentReference}
@@ -3782,6 +3798,11 @@ Status: VERIFIED`;
                                     Your payment was successful.<br />Thank you for your support.
                                 </p>
                             </div>
+
+                            {/* Points this purchase earned + rewards on offer (only when the business runs a programme) */}
+                            {currentReference && (
+                                <StoreRewardsSection reference={currentReference} organizationId={org.id} businessName={org.name} />
+                            )}
 
                             {/* Payment Details */}
                             <div className="mt-7 bg-gray-50 border border-neutral-200 rounded-2xl px-6 pt-4 pb-5">

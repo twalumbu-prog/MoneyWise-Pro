@@ -117,6 +117,21 @@ export interface RewardProgramSettings {
     referral_points: number;
 }
 
+/** What a store checkout earned, credited to the signed-in person. */
+export interface PurchaseClaim {
+    pointsEarned: number;
+    alreadyClaimed: boolean;
+    /** True when these are the person's first points with this business. */
+    firstPoints: boolean;
+    card: RewardCard;
+    rewards: RewardOption[];
+}
+
+/** Public preview of what a store checkout earns, shown before the payer has an account. */
+export type PurchasePreview =
+    | { enabled: false }
+    | { enabled: true; pointsEarned: number; pointsPerKwacha: number; claimed: boolean; card: RewardCard; rewards: RewardOption[] };
+
 export const rewardsService = {
     overview(): Promise<RewardsOverview> {
         return apiJson('/rewards');
@@ -129,6 +144,9 @@ export const rewardsService = {
     },
     claimReferral(code: string): Promise<{ referrerName: string }> {
         return apiJson('/rewards/referral/claim', { method: 'POST', body: JSON.stringify({ code }) });
+    },
+    claimPurchase(reference: string, organizationId: string): Promise<PurchaseClaim> {
+        return apiJson('/rewards/purchases/claim', { method: 'POST', body: JSON.stringify({ reference, organizationId }) });
     },
     redeemables(): Promise<{ programmes: { card: RewardCard; rewards: RewardOption[] }[]; ready: RewardCard[]; vouchers: RewardVoucher[] }> {
         return apiJson('/rewards/redeemables');

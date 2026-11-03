@@ -40,6 +40,7 @@ const Schedules = React.lazy(() => import('./pages/Schedules').then(m => ({ defa
 const InvestHome = React.lazy(() => import('./pages/invest/InvestHome').then(m => ({ default: m.InvestHome })));
 const InvestCompany = React.lazy(() => import('./pages/invest/InvestCompany').then(m => ({ default: m.InvestCompany })));
 const InvestProductDetail = React.lazy(() => import('./pages/invest/InvestProductDetail').then(m => ({ default: m.InvestProductDetail })));
+const Rewards = React.lazy(() => import('./pages/Rewards').then(m => ({ default: m.Rewards })));
 const ApiDocs = React.lazy(() => import('./pages/ApiDocs').then(m => ({ default: m.ApiDocs })));
 import { CompleteProfile } from './pages/CompleteProfile';
 import { OAuthAuthorize, OAUTH_RETURN_KEY } from './pages/OAuthAuthorize';
@@ -47,6 +48,7 @@ import { Loader2 } from 'lucide-react';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { RealtimeCacheSync } from './components/RealtimeCacheSync';
 import { ReferralClaimer } from './components/ReferralClaimer';
+import { REWARDS_SIGNUP_KEY } from './lib/rewardClaims';
 import { UpdatePrompt } from './components/UpdatePrompt';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -142,6 +144,11 @@ const HomeRedirect = () => {
         // Handled by ProtectedRoute but just for safety
         return null;
     }
+
+    // Back from "Sign up with Google to redeem your rewards" on a store: straight to Rewards (it sets up the personal account).
+    try {
+        if (localStorage.getItem(REWARDS_SIGNUP_KEY) === '1') return <Navigate to="/rewards?welcome=1" replace />;
+    } catch { /* storage unavailable */ }
 
     try {
         const pendingOAuth = sessionStorage.getItem(OAUTH_RETURN_KEY);
@@ -386,6 +393,14 @@ function App() {
                             element={
                                 <ProtectedRoute>
                                     <Schedules />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/rewards"
+                            element={
+                                <ProtectedRoute>
+                                    <Rewards />
                                 </ProtectedRoute>
                             }
                         />

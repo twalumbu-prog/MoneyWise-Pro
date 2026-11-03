@@ -296,6 +296,98 @@ async function settledAmounts(refs: string[]): Promise<Map<string, number>> {
     return out;
 }
 
+// ── Store checkout purchases ───────────────────────────────────────────────────
+//
+// A store checkout (/<business>/store) logs its money as one cashbook inflow keyed by the checkout reference. The person paying
+// is usually anonymous, so the success screen shows what the purchase earns (previewPurchase) and the points are credited to an
+// account only when someone signed in claims them (claimPurchase) — straight away if the browser is already signed in, or right
+// after "Sign up with Google". A checkout made through a one-time payment link uses the link's own ref, so the phone-number sync
+// and a claim can never count the same purchase twice.
+
+const CLAIM_WINDOW_DAYS = 14;
+const FAILED_PURCHASE = new Set(['FAILED', 'CANCELLED', 'CANCELED', 'EXPIRED', 'VOIDED', 'VOID']);
+
+interface StorePurchase { ledgerRef: string; orgId: string; amount: number; at: string; settled: boolean; failed: boolean }
+
+async function findStorePurchase(reference: string, orgId: string): Promise<StorePurchase | null> {
+    const ref = String(reference ?? '').trim();
+    if (!ref || ref.length > 120 || !orgId) return null;
+    const { data: entry } = await supabase.from('cashbook_entries').select('debit, status, created_at')
+        .eq('organization_id', orgId).eq('external_reference', ref).eq('entry_type', 'INFLOW').maybeSingle();
+    if (!entry) return null;
+    const status = String((entry as any).status ?? '').toUpperCase();
+    const { data: link } = await supabase.from('payment_links').select('id, amount, paid_at').eq('organization_id', orgId).eq('reference', ref).maybeSingle();
+    return {
+        ledgerRef: link ? `PL:${(link as any).id}` : `ST:${ref}`,
+        orgId,
+        amount: Number(link ? (link as any).amount : (entry as any).debit) || 0,
+        at: (link as any)?.paid_at ?? (entry as any).created_at ?? new Date().toISOString(),
+        settled: !NOT_SETTLED.has(status),
+        failed: FAILED_PURCHASE.has(status),
+    };
+}
+
+/** The business's programme as the success screen shows it, or null when it has no rewards to offer. */
+async function storeProgramme(orgId: string) {
+    const biz = (await businessInfo([orgId])).get(orgId);
+    if (!biz || biz.is_personal === true) return null;
+    const program = await getProgram(orgId);
+    if (!program.enabled) return null;
+    const rewards = (await offeredRewards([orgId])).get(orgId) ?? [];
+    if (rewards.length === 0) return null;
+    return { biz, program, rewards };
+}
+
+/**
+ * Public: what this store purchase earns and what it puts within reach. Shown to anyone holding the checkout reference (the
+ * person who just paid); it never reveals who, if anyone, has claimed it.
+ */
+export async function previewPurchase(reference: string, orgId: string) {
+    const [purchase, programme] = await Promise.all([findStorePurchase(reference, orgId), storeProgramme(orgId)]);
+    if (!purchase || purchase.failed || !programme) return { enabled: false as const };
+    const { biz, program, rewards } = programme;
+    const points = Math.floor(purchase.amount * program.points_per_kwacha);
+    const { data: taken } = await supabase.from('reward_ledger').select('id').eq('ref', purchase.ledgerRef).limit(1);
+    return {
+        enabled: true as const,
+        pointsEarned: points,
+        pointsPerKwacha: program.points_per_kwacha,
+        claimed: (taken ?? []).length > 0,
+        card: cardOf(orgId, biz.name ?? 'Business', biz.logo_url ?? null, { balance: points, lifetime: points, last: purchase.at }, rewards),
+        rewards: await rewardOptions(orgId, rewards, points),
+    };
+}
+
+/** Credits a store purchase to the signed-in person. Safe to repeat; a purchase only ever belongs to one account. */
+export async function claimPurchase(userId: string, reference: string, orgId: string) {
+    const purchase = await findStorePurchase(reference, orgId);
+    if (!purchase || purchase.failed) throw new RewardsError('We couldn’t find that purchase.', 404);
+    if (!purchase.settled) throw new RewardsError('This payment is still being confirmed. Try again in a moment.', 409);
+    if (Date.now() - Date.parse(purchase.at) > CLAIM_WINDOW_DAYS * 86_400_000) {
+        throw new RewardsError(`Points can only be added within ${CLAIM_WINDOW_DAYS} days of a purchase.`);
+    }
+    const programme = await storeProgramme(orgId);
+    if (!programme) throw new RewardsError('This business isn’t offering rewards right now.');
+    if ((await ownOrgIds(userId)).has(orgId)) throw new RewardsError('Purchases from your own business don’t earn points.');
+    const { biz, program, rewards } = programme;
+
+    const { data: holders } = await supabase.from('reward_ledger').select('user_id').eq('ref', purchase.ledgerRef);
+    if ((holders ?? []).some((h: any) => h.user_id !== userId)) throw new RewardsError('These points have already been added to another account.', 409);
+    const points = Math.floor(purchase.amount * program.points_per_kwacha);
+    const added = await addLedger({
+        user_id: userId, organization_id: orgId, kind: 'PURCHASE', ref: purchase.ledgerRef, points,
+        amount: round2(purchase.amount), description: `Purchase at ${biz.name}`, created_at: purchase.at,
+    });
+    const totals = (await totalsFor(userId)).get(orgId) ?? { balance: 0, lifetime: 0, last: null };
+    return {
+        pointsEarned: points,
+        alreadyClaimed: !added,
+        firstPoints: totals.lifetime === points,
+        card: cardOf(orgId, biz.name ?? 'Business', biz.logo_url ?? null, totals, rewards),
+        rewards: await rewardOptions(orgId, rewards, totals.balance),
+    };
+}
+
 // ── Invites ────────────────────────────────────────────────────────────────────
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -606,4 +698,4 @@ export async function getRedeemables(userId: string) {
     };
 }
 
-export const rewardsService = { getProgram, updateProgram, awardMoneyWisePay, syncPurchases, syncReferrals, sync, getOverview, getDetail, getInvite, getReferralCode, claimReferral, redeem, useVoucher, getRedeemables, listRewardItems, createRewardItem, updateRewardItem, deleteRewardItem };
+export const rewardsService = { previewPurchase, claimPurchase, getProgram, updateProgram, awardMoneyWisePay, syncPurchases, syncReferrals, sync, getOverview, getDetail, getInvite, getReferralCode, claimReferral, redeem, useVoucher, getRedeemables, listRewardItems, createRewardItem, updateRewardItem, deleteRewardItem };
