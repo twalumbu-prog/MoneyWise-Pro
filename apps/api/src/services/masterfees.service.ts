@@ -2,6 +2,7 @@ import axios from 'axios';
 import { supabase } from '../lib/supabase';
 import { isUnverified, isWalletAccountType, decideWalletMove, channelChanged } from './ledgerCorrections/core';
 import { hasManualMove, logCorrection } from './ledgerCorrections/ledgerCorrections.service';
+import { collectPages } from './masterfees_paging';
 import { ledgerService } from './ledger.service';
 import { cashbookService } from './cashbook.service';
 import { broadcastInvalidate } from '../lib/realtimeBroadcast';
@@ -368,6 +369,9 @@ function resolveItemCategory(item: MFInvoiceItem, categoriesByName: Map<string, 
 // ─────────────────────────────────────────────────────────────────────────────
 // REST client
 // ─────────────────────────────────────────────────────────────────────────────
+/** When the "pages overlap" notice was last logged, per list, so a standing API quirk does not repeat on every sync tick. */
+const overlapWarnedAt = new Map<string, number>();
+
 export class MasterFeesClient {
     private base: string;
     constructor(private config: MasterFeesConfig) {
@@ -405,37 +409,31 @@ export class MasterFeesClient {
     }
 
     /**
-     * Walk `?page=1,2,3...` until Master Fees signals the end. Confirmed live
-     * (2026-08-18, after their pagination fix): a page with fewer than 1000 rows
-     * can still be a real page (not necessarily the last), and requesting one
-     * page past the actual last page returns an HTTP error (500) rather than an
-     * empty array. So: keep going on any non-empty page; treat a request error
-     * as "end of data" ONLY once we've already got at least one good page —
-     * a failure on page 1 itself is a real error (auth/network/etc.) and must
-     * still propagate normally.
+     * Walk `?page=1,2,3...` and return every distinct row. The page-walking rules (retry a failing page before treating it as the end,
+     * de-duplicate overlapping pages, a short page ends the read, a failure on page 1 always propagates) live in masterfees_paging.ts, with
+     * the reasons: Master Fees' pages overlap, and its "past the last page" answer (HTTP 500) looks exactly like a transient failure.
      *
-     * MAX_PAGES is a sanity ceiling, not an expected limit — 200 pages would be
-     * 200,000 rows, far beyond any school's real size; it exists only so a
-     * pathological response (e.g. them always returning non-empty data with no
-     * real end) can't loop forever.
+     * Observed 2026-11-04 on Twalumbu: invoices = 1000+1000+1000+324 then a 500; transactions = 1000x4 + 362 then a 500 (4,362 rows, 4,267
+     * distinct). maxPages (200) is a sanity ceiling, not an expected limit.
      */
-    private async getPaginated<T = any>(path: string): Promise<T[]> {
-        const MAX_PAGES = 200;
-        const results: T[] = [];
-        for (let page = 1; page <= MAX_PAGES; page++) {
-            let resp: any;
-            try {
-                resp = await this.get(`${path}?page=${page}`);
-            } catch (err) {
-                if (page === 1) throw err; // real error — first page must succeed
-                break; // subsequent-page failure = end of data (their pagination signal)
-            }
-            const batch = this.list<T>(resp);
-            if (batch.length === 0) break;
-            results.push(...batch);
-            if (batch.length < 1000) break; // short page = last page (avoids one wasted round trip)
-        }
-        return results;
+    private async getPaginated<T extends Record<string, any> = any>(path: string, idKey: string | null = null): Promise<T[]> {
+        // Retry-before-believing, de-duplication and overlap warnings live in masterfees_paging.ts (see its header for what Master Fees does).
+        const result = await collectPages<T>(
+            async (page) => this.list<T>(await this.get(`${path}?page=${page}`)),
+            idKey,
+            {
+                onWarn: (m) => {
+                    // The overlap is a standing quirk of their API (every call): say it once per half hour, not on every sync tick. Failures always log.
+                    if (/repeated across overlapping pages/.test(m)) {
+                        const last = overlapWarnedAt.get(path) ?? 0;
+                        if (Date.now() - last < 30 * 60_000) return;
+                        overlapWarnedAt.set(path, Date.now());
+                    }
+                    console.warn(`[MasterFees] ${path}: ${m}`);
+                },
+            },
+        );
+        return result.rows;
     }
 
     async getSchoolMeta(): Promise<{ school_name?: string }> {
@@ -443,8 +441,8 @@ export class MasterFeesClient {
         return { school_name: resp?.school_name };
     }
     async getStudents(): Promise<MFStudent[]> { return this.list(await this.get('students')); }
-    async getInvoices(): Promise<MFInvoice[]> { return this.getPaginated<MFInvoice>('invoices'); }
-    async getTransactions(): Promise<MFTransaction[]> { return this.getPaginated<MFTransaction>('transactions'); }
+    async getInvoices(): Promise<MFInvoice[]> { return this.getPaginated<MFInvoice>('invoices', 'invoice_id'); }
+    async getTransactions(): Promise<MFTransaction[]> { return this.getPaginated<MFTransaction>('transactions', 'transaction_id'); }
     async getFeeCategories(): Promise<MFFeeCategory[]> { return this.list(await this.get('fee-categories')); }
     async getBalances(): Promise<any[]> { return this.list(await this.get('summary/balances')); }
     async getPaymentsSummary(): Promise<any> { return this.get('summary/payments'); }
