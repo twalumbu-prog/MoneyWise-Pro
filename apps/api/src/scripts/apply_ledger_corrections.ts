@@ -11,6 +11,8 @@
  *   unverified      park NO_DEPOSIT_FOUND / MW_ONLY entries as Unverified (held out of the balance) and queue them for a decision
  *   apply-approved  carry out the queue rows a person has set to APPROVED (MEDIUM re-dates, and Unverified resolutions)
  *
+ * Trial runs: --limit N stops after N entries have been changed (or would be), --refs REF1,REF2 restricts the run to those external references.
+ *
  * Safety: refuses to APPLY unless the organisation's Master Fees → QuickBooks auto-posting is paused, and unless the migration is in.
  * Idempotent: keyed on external_reference; a second run changes nothing. Running balances are rebuilt once per account at the end.
  */
@@ -25,6 +27,8 @@ import {
 
 const arg = (n: string) => { const i = process.argv.indexOf(`--${n}`); return i >= 0 ? process.argv[i + 1] : undefined; };
 const ORG = arg('org'), WALLET = arg('wallet'), FILE = arg('file'), STAGE = arg('stage');
+const LIMIT = Number(arg('limit') || 0);                                  // 0 = no limit
+const REFS = new Set((arg('refs') || '').split(',').map(x => x.trim()).filter(Boolean));
 const APPLY = process.env.APPLY === '1';
 const ACTOR = process.env.CORRECTION_ACTOR || 'claude-ledger-corrections';
 const SOURCE_TAG = 'kaizen-worklist-2026-11-04';
@@ -106,8 +110,12 @@ async function main() {
             console.log(`statement lines imported for this wallet: ${lineIndex.size}`);
             if (lineIndex.size === 0) console.log('No statement lines are imported yet, so nothing can be linked. Import them first (the import is on hold).');
         }
+        let changed = 0;
         for (const w of rows) {
+            if (LIMIT > 0 && changed >= LIMIT) break;
+            if (REFS.size && !REFS.has(w.external_reference)) continue;
             const ref = w.external_reference; const e = byRef.get(ref);
+            const before = results.length;
             const pick = (a: string, c?: string) => w.action === a && (!c || w.confidence === c);
             if (!e) { if (['links', 'fix-high', 'queue-medium', 'unverified'].includes(STAGE!)) rec(STAGE!, ref, { outcome: 'NOT_FOUND', detail: 'not on this wallet' }); continue; }
             if (STAGE === 'links' && (w.action === 'OK' || w.action === 'FIX_DATE') && w.bank_external_ids) {
@@ -125,6 +133,8 @@ async function main() {
                 rec('unverified', ref, r);
                 await queueForReview(ORG!, e.id, w.action === 'NO_DEPOSIT_FOUND' ? 'NO_DEPOSIT_FOUND' : 'MW_ONLY_NOT_ZANACO', { amount: Number(w.amount), mw_date: w.mw_date, payer: w.payer_name }, note, APPLY);
             }
+            // A row only counts toward --limit when it actually changed (or would change) something.
+            if (results.slice(before).some(r => r.outcome === 'APPLIED' || r.outcome === 'WOULD_APPLY')) changed++;
         }
     }
 
