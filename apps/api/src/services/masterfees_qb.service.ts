@@ -159,9 +159,10 @@ export async function runQuickBooksAutoPost(
             .select('id,mf_id,amount,raw,cashbook_entry_id').eq('organization_id', organizationId).eq('record_type', 'PAYMENT').eq('mf_status', 'success')
             .not('cashbook_entry_id', 'is', null).gte('raw->>completed_at', from).order('mf_id').range(a, b));
         const ids = payRecs.map(r => r.cashbook_entry_id) as string[]; const cbs = new Map<string, any>();
-        for (let i = 0; i < ids.length; i += 150) { const { data } = await supabase.from('cashbook_entries').select('id,date,debit,qb_sync_status,qb_sync_at,qb_sync_error,mf_payment_channel,external_reference,sender_name').in('id', ids.slice(i, i + 150)); for (const c of data ?? []) cbs.set(c.id, c); }
+        for (let i = 0; i < ids.length; i += 150) { const { data } = await supabase.from('cashbook_entries').select('id,date,debit,qb_sync_status,qb_sync_at,qb_sync_error,mf_payment_channel,external_reference,sender_name,verification_status').in('id', ids.slice(i, i + 150)); for (const c of data ?? []) cbs.set(c.id, c); }
         const pending = payRecs.filter(r => {
             const c = cbs.get(r.cashbook_entry_id); if (!c || c.qb_sync_status === 'SUCCESS') return false;
+            if (c.verification_status === 'UNVERIFIED') return false;   // parked: no bank deposit behind it, never post it
             const waiting = String(c.qb_sync_error || '').startsWith('WAIT:'); // WAIT = depends on an invoice not in QuickBooks yet -> retry every tick
             return waiting || !c.qb_sync_at || Date.now() - new Date(c.qb_sync_at).getTime() > RETRY_REVIEW_MS;
         });

@@ -1,5 +1,7 @@
 import axios from 'axios';
 import { supabase } from '../lib/supabase';
+import { isUnverified, isWalletAccountType, decideWalletMove, channelChanged } from './ledgerCorrections/core';
+import { hasManualMove, logCorrection } from './ledgerCorrections/ledgerCorrections.service';
 import { ledgerService } from './ledger.service';
 import { cashbookService } from './cashbook.service';
 import { broadcastInvalidate } from '../lib/realtimeBroadcast';
@@ -793,7 +795,9 @@ async function upsertRecord(organizationId: string, integrationId: string, rec: 
 const VOID_STATUSES = new Set(['void', 'voided', 'cancelled', 'canceled', 'deleted', 'draft']);
 
 type PriorInvoiceRecord = { amount: number | string | null; mf_status: string | null; journal_entry_id: string | null; synced_at?: string | null };
-type PriorPaymentRecord = { amount: number | string | null; mf_status: string | null; journal_entry_id: string | null; cashbook_entry_id: string | null };
+type PriorPaymentRecord = { amount: number | string | null; mf_status: string | null; journal_entry_id: string | null; cashbook_entry_id: string | null; prior_account_name?: string | null; prior_payment_method?: string | null };
+// Columns loaded for every already-synced payment. The two aliases are the channel Master Fees reported when we last synced it, so a later channel change is noticed.
+const PRIOR_PAYMENT_COLUMNS = 'amount, mf_status, journal_entry_id, cashbook_entry_id, prior_account_name:raw->>account_name, prior_payment_method:raw->>payment_method';
 
 /**
  * Batch-preload every already-synced record of a given type for an org into a
@@ -1075,6 +1079,17 @@ async function postPayment(
         }
     }
     if (editable && prior?.cashbook_entry_id) {
+        // An entry parked as Unverified (no bank deposit behind it) is held at zero on purpose. An amount edit at Master Fees must not
+        // resurrect it: just remember the new amount and leave the ledger alone. (If the column does not exist yet this reads as "not parked".)
+        const { data: parked } = await supabase.from('cashbook_entries').select('verification_status').eq('id', prior.cashbook_entry_id).maybeSingle();
+        if (isUnverified((parked as any) || {})) {
+            await upsertRecord(organizationId, integrationId, {
+                record_type: 'PAYMENT', mf_id: txn.transaction_id, mf_reference: txn.reference, mf_invoice_id: txn.invoice_id,
+                student_name: studentName, grade: txn.student?.grade, amount, mf_status: txn.status,
+                journal_entry_id: null, cashbook_entry_id: prior.cashbook_entry_id, external_reference: txn.reference, raw: txn,
+            });
+            return 'skipped';
+        }
         const patch: Record<string, any> = { debit: amount };
         if (manualPayment) {
             const channel = classifyManualChannel(txn);
@@ -1168,6 +1183,45 @@ async function postPayment(
                     await ledgerService.repostForCashbookEntry(prior!.cashbook_entry_id);
                 }
             }
+        } else if (ce && isWalletAccountType(ce.account_type) && !isLencoProcessed(txn)) {
+            // Master Fees changed this payment's channel (e.g. Natsave → Zanaco bank). An entry already sitting on a per-bank wallet is not
+            // covered by the bucket rules above, so it used to stay on the old bank forever. Move it — unless a person decided where it lives,
+            // it was matched to a bank statement, or it is parked as Unverified (decideWalletMove).
+            const channel = classifyManualChannel(txn);
+            const resolved = await resolveManualAccountType(organizationId, channel);
+            const { data: extra } = await supabase.from('cashbook_entries').select('status, verification_status').eq('id', prior!.cashbook_entry_id).maybeSingle();
+            const decision = decideWalletMove({
+                lencoProcessed: false, currentAccountType: ce.account_type, resolvedAccountType: resolved,
+                hasBankStatementReference: !!ce.bank_statement_reference, unverified: isUnverified((extra as any) || {}),
+                hasManualMove: await hasManualMove(prior!.cashbook_entry_id),
+            });
+            if (decision.move) {
+                await getManualCollectionsAccountForChannel(organizationId, channel);
+                const patch: Record<string, any> = { account_type: resolved, mf_payment_channel: channel.key };
+                if ((extra as any)?.status === 'ACCOUNTED') patch.qb_resync_required = true;   // it is in QuickBooks under the old bank: flag, never edit QuickBooks here
+                let { error: mvErr } = await supabase.from('cashbook_entries').update(patch).eq('id', prior!.cashbook_entry_id).eq('account_type', ce.account_type);
+                if (mvErr && /qb_resync_required/.test(mvErr.message)) { delete patch.qb_resync_required; ({ error: mvErr } = await supabase.from('cashbook_entries').update(patch).eq('id', prior!.cashbook_entry_id).eq('account_type', ce.account_type)); }
+                if (mvErr) throw new Error(`could not move ${txn.reference} to its new wallet: ${mvErr.message}`);
+                await ledgerService.repostForCashbookEntry(prior!.cashbook_entry_id);          // the journal debits the new bank's asset account
+                await cashbookService.recalculateBalancesFrom(organizationId, ce.date, ce.created_at, ce.account_type);
+                await cashbookService.recalculateBalancesFrom(organizationId, ce.date, ce.created_at, resolved);
+                // Remember the new channel so this payment stops being re-examined every tick.
+                await upsertRecord(organizationId, integrationId, {
+                    record_type: 'PAYMENT', mf_id: txn.transaction_id, mf_reference: txn.reference, mf_invoice_id: txn.invoice_id,
+                    student_name: studentName, grade: txn.student?.grade, amount, mf_status: txn.status,
+                    journal_entry_id: null, cashbook_entry_id: prior!.cashbook_entry_id, external_reference: txn.reference, raw: txn,
+                });
+                await logCorrection({ orgId: organizationId, entryId: prior!.cashbook_entry_id, field: 'account_type', oldValue: ce.account_type, newValue: resolved,
+                    actionCode: 'SYNC_MOVE_WALLET', reason: 'Master Fees changed the payment channel', sourceRef: String(txn.reference || txn.transaction_id), actor: 'masterfees-sync' }).catch(() => undefined);
+                return 'reclassified';
+            }
+            // Not moving (a person decided, it is statement-matched, parked, or already right): still remember the new channel, otherwise
+            // the change detector would hand this payment back on every tick.
+            await upsertRecord(organizationId, integrationId, {
+                record_type: 'PAYMENT', mf_id: txn.transaction_id, mf_reference: txn.reference, mf_invoice_id: txn.invoice_id,
+                student_name: studentName, grade: txn.student?.grade, amount, mf_status: txn.status,
+                journal_entry_id: null, cashbook_entry_id: prior!.cashbook_entry_id, external_reference: txn.reference, raw: txn,
+            });
         }
         return 'skipped';
     }
@@ -1674,7 +1728,7 @@ export async function syncMasterfeesPayments(
         }
 
         const priorMap = await loadPriorRecords<PriorPaymentRecord>(
-            organizationId, 'PAYMENT', 'amount, mf_status, journal_entry_id, cashbook_entry_id'
+            organizationId, 'PAYMENT', PRIOR_PAYMENT_COLUMNS
         );
 
         // onlyMissing still has to notice changes to payments we already hold: a
@@ -1688,6 +1742,7 @@ export async function syncMasterfeesPayments(
             const priorVoid = isVoidStatus(p.mf_status);
             if (liveVoid) return !priorVoid && !!(p.cashbook_entry_id || p.journal_entry_id);
             if (priorVoid) return true;
+            if (channelChanged(p, t)) return true;   // e.g. Finance moved a payment from Natsave to Zanaco at Master Fees
             return num(t.amount) > 0 && Math.abs(num(p.amount) - num(t.amount)) >= TOLERANCE;
         };
         let queue = opts.onlyMissing
@@ -1934,7 +1989,7 @@ async function runMasterfeesSync(
                 summary.truncated = true;
                 summary.errors.push(`transactions: Hit the ${MF_ROW_CAP.toLocaleString()}-record pagination safety ceiling — this school may have more transactions than we fetched this sync. Contact us if this persists.`);
             }
-            const priorMap = await loadPriorRecords<PriorPaymentRecord>(organizationId, 'PAYMENT', 'amount, mf_status, journal_entry_id, cashbook_entry_id');
+            const priorMap = await loadPriorRecords<PriorPaymentRecord>(organizationId, 'PAYMENT', PRIOR_PAYMENT_COLUMNS);
             for (const txn of transactions) {
                 if (Date.now() > deadline) { deferredByBudget = true; break; }
                 try {
