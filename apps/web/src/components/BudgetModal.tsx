@@ -65,7 +65,7 @@ export const BudgetModal: React.FC<BudgetModalProps> = ({
         <Modal isOpen={isOpen} onClose={onClose} title="Set Budget Target">
             <div className="space-y-6">
                 <div className="bg-brand-navy/5 p-4 rounded-xl">
-                    <h3 className="text-sm font-bold text-brand-navy mb-1">{accountName}</h3>
+                    <h3 className="text-sm font-bold text-[#1F1F1F] mb-1">{accountName}</h3>
                     <p className="text-xs text-gray-500">
                         Setting target for <span className="font-semibold text-brand-green">{currentPeriod.label}</span>
                     </p>
@@ -109,7 +109,7 @@ export const BudgetModal: React.FC<BudgetModalProps> = ({
                         <button
                             type="submit"
                             disabled={submitting}
-                            className="flex-1 inline-flex justify-center items-center px-4 py-3 border border-transparent text-sm font-bold rounded-xl text-white bg-brand-green hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green transition-all disabled:opacity-50"
+                            className="flex-1 inline-flex justify-center items-center px-4 py-3 border border-transparent text-sm font-bold rounded-xl text-white bg-brand-green hover:bg-[#0842A0] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green transition-all disabled:opacity-50"
                         >
                             {submitting ? (
                                 <Loader2 className="h-5 w-5 animate-spin" />

@@ -206,7 +206,7 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({
                     <button key={m} type="button" onClick={() => switchMethod(m)}
                         className={`flex-1 py-1.5 text-[11px] font-semibold rounded-lg border transition-all ${
                             paymentMethod === m
-                                ? 'bg-[#0058DB] md:bg-[#0059D8] text-white border-[#0058DB]'
+                                ? 'bg-[#0B57D0] md:bg-[#0B57D0] text-white border-[#0B57D0]'
                                 : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
                         }`}>
                         {m === 'MOBILE_MONEY' ? 'Mobile Money' : 'Bank Transfer'}
@@ -232,7 +232,7 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({
                         {/* Badge + spinner inside the input */}
                         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
                             {detectedOp && operatorBadge(detectedOp)}
-                            {verify.status === 'pending'  && <Loader2 size={13} className="animate-spin text-blue-500" />}
+                            {verify.status === 'pending'  && <Loader2 size={13} className="animate-spin text-[#0B57D0]" />}
                             {verify.status === 'verified' && <Check size={13} className="text-emerald-600" />}
                         </div>
                     </div>
@@ -270,7 +270,7 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({
                                 }`}
                             />
                             <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
-                                {verify.status === 'pending'  && <Loader2 size={13} className="animate-spin text-blue-500" />}
+                                {verify.status === 'pending'  && <Loader2 size={13} className="animate-spin text-[#0B57D0]" />}
                                 {verify.status === 'verified' && <Check size={13} className="text-emerald-600" />}
                             </div>
                         </div>
@@ -457,7 +457,7 @@ const ScheduleModal: React.FC<ScheduleModalProps> = ({ initial, onClose, onSave,
                                     type="button"
                                     onClick={() => setPopEnabled(v => !v)}
                                     className={`relative flex-shrink-0 w-10 h-6 rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-400 ${
-                                        popEnabled ? 'bg-[#0058DB] md:bg-[#0059D8]' : 'bg-gray-300'
+                                        popEnabled ? 'bg-[#0B57D0] md:bg-[#0B57D0]' : 'bg-gray-300'
                                     }`}
                                     aria-pressed={popEnabled}
                                     aria-label="Send proof of payment"
@@ -475,9 +475,9 @@ const ScheduleModal: React.FC<ScheduleModalProps> = ({ initial, onClose, onSave,
                                     {/* Method — email only for now */}
                                     <div>
                                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Delivery Method</p>
-                                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#0058DB]/10 border border-[#0058DB]/20">
-                                            <Mail size={12} className="text-[#0058DB]" />
-                                            <span className="text-xs font-semibold text-[#0058DB]">Email</span>
+                                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#0B57D0]/10 border border-[#0B57D0]/20">
+                                            <Mail size={12} className="text-[#0B57D0]" />
+                                            <span className="text-xs font-semibold text-[#0B57D0]">Email</span>
                                         </div>
                                     </div>
 
@@ -521,7 +521,7 @@ const ScheduleModal: React.FC<ScheduleModalProps> = ({ initial, onClose, onSave,
                         <button type="submit"
                             data-tour-target="save-schedule-btn"
                             disabled={saving}
-                            className="h-8 pl-4 pr-3 bg-[#0058DB] md:bg-[#0059D8] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-60">
+                            className="h-8 pl-4 pr-3 bg-[#0B57D0] md:bg-[#0B57D0] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-60">
                             {saving && <Loader2 size={12} className="animate-spin text-white" />}
                             <span className="text-white text-xs font-bold">
                                 {initial ? 'Save Changes' : 'Add to Schedule'}
@@ -587,7 +587,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onClose, onEdit, onRunN
                             </div>
                         )}
                         {(item as any).pop_enabled && (item as any).pop_email && (
-                            <div className="mt-2 flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 rounded-xl text-[10px] text-[#0058DB]">
+                            <div className="mt-2 flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 rounded-xl text-[10px] text-[#0B57D0]">
                                 <Mail size={10} className="flex-shrink-0" />
                                 <span className="font-semibold">Proof of Payment →</span>
                                 <span className="truncate">{(item as any).pop_email}</span>
@@ -617,7 +617,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onClose, onEdit, onRunN
                             {format(parseISO(upcoming.due_date), 'EEEE, d MMMM yyyy')}
                         </p>
                         <button type="button" onClick={onRunNow} disabled={running}
-                            className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-[#0058DB] md:bg-[#0059D8] hover:opacity-90 text-white text-xs font-bold rounded-lg transition disabled:opacity-60">
+                            className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-[#0B57D0] md:bg-[#0B57D0] hover:opacity-90 text-white text-xs font-bold rounded-lg transition disabled:opacity-60">
                             {running ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} fill="white" />}
                             Run Now
                         </button>
@@ -627,7 +627,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onClose, onEdit, onRunN
                 <div className="flex-1 overflow-y-auto px-4 py-4">
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Run History</p>
                     {isLoading ? (
-                        <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin text-gray-300" /></div>
+                        <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin text-[#0B57D0]" /></div>
                     ) : history.length === 0 ? (
                         <div className="text-center py-8 text-xs text-gray-400">No runs yet.</div>
                     ) : (
@@ -705,7 +705,7 @@ const CalendarView: React.FC<{ items: ScheduledItem[] }> = ({ items }) => {
                     const todayBool = isToday(day);
                     return (
                         <div key={key} className={`bg-white min-h-[72px] p-1.5 ${todayBool ? 'ring-1 ring-inset ring-blue-300' : ''}`}>
-                            <p className={`text-[11px] font-semibold mb-1 w-5 h-5 flex items-center justify-center rounded-full ${todayBool ? 'bg-[#0058DB] md:bg-[#0059D8] text-white' : 'text-gray-600'}`}>
+                            <p className={`text-[11px] font-semibold mb-1 w-5 h-5 flex items-center justify-center rounded-full ${todayBool ? 'bg-[#0B57D0] md:bg-[#0B57D0] text-white' : 'text-gray-600'}`}>
                                 {day.getDate()}
                             </p>
                             <div className="space-y-0.5">
@@ -834,7 +834,7 @@ const MobileSchedules: React.FC<MobileSchedulesProps> = ({
                         value: 'list',
                         label: (
                             <span className="inline-flex items-center justify-center gap-1.5">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#6B7280]">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#5F6368]">
                                     <path d="M3 5h.01"/><path d="M3 12h.01"/><path d="M3 19h.01"/>
                                     <path d="M8 5h13"/><path d="M8 12h13"/><path d="M8 19h13"/>
                                 </svg>
@@ -846,7 +846,7 @@ const MobileSchedules: React.FC<MobileSchedulesProps> = ({
                         value: 'calendar',
                         label: (
                             <span className="inline-flex items-center justify-center gap-1.5">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#6B7280]">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#5F6368]">
                                     <path d="M8 2v3"/><path d="M16 2v3"/>
                                     <rect x="3" y="3" width="18" height="18" rx="2"/>
                                     <path d="M3 9h18"/>
@@ -898,7 +898,7 @@ const MobileSchedules: React.FC<MobileSchedulesProps> = ({
                                     }`}>
                                     {tab.label}
                                     {count !== undefined && count > 0 && (
-                                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full transition-colors duration-200 ${isActive ? 'bg-[#0058DB] md:bg-[#C3010A] text-white' : 'bg-gray-200 text-gray-500'}`}>
+                                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full transition-colors duration-200 ${isActive ? 'bg-[#0B57D0] md:bg-[#C3010A] text-white' : 'bg-gray-200 text-gray-500'}`}>
                                             {count}
                                         </span>
                                     )}
@@ -921,7 +921,7 @@ const MobileSchedules: React.FC<MobileSchedulesProps> = ({
                         <CalendarView items={allItems} />
                     ) : isLoading ? (
                         <div className="flex justify-center items-center py-16">
-                            <Loader2 size={22} className="animate-spin text-gray-300" />
+                            <Loader2 size={22} className="animate-spin text-[#0B57D0]" />
                         </div>
                     ) : items.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-14 text-center">
@@ -1094,7 +1094,7 @@ export const Schedules: React.FC = () => {
                                         }`}>
                                         {tab.label}
                                         {count !== undefined && count > 0 && (
-                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? 'bg-[#0058DB] md:bg-[#C3010A] text-white' : 'bg-gray-200 text-gray-500'}`}>
+                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? 'bg-[#0B57D0] md:bg-[#C3010A] text-white' : 'bg-gray-200 text-gray-500'}`}>
                                                 {count}
                                             </span>
                                         )}
@@ -1106,7 +1106,7 @@ export const Schedules: React.FC = () => {
                         <button type="button"
                             data-tour-target="new-schedule-btn"
                             onClick={() => { setEditItem(null); setShowAddModal(true); }}
-                            className="h-8 pl-4 pr-3 bg-[#0058DB] md:bg-[#0059D8] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity">
+                            className="h-8 pl-4 pr-3 bg-[#0B57D0] md:bg-[#0B57D0] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity">
                             <Plus size={13} className="text-white" />
                             <span className="text-white text-xs font-bold">Add to Schedule</span>
                         </button>
@@ -1117,7 +1117,7 @@ export const Schedules: React.FC = () => {
                             <CalendarView items={allItems} />
                         ) : isLoading ? (
                             <div className="flex justify-center items-center py-20">
-                                <Loader2 size={24} className="animate-spin text-gray-300" />
+                                <Loader2 size={24} className="animate-spin text-[#0B57D0]" />
                             </div>
                         ) : items.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-24 text-center">
@@ -1129,7 +1129,7 @@ export const Schedules: React.FC = () => {
                                 <button type="button"
                                     data-tour-target="new-schedule-btn"
                                     onClick={() => { setEditItem(null); setShowAddModal(true); }}
-                                    className="h-8 pl-4 pr-3 bg-[#0058DB] md:bg-[#0059D8] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity">
+                                    className="h-8 pl-4 pr-3 bg-[#0B57D0] md:bg-[#0B57D0] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity">
                                     <Plus size={13} className="text-white" />
                                     <span className="text-white text-xs font-bold">Add to Schedule</span>
                                 </button>

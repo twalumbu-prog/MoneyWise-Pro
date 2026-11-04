@@ -585,7 +585,7 @@ export const QuickPay: React.FC = () => {
         return (
             <PageFrame>
                 <div className="flex-1 flex items-center justify-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+                    <Loader2 className="h-8 w-8 animate-spin text-[#0B57D0]" />
                 </div>
             </PageFrame>
         );
@@ -736,7 +736,7 @@ export const QuickPay: React.FC = () => {
                         onClick={handleProceedFromAmount}
                         disabled={amount <= 0}
                         className={`w-full h-14 rounded-xl font-bold text-base transition-all ${
-                            amount > 0 ? 'bg-black hover:bg-slate-800 text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
+                            amount > 0 ? 'bg-[#0B57D0] hover:bg-[#0842A0] text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
                         }`}
                     >
                         Send to {org.name}
@@ -807,7 +807,7 @@ export const QuickPay: React.FC = () => {
                         onClick={handleProceedFromPurpose}
                         disabled={!canProceedFromPurpose}
                         className={`w-full h-14 rounded-xl font-bold text-base transition-all ${
-                            canProceedFromPurpose ? 'bg-black hover:bg-slate-800 text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
+                            canProceedFromPurpose ? 'bg-[#0B57D0] hover:bg-[#0842A0] text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
                         }`}
                     >
                         Continue
@@ -880,7 +880,7 @@ export const QuickPay: React.FC = () => {
                             {checkoutPhone.length >= 9 && (
                                 <div className="mt-3 px-4 py-3 rounded-2xl bg-white border border-slate-200 flex items-center gap-3">
                                     {resolvingAccountName ? (
-                                        <Loader2 size={16} className="text-blue-600 animate-spin flex-shrink-0" />
+                                        <Loader2 size={16} className="text-[#0B57D0] animate-spin flex-shrink-0" />
                                     ) : resolvedAccountName ? (
                                         <Check size={16} className="text-emerald-500 flex-shrink-0" />
                                     ) : (
@@ -933,7 +933,7 @@ export const QuickPay: React.FC = () => {
                             onClick={handleSend}
                             disabled={!canSend}
                             className={`w-full h-14 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${
-                                canSend ? 'bg-black hover:bg-slate-800 text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
+                                canSend ? 'bg-[#0B57D0] hover:bg-[#0842A0] text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
                             }`}
                         >
                             {submitting ? <Loader2 size={16} className="animate-spin" /> : null}

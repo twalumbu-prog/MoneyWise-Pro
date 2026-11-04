@@ -62,12 +62,12 @@ export const RuleManagement: React.FC = () => {
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <div>
-                    <h3 className="text-lg font-bold text-brand-navy">AI Classification Rules</h3>
+                    <h3 className="text-lg font-bold text-[#1F1F1F]">AI Classification Rules</h3>
                     <p className="text-sm text-gray-500">Define custom logic for automatic transaction categorization.</p>
                 </div>
                 <button
                     onClick={() => setNewRule({ name: '', pattern: '', priority: 10, confidence_score: 0.95, is_active: true })}
-                    className="inline-flex items-center px-4 py-2 bg-brand-green text-white text-sm font-bold rounded-xl hover:bg-green-600 transition-all shadow-sm"
+                    className="inline-flex items-center px-4 py-2 bg-brand-green text-white text-sm font-bold rounded-xl hover:bg-[#0842A0] transition-all shadow-sm"
                 >
                     <Plus className="h-4 w-4 mr-2" />
                     New Rule
@@ -129,11 +129,11 @@ export const RuleManagement: React.FC = () => {
                                         </code>
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-500">{rule.priority}</td>
-                                    <td className="px-6 py-4 text-sm text-brand-navy font-medium">
+                                    <td className="px-6 py-4 text-sm text-[#1F1F1F] font-medium">
                                         {accounts.find(a => a.Id === rule.target_account_id)?.Name || 'Unknown Account'}
                                     </td>
                                     <td className="px-6 py-4 text-right space-x-2">
-                                        <button onClick={() => setEditingId(rule.id)} className="p-2 text-gray-400 hover:text-brand-navy"><Edit2 className="h-4 w-4" /></button>
+                                        <button onClick={() => setEditingId(rule.id)} className="p-2 text-gray-400 hover:text-[#1F1F1F]"><Edit2 className="h-4 w-4" /></button>
                                         <button onClick={() => handleDelete(rule.id)} className="p-2 text-gray-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
                                     </td>
                                 </tr>

@@ -14,7 +14,7 @@ export const Dashboard: React.FC = () => {
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-sm font-medium text-gray-500">Pending Approvals</p>
-                                <p className="text-3xl font-bold text-brand-navy mt-2">5</p>
+                                <p className="text-3xl font-bold text-[#1F1F1F] mt-2">5</p>
                             </div>
                             <div className="bg-amber-50 rounded-xl p-3">
                                 <Clock className="h-6 w-6 text-amber-500" />
@@ -26,7 +26,7 @@ export const Dashboard: React.FC = () => {
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-sm font-medium text-gray-500">Active Requisitions</p>
-                                <p className="text-3xl font-bold text-brand-navy mt-2">12</p>
+                                <p className="text-3xl font-bold text-[#1F1F1F] mt-2">12</p>
                             </div>
                             <div className="bg-blue-50 rounded-xl p-3">
                                 <FileText className="h-6 w-6 text-blue-500" />
@@ -38,7 +38,7 @@ export const Dashboard: React.FC = () => {
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-sm font-medium text-gray-500">Approved This Month</p>
-                                <p className="text-3xl font-bold text-brand-navy mt-2">28</p>
+                                <p className="text-3xl font-bold text-[#1F1F1F] mt-2">28</p>
                             </div>
                             <div className="bg-green-50 rounded-xl p-3">
                                 <CheckCircle className="h-6 w-6 text-brand-green" />
@@ -50,7 +50,7 @@ export const Dashboard: React.FC = () => {
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-sm font-medium text-gray-500">Needs Attention</p>
-                                <p className="text-3xl font-bold text-brand-navy mt-2">3</p>
+                                <p className="text-3xl font-bold text-[#1F1F1F] mt-2">3</p>
                             </div>
                             <div className="bg-red-50 rounded-xl p-3">
                                 <AlertCircle className="h-6 w-6 text-red-500" />
@@ -62,7 +62,7 @@ export const Dashboard: React.FC = () => {
                 {/* Recent Activity */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                     <div className="px-6 py-4 border-b border-gray-50 bg-gray-50/30">
-                        <h3 className="text-lg font-bold text-brand-navy">Recent Activity</h3>
+                        <h3 className="text-lg font-bold text-[#1F1F1F]">Recent Activity</h3>
                     </div>
                     <div className="divide-y divide-gray-50">
                         {[1, 2, 3, 4, 5].map((item) => (
@@ -89,7 +89,7 @@ export const Dashboard: React.FC = () => {
 
                 {/* Quick Actions */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                    <h3 className="text-lg font-bold text-brand-navy mb-4">Quick Actions</h3>
+                    <h3 className="text-lg font-bold text-[#1F1F1F] mb-4">Quick Actions</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <button 
                             onClick={() => {

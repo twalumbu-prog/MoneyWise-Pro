@@ -1199,14 +1199,14 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); handleActionClick('REJECT'); }}
                                                         disabled={!!activeAction}
-                                                        className="flex-1 flex items-center justify-center px-6 py-2 bg-[#F5F5F7] text-gray-700 text-[13px] font-bold rounded-full hover:bg-gray-200 disabled:opacity-50 h-11"
+                                                        className="flex-1 flex items-center justify-center px-6 py-2 bg-[#F1F3F4] text-gray-700 text-[13px] font-bold rounded-full hover:bg-gray-200 disabled:opacity-50 h-11"
                                                     >
-                                                        {activeAction === 'REJECT' ? <Loader2 size={16} className="animate-spin text-gray-400" /> : 'Decline'}
+                                                        {activeAction === 'REJECT' ? <Loader2 size={16} className="animate-spin text-[#0B57D0]" /> : 'Decline'}
                                                     </button>
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); handleActionClick('APPROVE'); }}
                                                         disabled={!!activeAction || hasFailedVerification}
-                                                        className="flex-1 flex items-center justify-center px-6 py-2 bg-[#006AFF] md:bg-[#0059D8] text-white text-[13px] font-bold rounded-full hover:bg-[#0052cc] disabled:opacity-50 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed h-11 font-black"
+                                                        className="flex-1 flex items-center justify-center px-6 py-2 bg-[#0B57D0] md:bg-[#0B57D0] text-white text-[13px] font-bold rounded-full hover:bg-[#0842A0] disabled:opacity-50 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed h-11 font-black"
                                                     >
                                                         {activeAction === 'APPROVE' ? <Loader2 size={16} className="animate-spin text-white" /> : 'Accept'}
                                                     </button>
@@ -1280,7 +1280,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                 }
                                             }
                                         }}
-                                        className="p-1.5 text-gray-300 hover:text-[#006AFF] transition-colors"
+                                        className="p-1.5 text-gray-300 hover:text-[#0B57D0] transition-colors"
                                         title="Revert to Draft"
                                     >
                                         <RotateCcw size={16} />
@@ -1331,7 +1331,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             e.stopPropagation();
                                             onAction?.('VIEW_LOAN_APPLICATION');
                                         }}
-                                        className="w-full flex items-center justify-center gap-2 mt-2 mb-4 py-2.5 px-4 rounded-xl border border-[#006AFF]/30 bg-[#F0F7FF] text-[#006AFF] text-[12px] font-bold hover:bg-[#006AFF]/10 transition-all"
+                                        className="w-full flex items-center justify-center gap-2 mt-2 mb-4 py-2.5 px-4 rounded-xl border border-[#0B57D0]/30 bg-[#E8F0FE] text-[#0B57D0] text-[12px] font-bold hover:bg-[#0B57D0]/10 transition-all"
                                     >
                                         <FileText size={14} />
                                         View Request Details
@@ -1369,14 +1369,14 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             <button 
                                                 onClick={(e) => { e.stopPropagation(); handleActionClick('REJECT'); }}
                                                 disabled={!!activeAction}
-                                                className="flex-1 flex items-center justify-center px-6 py-2 bg-[#F5F5F7] text-gray-700 text-[13px] font-bold rounded-full hover:bg-gray-200 disabled:opacity-50 h-11"
+                                                className="flex-1 flex items-center justify-center px-6 py-2 bg-[#F1F3F4] text-gray-700 text-[13px] font-bold rounded-full hover:bg-gray-200 disabled:opacity-50 h-11"
                                             >
-                                                {activeAction === 'REJECT' ? <Loader2 size={16} className="animate-spin text-gray-400" /> : 'Decline'}
+                                                {activeAction === 'REJECT' ? <Loader2 size={16} className="animate-spin text-[#0B57D0]" /> : 'Decline'}
                                             </button>
                                             <button 
                                                 onClick={(e) => { e.stopPropagation(); handleActionClick('APPROVE'); }}
                                                 disabled={!!activeAction}
-                                                className="flex-1 flex items-center justify-center px-6 py-2 bg-[#006AFF] md:bg-[#0059D8] text-white text-[13px] font-bold rounded-full hover:bg-[#0052cc] disabled:opacity-50 h-11"
+                                                className="flex-1 flex items-center justify-center px-6 py-2 bg-[#0B57D0] md:bg-[#0B57D0] text-white text-[13px] font-bold rounded-full hover:bg-[#0842A0] disabled:opacity-50 h-11"
                                             >
                                                 {activeAction === 'APPROVE' ? <Loader2 size={16} className="animate-spin text-white" /> : 'Accept'}
                                             </button>
@@ -1398,7 +1398,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                     }
                                                 }
                                             }}
-                                            className="flex items-center space-x-1.5 px-3 py-1.5 bg-gray-50 text-gray-400 hover:text-[#006AFF] hover:bg-blue-50 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all"
+                                            className="flex items-center space-x-1.5 px-3 py-1.5 bg-gray-50 text-gray-400 hover:text-[#0B57D0] hover:bg-blue-50 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all"
                                         >
                                             <RotateCcw size={12} />
                                             <span>Revert to Draft</span>
@@ -1572,7 +1572,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                         <div className="bg-white border border-gray-100 rounded-[20px] rounded-tl-none shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] overflow-hidden transition-all duration-300">
                             <div className="px-8 py-8">
                                 <div className="flex items-center space-x-3 mb-6">
-                                    <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center text-[#006AFF] border border-blue-50 shadow-sm">
+                                    <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center text-[#0B57D0] border border-blue-50 shadow-sm">
                                         <Smartphone size={14} strokeWidth={2.5} />
                                     </div>
                                     <div className="flex-1 flex items-center justify-between">
@@ -1612,7 +1612,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                     }
                                                 }
                                             }}
-                                            className="flex items-center space-x-1.5 px-3 py-1.5 bg-gray-50 text-gray-400 hover:text-[#006AFF] hover:bg-blue-50 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all"
+                                            className="flex items-center space-x-1.5 px-3 py-1.5 bg-gray-50 text-gray-400 hover:text-[#0B57D0] hover:bg-blue-50 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all"
                                         >
                                             <RotateCcw size={12} />
                                             <span>Revert to Draft</span>
@@ -1639,7 +1639,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                 )}
 
                                 {payrollProgress && (
-                                    <div className="mb-6 p-4 rounded-2xl bg-blue-50 border border-blue-100 text-[#006AFF] text-xs font-medium">
+                                    <div className="mb-6 p-4 rounded-2xl bg-blue-50 border border-blue-100 text-[#0B57D0] text-xs font-medium">
                                         {payrollProgress}
                                     </div>
                                 )}
@@ -1739,7 +1739,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             <button
                                                 onClick={handleVerifyPayroll}
                                                 disabled={isVerifyingPayroll || isProcessing}
-                                                className={`w-full flex items-center justify-center px-6 py-3 text-[13px] font-bold rounded-full h-12 transition-all disabled:opacity-50 ${!isFullyDisbursed || unverifiedCount === 0 ? 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50' : 'bg-white border border-[#006AFF] text-[#006AFF] hover:bg-blue-50'}`}
+                                                className={`w-full flex items-center justify-center px-6 py-3 text-[13px] font-bold rounded-full h-12 transition-all disabled:opacity-50 ${!isFullyDisbursed || unverifiedCount === 0 ? 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50' : 'bg-white border border-[#0B57D0] text-[#0B57D0] hover:bg-blue-50'}`}
                                             >
                                                 {isVerifyingPayroll ? (
                                                     <><Loader2 size={16} className="animate-spin mr-2" />Checking with Lenco...</>
@@ -1752,7 +1752,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             <button
                                                 onClick={handleDisbursePayroll}
                                                 disabled={isProcessing || isVerifyingPayroll}
-                                                className="w-full flex items-center justify-center px-6 py-3 bg-[#006AFF] md:bg-[#0059D8] text-white text-[13px] font-bold rounded-full hover:bg-[#0052cc] disabled:opacity-50 h-12 font-black transition-all shadow-md shadow-blue-100"
+                                                className="w-full flex items-center justify-center px-6 py-3 bg-[#0B57D0] md:bg-[#0B57D0] text-white text-[13px] font-bold rounded-full hover:bg-[#0842A0] disabled:opacity-50 h-12 font-black transition-all shadow-md shadow-blue-100"
                                             >
                                                 {isProcessing ? (
                                                     <>
@@ -1781,7 +1781,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                     <div className="bg-white border border-gray-100 rounded-[20px] rounded-tl-none shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] overflow-hidden transition-all duration-300">
                         <div className="px-5 md:px-8 py-6 md:py-8">
                             <div className="flex items-center space-x-3 mb-4">
-                                <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center text-[#006AFF] border border-blue-50 shadow-sm">
+                                <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center text-[#0B57D0] border border-blue-50 shadow-sm">
                                     <Smartphone size={14} strokeWidth={2.5} />
                                 </div>
                                 <div className="flex-1 flex items-center justify-between">
@@ -1819,7 +1819,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             <div className="flex items-center space-x-4">
                                                 <button 
                                                     onClick={() => setIsExpanded(!isExpanded)}
-                                                    className="flex items-center space-x-2 text-[11px] font-bold uppercase tracking-widest text-[#006AFF] hover:opacity-80 transition-opacity"
+                                                    className="flex items-center space-x-2 text-[11px] font-bold uppercase tracking-widest text-[#0B57D0] hover:opacity-80 transition-opacity"
                                                 >
                                                     <span>{isExpanded ? 'Hide Details' : 'Show Details'}</span>
                                                     <ChevronDown size={14} className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
@@ -1838,7 +1838,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                 }
                                                             }
                                                         }}
-                                                        className="flex items-center space-x-1.5 text-[11px] font-bold uppercase tracking-widest text-gray-400 hover:text-[#006AFF] transition-colors"
+                                                        className="flex items-center space-x-1.5 text-[11px] font-bold uppercase tracking-widest text-gray-400 hover:text-[#0B57D0] transition-colors"
                                                     >
                                                         <RotateCcw size={14} />
                                                         <span>Revert to Draft</span>
@@ -1863,7 +1863,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                             </tr>
                                                             <tr className="hover:bg-white/50 transition-colors">
                                                                 <td className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Reference</td>
-                                                                <td className="px-6 py-4 text-[13px] font-mono font-bold text-[#006AFF] text-right">{requisitionData.disbursements[0].external_reference || 'N/A'}</td>
+                                                                <td className="px-6 py-4 text-[13px] font-mono font-bold text-[#0B57D0] text-right">{requisitionData.disbursements[0].external_reference || 'N/A'}</td>
                                                             </tr>
                                                             {requisitionData.disbursements[0].recipient_account && (
                                                                 <tr className="hover:bg-white/50 transition-colors">
@@ -1885,7 +1885,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             ) : (
                                                 <div className="py-12 px-6 border border-dashed border-gray-200 rounded-[24px] flex flex-col items-center justify-center text-center bg-gray-50/50">
                                                     <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center mb-3">
-                                                        <Loader2 size={20} className="text-[#006AFF] animate-spin" />
+                                                        <Loader2 size={20} className="text-[#0B57D0] animate-spin" />
                                                     </div>
                                                     <h5 className="text-[14px] font-bold text-gray-900 mb-1">Finalizing Transaction Details</h5>
                                                     <p className="text-[12px] text-gray-500 max-w-[240px]">
@@ -1893,7 +1893,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                     </p>
                                                     <button 
                                                         onClick={() => onAction?.('REFRESH')}
-                                                        className="mt-4 px-4 py-2 bg-white border border-gray-200 rounded-xl text-[11px] font-bold text-[#006AFF] hover:bg-gray-50 transition-colors shadow-sm"
+                                                        className="mt-4 px-4 py-2 bg-white border border-gray-200 rounded-xl text-[11px] font-bold text-[#0B57D0] hover:bg-gray-50 transition-colors shadow-sm"
                                                     >
                                                         Refresh Data
                                                     </button>
@@ -1922,7 +1922,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                         }
                                                     }
                                                 }}
-                                                className="flex items-center space-x-1.5 px-3 py-1.5 bg-gray-50 text-gray-400 hover:text-[#006AFF] hover:bg-blue-50 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all"
+                                                className="flex items-center space-x-1.5 px-3 py-1.5 bg-gray-50 text-gray-400 hover:text-[#0B57D0] hover:bg-blue-50 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all"
                                             >
                                                 <RotateCcw size={12} />
                                                 <span>Revert</span>
@@ -1957,8 +1957,8 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                         }}
                                                         className={`h-12 px-6 text-[13px] font-bold rounded-full transition-all flex items-center justify-center ${
                                                             isWallet 
-                                                                ? 'bg-[#006AFF] md:bg-[#0059D8] text-white shadow-lg shadow-blue-100/50' 
-                                                                : 'bg-[#F5F5F7] text-gray-600 hover:bg-gray-200 border border-gray-100'
+                                                                ? 'bg-[#0B57D0] md:bg-[#0B57D0] text-white shadow-lg shadow-blue-100/50' 
+                                                                : 'bg-[#F1F3F4] text-gray-600 hover:bg-gray-200 border border-gray-100'
                                                         }`}
                                                     >
                                                         {method.name}
@@ -1988,7 +1988,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                             type="text" 
                                                                             value={requisitionData?.estimated_total ? Number(requisitionData.estimated_total).toLocaleString(undefined, { minimumFractionDigits: 2 }) : ''}
                                                                             readOnly
-                                                                            className="w-full h-14 pl-14 pr-7 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#006AFF]/20 transition-all shadow-sm group-hover:border-gray-200"
+                                                                            className="w-full h-14 pl-14 pr-7 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#0B57D0]/20 transition-all shadow-sm group-hover:border-gray-200"
                                                                         />
                                                                     </div>
                                                                 </div>
@@ -2000,13 +2000,13 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                             setRecipientProvider(null);
                                                                             setRecipientValue('');
                                                                         }}
-                                                                        className="flex-1 h-11 px-6 bg-[#F5F5F7] text-gray-700 text-[13px] font-bold rounded-full hover:bg-gray-200 transition-all flex items-center justify-center border border-gray-100"
+                                                                        className="flex-1 h-11 px-6 bg-[#F1F3F4] text-gray-700 text-[13px] font-bold rounded-full hover:bg-gray-200 transition-all flex items-center justify-center border border-gray-100"
                                                                     >
                                                                         Back
                                                                     </button>
                                                                     <button 
                                                                         onClick={handleDisburse}
-                                                                        className="flex-[2] h-11 bg-gray-900 text-white text-[13px] font-bold rounded-full hover:bg-black transition-all shadow-lg flex items-center justify-center space-x-2"
+                                                                        className="flex-[2] h-11 bg-[#0B57D0] text-white text-[13px] font-bold rounded-full hover:bg-[#0B57D0] transition-all shadow-lg flex items-center justify-center space-x-2"
                                                                     >
                                                                         <span>Record Disbursement</span>
                                                                         <Check size={18} />
@@ -2018,13 +2018,13 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                 <div className="flex p-1.5 bg-gray-100/80 rounded-full w-full">
                                                                     <button 
                                                                         onClick={() => setPaymentType('MOBILE_MONEY')} 
-                                                                        className={`flex-1 h-11 rounded-full text-[12px] font-black tracking-wider transition-all duration-300 ${paymentType === 'MOBILE_MONEY' ? 'bg-white text-[#006AFF] shadow-sm' : 'text-gray-500'}`}
+                                                                        className={`flex-1 h-11 rounded-full text-[12px] font-black tracking-wider transition-all duration-300 ${paymentType === 'MOBILE_MONEY' ? 'bg-white text-[#0B57D0] shadow-sm' : 'text-gray-500'}`}
                                                                     >
                                                                         MOBILE MONEY
                                                                     </button>
                                                                     <button 
                                                                         onClick={() => setPaymentType('BANK')} 
-                                                                        className={`flex-1 h-11 rounded-full text-[12px] font-black tracking-wider transition-all duration-300 ${paymentType === 'BANK' ? 'bg-white text-[#006AFF] shadow-sm' : 'text-gray-500'}`}
+                                                                        className={`flex-1 h-11 rounded-full text-[12px] font-black tracking-wider transition-all duration-300 ${paymentType === 'BANK' ? 'bg-white text-[#0B57D0] shadow-sm' : 'text-gray-500'}`}
                                                                     >
                                                                         BANK TRANSFER
                                                                     </button>
@@ -2038,7 +2038,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                             type="text" 
                                                                             value={requisitionData?.estimated_total ? Number(requisitionData.estimated_total).toLocaleString(undefined, { minimumFractionDigits: 2 }) : ''}
                                                                             readOnly
-                                                                            className="w-full h-14 pl-14 pr-7 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#006AFF]/20 transition-all shadow-sm group-hover:border-gray-200"
+                                                                            className="w-full h-14 pl-14 pr-7 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#0B57D0]/20 transition-all shadow-sm group-hover:border-gray-200"
                                                                         />
                                                                         <div className="absolute right-6 top-1/2 -translate-y-1/2 flex items-center space-x-1.5 px-3 py-1 bg-gray-50 rounded-full border border-gray-100">
                                                                             <span className="text-[9px] font-black text-gray-400 uppercase">Fee:</span>
@@ -2092,7 +2092,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                                     setRecipientProvider(v);
                                                                                     setLookupName(null);
                                                                                 }}
-                                                                                className="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#006AFF]/20 transition-all shadow-sm"
+                                                                                className="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#0B57D0]/20 transition-all shadow-sm"
                                                                                 placeholder={isFetchingBanks ? 'Loading banks...' : 'Select Destination Bank'}
                                                                                 loading={isFetchingBanks}
                                                                             />
@@ -2108,11 +2108,11 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                                 setRecipientValue(value);
                                                                                 setLookupName(null);
                                                                             }}
-                                                                            className="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#006AFF]/20 transition-all shadow-sm group-hover:border-gray-200"
+                                                                            className="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#0B57D0]/20 transition-all shadow-sm group-hover:border-gray-200"
                                                                         />
                                                                         <div className="absolute right-7 top-1/2 -translate-y-1/2 flex items-center space-x-2">
                                                                             {isLookingUp ? (
-                                                                                <Loader2 size={18} className="text-[#006AFF] animate-spin" />
+                                                                                <Loader2 size={18} className="text-[#0B57D0] animate-spin" />
                                                                             ) : recipientProvider && (
                                                                                 <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
                                                                                     recipientProvider === 'AIRTEL' ? 'bg-red-50 text-red-500 border border-red-100' : 
@@ -2140,14 +2140,14 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                             setRecipientProvider(null);
                                                                             setRecipientValue('');
                                                                         }}
-                                                                        className="flex-1 h-11 px-6 bg-[#F5F5F7] text-gray-700 text-[13px] font-bold rounded-full hover:bg-gray-200 transition-all flex items-center justify-center border border-gray-100"
+                                                                        className="flex-1 h-11 px-6 bg-[#F1F3F4] text-gray-700 text-[13px] font-bold rounded-full hover:bg-gray-200 transition-all flex items-center justify-center border border-gray-100"
                                                                     >
                                                                         Back
                                                                     </button>
                                                                     <button
                                                                         onClick={handleDisburse}
                                                                         disabled={!recipientValue || (paymentType === 'MOBILE_MONEY' && !recipientProvider) || isWalletBalanceInsufficient}
-                                                                        className="flex-[2] h-11 bg-[#006AFF] md:bg-[#0059D8] text-white text-[13px] font-bold rounded-full hover:bg-[#0052cc] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-100/50 flex items-center justify-center space-x-2"
+                                                                        className="flex-[2] h-11 bg-[#0B57D0] md:bg-[#0B57D0] text-white text-[13px] font-bold rounded-full hover:bg-[#0842A0] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-100/50 flex items-center justify-center space-x-2"
                                                                     >
                                                                         <span>Send Money</span>
                                                                         <ArrowRight size={18} />
@@ -2160,7 +2160,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                     <div className="flex flex-col items-center justify-center py-12 space-y-4 animate-in fade-in zoom-in-95 duration-500">
                                                         <div className="relative">
                                                             <div className="w-16 h-16 rounded-full border-4 border-blue-50 animate-pulse"></div>
-                                                            <Loader2 className="w-16 h-16 text-[#006AFF] animate-spin absolute inset-0" strokeWidth={1.5} />
+                                                            <Loader2 className="w-16 h-16 text-[#0B57D0] animate-spin absolute inset-0" strokeWidth={1.5} />
                                                         </div>
                                                         <div className="text-center space-y-1">
                                                             <p className="text-[16px] font-black text-gray-900 tracking-tight">Processing Disbursal</p>
@@ -2261,7 +2261,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                     <div className="bg-white border border-gray-100 rounded-[20px] rounded-tl-none shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] overflow-hidden">
                         <div className="px-5 md:px-8 py-6 md:py-8">
                              <div className="flex items-center space-x-3 mb-4">
-                                 <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center text-[#006AFF] border border-blue-50 shadow-sm">
+                                 <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center text-[#0B57D0] border border-blue-50 shadow-sm">
                                      <FileText size={14} strokeWidth={2.5} />
                                  </div>
                                  <div className="flex-1 flex items-center justify-between">
@@ -2275,7 +2275,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                  </div>
                              </div>
                              <div className="flex items-center space-x-3 mb-6">
-                                 <div className="w-8 h-8 rounded-full bg-blue-50/50 flex items-center justify-center text-[#006AFF]">
+                                 <div className="w-8 h-8 rounded-full bg-blue-50/50 flex items-center justify-center text-[#0B57D0]">
                                      <FileText size={16} />
                                  </div>
                                  <p className="text-[14px] font-normal text-gray-900 leading-tight">
@@ -2287,7 +2287,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                 <div className="space-y-4">
                                     <button 
                                         onClick={() => setIsExpenseExpanded(!isExpenseExpanded)}
-                                        className="h-12 w-full px-6 bg-[#F5F5F7] text-gray-600 text-[13px] font-bold rounded-full hover:bg-gray-200 border border-gray-100 transition-all flex items-center justify-between"
+                                        className="h-12 w-full px-6 bg-[#F1F3F4] text-gray-600 text-[13px] font-bold rounded-full hover:bg-gray-200 border border-gray-100 transition-all flex items-center justify-between"
                                     >
                                         <span>{isExpenseExpanded ? 'Hide Details' : 'View Expenditure Details'}</span>
                                         <ChevronDown size={16} className={`transition-transform duration-300 ${isExpenseExpanded ? 'rotate-180' : ''}`} />
@@ -2327,8 +2327,8 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                 </div>
                                                 {requisitionData?.estimated_total > requisitionData?.actual_total && (
                                                     <div className="pt-3 mt-3 border-t border-gray-100 flex justify-between items-center">
-                                                        <span className="text-[12px] font-normal md:font-black text-[#006AFF] uppercase tracking-widest">Change Balance</span>
-                                                        <span className="text-[16px] font-normal md:font-black text-[#006AFF]">K{(requisitionData.estimated_total - requisitionData.actual_total).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                        <span className="text-[12px] font-normal md:font-black text-[#0B57D0] uppercase tracking-widest">Change Balance</span>
+                                                        <span className="text-[16px] font-normal md:font-black text-[#0B57D0]">K{(requisitionData.estimated_total - requisitionData.actual_total).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                                     </div>
                                                 )}
                                             </div>
@@ -2345,7 +2345,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                 actual_amount: item.actual_amount || item.unit_price * item.quantity
                                             })) || []);
                                         }}
-                                        className="h-12 px-6 bg-[#F5F5F7] text-gray-600 text-[13px] font-bold rounded-full hover:bg-gray-200 border border-gray-100 transition-all flex items-center justify-center space-x-2"
+                                        className="h-12 px-6 bg-[#F1F3F4] text-gray-600 text-[13px] font-bold rounded-full hover:bg-gray-200 border border-gray-100 transition-all flex items-center justify-center space-x-2"
                                     >
                                         <span>Manual Entry</span>
                                     </button>
@@ -2355,7 +2355,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             if (input) input.click();
                                         }}
                                         disabled={isScanning}
-                                        className="h-12 px-6 bg-[#F5F5F7] text-gray-600 text-[13px] font-bold rounded-full hover:bg-gray-200 border border-gray-100 transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
+                                        className="h-12 px-6 bg-[#F1F3F4] text-gray-600 text-[13px] font-bold rounded-full hover:bg-gray-200 border border-gray-100 transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
                                     >
                                         {isScanning ? <Loader2 size={16} className="animate-spin" /> : <Smartphone size={16} />}
                                         <span>{isScanning ? 'Scanning...' : 'Scan Receipts'}</span>
@@ -2375,7 +2375,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                         <h4 className="text-[13px] font-black uppercase tracking-[0.15em] text-gray-500">Record Expenditures</h4>
                                         <button 
                                             onClick={() => setExpenseMode('NONE')}
-                                            className="text-[11px] font-bold text-[#006AFF] hover:underline"
+                                            className="text-[11px] font-bold text-[#0B57D0] hover:underline"
                                         >
                                             Cancel
                                         </button>
@@ -2388,7 +2388,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                     <th className="pb-3 text-[10px] font-black uppercase text-gray-400">Description</th>
                                                     <th className="pb-3 text-[10px] font-black uppercase text-gray-400 text-right">Qty</th>
                                                     <th className="pb-3 text-[10px] font-black uppercase text-gray-400 text-right w-24">Actual (K)</th>
-                                                    <th className="pb-3 text-[10px] font-black uppercase text-[#006AFF]/60 text-right w-24">AI Found (K)</th>
+                                                    <th className="pb-3 text-[10px] font-black uppercase text-[#0B57D0]/60 text-right w-24">AI Found (K)</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-50">
@@ -2422,7 +2422,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                             newItems[idx].actual_amount = parseFloat(e.target.value) || 0;
                                                                             setExpenseItems(newItems);
                                                                         }}
-                                                                        className={`w-20 px-2 py-1 bg-white border ${hasDiscrepancy ? 'border-red-200 bg-red-50/30' : 'border-gray-100'} rounded text-[13px] font-black text-gray-900 text-right focus:border-[#006AFF]/30 focus:outline-none transition-colors`}
+                                                                        className={`w-20 px-2 py-1 bg-white border ${hasDiscrepancy ? 'border-red-200 bg-red-50/30' : 'border-gray-100'} rounded text-[13px] font-black text-gray-900 text-right focus:border-[#0B57D0]/30 focus:outline-none transition-colors`}
                                                                     />
                                                                     {hasDiscrepancy && (
                                                                         <span className="text-[9px] font-bold text-red-500 uppercase mt-1">Manual Audit Req</span>
@@ -2430,7 +2430,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                 </div>
                                                             </td>
                                                             <td className="py-4 text-right">
-                                                                <div className={`px-2 py-1 rounded text-[13px] font-bold text-right ${item.ai_extracted_amount ? 'text-[#006AFF] bg-blue-50/50' : 'text-gray-300 italic'}`}>
+                                                                <div className={`px-2 py-1 rounded text-[13px] font-bold text-right ${item.ai_extracted_amount ? 'text-[#0B57D0] bg-blue-50/50' : 'text-gray-300 italic'}`}>
                                                                     {item.ai_extracted_amount != null ? `K${item.ai_extracted_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : 'Not Found'}
                                                                 </div>
                                                                 {item.receipt_ocr_data?.currency && item.receipt_ocr_data?.original_amount != null && (
@@ -2457,8 +2457,8 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                         </div>
                                         {requisitionData.estimated_total > expenseItems.reduce((sum: number, i: any) => sum + (parseFloat(i.actual_amount) || 0), 0) && (
                                             <div className="flex justify-between items-center p-3 bg-blue-50/50 rounded-2xl border border-blue-100">
-                                                <span className="text-[11px] font-normal md:font-black text-[#006AFF] uppercase">Change to Submit</span>
-                                                <span className="text-[15px] font-normal md:font-black text-[#006AFF]">K{(requisitionData.estimated_total - expenseItems.reduce((sum: number, i: any) => sum + (parseFloat(i.actual_amount) || 0), 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                <span className="text-[11px] font-normal md:font-black text-[#0B57D0] uppercase">Change to Submit</span>
+                                                <span className="text-[15px] font-normal md:font-black text-[#0B57D0]">K{(requisitionData.estimated_total - expenseItems.reduce((sum: number, i: any) => sum + (parseFloat(i.actual_amount) || 0), 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                             </div>
                                         )}
                                     </div>
@@ -2489,7 +2489,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             }
                                         }}
                                         disabled={isSavingExpenses || isManualScanning}
-                                        className="w-full mt-6 h-12 bg-[#006AFF] md:bg-[#0059D8] text-white text-[13px] font-bold rounded-full hover:bg-[#0052cc] transition-all disabled:opacity-50 shadow-lg shadow-blue-100"
+                                        className="w-full mt-6 h-12 bg-[#0B57D0] md:bg-[#0B57D0] text-white text-[13px] font-bold rounded-full hover:bg-[#0842A0] transition-all disabled:opacity-50 shadow-lg shadow-blue-100"
                                     >
                                         {isSavingExpenses ? <Loader2 size={18} className="animate-spin mx-auto text-white" /> : 'Confirm Expenses'}
                                     </button>
@@ -2500,8 +2500,8 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Attached Receipts</span>
                                             {isManualScanning && (
                                                 <div className="flex items-center space-x-2">
-                                                    <Loader2 size={12} className="animate-spin text-[#006AFF]" />
-                                                    <span className="text-[10px] font-bold text-[#006AFF] uppercase animate-pulse">AI Checking...</span>
+                                                    <Loader2 size={12} className="animate-spin text-[#0B57D0]" />
+                                                    <span className="text-[10px] font-bold text-[#0B57D0] uppercase animate-pulse">AI Checking...</span>
                                                 </div>
                                             )}
                                         </div>
@@ -2541,7 +2541,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                 <h4 className="text-[13px] font-bold text-gray-900 truncate">{ocr?.vendor || 'Receipt Uploaded'}</h4>
                                                                 <div className="flex items-center gap-2 mt-1">
                                                                     {ocr?.total_amount ? (
-                                                                        <span className="text-[11px] font-black text-[#006AFF] bg-blue-50 px-2 py-0.5 rounded-full">
+                                                                        <span className="text-[11px] font-black text-[#0B57D0] bg-blue-50 px-2 py-0.5 rounded-full">
                                                                             {ocr.currency && ocr.currency.toUpperCase() !== 'ZMW'
                                                                                 ? `${ocr.currency} ${ocr.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}${ocr.zmw_equivalent != null ? ` (~K${ocr.zmw_equivalent.toLocaleString(undefined, { minimumFractionDigits: 2 })})` : ''}`
                                                                                 : `K${ocr.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
@@ -2557,7 +2557,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                             <div className="flex items-center gap-1">
                                                                 <button 
                                                                     onClick={() => setExpandedReceiptId(isExpanded ? null : receipt.id)}
-                                                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1 ${isExpanded ? 'bg-blue-100 text-[#006AFF]' : 'bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-[#006AFF]'}`}
+                                                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1 ${isExpanded ? 'bg-blue-100 text-[#0B57D0]' : 'bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-[#0B57D0]'}`}
                                                                 >
                                                                     {isExpanded ? 'Hide Data' : 'View Data'}
                                                                     <ChevronDown size={14} className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
@@ -2585,7 +2585,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                         {/* Extraction Results */}
                                                                         <div>
                                                                             <h5 className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-2 flex items-center gap-1">
-                                                                                <Sparkles size={10} className="text-[#006AFF]" /> AI Extraction
+                                                                                <Sparkles size={10} className="text-[#0B57D0]" /> AI Extraction
                                                                             </h5>
                                                                             <div className="grid grid-cols-2 gap-2 text-xs">
                                                                                 <div className="bg-white p-2.5 rounded-xl border border-gray-100 shadow-sm">
@@ -2596,13 +2596,13 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                                     <span className="text-gray-400 block text-[9px] uppercase font-bold mb-0.5">Total Amount</span>
                                                                                     {ocr?.currency && ocr.currency.toUpperCase() !== 'ZMW' ? (
                                                                                         <>
-                                                                                            <span className="font-black text-[#006AFF]">{ocr.currency} {ocr.total_amount?.toLocaleString(undefined, { minimumFractionDigits: 2 }) ?? '-'}</span>
+                                                                                            <span className="font-black text-[#0B57D0]">{ocr.currency} {ocr.total_amount?.toLocaleString(undefined, { minimumFractionDigits: 2 }) ?? '-'}</span>
                                                                                             {ocr.zmw_equivalent != null && (
                                                                                                 <span className="block text-[10px] text-indigo-500 font-semibold">≈ K{ocr.zmw_equivalent.toLocaleString(undefined, { minimumFractionDigits: 2 })}{ocr.exchange_rate ? ` @ ${ocr.exchange_rate.toFixed(2)}` : ''}</span>
                                                                                             )}
                                                                                         </>
                                                                                     ) : (
-                                                                                        <span className="font-black text-[#006AFF]">K{ocr?.total_amount != null ? ocr.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}</span>
+                                                                                        <span className="font-black text-[#0B57D0]">K{ocr?.total_amount != null ? ocr.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}</span>
                                                                                     )}
                                                                                 </div>
                                                                             </div>
@@ -2638,7 +2638,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                                                          <span className="font-bold text-gray-900 block text-[12px]">{mi.description}</span>
                                                                                                      </div>
                                                                                                      <div className="text-right ml-2">
-                                                                                                         <span className="font-black text-[#006AFF] bg-blue-50 px-1.5 py-0.5 rounded block text-[12px]">K{mi.ai_extracted_amount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                                                                         <span className="font-black text-[#0B57D0] bg-blue-50 px-1.5 py-0.5 rounded block text-[12px]">K{mi.ai_extracted_amount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                                                                                          <span className="text-[8px] text-gray-400 uppercase font-bold tracking-widest mt-1 block">Matched</span>
                                                                                                      </div>
                                                                                                  </div>
@@ -2677,7 +2677,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                     if (input) input.click();
                                                 }}
                                                 disabled={isManualScanning}
-                                                className="flex-1 h-10 border-2 border-dashed border-gray-100 rounded-2xl flex items-center justify-center space-x-2 text-gray-400 hover:text-[#006AFF] hover:border-[#006AFF]/20 hover:bg-blue-50/30 transition-all group"
+                                                className="flex-1 h-10 border-2 border-dashed border-gray-100 rounded-2xl flex items-center justify-center space-x-2 text-gray-400 hover:text-[#0B57D0] hover:border-[#0B57D0]/20 hover:bg-blue-50/30 transition-all group"
                                             >
                                                 <ImageIcon size={14} className="group-hover:scale-110 transition-transform" />
                                                 <span className="text-[11px] font-black uppercase tracking-widest">Upload Receipts</span>
@@ -2690,7 +2690,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                     disabled={isManualScanning}
                                                     type="button"
                                                     title="Reprocess all receipts with AI"
-                                                    className="w-10 h-10 border border-gray-100 rounded-2xl flex items-center justify-center text-gray-400 hover:text-[#006AFF] hover:bg-blue-50/30 transition-all"
+                                                    className="w-10 h-10 border border-gray-100 rounded-2xl flex items-center justify-center text-gray-400 hover:text-[#0B57D0] hover:bg-blue-50/30 transition-all"
                                                 >
                                                     {isManualScanning ? (
                                                         <Loader2 size={14} className="animate-spin" />
@@ -2731,7 +2731,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                     <div className="bg-white border border-gray-100 rounded-[20px] rounded-tl-none shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] overflow-visible">
                         <div className="px-5 md:px-8 py-6 md:py-8">
                             <div className="flex items-center space-x-3 mb-6">
-                                <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center text-[#006AFF] border border-blue-50 shadow-sm">
+                                <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center text-[#0B57D0] border border-blue-50 shadow-sm">
                                     <Building2 size={14} />
                                 </div>
                                 <div className="flex-1 flex items-center justify-between">
@@ -2751,7 +2751,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                     }
                                                 }}
                                                 disabled={isReloadingAI}
-                                                className="p-1.5 hover:bg-gray-50 rounded-lg text-gray-400 hover:text-[#006AFF] transition-all group"
+                                                className="p-1.5 hover:bg-gray-50 rounded-lg text-gray-400 hover:text-[#0B57D0] transition-all group"
                                                 title="Reload AI Analysis"
                                             >
                                                 <RefreshCw size={14} className={`${isReloadingAI ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`} />
@@ -2770,7 +2770,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             <div className="flex items-center space-x-3">
                                                 <button
                                                     onClick={() => setIsAICategorizationExpanded(!isAICategorizationExpanded)}
-                                                    className="flex items-center space-x-1.5 px-3 py-1.5 hover:bg-blue-50/50 rounded-full text-[11px] font-bold text-[#006AFF] transition-all border border-transparent hover:border-blue-100 group"
+                                                    className="flex items-center space-x-1.5 px-3 py-1.5 hover:bg-blue-50/50 rounded-full text-[11px] font-bold text-[#0B57D0] transition-all border border-transparent hover:border-blue-100 group"
                                                 >
                                                     <span className="uppercase tracking-wider">{isAICategorizationExpanded ? 'Hide Mapping' : 'Show Mapping'}</span>
                                                     <ChevronDown size={14} className={`transition-transform duration-300 ${isAICategorizationExpanded ? 'rotate-180' : ''}`} />
@@ -2867,7 +2867,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                                 <span className="text-[9px] font-bold text-emerald-500">
                                                                                     {item.confidence ? `${Math.round(item.confidence * 100)}% Confidence` : (item.is_manual ? 'Manual Override' : 'System Suggestion')}
                                                                                     {!item.is_manual && typeof item.method === 'string' && item.method.startsWith('MEMORY') && (
-                                                                                        <span className="ml-1 text-[8px] font-black text-[#006AFF] uppercase tracking-wide">· Auto-filled from history</span>
+                                                                                        <span className="ml-1 text-[8px] font-black text-[#0B57D0] uppercase tracking-wide">· Auto-filled from history</span>
                                                                                     )}
                                                                                     {!item.is_manual && item.method === 'RULE' && (
                                                                                         <span className="ml-1 text-[8px] font-black text-violet-500 uppercase tracking-wide">· Rule</span>
@@ -2894,7 +2894,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                                                 placeholder="Search accounts..."
                                                                                                 value={accountSearch}
                                                                                                 onChange={(e) => setAccountSearch(e.target.value)}
-                                                                                                className="w-full pl-9 pr-4 py-2 bg-white border border-gray-100 rounded-xl text-[12px] focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20"
+                                                                                                className="w-full pl-9 pr-4 py-2 bg-white border border-gray-100 rounded-xl text-[12px] focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20"
                                                                                             />
                                                                                         </div>
                                                                                     </div>
@@ -2918,7 +2918,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                                                     }}
                                                                                                     className="w-full flex flex-col items-start p-3 hover:bg-blue-50 rounded-xl transition-all group/item mb-1 text-left"
                                                                                                 >
-                                                                                                    <span className="text-[12px] font-bold text-gray-900 group-hover/item:text-[#006AFF]">{acc.code} - {acc.name}</span>
+                                                                                                    <span className="text-[12px] font-bold text-gray-900 group-hover/item:text-[#0B57D0]">{acc.code} - {acc.name}</span>
                                                                                                     <span className="text-[10px] text-gray-400 uppercase font-black tracking-widest">{acc.type}</span>
                                                                                                 </button>
                                                                                             ))
@@ -2942,7 +2942,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                             <td className="px-6 py-4 text-right">
                                                                 <button 
                                                                     onClick={() => setExpandedLogicIndex(expandedLogicIndex === idx ? null : idx)}
-                                                                    className="text-[11px] font-black text-[#006AFF] hover:underline uppercase tracking-wider"
+                                                                    className="text-[11px] font-black text-[#0B57D0] hover:underline uppercase tracking-wider"
                                                                 >
                                                                     {expandedLogicIndex === idx ? 'Hide Logic' : 'View Logic'}
                                                                 </button>
@@ -3000,7 +3000,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                 }
                                             }}
                                             disabled={isApprovingAI}
-                                            className="w-full h-12 bg-[#006AFF] md:bg-[#0059D8] text-white text-[13px] font-bold rounded-full hover:bg-blue-600 shadow-lg shadow-blue-100 transition-all flex items-center justify-center"
+                                            className="w-full h-12 bg-[#0B57D0] md:bg-[#0B57D0] text-white text-[13px] font-bold rounded-full hover:bg-blue-600 shadow-lg shadow-blue-100 transition-all flex items-center justify-center"
                                         >
                                             {isApprovingAI ? <Loader2 size={18} className="animate-spin" /> : 'Approve Categorizations'}
                                         </button>
@@ -3031,7 +3031,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                     <div className="bg-white border border-gray-100 rounded-[20px] rounded-tl-none shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] overflow-hidden">
                         <div className="px-5 md:px-8 py-6 md:py-8">
                             <div className="flex items-center space-x-3 mb-6">
-                                 <div className="w-7 h-7 rounded-full bg-blue-50/50 flex items-center justify-center text-[#006AFF] border border-blue-50 shadow-sm">
+                                 <div className="w-7 h-7 rounded-full bg-blue-50/50 flex items-center justify-center text-[#0B57D0] border border-blue-50 shadow-sm">
                                      <Building2 size={14} />
                                  </div>
                                  <div className="flex-1 flex items-center justify-between">
@@ -3153,7 +3153,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                 onKeyDown={(e) => {
                                                                     if (e.key === 'Escape') setIsQBCreditDropdownOpen(false);
                                                                 }}
-                                                                className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-100 rounded-xl text-[12px] font-medium focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20"
+                                                                className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-100 rounded-xl text-[12px] font-medium focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20"
                                                             />
                                                         </div>
                                                     </div>
@@ -3174,10 +3174,10 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                         className={`w-full flex items-center justify-between p-3 hover:bg-blue-50 rounded-xl transition-all group/item mb-1 text-left ${paymentAccountId === acc.Id ? 'bg-blue-50/50' : ''}`}
                                                                     >
                                                                         <div className="flex flex-col">
-                                                                            <span className={`text-[12px] font-bold ${paymentAccountId === acc.Id ? 'text-[#006AFF]' : 'text-gray-900'} group-hover/item:text-[#006AFF]`}>{acc.Name}</span>
+                                                                            <span className={`text-[12px] font-bold ${paymentAccountId === acc.Id ? 'text-[#0B57D0]' : 'text-gray-900'} group-hover/item:text-[#0B57D0]`}>{acc.Name}</span>
                                                                             <span className="text-[10px] text-gray-400 uppercase font-black tracking-widest">{acc.AccountType}</span>
                                                                         </div>
-                                                                        {paymentAccountId === acc.Id && <Check size={14} className="text-[#006AFF]" />}
+                                                                        {paymentAccountId === acc.Id && <Check size={14} className="text-[#0B57D0]" />}
                                                                     </button>
                                                                 ))
                                                         ) : (
@@ -3219,7 +3219,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             }
                                         }}
                                         disabled={isPostingQB || (!paymentAccountId && !isWallet)}
-                                        className="w-full h-11 bg-[#006AFF] md:bg-[#0059D8] text-white text-[13px] font-bold rounded-full hover:bg-blue-600 shadow-lg shadow-blue-100/50 transition-all flex items-center justify-center space-x-2 group"
+                                        className="w-full h-11 bg-[#0B57D0] md:bg-[#0B57D0] text-white text-[13px] font-bold rounded-full hover:bg-blue-600 shadow-lg shadow-blue-100/50 transition-all flex items-center justify-center space-x-2 group"
                                     >
                                         {isPostingQB ? <Loader2 size={18} className="animate-spin" /> : (
                                             <>
@@ -3453,7 +3453,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                              }
                                          }}
                                          disabled={isSubmittingChange}
-                                         className="w-full h-10 bg-emerald-600 text-white text-[11px] font-bold rounded-xl hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 disabled:opacity-50"
+                                         className="w-full h-10 bg-[#0B57D0] text-white text-[11px] font-bold rounded-xl hover:bg-[#0842A0] transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#0B57D0]/20 disabled:opacity-50"
                                      >
                                          {isSubmittingChange ? <Loader2 size={14} className="animate-spin" /> : (
                                              <>
@@ -3566,7 +3566,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                      className={`h-12 px-4 text-[12px] font-bold rounded-full transition-all flex items-center justify-center ${
                                                          method.id === 'MONEYWISE_WALLET'
                                                              ? 'bg-orange-500 text-white shadow-lg shadow-orange-100/50'
-                                                             : 'bg-[#F5F5F7] text-gray-600 hover:bg-gray-200 border border-gray-100'
+                                                             : 'bg-[#F1F3F4] text-gray-600 hover:bg-gray-200 border border-gray-100'
                                                      }`}
                                                  >
                                                      {method.name}
@@ -3686,7 +3686,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                          setExcessRecipient('');
                                                          setExcessError(null);
                                                      }}
-                                                     className="flex-1 h-11 px-6 bg-[#F5F5F7] text-gray-700 text-[13px] font-bold rounded-full hover:bg-gray-200 transition-all flex items-center justify-center border border-gray-100"
+                                                     className="flex-1 h-11 px-6 bg-[#F1F3F4] text-gray-700 text-[13px] font-bold rounded-full hover:bg-gray-200 transition-all flex items-center justify-center border border-gray-100"
                                                  >
                                                      Back
                                                  </button>
@@ -3749,7 +3749,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                  alert(err.message);
                                              }
                                          }}
-                                         className="w-full h-10 bg-emerald-600 text-white text-[11px] font-bold rounded-xl hover:bg-emerald-700 transition-all flex items-center justify-center gap-2"
+                                         className="w-full h-10 bg-[#0B57D0] text-white text-[11px] font-bold rounded-xl hover:bg-[#0842A0] transition-all flex items-center justify-center gap-2"
                                      >
                                          <CheckCircle size={14} />
                                          Finalize & Mark as Returned
@@ -3783,7 +3783,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             <div className={`flex flex-col max-w-[75%] ${isOwn ? 'items-end' : 'items-start'}`}>
                 <div className={`px-4 py-2.5 rounded-[16px] text-[13px] font-medium leading-relaxed shadow-sm ${
                     isOwn 
-                        ? 'bg-[#006AFF] md:bg-[#0059D8] text-white rounded-tr-none shadow-blue-100' 
+                        ? 'bg-[#0B57D0] md:bg-[#0B57D0] text-white rounded-tr-none shadow-blue-100' 
                         : 'bg-white text-gray-800 rounded-tl-none border border-gray-100'
                 }`}>
                     {message.content}

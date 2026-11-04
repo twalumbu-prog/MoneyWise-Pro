@@ -20,7 +20,7 @@ const ConfettiCanvas: React.FC = () => {
         resize();
         window.addEventListener('resize', resize);
 
-        const COLORS = ['#006AFF', '#03D47C', '#FF2970', '#FFC531', '#002E3B'];
+        const COLORS = ['#0B57D0', '#34A853', '#FF2970', '#FFC531', '#002E3B'];
         const pieces = Array.from({ length: 160 }, () => ({
             x: Math.random() * canvas.width,
             y: -20 - Math.random() * canvas.height * 0.5,
@@ -75,7 +75,7 @@ export const CompletionScreen: React.FC = () => {
             <div className="relative z-20 text-center max-w-md">
                 {/* Animated checkmark */}
                 <div
-                    className="mx-auto w-24 h-24 rounded-full bg-[#03D47C] flex items-center justify-center shadow-xl shadow-[#03D47C]/30 mw-anim"
+                    className="mx-auto w-24 h-24 rounded-full bg-[#34A853] flex items-center justify-center shadow-xl shadow-[#34A853]/30 mw-anim"
                     style={{ animation: 'mw-scale-in 0.6s cubic-bezier(0.34,1.56,0.64,1) both' }}
                 >
                     <svg viewBox="0 0 24 24" className="w-12 h-12 text-white" fill="none" stroke="currentColor"

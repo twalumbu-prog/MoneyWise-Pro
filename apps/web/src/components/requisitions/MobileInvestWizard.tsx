@@ -411,8 +411,8 @@ export const MobileInvestWizard: React.FC<MobileInvestWizardProps> = ({ isOpen, 
                                     ]}>
                                         <defs>
                                             <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/>
-                                                <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
+                                                <stop offset="5%" stopColor="#1E8E3E" stopOpacity={0.3}/>
+                                                <stop offset="95%" stopColor="#1E8E3E" stopOpacity={0}/>
                                             </linearGradient>
                                         </defs>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
@@ -420,28 +420,28 @@ export const MobileInvestWizard: React.FC<MobileInvestWizardProps> = ({ isOpen, 
                                             dataKey="label" 
                                             axisLine={false} 
                                             tickLine={false} 
-                                            tick={{ fill: '#9CA3AF', fontSize: 10, fontWeight: 600 }} 
+                                            tick={{ fill: '#9AA0A6', fontSize: 10, fontWeight: 600 }} 
                                             dy={10}
                                         />
                                         <YAxis 
                                             axisLine={false} 
                                             tickLine={false} 
-                                            tick={{ fill: '#9CA3AF', fontSize: 10 }}
+                                            tick={{ fill: '#9AA0A6', fontSize: 10 }}
                                             tickFormatter={v => (v / 1000) + 'k'}
                                             dx={-10}
                                         />
                                         <Tooltip 
                                             contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                                            itemStyle={{ color: '#10B981', fontWeight: 'bold' }}
+                                            itemStyle={{ color: '#1E8E3E', fontWeight: 'bold' }}
                                         />
                                         <Area 
                                             type="monotone" 
                                             dataKey="value" 
-                                            stroke="#10B981" 
+                                            stroke="#1E8E3E" 
                                             strokeWidth={3}
                                             fillOpacity={1} 
                                             fill="url(#colorValue)" 
-                                            activeDot={{ r: 6, fill: '#10B981', stroke: '#fff', strokeWidth: 2 }}
+                                            activeDot={{ r: 6, fill: '#1E8E3E', stroke: '#fff', strokeWidth: 2 }}
                                         />
                                     </AreaChart>
                                 </ResponsiveContainer>
@@ -508,7 +508,7 @@ export const MobileInvestWizard: React.FC<MobileInvestWizardProps> = ({ isOpen, 
                                     value={amount || ''}
                                     onChange={e => setAmount(Number(e.target.value))}
                                     placeholder="0.00"
-                                    className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981] transition-all"
+                                    className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#1E8E3E]/20 focus:border-[#1E8E3E] transition-all"
                                 />
                             </div>
                             <div>
@@ -546,7 +546,7 @@ export const MobileInvestWizard: React.FC<MobileInvestWizardProps> = ({ isOpen, 
                                     onChange={e => setRemarks(e.target.value)}
                                     rows={3}
                                     placeholder="Any notes..."
-                                    className="w-full border border-gray-200 rounded-2xl px-4 py-3 text-sm text-gray-800 placeholder-gray-300 resize-none focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981] transition-all"
+                                    className="w-full border border-gray-200 rounded-2xl px-4 py-3 text-sm text-gray-800 placeholder-gray-300 resize-none focus:outline-none focus:ring-2 focus:ring-[#1E8E3E]/20 focus:border-[#1E8E3E] transition-all"
                                 />
                             </div>
                         </div>
@@ -562,7 +562,7 @@ export const MobileInvestWizard: React.FC<MobileInvestWizardProps> = ({ isOpen, 
                     </div>
                     <button
                         onClick={() => setStage(4)}
-                        className="w-full h-14 bg-black hover:bg-neutral-800 rounded-xl inline-flex justify-center items-center text-white text-lg font-bold active:scale-[0.98] transition-all"
+                        className="w-full h-14 bg-[#0B57D0] hover:bg-[#0842A0] rounded-xl inline-flex justify-center items-center text-white text-lg font-bold active:scale-[0.98] transition-all"
                     >
                         Invest
                     </button>
@@ -574,7 +574,7 @@ export const MobileInvestWizard: React.FC<MobileInvestWizardProps> = ({ isOpen, 
                     <button
                         onClick={handleSubmit}
                         disabled={submitting || amount <= 0}
-                        className="w-full h-14 bg-black hover:bg-neutral-800 rounded-xl inline-flex justify-center items-center text-white text-lg font-bold active:scale-[0.98] transition-all disabled:opacity-60 gap-2"
+                        className="w-full h-14 bg-[#0B57D0] hover:bg-[#0842A0] rounded-xl inline-flex justify-center items-center text-white text-lg font-bold active:scale-[0.98] transition-all disabled:opacity-60 gap-2"
                     >
                         {submitting ? <><Loader2 size={18} className="animate-spin" />Processing...</> : 'Confirm Investment'}
                     </button>

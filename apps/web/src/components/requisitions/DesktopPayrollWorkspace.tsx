@@ -424,14 +424,14 @@ export const DesktopPayrollWorkspace: React.FC<DesktopPayrollWorkspaceProps> = (
             <div className="flex items-center justify-between shrink-0">
                 <button
                     onClick={handleClose}
-                    className="h-8 pl-2.5 pr-3.5 bg-white rounded-lg outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E8EEF8] flex items-center gap-1.5 hover:bg-[#F3F5FC] transition-colors"
+                    className="h-8 pl-2.5 pr-3.5 bg-white rounded-lg outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E9EEF6] flex items-center gap-1.5 hover:bg-[#F8FAFD] transition-colors"
                 >
-                    <ArrowLeft size={15} className="text-[#111827]" />
-                    <span className="text-sm font-bold text-[#111827]">New Payroll Requisition</span>
+                    <ArrowLeft size={15} className="text-[#1F1F1F]" />
+                    <span className="text-sm font-bold text-[#1F1F1F]">New Payroll Requisition</span>
                 </button>
             </div>
 
-            <div className="flex-1 min-h-0 rounded-2xl outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E8EEF8] bg-white overflow-y-auto">
+            <div className="flex-1 min-h-0 rounded-2xl outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E9EEF6] bg-white overflow-y-auto">
                 <div className="max-w-2xl mx-auto p-8 animate-in fade-in zoom-in-95 duration-200 pb-20">
                 {error && (
                     <div className="bg-red-50 border border-red-100 rounded-2xl p-4 flex items-start gap-3">
@@ -443,7 +443,7 @@ export const DesktopPayrollWorkspace: React.FC<DesktopPayrollWorkspaceProps> = (
                 {stage === 1 && (
                     <>
                         <div>
-                            <h2 className="text-[20px] font-bold text-brand-navy">Upload Payroll</h2>
+                            <h2 className="text-[20px] font-bold text-[#1F1F1F]">Upload Payroll</h2>
                             <p className="text-[13px] text-gray-400 mt-1">Select your department and upload your employee payroll sheet</p>
                         </div>
 
@@ -476,7 +476,7 @@ export const DesktopPayrollWorkspace: React.FC<DesktopPayrollWorkspaceProps> = (
                                     />
                                     <Upload size={24} className="text-emerald-500" />
                                     <div>
-                                        <p className="text-xs font-bold text-brand-navy">{fileName || 'Choose CSV or Excel sheet'}</p>
+                                        <p className="text-xs font-bold text-[#1F1F1F]">{fileName || 'Choose CSV or Excel sheet'}</p>
                                         <p className="text-[10px] text-gray-400 mt-0.5">Max size 5MB</p>
                                     </div>
                                 </div>
@@ -513,7 +513,7 @@ export const DesktopPayrollWorkspace: React.FC<DesktopPayrollWorkspaceProps> = (
                 {stage === 2 && (
                     <>
                         <div>
-                            <h2 className="text-[20px] font-bold text-brand-navy">Verify Employees</h2>
+                            <h2 className="text-[20px] font-bold text-[#1F1F1F]">Verify Employees</h2>
                             <p className="text-[13px] text-gray-400 mt-1">Review employee payout details and verify accounts before proceeding.</p>
                         </div>
 
@@ -644,7 +644,7 @@ export const DesktopPayrollWorkspace: React.FC<DesktopPayrollWorkspaceProps> = (
                                                                     await handleVerifySingle(item.id, updated);
                                                                 }}
                                                                 disabled={!editName || !editAccount || !editBankCode || !editAmount}
-                                                                className="px-3 py-1.5 bg-emerald-500 text-white rounded-lg text-xs font-bold disabled:opacity-50"
+                                                                className="px-3 py-1.5 bg-[#0B57D0] text-white rounded-lg text-xs font-bold disabled:opacity-50"
                                                             >
                                                                 Save & Verify
                                                             </button>
@@ -654,7 +654,7 @@ export const DesktopPayrollWorkspace: React.FC<DesktopPayrollWorkspaceProps> = (
                                                     <div className="flex justify-between items-start">
                                                         <div className="space-y-1.5 flex-1 min-w-0 pr-2">
                                                             <div className="flex items-center gap-2">
-                                                                <p className="text-xs font-bold text-brand-navy truncate">{item.employee_name}</p>
+                                                                <p className="text-xs font-bold text-[#1F1F1F] truncate">{item.employee_name}</p>
                                                                 {status === 'verified' && (
                                                                     <span className="text-[12px] font-bold text-emerald-600">✓</span>
                                                                 )}
@@ -672,7 +672,7 @@ export const DesktopPayrollWorkspace: React.FC<DesktopPayrollWorkspaceProps> = (
                                                             
                                                             {status === 'pending' && (
                                                                 <div className="flex items-center gap-1.5 text-[10px] text-gray-405 mt-1">
-                                                                    <Loader2 size={10} className="animate-spin text-[#006AFF]" />
+                                                                    <Loader2 size={10} className="animate-spin text-[#0B57D0]" />
                                                                     <span>Verifying details...</span>
                                                                 </div>
                                                             )}
@@ -694,7 +694,7 @@ export const DesktopPayrollWorkspace: React.FC<DesktopPayrollWorkspaceProps> = (
                                                         </div>
                                                         <div className="flex items-center space-x-3 shrink-0">
                                                             <div className="text-right">
-                                                                <p className="text-sm font-black text-brand-navy">K{Number(item.estimated_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                                                <p className="text-sm font-black text-[#1F1F1F]">K{Number(item.estimated_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                                                             </div>
                                                             <button
                                                                 type="button"
@@ -726,7 +726,7 @@ export const DesktopPayrollWorkspace: React.FC<DesktopPayrollWorkspaceProps> = (
                 {stage === 3 && (
                     <>
                         <div>
-                            <h2 className="text-[20px] font-bold text-brand-navy">Confirm Requisition</h2>
+                            <h2 className="text-[20px] font-bold text-[#1F1F1F]">Confirm Requisition</h2>
                             <p className="text-[13px] text-gray-400 mt-1">Review the final payroll details and submit for approval</p>
                         </div>
 
@@ -739,7 +739,7 @@ export const DesktopPayrollWorkspace: React.FC<DesktopPayrollWorkspaceProps> = (
                             ].map(row => (
                                 <div key={row.label} className="flex justify-between items-start gap-4">
                                     <span className="text-xs text-gray-500 font-medium whitespace-nowrap">{row.label}</span>
-                                    <span className="text-sm font-bold text-brand-navy text-right break-words">{row.value}</span>
+                                    <span className="text-sm font-bold text-[#1F1F1F] text-right break-words">{row.value}</span>
                                 </div>
                             ))}
                         </div>
@@ -770,7 +770,7 @@ export const DesktopPayrollWorkspace: React.FC<DesktopPayrollWorkspaceProps> = (
                 {stage === 1 && (
                     <button
                         onClick={handleProceedToPreview}
-                        className="h-10 px-6 rounded-xl bg-emerald-500 text-xs font-bold text-white flex items-center gap-1.5 hover:bg-emerald-600 transition-colors"
+                        className="h-10 px-6 rounded-xl bg-[#0B57D0] text-xs font-bold text-white flex items-center gap-1.5 hover:bg-[#0842A0] transition-colors"
                     >
                         Next
                         <ArrowRight size={16} />
@@ -796,7 +796,7 @@ export const DesktopPayrollWorkspace: React.FC<DesktopPayrollWorkspaceProps> = (
                         <button 
                             onClick={handleProceedToSummary} 
                             disabled={!lineItems.every(item => verificationResults[item.id]?.status === 'verified') || isVerifying}
-                            className="h-10 px-6 bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all"
+                            className="h-10 px-6 bg-[#0B57D0] text-white hover:bg-[#0842A0] disabled:opacity-50 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all"
                         >
                             Next
                             <ArrowRight size={16} />
@@ -807,7 +807,7 @@ export const DesktopPayrollWorkspace: React.FC<DesktopPayrollWorkspaceProps> = (
                     <button
                         onClick={handleSubmit}
                         disabled={submitting}
-                        className="h-10 px-8 rounded-xl bg-emerald-500 text-xs font-bold text-white flex items-center justify-center gap-2 hover:bg-emerald-600 disabled:opacity-50 transition-colors"
+                        className="h-10 px-8 rounded-xl bg-[#0B57D0] text-xs font-bold text-white flex items-center justify-center gap-2 hover:bg-[#0842A0] disabled:opacity-50 transition-colors"
                     >
                         {submitting ? (
                             <>

@@ -30,7 +30,7 @@ export const AchievementsMobileModal: React.FC = () => {
                     aria-label="Back to Inbox"
                 >
                     <ArrowLeft size={22} />
-                    <span className="font-bold text-lg text-brand-navy">Missions</span>
+                    <span className="font-bold text-lg text-[#1F1F1F]">Missions</span>
                 </button>
 
                 <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200/60 px-3 py-1 rounded-full">
@@ -40,9 +40,9 @@ export const AchievementsMobileModal: React.FC = () => {
             </div>
 
             {/* Main Scrollable Content */}
-            <div className="flex-1 overflow-y-auto pb-12 bg-[#F8FAFC]">
+            <div className="flex-1 overflow-y-auto pb-12 bg-[#F8FAFD]">
                 {/* Hero Banner */}
-                <div className="p-6 bg-gradient-to-br from-brand-navy via-[#004BBD] to-[#006AFF] text-white relative overflow-hidden">
+                <div className="p-6 bg-gradient-to-br from-brand-navy via-[#004BBD] to-[#0B57D0] text-white relative overflow-hidden">
                     <div className="absolute -right-6 -bottom-6 w-36 h-36 bg-white/10 rounded-full blur-2xl pointer-events-none" />
 
                     <div className="relative z-10">
@@ -65,7 +65,7 @@ export const AchievementsMobileModal: React.FC = () => {
                             </div>
                             <div className="w-full bg-black/20 h-2.5 rounded-full overflow-hidden mb-3">
                                 <div
-                                    className="bg-gradient-to-r from-[#03D47C] to-emerald-300 h-full rounded-full transition-all duration-500"
+                                    className="bg-gradient-to-r from-[#34A853] to-emerald-300 h-full rounded-full transition-all duration-500"
                                     style={{ width: `${percentage}%` }}
                                 />
                             </div>
@@ -94,7 +94,7 @@ export const AchievementsMobileModal: React.FC = () => {
                         onClick={() => setActiveTab('missions')}
                         className={`pb-3 text-xs font-extrabold border-b-2 transition-all flex items-center gap-1.5 ${
                             activeTab === 'missions'
-                                ? 'border-[#006AFF] text-[#006AFF]'
+                                ? 'border-[#0B57D0] text-[#0B57D0]'
                                 : 'border-transparent text-gray-400'
                         }`}
                     >
@@ -105,7 +105,7 @@ export const AchievementsMobileModal: React.FC = () => {
                         onClick={() => setActiveTab('badges')}
                         className={`pb-3 text-xs font-extrabold border-b-2 transition-all flex items-center gap-1.5 ${
                             activeTab === 'badges'
-                                ? 'border-[#006AFF] text-[#006AFF]'
+                                ? 'border-[#0B57D0] text-[#0B57D0]'
                                 : 'border-transparent text-gray-400'
                         }`}
                     >
@@ -123,7 +123,7 @@ export const AchievementsMobileModal: React.FC = () => {
                                 className={`p-4 rounded-3xl border transition-all ${
                                     item.completed
                                         ? 'bg-white border-gray-100 opacity-85 shadow-xs'
-                                        : 'bg-white border-[#E8EEF8] shadow-md hover:border-blue-300'
+                                        : 'bg-white border-[rgba(116,119,117,0.22)] shadow-md hover:border-blue-300'
                                 }`}
                             >
                                 <div className="flex items-start justify-between gap-3 mb-2">
@@ -146,13 +146,13 @@ export const AchievementsMobileModal: React.FC = () => {
                                     )}
                                 </div>
 
-                                <h3 className="text-sm font-bold text-brand-navy mb-1">{item.title}</h3>
+                                <h3 className="text-sm font-bold text-[#1F1F1F] mb-1">{item.title}</h3>
                                 <p className="text-xs text-gray-500 leading-relaxed mb-4">{item.description}</p>
 
                                 {!item.completed && (
                                     <button
                                         onClick={() => startMission(item.id)}
-                                        className="w-full py-3 bg-[#006AFF] hover:bg-[#0058DB] active:scale-98 text-white text-xs font-bold rounded-2xl shadow-md flex items-center justify-center gap-2 transition-all"
+                                        className="w-full py-3 bg-[#0B57D0] hover:bg-[#0842A0] active:scale-98 text-white text-xs font-bold rounded-2xl shadow-md flex items-center justify-center gap-2 transition-all"
                                     >
                                         <Play size={14} className="fill-white" />
                                         Start Mission Now
@@ -168,20 +168,20 @@ export const AchievementsMobileModal: React.FC = () => {
                                     key={item.id}
                                     className={`p-4 rounded-3xl border text-center transition-all ${
                                         item.completed
-                                            ? 'bg-white border-[#E8EEF8] shadow-sm'
+                                            ? 'bg-white border-[rgba(116,119,117,0.22)] shadow-sm'
                                             : 'bg-gray-50 border-gray-100 opacity-60 grayscale'
                                     }`}
                                 >
                                     <div
                                         className="w-14 h-14 mx-auto rounded-3xl flex items-center justify-center mb-3 shadow-md"
                                         style={{
-                                            backgroundColor: item.completed ? item.badgeColor : '#9CA3AF',
+                                            backgroundColor: item.completed ? item.badgeColor : '#9AA0A6',
                                             color: '#FFF',
                                         }}
                                     >
                                         {item.completed ? <Award size={28} /> : <Lock size={24} />}
                                     </div>
-                                    <h4 className="text-xs font-bold text-brand-navy truncate">{item.badgeName}</h4>
+                                    <h4 className="text-xs font-bold text-[#1F1F1F] truncate">{item.badgeName}</h4>
                                     <p className="text-[10px] font-semibold text-gray-400 mt-1">
                                         {item.completed ? 'Unlocked' : 'Locked Objective'}
                                     </p>

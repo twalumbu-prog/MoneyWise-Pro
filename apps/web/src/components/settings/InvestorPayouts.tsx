@@ -64,7 +64,7 @@ export const InvestorPayouts: React.FC = () => {
         save.mutate();
     };
 
-    if (isLoading) return <div className="flex items-center gap-2 text-sm text-gray-400"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>;
+    if (isLoading) return <div className="flex items-center gap-2 text-sm text-[#0B57D0]"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>;
     if (error) return <p className="text-sm text-red-600">{(error as Error).message}</p>;
     if (data && !data.isInvestmentCompany) {
         return <p className="text-sm text-gray-500 max-w-md">This organization isn't listed as an investment company, so there are no investor deposits to forward.</p>;
@@ -106,7 +106,7 @@ export const InvestorPayouts: React.FC = () => {
                         placeholder={lookup.status === 'checking' ? 'Looking up account…' : 'Filled in automatically from the bank'}
                         className={`${input} ${lookup.status === 'found' ? 'bg-emerald-50/50 font-semibold' : ''}`}
                     />
-                    {lookup.status === 'checking' && <p className="mt-1 text-[11px] text-gray-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Verifying with the bank…</p>}
+                    {lookup.status === 'checking' && <p className="mt-1 text-[11px] text-[#0B57D0] flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Verifying with the bank…</p>}
                     {lookup.status === 'found' && <p className="mt-1 text-[11px] text-emerald-600 flex items-center gap-1"><CheckCircle2 size={12} /> Verified with the bank</p>}
                     {lookup.status === 'failed' && <p className="mt-1 text-[11px] text-amber-600 flex items-center gap-1"><AlertCircle size={12} /> Couldn't verify this account. Check the bank and number.</p>}
                 </div>

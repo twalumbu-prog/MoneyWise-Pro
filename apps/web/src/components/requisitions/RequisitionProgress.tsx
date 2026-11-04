@@ -39,7 +39,7 @@ const RequisitionProgress: React.FC<RequisitionProgressProps> = ({ currentStatus
                             key={step.label}
                             className={`px-4 py-1.5 rounded-full whitespace-nowrap text-[11px] font-bold transition-all ${
                                 isCurrent 
-                                    ? 'bg-white text-[#006AFF] border border-[#006AFF] shadow-sm' 
+                                    ? 'bg-white text-[#0B57D0] border border-[#0B57D0] shadow-sm' 
                                     : isCompleted 
                                         ? 'text-gray-900 font-medium' 
                                         : 'text-gray-400 font-normal'
@@ -61,8 +61,8 @@ const RequisitionProgress: React.FC<RequisitionProgressProps> = ({ currentStatus
                         <React.Fragment key={step.label}>
                             <div className="flex flex-col items-center min-w-[70px]">
                                 <div className={`flex items-center justify-center w-7 min-w-[28px] h-7 rounded-full border-2 transition-all duration-300 z-10 ${
-                                    isCompleted ? 'bg-[#006AFF] border-[#006AFF] text-white' :
-                                    isCurrent ? 'bg-white border-[#006AFF] text-[#006AFF]' :
+                                    isCompleted ? 'bg-[#0B57D0] border-[#0B57D0] text-white' :
+                                    isCurrent ? 'bg-white border-[#0B57D0] text-[#0B57D0]' :
                                     'bg-white border-gray-200 text-gray-400'
                                 }`}>
                                     {isCompleted ? (
@@ -74,14 +74,14 @@ const RequisitionProgress: React.FC<RequisitionProgressProps> = ({ currentStatus
                                     ) }
                                 </div>
                                 <span className={`mt-1.5 text-[9px] font-bold uppercase tracking-widest text-center ${
-                                    isCurrent ? 'text-[#006AFF]' : isCompleted ? 'text-gray-900' : 'text-gray-400'
+                                    isCurrent ? 'text-[#0B57D0]' : isCompleted ? 'text-gray-900' : 'text-gray-400'
                                 }`}>
                                     {step.label}
                                 </span>
                             </div>
                             {index < uiSteps.length - 1 && (
                                 <div className={`flex-1 min-w-[30px] h-[1.5px] mt-[14px] -mx-8 ${
-                                    index < currentIndex ? 'bg-[#006AFF]' : 'bg-gray-200'
+                                    index < currentIndex ? 'bg-[#0B57D0]' : 'bg-gray-200'
                                 }`} />
                             )}
                         </React.Fragment>

@@ -92,9 +92,9 @@ export const CreditInvoiceDetailModal: React.FC<Props> = ({ invoice, isOpen, onC
             <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
             <div className="relative w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] flex flex-col">
                 <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100">
-                    <div className="h-10 w-10 rounded-xl bg-[#F0F7FF] text-[#0058DB] flex items-center justify-center"><Receipt size={20} /></div>
+                    <div className="h-10 w-10 rounded-xl bg-[#E8F0FE] text-[#0B57D0] flex items-center justify-center"><Receipt size={20} /></div>
                     <div className="flex-1 min-w-0">
-                        <h3 className="text-base font-bold text-[#111827]">{inv.invoice_number}</h3>
+                        <h3 className="text-base font-bold text-[#1F1F1F]">{inv.invoice_number}</h3>
                         <InvoiceStatusPill invoice={inv} />
                     </div>
                     <button onClick={onClose} className="p-2 rounded-full text-gray-400 hover:bg-gray-100" aria-label="Close"><X size={18} /></button>
@@ -102,9 +102,9 @@ export const CreditInvoiceDetailModal: React.FC<Props> = ({ invoice, isOpen, onC
 
                 <div className="overflow-y-auto px-6 py-5 space-y-6">
                     <div className="bg-gray-50 rounded-2xl p-4 grid grid-cols-3 gap-3 text-center">
-                        <div><p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Total</p><p className="text-sm font-bold text-[#111827] mt-1">{money(inv.total)}</p></div>
+                        <div><p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Total</p><p className="text-sm font-bold text-[#1F1F1F] mt-1">{money(inv.total)}</p></div>
                         <div><p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Paid</p><p className="text-sm font-bold text-emerald-600 mt-1">{money(inv.amount_paid)}</p></div>
-                        <div><p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Balance</p><p className={`text-sm font-bold mt-1 ${inv.balance > 0 ? 'text-[#0058DB]' : 'text-gray-400'}`}>{money(inv.balance)}</p></div>
+                        <div><p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Balance</p><p className={`text-sm font-bold mt-1 ${inv.balance > 0 ? 'text-[#0B57D0]' : 'text-gray-400'}`}>{money(inv.balance)}</p></div>
                     </div>
 
                     <div className="space-y-2.5 text-sm">
@@ -120,10 +120,10 @@ export const CreditInvoiceDetailModal: React.FC<Props> = ({ invoice, isOpen, onC
                             {inv.items.map((it, i) => (
                                 <div key={i} className="flex justify-between gap-3 px-4 py-3 text-sm">
                                     <div className="min-w-0">
-                                        <p className="font-semibold text-[#111827] truncate">{it.name}</p>
+                                        <p className="font-semibold text-[#1F1F1F] truncate">{it.name}</p>
                                         <p className="text-xs text-gray-400">{it.check_in && it.check_out ? `${it.check_in} → ${it.check_out} · ${it.quantity} night(s)` : `${it.quantity} × ${money(it.unit_price)}`}</p>
                                     </div>
-                                    <p className="font-bold text-[#111827] flex-shrink-0">{money(it.quantity * it.unit_price)}</p>
+                                    <p className="font-bold text-[#1F1F1F] flex-shrink-0">{money(it.quantity * it.unit_price)}</p>
                                 </div>
                             ))}
                         </div>
@@ -142,7 +142,7 @@ export const CreditInvoiceDetailModal: React.FC<Props> = ({ invoice, isOpen, onC
                                 {payments.map((p: any) => (
                                     <div key={p.id} className="flex justify-between gap-3 px-4 py-3 text-sm">
                                         <div className="min-w-0">
-                                            <p className="font-semibold text-[#111827] truncate">{p.cashbook_entries?.reference_number || 'Payment'}</p>
+                                            <p className="font-semibold text-[#1F1F1F] truncate">{p.cashbook_entries?.reference_number || 'Payment'}</p>
                                             <p className="text-xs text-gray-400">{p.cashbook_entries?.date ? formatInvoiceDate(p.cashbook_entries.date) : ''}</p>
                                         </div>
                                         <p className="font-bold text-emerald-600 flex-shrink-0">{money(p.amount)}</p>
@@ -158,7 +158,7 @@ export const CreditInvoiceDetailModal: React.FC<Props> = ({ invoice, isOpen, onC
                             {payLink ? (
                                 <div className="relative flex items-center">
                                     <input readOnly value={payLink.url} onFocus={e => e.currentTarget.select()} className="w-full pl-4 pr-24 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-600 outline-none" />
-                                    <button onClick={copyLink} className={`absolute right-1.5 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 ${copied ? 'bg-[#0058DB] text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+                                    <button onClick={copyLink} className={`absolute right-1.5 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 ${copied ? 'bg-[#0B57D0] text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
                                         {copied ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy</>}
                                     </button>
                                 </div>
@@ -182,9 +182,9 @@ export const CreditInvoiceDetailModal: React.FC<Props> = ({ invoice, isOpen, onC
                                     value={email}
                                     onChange={e => setEmail(e.target.value)}
                                     placeholder="customer@email.com"
-                                    className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-[#0058DB]"
+                                    className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-[#0B57D0]"
                                 />
-                                <button onClick={send} disabled={busy !== null} className="px-4 rounded-xl bg-[#0058DB] text-white text-sm font-bold flex items-center gap-1.5 disabled:opacity-50">
+                                <button onClick={send} disabled={busy !== null} className="px-4 rounded-xl bg-[#0B57D0] text-white text-sm font-bold flex items-center gap-1.5 disabled:opacity-50">
                                     {busy === 'send' ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} Send
                                 </button>
                             </div>
@@ -203,7 +203,7 @@ export const CreditInvoiceDetailModal: React.FC<Props> = ({ invoice, isOpen, onC
                             <Ban size={15} /> Void
                         </button>
                     ))}
-                    <button onClick={download} disabled={busy !== null} className="flex-1 py-3 rounded-xl bg-[#111827] text-white text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50">
+                    <button onClick={download} disabled={busy !== null} className="flex-1 py-3 rounded-xl bg-[#1F1F1F] text-white text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50">
                         {busy === 'pdf' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Download PDF
                     </button>
                 </div>

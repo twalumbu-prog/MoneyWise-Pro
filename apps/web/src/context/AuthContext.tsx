@@ -26,6 +26,9 @@ function categorizeAuthError(message: string): string {
     return 'unknown';
 }
 
+/** One profile load per user at a time: getSession() and the auth listener ask in the same instant. */
+const profileInflight = new Map<string, Promise<void>>();
+
 export interface NotificationCounts {
     requisitions: number;
     approvals: number;
@@ -97,7 +100,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Must keep a stable identity: consumers list it in effect deps (e.g.
     // CashLedger), and it sets provider state — a fresh function per render
     // re-fires those effects forever and floods the API/Supabase.
-    const refreshNotifications = useCallback(async () => {
+    const notificationsInflight = useRef<Promise<void> | null>(null);
+    const refreshNotifications = useCallback((): Promise<void> => {
+        if (notificationsInflight.current) return notificationsInflight.current;
+        const p = loadNotifications().finally(() => { notificationsInflight.current = null; });
+        notificationsInflight.current = p;
+        return p;
+    }, []);
+
+    const loadNotifications = async () => {
         // Never poll signed-out — the login page and public payment pages mount
         // this provider too, and each unauthenticated tick is a guaranteed 401
         // (wasted mobile data + junk api_fetch_failed analytics events).
@@ -121,10 +132,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch (error) {
             console.error('Failed to fetch notifications:', error);
         }
-    }, []);
+    };
 
     useEffect(() => {
-        const fetchRoleAndOrg = async (userId: string, email?: string) => {
+        const loadRoleAndOrg = async (userId: string, email?: string) => {
             // This browser's own active organization. The server-side default is shared by every
             // device signed in as this user, so each device keeps (and announces) its own choice.
             const prefKey = `moneywise:active_org:${userId}`;
@@ -196,6 +207,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 refreshNotifications();
                 refreshUserOrganizations();
             }
+        };
+
+        // getSession() and the auth listener's INITIAL_SESSION event both ask for the profile in the same instant, which used to fire the
+        // same three requests two or three times over. Callers asking while one is already running share it.
+        // The map lives at module level so React StrictMode's mount/unmount/mount in development shares it too.
+        const fetchRoleAndOrg = (userId: string, email?: string): Promise<void> => {
+            const running = profileInflight.get(userId);
+            if (running) return running;
+            const p = loadRoleAndOrg(userId, email).finally(() => { profileInflight.delete(userId); });
+            profileInflight.set(userId, p);
+            return p;
         };
 
         supabase.auth.getSession().then(({ data: { session } }) => {
@@ -411,7 +433,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return data;
     };
 
-    const refreshUserOrganizations = async () => {
+    const orgsInflight = useRef<Promise<void> | null>(null);
+    const refreshUserOrganizations = (): Promise<void> => {
+        if (orgsInflight.current) return orgsInflight.current;
+        const p = loadUserOrganizations().finally(() => { orgsInflight.current = null; });
+        orgsInflight.current = p;
+        return p;
+    };
+    const loadUserOrganizations = async () => {
         try {
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) return;

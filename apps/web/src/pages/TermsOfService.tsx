@@ -7,16 +7,16 @@ export const TermsOfService = () => {
         <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 font-sans">
             <div className="max-w-3xl mx-auto bg-white p-8 shadow rounded-lg">
                 <div className="mb-6">
-                    <Link to="/" className="text-brand-navy hover:text-brand-green flex items-center gap-2 transition-colors">
+                    <Link to="/" className="text-[#1F1F1F] hover:text-brand-green flex items-center gap-2 transition-colors">
                         <ArrowLeft size={16} /> Back to Home
                     </Link>
                 </div>
-                <h1 className="text-3xl font-bold text-brand-navy mb-2">Terms of Service</h1>
+                <h1 className="text-3xl font-bold text-[#1F1F1F] mb-2">Terms of Service</h1>
                 <p className="text-sm text-gray-500 mb-8">Last Updated: February 16, 2026</p>
 
                 <div className="prose prose-indigo max-w-none space-y-6 text-gray-700">
                     <section>
-                        <h2 className="text-xl font-bold text-brand-navy mb-3">1. Acceptance of Terms</h2>
+                        <h2 className="text-xl font-bold text-[#1F1F1F] mb-3">1. Acceptance of Terms</h2>
                         <p>
                             By accessing or using Money Wise Pro ("Service"), you agree to be bound by these Terms of Service.
                             If you do not agree, you must discontinue use immediately.
@@ -24,7 +24,7 @@ export const TermsOfService = () => {
                     </section>
 
                     <section>
-                        <h2 className="text-xl font-bold text-brand-navy mb-3">2. License Grant</h2>
+                        <h2 className="text-xl font-bold text-[#1F1F1F] mb-3">2. License Grant</h2>
                         <p>
                             Money Wise Pro grants you a limited, non-exclusive, non-transferable, revocable license to use the Service solely for internal business operations.
                         </p>
@@ -37,7 +37,7 @@ export const TermsOfService = () => {
                     </section>
 
                     <section>
-                        <h2 className="text-xl font-bold text-brand-navy mb-3">3. QuickBooks Integration</h2>
+                        <h2 className="text-xl font-bold text-[#1F1F1F] mb-3">3. QuickBooks Integration</h2>
                         <p className="mb-2">
                             Money Wise Pro integrates with QuickBooks Online, a product of Intuit Inc.<br />
                             QuickBooks is a trademark of Intuit Inc.
@@ -53,7 +53,7 @@ export const TermsOfService = () => {
                     </section>
 
                     <section>
-                        <h2 className="text-xl font-bold text-brand-navy mb-3">4. User Responsibilities</h2>
+                        <h2 className="text-xl font-bold text-[#1F1F1F] mb-3">4. User Responsibilities</h2>
                         <p className="mb-2">You agree to:</p>
                         <ul className="list-disc pl-5 mt-1 space-y-1">
                             <li>Provide accurate information</li>
@@ -63,7 +63,7 @@ export const TermsOfService = () => {
                     </section>
 
                     <section>
-                        <h2 className="text-xl font-bold text-brand-navy mb-3">5. Disclaimer of Warranties</h2>
+                        <h2 className="text-xl font-bold text-[#1F1F1F] mb-3">5. Disclaimer of Warranties</h2>
                         <div className="bg-gray-100 p-4 rounded-lg text-sm font-medium text-gray-700">
                             <p className="uppercase mb-2">The Service is provided "AS IS" and "AS AVAILABLE."</p>
                             <p className="uppercase">
@@ -73,7 +73,7 @@ export const TermsOfService = () => {
                     </section>
 
                     <section>
-                        <h2 className="text-xl font-bold text-brand-navy mb-3">6. Limitation of Liability</h2>
+                        <h2 className="text-xl font-bold text-[#1F1F1F] mb-3">6. Limitation of Liability</h2>
                         <div className="bg-gray-100 p-4 rounded-lg text-sm font-medium text-gray-700">
                             <p className="uppercase mb-2">
                                 To the maximum extent permitted by law, Stephen Kapambwe shall not be liable for:
@@ -91,7 +91,7 @@ export const TermsOfService = () => {
                     </section>
 
                     <section>
-                        <h2 className="text-xl font-bold text-brand-navy mb-3">7. Termination</h2>
+                        <h2 className="text-xl font-bold text-[#1F1F1F] mb-3">7. Termination</h2>
                         <p>
                             We reserve the right to suspend or terminate access if:
                         </p>
@@ -103,14 +103,14 @@ export const TermsOfService = () => {
                     </section>
 
                     <section>
-                        <h2 className="text-xl font-bold text-brand-navy mb-3">8. Governing Law</h2>
+                        <h2 className="text-xl font-bold text-[#1F1F1F] mb-3">8. Governing Law</h2>
                         <p>
                             These Terms are governed by the laws of Zambia.
                         </p>
                     </section>
 
                     <section>
-                        <h2 className="text-xl font-bold text-brand-navy mb-3">9. Contact</h2>
+                        <h2 className="text-xl font-bold text-[#1F1F1F] mb-3">9. Contact</h2>
                         <p>
                             For questions regarding these Terms: <a href="mailto:stephe@blueopus.cloud" className="text-brand-green hover:underline">stephe@blueopus.cloud</a>
                         </p>

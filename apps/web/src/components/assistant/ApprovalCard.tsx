@@ -95,7 +95,7 @@ export const ApprovalCard: React.FC<Props> = ({ toolName, proposal, status, onDe
                     ? 'border-emerald-200 bg-emerald-50/40'
                     : status === 'declined'
                     ? 'border-gray-200 bg-gray-50/60'
-                    : 'border-[#006AFF]/25 bg-[#006AFF]/[0.03] shadow-[0_4px_24px_rgba(0,106,255,0.08)]'
+                    : 'border-[#0B57D0]/25 bg-[#0B57D0]/[0.03] shadow-[0_4px_24px_rgba(11,87,208,0.08)]'
             }`}
         >
             <div
@@ -106,7 +106,7 @@ export const ApprovalCard: React.FC<Props> = ({ toolName, proposal, status, onDe
                     className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl ${
                         status === 'approved' ? 'bg-emerald-100 text-emerald-600'
                         : status === 'declined' ? 'bg-gray-200 text-gray-500'
-                        : 'bg-[#006AFF]/10 text-[#006AFF]'
+                        : 'bg-[#0B57D0]/10 text-[#0B57D0]'
                     }`}
                 >
                     {status === 'approved' ? <Check size={16} /> : status === 'declined' ? <X size={16} /> : <ShieldCheck size={16} />}
@@ -117,7 +117,7 @@ export const ApprovalCard: React.FC<Props> = ({ toolName, proposal, status, onDe
                         {status === 'approved' && ' · approved'}
                         {status === 'declined' && ' · declined'}
                     </p>
-                    <p className="mt-0.5 text-[14px] font-black leading-snug tracking-tight text-brand-navy">
+                    <p className="mt-0.5 text-[14px] font-black leading-snug tracking-tight text-[#1F1F1F]">
                         {proposal.summary}
                     </p>
                 </div>
@@ -128,7 +128,7 @@ export const ApprovalCard: React.FC<Props> = ({ toolName, proposal, status, onDe
                 {proposal.preview.map((row, i) => (
                     <div key={i} className="flex items-baseline justify-between gap-4 py-2.5">
                         <dt className="text-[12px] font-semibold text-gray-500">{row.label}</dt>
-                        <dd className="text-right text-[13px] font-bold tabular-nums text-brand-navy">{row.value}</dd>
+                        <dd className="text-right text-[13px] font-bold tabular-nums text-[#1F1F1F]">{row.value}</dd>
                     </div>
                 ))}
             </dl>
@@ -145,7 +145,7 @@ export const ApprovalCard: React.FC<Props> = ({ toolName, proposal, status, onDe
                     <button
                         onClick={() => { if (proposal.strongAuth && !window.confirm(`${proposal.summary}\n\nThis can't be reversed. Confirm?`)) return; onDecide(true); }}
                         disabled={busy}
-                        className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#006AFF] px-4 py-2.5 text-[13px] font-black text-white shadow-lg shadow-blue-500/20 transition-all hover:bg-[#0057d4] disabled:opacity-60"
+                        className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#0B57D0] px-4 py-2.5 text-[13px] font-black text-white shadow-lg shadow-blue-500/20 transition-all hover:bg-[#0057d4] disabled:opacity-60"
                     >
                         {busy ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
                         {busy ? 'Applying…' : 'Approve'}

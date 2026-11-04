@@ -194,29 +194,29 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({
                             onClick={() => setActiveTab('chat')}
                             className={`flex-1 md:flex-none px-3 md:px-6 py-2.5 text-[11px] md:text-[10px] font-bold md:uppercase tracking-normal md:tracking-widest whitespace-nowrap transition-all relative rounded-full md:rounded-none ${
                                 activeTab === 'chat'
-                                    ? 'bg-white md:bg-transparent text-gray-900 md:text-[#006AFF] shadow-sm md:shadow-none'
+                                    ? 'bg-white md:bg-transparent text-gray-900 md:text-[#0B57D0] shadow-sm md:shadow-none'
                                     : 'text-gray-400 hover:text-gray-600'
                             }`}
                         >
                             Chat History
-                            <div className={`hidden md:block absolute bottom-0 left-0 right-0 h-[2px] bg-[#006AFF] md:bg-[#0059D8] transition-opacity ${activeTab === 'chat' ? 'opacity-100' : 'opacity-0'}`} />
+                            <div className={`hidden md:block absolute bottom-0 left-0 right-0 h-[2px] bg-[#0B57D0] md:bg-[#0B57D0] transition-opacity ${activeTab === 'chat' ? 'opacity-100' : 'opacity-0'}`} />
                         </button>
                         <button
                             onClick={() => setActiveTab('attachments')}
                             className={`flex-1 md:flex-none px-3 md:px-6 py-2.5 text-[11px] md:text-[10px] font-bold md:uppercase tracking-normal md:tracking-widest whitespace-nowrap transition-all relative rounded-full md:rounded-none ${
                                 activeTab === 'attachments'
-                                    ? 'bg-white md:bg-transparent text-gray-900 md:text-[#006AFF] shadow-sm md:shadow-none'
+                                    ? 'bg-white md:bg-transparent text-gray-900 md:text-[#0B57D0] shadow-sm md:shadow-none'
                                     : 'text-gray-400 hover:text-gray-600'
                             }`}
                         >
                             Attachments
-                            <div className={`hidden md:block absolute bottom-0 left-0 right-0 h-[2px] bg-[#006AFF] md:bg-[#0059D8] transition-opacity ${activeTab === 'attachments' ? 'opacity-100' : 'opacity-0'}`} />
+                            <div className={`hidden md:block absolute bottom-0 left-0 right-0 h-[2px] bg-[#0B57D0] md:bg-[#0B57D0] transition-opacity ${activeTab === 'attachments' ? 'opacity-100' : 'opacity-0'}`} />
                         </button>
                         <button
                             onClick={() => setActiveTab('audit')}
                             className={`flex-1 md:flex-none px-3 md:px-6 py-2.5 text-[11px] md:text-[10px] font-bold md:uppercase tracking-normal md:tracking-widest whitespace-nowrap transition-all relative rounded-full md:rounded-none ${
                                 activeTab === 'audit'
-                                    ? 'bg-white md:bg-transparent text-gray-900 md:text-[#006AFF] shadow-sm md:shadow-none'
+                                    ? 'bg-white md:bg-transparent text-gray-900 md:text-[#0B57D0] shadow-sm md:shadow-none'
                                     : 'text-gray-400 hover:text-gray-600'
                             }`}
                         >
@@ -229,7 +229,7 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({
                                     {Math.round(requisition.audit_score)}%
                                 </span>
                             )}
-                            <div className={`hidden md:block absolute bottom-0 left-0 right-0 h-[2px] bg-[#006AFF] md:bg-[#0059D8] transition-opacity ${activeTab === 'audit' ? 'opacity-100' : 'opacity-0'}`} />
+                            <div className={`hidden md:block absolute bottom-0 left-0 right-0 h-[2px] bg-[#0B57D0] md:bg-[#0B57D0] transition-opacity ${activeTab === 'audit' ? 'opacity-100' : 'opacity-0'}`} />
                         </button>
                     </div>
                 </div>

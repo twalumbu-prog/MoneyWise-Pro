@@ -252,7 +252,7 @@ export const MasterfeesIntegration: React.FC<MasterfeesIntegrationProps> = ({ on
                     <ArrowLeft className="w-5 h-5 text-gray-500" />
                 </button>
                 <div>
-                    <h3 className="text-lg font-bold text-brand-navy">Master Fees Integration</h3>
+                    <h3 className="text-lg font-bold text-[#1F1F1F]">Master Fees Integration</h3>
                     <p className="text-sm text-gray-500">Sync school invoices, fee revenue and receivables.</p>
                 </div>
             </div>
@@ -285,7 +285,7 @@ export const MasterfeesIntegration: React.FC<MasterfeesIntegrationProps> = ({ on
                         </div>
                         <div>
                             {loading ? (
-                                <RefreshCw className="h-5 w-5 animate-spin text-gray-400" />
+                                <RefreshCw className="h-5 w-5 animate-spin text-[#0B57D0]" />
                             ) : status?.connected ? (
                                 <div className="flex items-center space-x-4">
                                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
@@ -392,7 +392,7 @@ export const MasterfeesIntegration: React.FC<MasterfeesIntegrationProps> = ({ on
                             <div className="flex items-center gap-2">
                                 <span className="font-medium text-gray-700">Last Sync:</span>{' '}
                                 {status.lastSyncedAt ? new Date(status.lastSyncedAt).toLocaleString() : 'Never'}
-                                {autoSyncing && <RefreshCw className="h-3.5 w-3.5 animate-spin text-brand-green" />}
+                                {autoSyncing && <RefreshCw className="h-3.5 w-3.5 animate-spin text-[#0B57D0]" />}
                             </div>
                             {status.lastSyncTruncated && (
                                 <div className="sm:col-span-2 flex items-start bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-amber-700">
@@ -420,7 +420,7 @@ export const MasterfeesIntegration: React.FC<MasterfeesIntegrationProps> = ({ on
                             disabled={syncing}
                             className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-bold rounded-xl text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
                         >
-                            <RefreshCw className={`h-4 w-4 mr-2 text-brand-green ${syncing ? 'animate-spin' : ''}`} />
+                            <RefreshCw className={`h-4 w-4 mr-2 text-[#0B57D0] ${syncing ? 'animate-spin' : ''}`} />
                             {syncing ? 'Syncing…' : 'Sync now'}
                         </button>
                         <button
@@ -476,11 +476,11 @@ export const MasterfeesIntegration: React.FC<MasterfeesIntegrationProps> = ({ on
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
                         <div className="p-3 rounded-xl bg-gray-50">
                             <div className="text-xs text-gray-500">MoneyWise Receivable</div>
-                            <div className="text-lg font-bold text-brand-navy">{money(reconcile.moneywiseReceivable)}</div>
+                            <div className="text-lg font-bold text-[#1F1F1F]">{money(reconcile.moneywiseReceivable)}</div>
                         </div>
                         <div className="p-3 rounded-xl bg-gray-50">
                             <div className="text-xs text-gray-500">Master Fees Outstanding</div>
-                            <div className="text-lg font-bold text-brand-navy">{money(reconcile.masterfeesOutstanding)}</div>
+                            <div className="text-lg font-bold text-[#1F1F1F]">{money(reconcile.masterfeesOutstanding)}</div>
                         </div>
                         <div className="p-3 rounded-xl bg-gray-50">
                             <div className="text-xs text-gray-500">Difference</div>
@@ -490,7 +490,7 @@ export const MasterfeesIntegration: React.FC<MasterfeesIntegrationProps> = ({ on
                         </div>
                         <div className="p-3 rounded-xl bg-gray-50">
                             <div className="text-xs text-gray-500">Students w/ Balance</div>
-                            <div className="text-lg font-bold text-brand-navy">{reconcile.studentsWithBalance}</div>
+                            <div className="text-lg font-bold text-[#1F1F1F]">{reconcile.studentsWithBalance}</div>
                         </div>
                     </div>
                     {Math.abs(reconcile.difference) >= 0.01 && (
@@ -544,7 +544,7 @@ export const MasterfeesIntegration: React.FC<MasterfeesIntegrationProps> = ({ on
                                                             <option key={a.id} value={a.id}>{a.name} ({a.code})</option>
                                                         ))}
                                                     </select>
-                                                    {savingCat === cat.id && <RefreshCw className="h-4 w-4 animate-spin text-brand-green" />}
+                                                    {savingCat === cat.id && <RefreshCw className="h-4 w-4 animate-spin text-[#0B57D0]" />}
                                                 </div>
                                             </td>
                                         </tr>

@@ -415,7 +415,7 @@ export const BatchImportStaff: React.FC<Props> = ({ onClose, onSuccess }) => {
                     {/* Importing stage */}
                     {stage === 'importing' && (
                         <div className="p-10 flex flex-col items-center gap-4">
-                            <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 animate-spin">
+                            <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-[#0B57D0] animate-spin">
                                 <Loader2 size={22} />
                             </div>
                             <p className="text-sm font-semibold text-gray-800">Importing staff members…</p>

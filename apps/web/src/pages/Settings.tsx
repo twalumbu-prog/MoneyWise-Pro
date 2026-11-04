@@ -24,6 +24,7 @@ import { ChartOfAccounts } from '../components/settings/ChartOfAccounts';
 import { MyProfileSettings } from '../components/settings/MyProfileSettings';
 import { SubscriptionBilling } from '../components/settings/SubscriptionBilling';
 import { Layout } from '../components/Layout';
+import { ImportPanel } from '../components/accounting/AccountingParts';
 
 export const Settings: React.FC = () => {
     const [searchParams, setSearchParams] = useSearchParams();
@@ -86,12 +87,13 @@ export const Settings: React.FC = () => {
 
                             {/* Tabs Row */}
                             <div className="self-stretch flex-shrink-0 overflow-x-auto no-scrollbar">
-                                <div className="flex items-center gap-1 p-1 bg-[#F3F5FC] md:bg-[#F8FAFD] rounded-[10px] min-w-max">
+                                <div className="flex items-center gap-1 p-1 bg-[#F8FAFD] md:bg-[#F8FAFD] rounded-[10px] min-w-max">
                                     {[
                                         { id: 'general', label: 'General Settings', icon: <SettingsIcon className="w-2.5 h-2.5" /> },
                                         { id: 'profile', label: 'My Profile', icon: <User className="w-2.5 h-2.5" /> },
                                         { id: 'users', label: 'Team Members', icon: <Users className="w-2.5 h-2.5" /> },
                                         { id: 'coa', label: 'Chart of Accounts', icon: <FileText className="w-2.5 h-2.5" /> },
+                                        { id: 'import', label: 'Import Data', icon: <FileText className="w-2.5 h-2.5" /> },
                                         { id: 'integrations', label: 'Integrations', icon: <Share2 className="w-2.5 h-2.5" /> },
                                         { id: 'billing', label: 'Subscription & Billing', icon: <CreditCard className="w-2.5 h-2.5" /> },
                                         { id: 'api', label: 'MoneyWise API', icon: <Code2 className="w-2.5 h-2.5" /> },
@@ -103,7 +105,7 @@ export const Settings: React.FC = () => {
                                             onClick={() => handleTabChange(tab.id)}
                                             className={`px-3.5 py-1.5 rounded-lg text-[11px] whitespace-nowrap transition-all flex items-center gap-1.5 ${
                                                 activeTab === tab.id
-                                                    ? 'font-bold bg-white text-[#111827] shadow-sm'
+                                                    ? 'font-bold bg-white text-[#1F1F1F] shadow-sm'
                                                     : 'font-normal text-gray-500 hover:text-gray-700'
                                             }`}
                                         >
@@ -129,6 +131,8 @@ export const Settings: React.FC = () => {
                                     {/* Chart of Accounts Tab */}
                                     {activeTab === 'coa' && <ChartOfAccounts />}
 
+                                    {activeTab === 'import' && <ImportPanel />}
+
                                     {/* Integrations Tab */}
                                     {activeTab === 'integrations' && (
                                         <div className="space-y-6">
@@ -136,7 +140,7 @@ export const Settings: React.FC = () => {
                                                 <>
                                                     <div className="flex justify-between items-center">
                                                         <div>
-                                                            <h3 className="text-lg font-bold text-brand-navy">Integrations</h3>
+                                                            <h3 className="text-lg font-bold text-[#1F1F1F]">Integrations</h3>
                                                             <p className="text-sm text-gray-500">Manage connections to external services.</p>
                                                         </div>
                                                     </div>

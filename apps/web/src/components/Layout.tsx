@@ -9,6 +9,7 @@ import { WalletCardsIcon, AstroidIcon } from './icons/BrandIcons';
 import { AchievementsMobileModal } from './achievements/AchievementsMobileModal';
 import { AchievementTourOverlay } from './achievements/AchievementTourOverlay';
 import { AchievementUnlockedOverlay } from './achievements/AchievementUnlockedOverlay';
+import { isMarketplacePath, marketplaceSection, MARKETPLACE_BOTTOM_TABS, MarketplaceMoreButton } from './marketplace/MarketplaceMobileNav';
 
 interface LayoutProps {
     children: React.ReactNode;
@@ -20,7 +21,7 @@ interface LayoutProps {
     mobileHeaderHidden?: boolean;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-[#F5FAFF]', noPadding = false, title, mobileHeaderAction, mobileHeaderHidden = false }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-[#F8FAFD]', noPadding = false, title, mobileHeaderAction, mobileHeaderHidden = false }) => {
     const { user, userRole, signOut, userOrganizations, switchOrganization, organizationName, organizationId } = useAuth();
     const { completedCount, totalCount, toggleMobileModal } = useAchievements();
     const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -44,6 +45,11 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
         location.pathname.startsWith('/apps/') ||
         location.pathname === '/invest' ||
         location.pathname.startsWith('/invest/');
+    // The Marketplace gets a back arrow on top and its own sections in the bottom bar (hidden at checkout, which has its own Pay button).
+    const isMarketplace = isMarketplacePath(location.pathname);
+    const hideBottomBar = isBackButtonPage || location.pathname.startsWith('/marketplace/checkout');
+    const showBack = isBackButtonPage || isMarketplace;
+    const goBack = () => { if (isMarketplace && window.history.length <= 1) navigate('/menu'); else navigate(-1); };
     // Subset that also need the flex-column/overflow-hidden main chain (no outer scroll)
     const isFlexPage = isSchedulesPage ||
         location.pathname === '/invest' ||
@@ -87,12 +93,12 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
             {!mobileHeaderHidden && <div className="md:hidden sticky top-0 z-20">
                 <div className={`${backgroundColor} px-6 py-4 flex items-center justify-between backdrop-blur-md bg-opacity-80`}>
                     {/* Back button for back-button pages, title for all others */}
-                    {isBackButtonPage ? (
+                    {showBack ? (
                         <div className="flex items-center justify-between w-full">
                             <div className="flex items-center gap-3">
                                 <button
                                     type="button"
-                                    onClick={() => navigate(-1)}
+                                    onClick={goBack}
                                     aria-label="Go back"
                                     className="flex items-center justify-center text-gray-500 active:opacity-50 transition-opacity"
                                 >
@@ -100,7 +106,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                                         <path d="M15 18l-6-6 6-6" />
                                     </svg>
                                 </button>
-                                <h1 className={location.pathname.startsWith('/invest')
+                                <h1 className={location.pathname.startsWith('/invest') || isMarketplace
                                     ? 'font-advercase text-2xl font-bold text-black'
                                     : "text-xl font-bold font-['DM_Sans'] text-gray-900 leading-tight"
                                 }>
@@ -110,6 +116,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                             {mobileHeaderAction && (
                                 <div className="flex-shrink-0">{mobileHeaderAction}</div>
                             )}
+                            {isMarketplace && !mobileHeaderAction && <MarketplaceMoreButton />}
                         </div>
                     ) : (
                         <h1 className="font-advercase text-3xl font-normal text-black">
@@ -118,7 +125,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                     )}
 
                     {/* Right-side actions — hidden on back-button pages */}
-                    {!isBackButtonPage && (
+                    {!showBack && (
                         <div className="flex items-center gap-2">
                             {isInboxPage && (
                                 <>
@@ -126,11 +133,11 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                                         type="button"
                                         onClick={toggleMobileModal}
                                         aria-label="Achievements & Missions"
-                                        className="h-10 w-10 rounded-full bg-white border border-gray-100 flex items-center justify-center text-[#006AFF] overflow-hidden shadow-sm active:scale-95 transition-all relative"
+                                        className="h-10 w-10 rounded-full bg-white border border-gray-100 flex items-center justify-center text-[#0B57D0] overflow-hidden shadow-sm active:scale-95 transition-all relative"
                                     >
                                         <Trophy size={18} />
                                         {completedCount < totalCount && (
-                                            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#03D47C] animate-pulse" />
+                                            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#34A853] animate-pulse" />
                                         )}
                                     </button>
                                     <button
@@ -167,7 +174,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                                 <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest leading-none mb-1">
                                     Organization
                                 </p>
-                                <p className="text-sm font-black text-brand-navy truncate mb-3">{organizationName || 'No Organization'}</p>
+                                <p className="text-sm font-black text-[#1F1F1F] truncate mb-3">{organizationName || 'No Organization'}</p>
                                 
                                 <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest leading-none mb-1">
                                     Profile
@@ -205,7 +212,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                                                     className={`w-full text-left px-2.5 py-2 text-xs rounded-lg transition-colors flex items-center justify-between ${
                                                         isCurrent
                                                             ? 'text-brand-green bg-brand-green/5 font-bold'
-                                                            : 'text-gray-500 hover:text-brand-navy hover:bg-gray-50'
+                                                            : 'text-gray-500 hover:text-[#1F1F1F] hover:bg-gray-50'
                                                     }`}
                                                 >
                                                     <span className="truncate">{uo.organization.name}</span>
@@ -221,7 +228,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                                     setIsProfileOpen(false);
                                     navigate('/settings');
                                 }}
-                                className="w-full flex items-center text-left py-2.5 text-xs font-bold text-gray-600 hover:text-brand-navy active:bg-gray-50 rounded-xl transition-all"
+                                className="w-full flex items-center text-left py-2.5 text-xs font-bold text-gray-600 hover:text-[#1F1F1F] active:bg-gray-50 rounded-xl transition-all"
                             >
                                 <Settings size={14} className="mr-2.5 text-gray-400" />
                                 Settings
@@ -255,14 +262,17 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
             </main>
 
             {/* Mobile Bottom Navigation Bar — hidden on full-screen pages like Schedules */}
-            <div className={`md:hidden fixed bottom-0 left-0 right-0 h-[88px] bg-white border-t border-gray-100 flex items-center justify-around z-40 pb-safe shadow-[0_-2px_10px_rgba(0,0,0,0.02)] ${isBackButtonPage ? 'hidden' : ''}`}>
-                {[
+            <div className={`md:hidden fixed bottom-0 left-0 right-0 h-[88px] bg-white border-t border-gray-100 flex items-center justify-around z-40 pb-safe shadow-[0_-2px_10px_rgba(0,0,0,0.02)] ${hideBottomBar ? 'hidden' : ''}`}>
+                {(isMarketplace ? [
+                    ...MARKETPLACE_BOTTOM_TABS.map((t) => ({ path: t.path, icon: t.icon, label: t.label, isActive: (p: string) => marketplaceSection(p) === t.section, hide: false, tourTarget: undefined as string | undefined })),
+                    { path: '/menu', icon: Menu, label: 'Menu', isActive: () => false, hide: false, tourTarget: undefined as string | undefined },
+                ] : [
                     { path: '/requisitions', icon: Navigation, label: 'Inbox', isActive: (p: string) => p === '/requisitions' || p === '/' },
                     { path: '/cashbook', icon: WalletCardsIcon, label: 'Wallet', isActive: (p: string) => p === '/cashbook', hide: isRequestor },
                     { path: '/intelligence', icon: AstroidIcon, label: 'BI', isActive: (p: string) => p === '/intelligence', hide: isRequestor, tourTarget: 'nav-bi-tab' },
                     { path: '/reporting', icon: TrendingUp, label: 'Reporting', isActive: (p: string) => p === '/reporting' },
                     { path: '/menu', icon: Menu, label: 'Menu', isActive: (p: string) => ['/menu', '/settings', '/audit', '/approvals', '/disbursements'].some(prefix => p.startsWith(prefix)) || p.startsWith('/vouchers'), tourTarget: 'nav-settings' }
-                ].filter(tab => !tab.hide).map((tab, idx) => {
+                ]).filter(tab => !tab.hide).map((tab, idx) => {
                     const TabIcon = tab.icon;
                     const active = tab.isActive(location.pathname);
                     return (
@@ -272,12 +282,12 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                             {...(tab.tourTarget ? { 'data-tour-target': tab.tourTarget } : {})}
                             className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
                                 active
-                                    ? 'bg-[#F0F7FF] text-[#006AFF]'
+                                    ? 'bg-[#E8F0FE] text-[#0B57D0]'
                                     : 'text-gray-400 hover:text-gray-500 active:scale-95'
                             }`}
                             aria-label={tab.label}
                         >
-                            <TabIcon size={22} className={active ? "fill-[#006AFF]/10" : ""} />
+                            <TabIcon size={22} className={active ? "fill-[#0B57D0]/10" : ""} />
                         </Link>
                     );
                 })}

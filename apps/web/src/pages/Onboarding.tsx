@@ -131,7 +131,7 @@ export const Onboarding: React.FC = () => {
     if (!state) {
         return (
             <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                <Loader2 className="h-8 w-8 animate-spin text-[#0B57D0]" />
             </div>
         );
     }

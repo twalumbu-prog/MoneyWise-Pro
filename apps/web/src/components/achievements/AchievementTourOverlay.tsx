@@ -145,15 +145,15 @@ export const AchievementTourOverlay: React.FC = () => {
         if (isStuck) {
             return (
                 <div className="fixed inset-0 z-[300] bg-brand-navy/60 backdrop-blur-xs transition-opacity duration-200 pointer-events-auto flex items-center justify-center p-4">
-                    <div className="w-full max-w-xs bg-white rounded-3xl shadow-2xl border border-[#E8EEF8] p-5 text-center animate-in fade-in zoom-in-95 duration-200">
-                        <p className="text-sm font-bold text-brand-navy mb-1">Couldn't find this step</p>
+                    <div className="w-full max-w-xs bg-white rounded-3xl shadow-2xl border border-[rgba(116,119,117,0.22)] p-5 text-center animate-in fade-in zoom-in-95 duration-200">
+                        <p className="text-sm font-bold text-[#1F1F1F] mb-1">Couldn't find this step</p>
                         <p className="text-xs text-gray-500 leading-relaxed mb-4">
                             This part of the screen may have moved or isn't visible right now.
                         </p>
                         <div className="flex flex-col gap-2">
                             <button
                                 onClick={advanceStep}
-                                className="w-full py-2.5 bg-[#006AFF] hover:bg-[#0058DB] active:scale-98 text-white text-xs font-bold rounded-xl shadow-sm transition-all"
+                                className="w-full py-2.5 bg-[#0B57D0] hover:bg-[#0842A0] active:scale-98 text-white text-xs font-bold rounded-xl shadow-sm transition-all"
                             >
                                 Skip This Step
                             </button>
@@ -170,8 +170,8 @@ export const AchievementTourOverlay: React.FC = () => {
         }
         return (
             <div className="fixed inset-0 z-[300] bg-brand-navy/50 backdrop-blur-xs transition-opacity duration-200 pointer-events-auto flex items-center justify-center">
-                <div className="bg-white text-brand-navy px-4 py-2.5 rounded-2xl border border-[#E8EEF8] text-xs font-bold shadow-xl flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#006AFF] animate-pulse" />
+                <div className="bg-white text-[#1F1F1F] px-4 py-2.5 rounded-2xl border border-[rgba(116,119,117,0.22)] text-xs font-bold shadow-xl flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#0B57D0] animate-pulse" />
                     Locating step...
                 </div>
             </div>
@@ -182,7 +182,7 @@ export const AchievementTourOverlay: React.FC = () => {
         <div className="fixed inset-0 z-[300] pointer-events-none animate-in fade-in duration-200">
             {/* Backdrop Spotlight Cutout with smooth fade-to-normal effect */}
             <div
-                className={`absolute transition-all duration-700 ease-out border-2 border-[#006AFF]/80 rounded-2xl ${
+                className={`absolute transition-all duration-700 ease-out border-2 border-[#0B57D0]/80 rounded-2xl ${
                     isFadedBackdrop
                         ? 'shadow-[0_0_0_9999px_rgba(0,46,59,0.14)]'
                         : 'shadow-[0_0_0_9999px_rgba(0,46,59,0.68)]'
@@ -200,7 +200,7 @@ export const AchievementTourOverlay: React.FC = () => {
                 className="absolute z-[310] flex flex-col items-center pointer-events-none transition-all duration-250"
                 style={getArrowStyle(bounds, arrowPos)}
             >
-                <div className="bg-[#006AFF] text-white text-[10px] font-bold uppercase tracking-wide px-2.5 py-0.5 rounded-full shadow-lg mb-1">
+                <div className="bg-[#0B57D0] text-white text-[10px] font-bold uppercase tracking-wide px-2.5 py-0.5 rounded-full shadow-lg mb-1">
                     Tap here
                 </div>
                 {renderArrowIcon(arrowPos)}
@@ -213,7 +213,7 @@ export const AchievementTourOverlay: React.FC = () => {
             >
                 <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-white/10">
                     <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-lg bg-[#006AFF]/20 text-[#4E9BFF] flex items-center justify-center">
+                        <div className="w-6 h-6 rounded-lg bg-[#0B57D0]/20 text-[#4E9BFF] flex items-center justify-center">
                             <Sparkles size={14} />
                         </div>
                         <span className="text-[10px] font-bold text-[#7EB3FF] uppercase tracking-wider truncate max-w-[140px]">
@@ -227,7 +227,7 @@ export const AchievementTourOverlay: React.FC = () => {
                         </span>
                         <button
                             onClick={cancelMission}
-                            className="text-white/50 hover:text-white transition-colors"
+                            className="text-white/70 hover:text-white transition-colors"
                             aria-label="Cancel mission tour"
                         >
                             <X size={14} />
@@ -241,14 +241,14 @@ export const AchievementTourOverlay: React.FC = () => {
                 <div className="flex items-center justify-between gap-2">
                     <button
                         onClick={cancelMission}
-                        className="text-xs font-semibold text-white/50 hover:text-white/80 px-2 py-1"
+                        className="text-xs font-semibold text-white/70 hover:text-white/80 px-2 py-1"
                     >
                         Exit Tour
                     </button>
 
                     <button
                         onClick={advanceStep}
-                        className="flex items-center gap-1.5 text-xs font-bold text-white bg-[#006AFF] hover:bg-[#0058DB] active:scale-95 px-4 py-2 rounded-xl shadow-md transition-all"
+                        className="flex items-center gap-1.5 text-xs font-bold text-white bg-[#0B57D0] hover:bg-[#0842A0] active:scale-95 px-4 py-2 rounded-xl shadow-md transition-all"
                     >
                         {activeStepIndex + 1 === totalSteps ? 'Complete Mission' : 'Next Step'}
                         <ChevronRight size={14} />
@@ -260,7 +260,7 @@ export const AchievementTourOverlay: React.FC = () => {
 };
 
 function renderArrowIcon(pos: string) {
-    const className = "text-[#006AFF] filter drop-shadow-md";
+    const className = "text-[#0B57D0] filter drop-shadow-md";
     switch (pos) {
         case 'bottom': return <ArrowUp size={28} className={className} />;
         case 'left': return <ArrowRight size={28} className={className} />;

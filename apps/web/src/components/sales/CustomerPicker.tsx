@@ -107,7 +107,7 @@ export const CustomerPicker: React.FC<CustomerPickerProps> = ({
                 {value.customerId ? (
                     <BadgeCheck size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500" />
                 ) : isLoading ? (
-                    <Loader2 size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 animate-spin" />
+                    <Loader2 size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#0B57D0] animate-spin" />
                 ) : (
                     <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300" />
                 )}

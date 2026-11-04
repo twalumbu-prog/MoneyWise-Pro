@@ -10,7 +10,7 @@ const AIRTEL_SVG_WHITE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 3
 
 const MONEYWISE_LOGO_WHITE = `<svg width="26" height="18" viewBox="0 0 26 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.85474 12.4959L6.10299 4.53705C6.78008 2.87804 9.12932 2.87804 9.80642 4.53705L11.203 7.95881C11.88 9.61782 14.2293 9.61782 14.9064 7.95881L16.3029 4.53705C16.98 2.87804 19.3293 2.87804 20.0063 4.53705L23.2546 12.4959" stroke="white" stroke-width="2.5" stroke-linecap="round"/><path d="M25 9.46973L19.3273 9.46973" stroke="white" stroke-width="2" stroke-linecap="round"/><path d="M6.5636 9.4707H1" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>`;
 
-const BADGE_CHECK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z" fill="#2563eb" stroke="#2563eb" stroke-width="0.5"/><path d="m9 12 2 2 4-4" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const BADGE_CHECK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z" fill="#0B57D0" stroke="#0B57D0" stroke-width="0.5"/><path d="m9 12 2 2 4-4" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 const MTN_SVG_WHITE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 998.57409 499.29377"><path fill="#ffffff" d="m 490.78484,499.24244 c -0.074,-0.0741 -3.7,-0.15754 -8.0575,-0.18538 -25.0421,-0.16004 -59.0333,-2.2012 -87.8269,-5.27398 -121.8439,-13.00287 -229.3011,-48.30101 -302.286491,-99.29677 -28.2234,-19.72008 -51.3294,-42.33472 -66.6879,-65.26989 -6.0992,-9.108 -12.1717,-20.35304 -15.8198,-29.29495 -12.1650008,-29.81809 -13.3691008,-61.1835 -3.4963008,-91.07629 2.3409,-7.08773 4.5741008,-12.45241 8.2606008,-19.84375 9.0509,-18.14678 20.8657,-34.14994 37.5163,-50.81573 46.5766,-46.619324 120.865191,-84.707524 213.030691,-109.222044 58.692,-15.61114 125.4693,-25.4601539 190.3371,-28.07291384 3.638,-0.14653 7.7456,-0.32672 9.1281,-0.40041 11.2734,-0.60092 48.0077,-0.66325 65.2198,-0.11066 121.8488,3.91192994 234.1764,29.08985384 320.4104,71.81908384 47.717,23.64393 84.5543,51.013364 110.2728,81.930594 5.9379,7.13818 12.0834,15.79129 17.0622,24.02416 3.018,4.99067 8.9866,16.9891 11.0558,22.225 8.4673,21.42639 11.38896,43.22298 8.7064,64.95521 -5.445,44.11302 -34.6171,87.04012 -83.9941,123.59844 -24.6728,18.26753 -53.1068,34.36608 -86.3864,48.90954 -81.9931,35.83164 -186.6998,57.45694 -294.6136,60.84718 -2.5466,0.08 -6.4757,0.20649 -8.7312,0.28108 -6.2291,0.20598 -32.9466,0.42592 -33.1,0.27248 z m 33.6291,-39.69644 c 1.6735,-0.0724 5.424,-0.19852 8.3344,-0.28023 32.3531,-0.90829 70.7901,-4.23432 104.1135,-9.00916 111.1092,-15.92055 205.782,-50.97747 263.1282,-97.43521 43.9079,-35.57104 63.9445,-75.90429 58.1828,-117.12101 -2.4234,-17.33613 -9.8719,-34.9931 -21.7645,-51.59375 -27.0202,-37.7167 -77.3157,-71.33172 -144.8975,-96.842284 -70.4582,-26.59633 -159.1289,-43.35325 -248.4437,-46.95069 -3.6381,-0.14654 -7.7457,-0.32697 -9.1282,-0.40096 -11.4249,-0.61147 -48.3356,-0.66851 -66.0135,-0.10201 -111.4905,3.57278 -213.4251,24.74608 -293.5552,60.975714 -6.7987,3.07391 -23.9985,11.72796 -30.1625,15.17623 -29.4347,16.4662 -52.733791,34.18429 -69.888891,53.14793 -28.7754,31.80886 -39.8141,65.52563 -32.8747,100.4127 6.465,32.50147 30.6468,64.79537 69.342391,92.60406 61.2336,44.00568 155.3012,75.98963 264.667,89.98952 26.7598,3.42552 60.1895,6.17975 83.7406,6.8993 2.9105,0.0889 5.6489,0.20929 6.0855,0.2675 0.4365,0.0582 6.1515,0.18544 12.7,0.28274 6.5484,0.0973 11.961,0.22515 12.0279,0.28411 0.156,0.1374 30.3746,-0.13003 34.4064,-0.3045 z M 250.16344,332.60404 c -0.069,-0.18191 -0.095,-37.65683 -0.058,-83.27761 l 0.068,-82.94687 h 19.7115 19.7114 l 21.7584,33.46857 c 11.967,18.40772 21.8492,33.49459 21.9604,33.52638 0.1111,0.0318 10.0182,-15.05883 22.0156,-33.53472 l 21.8136,-33.59253 h 19.6599 19.6598 v 83.21316 83.21315 l -19.6449,-0.0678 -19.645,-0.0678 v -46.61152 c -6e-4,-25.63633 -0.06,-46.66552 -0.1326,-46.73152 -0.072,-0.066 -6.7565,10.07449 -14.8536,22.53443 l -14.7221,22.65444 -14.0109,0.0685 -14.011,0.0684 -14.7484,-22.62313 c -8.1116,-12.44272 -14.8568,-22.69016 -14.9894,-22.77208 -0.1446,-0.0894 -0.241,18.64203 -0.241,46.83021 v 46.97915 h -19.5874 c -15.4267,0 -19.6142,-0.0703 -19.7131,-0.33072 z m 236.9443,-63.16758 v -63.5017 h -25.4 -25.4 v -19.71145 -19.71146 h 70.3791 70.3792 v 19.71146 19.71145 h -25.2672 -25.2671 l -0.067,63.43386 -0.067,63.43385 -19.6453,0.0678 -19.6453,0.0679 z m 109.8021,-19.97774 v -83.21146 h 19.6944 19.6945 l 35.6696,49.45507 35.6696,49.45506 0.067,-49.45506 0.067,-49.45507 h 19.7107 19.7108 v 83.21315 83.21314 l -19.7732,-0.0678 -19.7732,-0.0678 -14.4242,-19.99643 c -7.9333,-10.99804 -23.9492,-33.2032 -35.5909,-49.34479 l -21.1666,-29.34836 -0.067,49.41093 -0.067,49.41094 h -19.7108 -19.7107 z"/></svg>`;
 
@@ -177,7 +177,7 @@ const ShareWalletLinkModal: React.FC<ShareWalletLinkModalProps> = ({
             c.restore();
         } else {
             const grad = c.createLinearGradient(LOGO_CX - 28, LOGO_CY - 28, LOGO_CX + 28, LOGO_CY + 28);
-            grad.addColorStop(0, '#2563eb'); grad.addColorStop(1, '#4338ca');
+            grad.addColorStop(0, '#0B57D0'); grad.addColorStop(1, '#4338ca');
             c.fillStyle = grad;
             c.beginPath(); c.arc(LOGO_CX, LOGO_CY, LOGO_SIZE / 2, 0, Math.PI * 2); c.fill();
             c.fillStyle = '#fff'; c.font = 'bold 22px DM Sans, sans-serif';
@@ -188,7 +188,7 @@ const ShareWalletLinkModal: React.FC<ShareWalletLinkModalProps> = ({
         // ── 3. Organisation name + verified badge ──────────────────────────────
         const ORG = organizationName || walletName || '';
         c.font = 'bold 13px DM Sans, sans-serif';
-        c.fillStyle = '#111827'; c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.fillStyle = '#1F1F1F'; c.textAlign = 'center'; c.textBaseline = 'middle';
         const NAME_Y = LOGO_CY + LOGO_SIZE / 2 + 18;
         const nameW = c.measureText(ORG).width;
         const BADGE_SIZE = 18; const NAME_BADGE_GAP = 10;
@@ -205,7 +205,7 @@ const ShareWalletLinkModal: React.FC<ShareWalletLinkModalProps> = ({
         const QR_BOX = 264; const INNER_PAD = 20; const GAP16 = 16;
         const SCAN_H = 38; const PAY_LABEL_H = 18; const LOGOS_H = 22;
         const CARD_H = INNER_PAD + SCAN_H + GAP16 + QR_BOX + GAP16 + PAY_LABEL_H + 6 + LOGOS_H + INNER_PAD;
-        c.fillStyle = '#00347C';
+        c.fillStyle = '#0842A0';
         rr(CARD_X, CARD_Y, CARD_W, CARD_H, 16); c.fill();
 
         // ── 5. "Scan to Pay" text ──────────────────────────────────────────────
@@ -330,7 +330,7 @@ const ShareWalletLinkModal: React.FC<ShareWalletLinkModalProps> = ({
                                 <p className="text-xs font-semibold text-rose-500">{quickLinkError || 'Couldn’t generate your Quick Link.'}</p>
                                 <button
                                     onClick={loadQuickLinkUsername}
-                                    className="px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-slate-950 text-white hover:bg-slate-900 transition-all"
+                                    className="px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-slate-950 text-white hover:bg-[#0B57D0] transition-all"
                                 >
                                     Try again
                                 </button>
@@ -384,7 +384,7 @@ const ShareWalletLinkModal: React.FC<ShareWalletLinkModalProps> = ({
                                             className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center space-x-1.5 ${
                                                 copied
                                                     ? 'bg-emerald-500 text-white shadow-md shadow-emerald-100'
-                                                    : 'bg-slate-950 text-white hover:bg-slate-900 shadow-md shadow-slate-950/10'
+                                                    : 'bg-slate-950 text-white hover:bg-[#0B57D0] shadow-md shadow-slate-950/10'
                                             }`}
                                         >
                                             {copied ? (
@@ -418,7 +418,7 @@ const ShareWalletLinkModal: React.FC<ShareWalletLinkModalProps> = ({
                                     {onGenerateInvoiceLink && (
                                         <button
                                             onClick={onGenerateInvoiceLink}
-                                            className={`w-full py-3.5 bg-slate-950 hover:bg-slate-900 rounded-2xl flex items-center justify-center font-black text-xs uppercase tracking-wider text-white transition-all space-x-2 shadow-md shadow-slate-950/10 ${
+                                            className={`w-full py-3.5 bg-slate-950 hover:bg-[#0B57D0] rounded-2xl flex items-center justify-center font-black text-xs uppercase tracking-wider text-white transition-all space-x-2 shadow-md shadow-slate-950/10 ${
                                                 activeTab === 'store' ? '' : 'invisible'
                                             }`}
                                         >

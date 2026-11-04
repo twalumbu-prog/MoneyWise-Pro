@@ -66,14 +66,14 @@ export const DesktopStaffLoanWorkspace: React.FC<DesktopStaffLoanWorkspaceProps>
             <div className="flex items-center justify-between shrink-0">
                 <button
                     onClick={onClose}
-                    className="h-8 pl-2.5 pr-3.5 bg-white rounded-lg outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E8EEF8] flex items-center gap-1.5 hover:bg-[#F3F5FC] transition-colors"
+                    className="h-8 pl-2.5 pr-3.5 bg-white rounded-lg outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E9EEF6] flex items-center gap-1.5 hover:bg-[#F8FAFD] transition-colors"
                 >
-                    <ArrowLeft size={15} className="text-[#111827]" />
-                    <span className="text-sm font-bold text-[#111827]">New Staff Loan</span>
+                    <ArrowLeft size={15} className="text-[#1F1F1F]" />
+                    <span className="text-sm font-bold text-[#1F1F1F]">New Staff Loan</span>
                 </button>
             </div>
 
-            <div className="flex-1 min-h-0 rounded-2xl outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E8EEF8] bg-white overflow-y-auto">
+            <div className="flex-1 min-h-0 rounded-2xl outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E9EEF6] bg-white overflow-y-auto">
                 <div className="max-w-2xl mx-auto p-8 animate-in fade-in zoom-in-95 duration-200 pb-20">
                     {error && (
                         <div className="mb-6 bg-red-50 border border-red-100 rounded-xl p-4 flex items-start gap-3">
@@ -97,7 +97,7 @@ export const DesktopStaffLoanWorkspace: React.FC<DesktopStaffLoanWorkspaceProps>
                                         value={staffName}
                                         onChange={e => setStaffName(e.target.value)}
                                         placeholder="Enter full name"
-                                        className="w-full h-12 bg-white border border-gray-200 rounded-xl px-4 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] transition-all"
+                                        className="w-full h-12 bg-white border border-gray-200 rounded-xl px-4 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] transition-all"
                                     />
                                 </div>
                                 <div className="space-y-1.5">
@@ -107,7 +107,7 @@ export const DesktopStaffLoanWorkspace: React.FC<DesktopStaffLoanWorkspaceProps>
                                         value={employeeId}
                                         onChange={e => setEmployeeId(e.target.value)}
                                         placeholder="e.g. EMP-001"
-                                        className="w-full h-12 bg-white border border-gray-200 rounded-xl px-4 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] transition-all"
+                                        className="w-full h-12 bg-white border border-gray-200 rounded-xl px-4 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] transition-all"
                                     />
                                 </div>
                                 <div className="space-y-1.5">
@@ -117,7 +117,7 @@ export const DesktopStaffLoanWorkspace: React.FC<DesktopStaffLoanWorkspaceProps>
                                         value={amount || ''}
                                         onChange={e => setAmount(Number(e.target.value))}
                                         placeholder="0.00"
-                                        className="w-full h-12 bg-white border border-gray-200 rounded-xl px-4 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] transition-all"
+                                        className="w-full h-12 bg-white border border-gray-200 rounded-xl px-4 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] transition-all"
                                     />
                                 </div>
                                 <div className="space-y-1.5">
@@ -129,7 +129,7 @@ export const DesktopStaffLoanWorkspace: React.FC<DesktopStaffLoanWorkspaceProps>
                                                 onClick={() => setRepaymentPeriod(m)}
                                                 className={`py-3 rounded-xl text-sm font-bold transition-all border ${
                                                     repaymentPeriod === m
-                                                        ? 'bg-[#0059D8] text-white border-[#006AFF] shadow-md shadow-blue-100'
+                                                        ? 'bg-[#0B57D0] text-white border-[#0B57D0] shadow-md shadow-blue-100'
                                                         : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
                                                 }`}
                                             >
@@ -145,19 +145,19 @@ export const DesktopStaffLoanWorkspace: React.FC<DesktopStaffLoanWorkspaceProps>
                                         onChange={e => setRemarks(e.target.value)}
                                         rows={3}
                                         placeholder="Any notes..."
-                                        className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] transition-all"
+                                        className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] transition-all"
                                     />
                                 </div>
                             </div>
 
                             {/* Live Calculation Preview */}
                             {amount > 0 && (
-                                <div className="bg-[#F3F5FC] border border-[#E8EEF8] rounded-xl p-5 mt-6">
+                                <div className="bg-[#F8FAFD] border border-[rgba(116,119,117,0.22)] rounded-xl p-5 mt-6">
                                     <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-3">Estimated Repayment</p>
                                     <div className="flex justify-between items-end">
                                         <div>
                                             <p className="text-[10px] text-gray-500 mb-1">Monthly Deduction</p>
-                                            <p className="text-2xl font-black text-[#0058DB]">K{monthlyDeduction.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                            <p className="text-2xl font-black text-[#0B57D0]">K{monthlyDeduction.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                         </div>
                                         <div className="text-right">
                                             <p className="text-[10px] text-gray-500 mb-1">Total (incl. {interestRate}% interest)</p>
@@ -220,7 +220,7 @@ export const DesktopStaffLoanWorkspace: React.FC<DesktopStaffLoanWorkspaceProps>
                 {stage === 1 ? (
                     <button
                         onClick={handleProceed}
-                        className="h-10 px-6 rounded-xl bg-[#0059D8] text-xs font-bold text-white flex items-center gap-1.5 hover:bg-blue-700 transition-colors"
+                        className="h-10 px-6 rounded-xl bg-[#0B57D0] text-xs font-bold text-white flex items-center gap-1.5 hover:bg-blue-700 transition-colors"
                     >
                         Next
                         <ArrowRight size={16} />
@@ -229,7 +229,7 @@ export const DesktopStaffLoanWorkspace: React.FC<DesktopStaffLoanWorkspaceProps>
                     <button
                         onClick={handleSubmit}
                         disabled={submitting}
-                        className="h-10 px-8 rounded-xl bg-[#0059D8] text-xs font-bold text-white flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                        className="h-10 px-8 rounded-xl bg-[#0B57D0] text-xs font-bold text-white flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-50 transition-colors"
                     >
                         {submitting ? (
                             <>

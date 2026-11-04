@@ -149,7 +149,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onRequestAdd }) 
     }, [onRequestAdd]);
 
     if (loading && users.length === 0) {
-        return <div className="flex justify-center p-12"><Loader2 className="animate-spin h-8 w-8 text-brand-green" /></div>;
+        return <div className="flex justify-center p-12"><Loader2 className="animate-spin h-8 w-8 text-[#0B57D0]" /></div>;
     }
 
     const isAdmin = userRole === 'ADMIN';
@@ -157,10 +157,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onRequestAdd }) 
     // Shared dropdown actions for a user — used in both table and card views
     const renderDropdown = (user: UserProfile) => (
         openDropdownId === user.id && (
-            <div className="absolute right-0 top-[calc(100%+4px)] z-50 w-48 bg-white rounded-xl shadow-[0px_8px_24px_0px_rgba(17,24,39,0.12)] outline outline-1 outline-offset-[-1px] outline-[#E8EEF8] overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+            <div className="absolute right-0 top-[calc(100%+4px)] z-50 w-48 bg-white rounded-xl shadow-[0px_8px_24px_0px_rgba(17,24,39,0.12)] outline outline-1 outline-offset-[-1px] outline-[#E9EEF6] overflow-hidden animate-in fade-in zoom-in-95 duration-100">
                 <button
                     onClick={() => { setViewingUser(user); setOpenDropdownId(null); }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F3F5FC] transition-colors"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F8FAFD] transition-colors"
                 >
                     <Eye size={14} className="text-gray-400" />
                     <span className="text-xs font-medium text-gray-700">View Details</span>
@@ -171,7 +171,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onRequestAdd }) 
                             <button
                                 onClick={() => { handleResendInvite(user.id); setOpenDropdownId(null); }}
                                 disabled={actionLoading}
-                                className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F3F5FC] transition-colors disabled:opacity-50"
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F8FAFD] transition-colors disabled:opacity-50"
                             >
                                 <Mail size={14} className="text-blue-500" />
                                 <span className="text-xs font-medium text-gray-700">Resend Invitation</span>
@@ -181,7 +181,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onRequestAdd }) 
                             <button
                                 onClick={() => { handleApproveUser(user.id); setOpenDropdownId(null); }}
                                 disabled={actionLoading}
-                                className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F3F5FC] transition-colors disabled:opacity-50"
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F8FAFD] transition-colors disabled:opacity-50"
                             >
                                 <Shield size={14} className="text-green-500" />
                                 <span className="text-xs font-medium text-gray-700">Approve User</span>
@@ -189,7 +189,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onRequestAdd }) 
                         )}
                         <button
                             onClick={() => { setEditingUser(user); setOpenDropdownId(null); }}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F3F5FC] transition-colors"
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F8FAFD] transition-colors"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-pencil text-brand-green"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></svg>
                             <span className="text-xs font-medium text-gray-700">Edit Role</span>
@@ -232,7 +232,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onRequestAdd }) 
                     <button
                         data-tour-target="add-team-btn"
                         onClick={() => setIsAddModalOpen(true)}
-                        className="flex-shrink-0 h-8 pl-4 pr-3 bg-[#0058DB] md:bg-[#0059D8] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity"
+                        className="flex-shrink-0 h-8 pl-4 pr-3 bg-[#0B57D0] md:bg-[#0B57D0] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity"
                     >
                         <span className="text-white text-xs font-bold">Add Member</span>
                         <Plus size={14} className="text-white" />
@@ -251,7 +251,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onRequestAdd }) 
                 {users.map((user) => (
                     <div key={user.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
                         <div className="flex items-start gap-3">
-                            <div className="flex-shrink-0 h-11 w-11 rounded-xl bg-[#0058DB]/10 flex items-center justify-center text-[#0058DB] font-bold text-base">
+                            <div className="flex-shrink-0 h-11 w-11 rounded-xl bg-[#0B57D0]/10 flex items-center justify-center text-[#0B57D0] font-bold text-base">
                                 {user.name.charAt(0).toUpperCase()}
                             </div>
                             <div className="flex-1 min-w-0">
@@ -289,23 +289,23 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onRequestAdd }) 
             </div>
 
             {/* ── Desktop: table ── */}
-            <div className="hidden md:block rounded-xl outline outline-1 outline-offset-[-1px] outline-[#E8EEF8] overflow-hidden overflow-x-auto">
+            <div className="hidden md:block rounded-xl outline outline-1 outline-offset-[-1px] outline-[#E9EEF6] overflow-hidden overflow-x-auto">
                 <table className="w-full text-left">
                     <thead>
-                        <tr className="border-b border-[#E8EEF8]">
-                            <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">User</th>
-                            <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Role</th>
-                            <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Status</th>
-                            <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Joined</th>
+                        <tr className="border-b border-[rgba(116,119,117,0.22)]">
+                            <th className="py-2.5 px-3 text-xs font-semibold text-[#1F1F1F]">User</th>
+                            <th className="py-2.5 px-3 text-xs font-semibold text-[#1F1F1F]">Role</th>
+                            <th className="py-2.5 px-3 text-xs font-semibold text-[#1F1F1F]">Status</th>
+                            <th className="py-2.5 px-3 text-xs font-semibold text-[#1F1F1F]">Joined</th>
                             <th className="py-2.5 px-3 w-12"></th>
                         </tr>
                     </thead>
                     <tbody>
                         {users.map((user) => (
-                            <tr key={user.id} className="group transition-colors border-b border-[#E8EEF8]/40 hover:bg-gray-50/70">
+                            <tr key={user.id} className="group transition-colors border-b border-[rgba(116,119,117,0.22)]/40 hover:bg-gray-50/70">
                                 <td className="py-3.5 px-3 whitespace-nowrap">
                                     <div className="flex items-center">
-                                        <div className="flex-shrink-0 h-10 w-10 rounded-xl bg-[#0058DB]/10 flex items-center justify-center text-[#0058DB] font-bold text-sm shadow-inner transition-transform group-hover:scale-110">
+                                        <div className="flex-shrink-0 h-10 w-10 rounded-xl bg-[#0B57D0]/10 flex items-center justify-center text-[#0B57D0] font-bold text-sm shadow-inner transition-transform group-hover:scale-110">
                                             {user.name.charAt(0).toUpperCase()}
                                         </div>
                                         <div className="ml-4">
@@ -333,7 +333,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onRequestAdd }) 
                                     <div className="relative flex justify-end" ref={openDropdownId === user.id ? dropdownRef : null}>
                                         <button
                                             onClick={() => setOpenDropdownId(openDropdownId === user.id ? null : user.id)}
-                                            className="p-1.5 rounded-lg border border-transparent hover:border-[#E8EEF8] hover:bg-[#F3F5FC] text-gray-400 hover:text-gray-600 transition-all"
+                                            className="p-1.5 rounded-lg border border-transparent hover:border-[rgba(116,119,117,0.22)] hover:bg-[#F8FAFD] text-gray-400 hover:text-gray-600 transition-all"
                                         >
                                             <MoreHorizontal size={16} />
                                         </button>
@@ -355,11 +355,11 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onRequestAdd }) 
                 {viewingUser && (
                     <div className="space-y-6">
                         <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl">
-                            <div className="h-16 w-16 rounded-2xl bg-[#0058DB] md:bg-[#0059D8] text-white flex items-center justify-center text-2xl font-bold">
+                            <div className="h-16 w-16 rounded-2xl bg-[#0B57D0] md:bg-[#0B57D0] text-white flex items-center justify-center text-2xl font-bold">
                                 {viewingUser.name.charAt(0).toUpperCase()}
                             </div>
                             <div>
-                                <h4 className="text-lg font-bold text-brand-navy">{viewingUser.name}</h4>
+                                <h4 className="text-lg font-bold text-[#1F1F1F]">{viewingUser.name}</h4>
                                 <p className="text-gray-500">{viewingUser.email}</p>
                             </div>
                         </div>
@@ -367,19 +367,19 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onRequestAdd }) 
                         <div className="grid grid-cols-2 gap-4">
                             <div className="p-4 border border-gray-100 rounded-xl">
                                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Role</p>
-                                <p className="text-sm font-bold text-brand-navy">{viewingUser.role}</p>
+                                <p className="text-sm font-bold text-[#1F1F1F]">{viewingUser.role}</p>
                             </div>
                             <div className="p-4 border border-gray-100 rounded-xl">
                                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Status</p>
-                                <p className="text-sm font-bold text-brand-navy">{viewingUser.status}</p>
+                                <p className="text-sm font-bold text-[#1F1F1F]">{viewingUser.status}</p>
                             </div>
                             <div className="p-4 border border-gray-100 rounded-xl">
                                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Employee ID</p>
-                                <p className="text-sm font-bold text-brand-navy">{viewingUser.employee_id || 'N/A'}</p>
+                                <p className="text-sm font-bold text-[#1F1F1F]">{viewingUser.employee_id || 'N/A'}</p>
                             </div>
                             <div className="p-4 border border-gray-100 rounded-xl">
                                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Joined Date</p>
-                                <p className="text-sm font-bold text-brand-navy">{new Date(viewingUser.created_at).toLocaleDateString()}</p>
+                                <p className="text-sm font-bold text-[#1F1F1F]">{new Date(viewingUser.created_at).toLocaleDateString()}</p>
                             </div>
                         </div>
 
@@ -462,7 +462,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onRequestAdd }) 
                             type="submit"
                             data-tour-target="modal-submit-add-user"
                             disabled={actionLoading}
-                            className="w-full inline-flex justify-center rounded-xl border border-transparent shadow-sm px-4 py-2 bg-brand-green text-base font-medium text-white hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green sm:col-start-2 sm:text-sm disabled:opacity-50"
+                            className="w-full inline-flex justify-center rounded-xl border border-transparent shadow-sm px-4 py-2 bg-brand-green text-base font-medium text-white hover:bg-[#0842A0] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green sm:col-start-2 sm:text-sm disabled:opacity-50"
                         >
                             {actionLoading ? 'Adding...' : 'Add User'}
                         </button>
@@ -511,7 +511,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onRequestAdd }) 
                         <button
                             type="submit"
                             disabled={actionLoading}
-                            className="w-full inline-flex justify-center rounded-xl border border-transparent shadow-sm px-4 py-2 bg-brand-green text-base font-medium text-white hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green sm:col-start-2 sm:text-sm disabled:opacity-50"
+                            className="w-full inline-flex justify-center rounded-xl border border-transparent shadow-sm px-4 py-2 bg-brand-green text-base font-medium text-white hover:bg-[#0842A0] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green sm:col-start-2 sm:text-sm disabled:opacity-50"
                         >
                             {actionLoading ? 'Updating...' : 'Update Role'}
                         </button>

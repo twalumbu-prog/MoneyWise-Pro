@@ -85,18 +85,18 @@ export const ResetPassword: React.FC = () => {
             <div className="absolute top-0 left-0 w-full p-6 sm:p-8">
                 <div className="flex items-center space-x-3">
                     <img src="/logo.png" alt="MoneyWise" className="h-8 w-8" />
-                    <h1 className="text-xl font-bold text-brand-navy tracking-tight leading-tight">MoneyWise Pro</h1>
+                    <h1 className="text-xl font-bold text-[#1F1F1F] tracking-tight leading-tight">MoneyWise Pro</h1>
                 </div>
             </div>
 
             <div className="sm:mx-auto sm:w-full sm:max-w-md mt-24 sm:mt-8">
-                <h2 className="text-center text-xl font-bold text-brand-navy mb-2">
+                <h2 className="text-center text-xl font-bold text-[#1F1F1F] mb-2">
                     {status === 'SUCCESS' ? 'Password updated' : 'Reset your password'}
                 </h2>
                 {status !== 'SUCCESS' && (
                     <p className="text-center text-sm text-gray-500 mb-8">
                         {userEmail
-                            ? <>Choose a new password for <span className="font-bold text-brand-navy">{userEmail}</span></>
+                            ? <>Choose a new password for <span className="font-bold text-[#1F1F1F]">{userEmail}</span></>
                             : 'Choose a new password for your account'}
                     </p>
                 )}
@@ -109,13 +109,13 @@ export const ResetPassword: React.FC = () => {
                             <div className="mx-auto w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mb-5">
                                 <CheckCircle2 className="h-7 w-7 text-green-600" />
                             </div>
-                            <h3 className="text-lg font-bold text-brand-navy mb-2">You're all set</h3>
+                            <h3 className="text-lg font-bold text-[#1F1F1F] mb-2">You're all set</h3>
                             <p className="text-sm text-gray-500">
                                 Your password has been reset successfully. Redirecting you to sign in…
                             </p>
                         </div>
                     ) : checking ? (
-                        <div className="flex items-center justify-center py-8 text-[#006AFF]">
+                        <div className="flex items-center justify-center py-8 text-[#0B57D0]">
                             <Loader2 className="h-6 w-6 animate-spin" />
                         </div>
                     ) : status === 'ERROR' ? (
@@ -126,7 +126,7 @@ export const ResetPassword: React.FC = () => {
                             <button
                                 type="button"
                                 onClick={() => navigate('/login')}
-                                className="w-full flex justify-center py-3.5 px-4 border border-transparent rounded-xl text-sm font-bold text-white bg-[#006AFF] hover:bg-[#0052CC] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#006AFF] transition-all"
+                                className="w-full flex justify-center py-3.5 px-4 border border-transparent rounded-xl text-sm font-bold text-white bg-[#0B57D0] hover:bg-[#0842A0] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#0B57D0] transition-all"
                             >
                                 Return to sign in
                             </button>
@@ -134,7 +134,7 @@ export const ResetPassword: React.FC = () => {
                     ) : (
                         <form className="space-y-6" onSubmit={handleReset}>
                             <div>
-                                <label htmlFor="new-password" className="block text-sm font-bold text-brand-navy mb-1">
+                                <label htmlFor="new-password" className="block text-sm font-bold text-[#1F1F1F] mb-1">
                                     New password
                                 </label>
                                 <div className="mt-1 relative">
@@ -145,7 +145,7 @@ export const ResetPassword: React.FC = () => {
                                         autoComplete="new-password"
                                         required
                                         minLength={6}
-                                        className="appearance-none block w-full px-4 py-3 pr-11 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] sm:text-sm transition-all"
+                                        className="appearance-none block w-full px-4 py-3 pr-11 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] sm:text-sm transition-all"
                                         placeholder="Min. 6 characters"
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
@@ -162,7 +162,7 @@ export const ResetPassword: React.FC = () => {
                             </div>
 
                             <div>
-                                <label htmlFor="confirm-password" className="block text-sm font-bold text-brand-navy mb-1">
+                                <label htmlFor="confirm-password" className="block text-sm font-bold text-[#1F1F1F] mb-1">
                                     Confirm password
                                 </label>
                                 <div className="mt-1">
@@ -173,7 +173,7 @@ export const ResetPassword: React.FC = () => {
                                         autoComplete="new-password"
                                         required
                                         minLength={6}
-                                        className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] sm:text-sm transition-all"
+                                        className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] sm:text-sm transition-all"
                                         placeholder="Re-enter your new password"
                                         value={confirmPassword}
                                         onChange={(e) => setConfirmPassword(e.target.value)}
@@ -190,7 +190,7 @@ export const ResetPassword: React.FC = () => {
                             <button
                                 type="submit"
                                 disabled={loading}
-                                className="w-full flex justify-center py-3.5 px-4 border border-transparent rounded-xl text-sm font-bold text-white bg-[#006AFF] hover:bg-[#0052CC] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#006AFF] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                className="w-full flex justify-center py-3.5 px-4 border border-transparent rounded-xl text-sm font-bold text-white bg-[#0B57D0] hover:bg-[#0842A0] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#0B57D0] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                             >
                                 {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Update password'}
                             </button>
@@ -198,7 +198,7 @@ export const ResetPassword: React.FC = () => {
                     )}
                 </div>
 
-                <div className="mt-8 text-center text-xs text-brand-navy/40 font-medium">
+                <div className="mt-8 text-center text-xs text-[#1F1F1F]/40 font-medium">
                     &copy; {new Date().getFullYear()} MoneyWise Pro. All rights reserved.
                 </div>
             </div>

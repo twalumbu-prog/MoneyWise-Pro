@@ -16,35 +16,35 @@ const STATUS_CONFIG = {
     ACTIVE: {
         label: 'Awaiting Payment',
         icon: <Clock size={14} className="text-amber-500" />,
-        containerClass: 'bg-amber-50 text-[#111827] border border-amber-200',
+        containerClass: 'bg-amber-50 text-[#1F1F1F] border border-amber-200',
     },
     PAID: {
         label: 'Paid',
         icon: <CheckCircle2 size={14} className="text-emerald-500" />,
-        containerClass: 'bg-emerald-50 text-[#111827] border border-emerald-200',
+        containerClass: 'bg-emerald-50 text-[#1F1F1F] border border-emerald-200',
     },
     CANCELLED: {
         label: 'Cancelled',
         icon: <XCircle size={14} className="text-gray-400" />,
-        containerClass: 'bg-gray-50 text-[#111827] border border-gray-200',
+        containerClass: 'bg-gray-50 text-[#1F1F1F] border border-gray-200',
     },
 } as const;
 
 const ACCT_STATUS_CONFIG = {
     ACTIVE: {
         label: 'AR Raised',
-        icon: <BookOpen size={14} className="text-[#0058DB]" />,
-        containerClass: 'bg-[#F0F7FF] text-[#111827] border border-[#0058DB]/20',
+        icon: <BookOpen size={14} className="text-[#0B57D0]" />,
+        containerClass: 'bg-[#E8F0FE] text-[#1F1F1F] border border-[#0B57D0]/20',
     },
     PAID: {
         label: 'Settled',
         icon: <CheckCircle2 size={14} className="text-emerald-500" />,
-        containerClass: 'bg-emerald-50 text-[#111827] border border-emerald-200',
+        containerClass: 'bg-emerald-50 text-[#1F1F1F] border border-emerald-200',
     },
     CANCELLED: {
         label: 'Voided',
         icon: <Ban size={14} className="text-gray-400" />,
-        containerClass: 'bg-gray-50 text-[#111827] border border-gray-200',
+        containerClass: 'bg-gray-50 text-[#1F1F1F] border border-gray-200',
     },
 } as const;
 
@@ -119,7 +119,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                 <div className="px-6 py-5 border-b border-gray-100 flex items-start justify-between flex-shrink-0">
                     <div>
                         <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">Invoice</p>
-                        <h2 className="text-xl font-bold text-brand-navy">{invNum}</h2>
+                        <h2 className="text-xl font-bold text-[#1F1F1F]">{invNum}</h2>
                     </div>
                     <button
                         onClick={onClose}
@@ -196,7 +196,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                         <Section title="Order Summary">
                             <div className="bg-gray-50 rounded-2xl overflow-hidden">
                                 {/* Column headings */}
-                                <div className="grid grid-cols-[1fr_auto_auto] gap-2 px-4 py-2.5 border-b border-[#E8EEF8]">
+                                <div className="grid grid-cols-[1fr_auto_auto] gap-2 px-4 py-2.5 border-b border-[rgba(116,119,117,0.22)]">
                                     <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Item</span>
                                     <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 text-right">Qty</span>
                                     <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 text-right">Amount</span>
@@ -207,7 +207,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                                     <div
                                         key={i}
                                         className={`grid grid-cols-[1fr_auto_auto] gap-2 px-4 py-3 ${
-                                            i < items.length - 1 ? 'border-b border-[#E8EEF8]' : ''
+                                            i < items.length - 1 ? 'border-b border-[rgba(116,119,117,0.22)]' : ''
                                         }`}
                                     >
                                         <div className="min-w-0">
@@ -233,9 +233,9 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                                 ))}
 
                                 {/* Total row */}
-                                <div className="grid grid-cols-[1fr_auto] gap-2 px-4 py-3 bg-[#F3F5FC] border-t border-[#E8EEF8]">
-                                    <span className="text-sm font-bold text-brand-navy">Total</span>
-                                    <span className="text-sm font-bold text-brand-navy">
+                                <div className="grid grid-cols-[1fr_auto] gap-2 px-4 py-3 bg-[#F8FAFD] border-t border-[rgba(116,119,117,0.22)]">
+                                    <span className="text-sm font-bold text-[#1F1F1F]">Total</span>
+                                    <span className="text-sm font-bold text-[#1F1F1F]">
                                         K{(invoice.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </span>
                                 </div>
@@ -292,8 +292,8 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                                     K{(invoice.status === 'PAID' ? invoice.amount : 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </span>
                             </div>
-                            <div className="border-t border-[#E8EEF8] pt-2 flex items-center justify-between">
-                                <span className="text-sm font-bold text-brand-navy">Outstanding</span>
+                            <div className="border-t border-[rgba(116,119,117,0.22)] pt-2 flex items-center justify-between">
+                                <span className="text-sm font-bold text-[#1F1F1F]">Outstanding</span>
                                 <span className={`text-sm font-bold ${outstanding > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
                                     K{outstanding.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </span>
@@ -320,7 +320,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                     <div className="px-6 py-4 border-t border-gray-100 flex items-center gap-3 flex-shrink-0 bg-white">
                         <button
                             onClick={handleCopy}
-                            className="flex-1 flex items-center justify-center gap-2 py-3 bg-[#0058DB] text-white font-bold text-sm rounded-2xl hover:bg-blue-700 active:scale-[0.98] transition-all"
+                            className="flex-1 flex items-center justify-center gap-2 py-3 bg-[#0B57D0] text-white font-bold text-sm rounded-2xl hover:bg-blue-700 active:scale-[0.98] transition-all"
                         >
                             {copied ? <Check size={16} /> : <Copy size={16} />}
                             {copied ? 'Copied!' : 'Copy Payment Link'}
@@ -329,7 +329,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                             href={paymentUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="p-3 border border-[#E8EEF8] rounded-2xl text-gray-400 hover:text-[#0058DB] hover:bg-[#F3F5FC] transition-all"
+                            className="p-3 border border-[rgba(116,119,117,0.22)] rounded-2xl text-gray-400 hover:text-[#0842A0] hover:bg-[#F8FAFD] transition-all"
                             title="Open payment link"
                         >
                             <ExternalLink size={18} />

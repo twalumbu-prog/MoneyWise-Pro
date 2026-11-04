@@ -3,7 +3,9 @@ import { ChevronLeft, X, Repeat, Smartphone, CreditCard, ChevronDown, Loader2, D
 import type { InvestProduct, InvestProvider } from './InvestHome';
 import { TYPE_CONFIG } from './InvestHome';
 import { SegmentedControl } from '../../components/AnimatedTabs';
-import { PaymentWaitingScreen, type PaymentPhase } from '../../components/PaymentWaitingScreen';
+import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { investmentService } from 'core';
 import { downloadInvestmentCertificate } from './investCertificate';
 import { cashbookService } from '../../services/cashbook.service';
 import { lencoService } from '../../services/lenco.service';
@@ -72,8 +74,10 @@ export const InvestPaymentFlow: React.FC<InvestPaymentFlowProps> = ({ open, onCl
     const [resolvedAccountName, setResolvedAccountName] = useState('');
     const [resolvingAccountName, setResolvingAccountName] = useState(false);
     const [resolveFailed, setResolveFailed] = useState(false);
-    const [phase, setPhase] = useState<PaymentPhase>('initiating');
-    const [elapsed, setElapsed] = useState(0);
+    const [paying, setPaying] = useState(false);
+    const [payError, setPayError] = useState<string | null>(null);
+    const navigate = useNavigate();
+    const qc = useQueryClient();
     const [reference, setReference] = useState('');
     const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
     const elapsedInterval = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -98,8 +102,8 @@ export const InvestPaymentFlow: React.FC<InvestPaymentFlowProps> = ({ open, onCl
             setResolvedAccountName('');
             setResolvingAccountName(false);
             setResolveFailed(false);
-            setPhase('initiating');
-            setElapsed(0);
+            setPaying(false);
+            setPayError(null);
             setReference('');
 
             cashbookService.getWallets()
@@ -161,51 +165,37 @@ export const InvestPaymentFlow: React.FC<InvestPaymentFlowProps> = ({ open, onCl
         if (elapsedInterval.current) clearInterval(elapsedInterval.current);
     };
 
-    const startDepositSimulation = () => {
-        const ref = genReference();
-        setReference(ref);
-        setStep('WAITING');
-        setPhase('initiating');
-        setElapsed(0);
-
-        elapsedInterval.current = setInterval(() => setElapsed(e => e + 1), 1000);
-
-        // NOTE: simulated locally — the mocked invest products here have no
-        // backing wallet/org in the ledger to receive real funds. Swapping in
-        // the real POST /lenco/public-collection/mobile-money + long-poll
-        // (same pattern as QuickPay.tsx) is a drop-in once a product maps to
-        // a real wallet.
-        timers.current.push(setTimeout(() => setPhase('confirm'), 1400));
-        timers.current.push(setTimeout(() => setPhase('polling'), 3200));
-        timers.current.push(setTimeout(() => {
-            clearTimers();
-            setPhase('success');
-        }, 5800));
-    };
-
-    const startAutoInvestActivation = () => {
-        const ref = genReference();
-        setReference(ref);
-        setStep('ACTIVATING');
-        timers.current.push(setTimeout(() => setStep('SUCCESS'), 1400));
-    };
-
-    const startWalletPayment = () => {
-        const ref = genReference();
-        setReference(ref);
-        setStep('ACTIVATING');
-        timers.current.push(setTimeout(() => setStep('SUCCESS'), 1200));
+    /**
+     * Pays from the person's MoneyWise wallet to the investment company, for real: the server checks they have an active account with the
+     * company and enough money, moves the money between the two accounts and records the investment. Nothing is shown as done until it says so.
+     */
+    const startWalletPayment = async () => {
+        if (!selectedWallet || paying) return;
+        setPaying(true); setPayError(null);
+        try {
+            const targets = await investmentService.getTargets();
+            const target = targets.find((t) => t.providerKey === provider.id);
+            if (!target) throw new Error(`${provider.name} can’t take investments through MoneyWise yet.`);
+            const r: any = await investmentService.walletTransfer(selectedWallet.id, target.id, amount, `Investment: ${product.name}`, product.name);
+            if (!r || r.error) throw new Error(r?.error || 'The payment did not go through. Nothing was taken.');
+            setReference(String(r.reference ?? genReference()));
+            qc.invalidateQueries({ queryKey: ['wallets'] });
+            qc.invalidateQueries({ queryKey: ['invest'] });
+            setStep('SUCCESS');
+        } catch (e: any) {
+            setPayError(e?.message || 'The payment did not go through. Nothing was taken.');
+        } finally {
+            setPaying(false);
+        }
     };
 
     const handleAmountCta = () => {
         if (amount <= 0) return;
         if (method === 'DEPOSIT') setStep('PAY');
-        else startAutoInvestActivation();
     };
 
     const handlePayCta = () => {
-        if (payMethod === 'WALLET') startWalletPayment();
-        else if (payMethod === 'MOBILE_MONEY') startDepositSimulation();
+        if (payMethod === 'WALLET') void startWalletPayment();
     };
 
     const handleClose = () => {
@@ -235,14 +225,16 @@ export const InvestPaymentFlow: React.FC<InvestPaymentFlowProps> = ({ open, onCl
                             <p className="text-gray-500 text-xs font-['DM_Sans'] mb-5">Choose how you'd like to fund this investment.</p>
 
                             <button
-                                onClick={() => { setMethod('AUTO_INVEST'); setStep('AMOUNT'); }}
-                                className="w-full flex items-center gap-3 p-4 rounded-2xl border border-gray-200 mb-3 active:bg-gray-50 transition-colors text-left"
+                                type="button"
+                                disabled
+                                aria-disabled
+                                className="w-full flex items-center gap-3 p-4 rounded-2xl border border-gray-200 mb-3 text-left opacity-60 cursor-not-allowed"
                             >
                                 <div className="w-11 h-11 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
-                                    <Repeat size={20} className="text-[#0058DB]" />
+                                    <Repeat size={20} className="text-[#0B57D0]" />
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <div className="text-black text-sm font-bold font-['DM_Sans']">Auto-Invest</div>
+                                    <div className="text-black text-sm font-bold font-['DM_Sans']">Auto-Invest <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-800">Coming soon</span></div>
                                     <div className="text-gray-500 text-xs font-['DM_Sans'] mt-0.5">Recurring scheduled contributions</div>
                                 </div>
                             </button>
@@ -255,8 +247,8 @@ export const InvestPaymentFlow: React.FC<InvestPaymentFlowProps> = ({ open, onCl
                                     <img src="/logo-mark.svg" alt="" className="w-6 h-6" />
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <div className="text-black text-sm font-bold font-['DM_Sans']">Deposit</div>
-                                    <div className="text-gray-500 text-xs font-['DM_Sans'] mt-0.5">Fund instantly via Lenco mobile money</div>
+                                    <div className="text-black text-sm font-bold font-['DM_Sans']">Invest now</div>
+                                    <div className="text-gray-500 text-xs font-['DM_Sans'] mt-0.5">Pay from your MoneyWise wallet</div>
                                 </div>
                             </button>
                         </div>
@@ -276,7 +268,7 @@ export const InvestPaymentFlow: React.FC<InvestPaymentFlowProps> = ({ open, onCl
 
                         <div className="flex flex-col items-center gap-2.5 px-6 pt-2">
                             <div className="text-black text-xl font-bold font-['Figtree'] text-center">
-                                {isUnitTrust ? `Buy ${product.id.toUpperCase()} Units` : `Deposit into ${product.name}`}
+                                {isUnitTrust ? `Buy ${product.name} units` : `Deposit into ${product.name}`}
                             </div>
                             <div className="text-black text-5xl font-bold font-['Figtree']">K{formatAmountDisplay(amountStr || '0')}</div>
                             {isUnitTrust && unitPrice > 0 && (
@@ -405,12 +397,12 @@ export const InvestPaymentFlow: React.FC<InvestPaymentFlowProps> = ({ open, onCl
                                         <ChevronDown size={18} className={`text-gray-400 transition-transform flex-shrink-0 ${walletDropdownOpen ? 'rotate-180' : ''}`} />
                                     </button>
                                     {walletDropdownOpen && (
-                                        <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 bg-white rounded-2xl shadow-[0px_8px_24px_0px_rgba(17,24,39,0.12)] outline outline-1 outline-offset-[-1px] outline-[#E8EEF8] overflow-hidden">
+                                        <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 bg-white rounded-2xl shadow-[0px_8px_24px_0px_rgba(17,24,39,0.12)] outline outline-1 outline-offset-[-1px] outline-[#E9EEF6] overflow-hidden">
                                             {wallets.map(w => (
                                                 <button
                                                     key={w.id}
                                                     onClick={() => { setSelectedWalletId(w.id); setWalletDropdownOpen(false); }}
-                                                    className={`w-full flex items-center justify-between text-left px-5 py-3 transition-colors ${w.id === selectedWalletId ? 'text-[#0058DB] bg-blue-50' : 'text-gray-700 hover:bg-gray-50'}`}
+                                                    className={`w-full flex items-center justify-between text-left px-5 py-3 transition-colors ${w.id === selectedWalletId ? 'text-[#0B57D0] bg-blue-50' : 'text-gray-700 hover:bg-gray-50'}`}
                                                 >
                                                     <span className="text-sm font-medium font-['Figtree']">{w.name}</span>
                                                     <span className="text-xs font-semibold font-['Figtree']">{formatKwacha(w.balance)}</span>
@@ -451,7 +443,7 @@ export const InvestPaymentFlow: React.FC<InvestPaymentFlowProps> = ({ open, onCl
                                         <div className="self-stretch flex items-center gap-1.5 text-xs font-['Figtree']">
                                             {resolvingAccountName ? (
                                                 <>
-                                                    <Loader2 size={12} className="animate-spin text-gray-400" />
+                                                    <Loader2 size={12} className="animate-spin text-[#0B57D0]" />
                                                     <span className="text-gray-400">Verifying account holder…</span>
                                                 </>
                                             ) : resolvedAccountName ? (
@@ -492,48 +484,23 @@ export const InvestPaymentFlow: React.FC<InvestPaymentFlowProps> = ({ open, onCl
                                     </div>
                                 )}
                             </div>
+                            {payMethod !== 'WALLET' && <p className="mb-2 rounded-xl bg-amber-50 px-3 py-2 text-center text-xs text-amber-800">{payMethod === 'MOBILE_MONEY' ? 'Mobile money deposits' : 'Card payments'} are coming soon. For now, pay from your MoneyWise wallet.</p>}
+                            {payError && (
+                                <div className="mb-2 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">
+                                    {payError}
+                                    {/account|apply|application/i.test(payError) && <button type="button" onClick={() => { handleClose(); navigate('/invest/accounts'); }} className="ml-2 font-bold underline">Open investor accounts</button>}
+                                </div>
+                            )}
                             <button
                                 onClick={handlePayCta}
-                                disabled={
-                                    payMethod === 'CARD' ||
-                                    (payMethod === 'MOBILE_MONEY' && (!operator || !resolvedAccountName || resolvingAccountName)) ||
-                                    (payMethod === 'WALLET' && (!selectedWallet || selectedWallet.balance < amount))
-                                }
-                                className="w-full h-14 bg-black disabled:bg-gray-300 rounded-xl flex items-center justify-center transition-colors"
+                                disabled={payMethod !== 'WALLET' || paying || !selectedWallet || selectedWallet.balance < amount}
+                                className="w-full h-14 bg-black disabled:bg-gray-300 rounded-xl flex items-center justify-center gap-2 transition-colors"
                             >
+                                {paying && <Loader2 size={18} className="animate-spin text-white" />}
                                 <span className="text-white text-base font-bold font-['DM_Sans']">
-                                    Invest K{amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    {paying ? 'Paying…' : `Invest K${amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
                                 </span>
                             </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* ── WAITING (deposit) ────────────────────────────────────── */}
-                {step === 'WAITING' && (
-                    <div className="flex flex-col h-full bg-white">
-                        <PaymentWaitingScreen
-                            phase={phase}
-                            amount={amount}
-                            businessName={provider.name}
-                            payerPhone={phone}
-                            operator={operator}
-                            isSlowNetwork={false}
-                            elapsedSeconds={elapsed}
-                            reference={reference}
-                            cancelling={false}
-                            onCancel={() => { clearTimers(); setStep('PAY'); }}
-                            onDone={() => setStep('SUCCESS')}
-                        />
-                    </div>
-                )}
-
-                {/* ── ACTIVATING (auto-invest activation, or instant wallet debit) ── */}
-                {step === 'ACTIVATING' && (
-                    <div className="flex-1 flex flex-col items-center justify-center gap-4 bg-white">
-                        <Loader2 size={36} className="animate-spin text-[#0058DB]" />
-                        <div className="text-black text-sm font-bold font-['DM_Sans']">
-                            {method === 'AUTO_INVEST' ? 'Activating Auto-Invest…' : `Paying from ${selectedWallet?.name || 'wallet'}…`}
                         </div>
                     </div>
                 )}
@@ -632,7 +599,7 @@ const SuccessScreen: React.FC<{
                     disabled={downloading}
                     className="w-full h-12 border border-gray-200 rounded-xl flex items-center justify-center gap-2 active:bg-gray-50 transition-colors disabled:opacity-60"
                 >
-                    {downloading ? <Loader2 size={16} className="animate-spin text-gray-500" /> : <Download size={16} className="text-gray-700" />}
+                    {downloading ? <Loader2 size={16} className="animate-spin text-[#0B57D0]" /> : <Download size={16} className="text-[#0B57D0]" />}
                     <span className="text-gray-800 text-sm font-bold font-['DM_Sans']">Download Certificate of Deposit</span>
                 </button>
                 <button

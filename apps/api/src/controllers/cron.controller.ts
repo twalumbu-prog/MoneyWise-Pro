@@ -1,5 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { emailService } from '../services/email.service';
+import { refreshStale } from '../services/imports.service';
+import { pullLonghorn } from '../services/fundFeeds.service';
 import { healMissingPlatformFeesWithinBudget } from '../services/reconciliation.service';
 import { autoCompleteRequisition, sendAutoCategorizationReminder } from './requisition.controller';
 
@@ -23,6 +25,20 @@ async function invokeHandler(handler: (req: any, res: any) => any, req: any): Pr
     await handler(req, res);
     return out;
 }
+
+/** Reads the fund prices Longhorn publishes. Called a few times a day; the API also does it itself while it is running. */
+export const fundFeeds = async (req: any, res: any) => {
+    if (!isCronCall(req)) return res.status(401).json({ error: 'Unauthorized' });
+    try { res.json({ ok: true, ...(await pullLonghorn()) }); }
+    catch (e: any) { console.error('[Cron] fund feeds failed:', e); res.status(500).json({ error: e?.message ?? 'fund feeds failed' }); }
+};
+
+/** Keeps imported products current: re-checks stale items and runs the saved keyword feeds. Called every 30 minutes. */
+export const importRefresh = async (req: any, res: any) => {
+    if (!isCronCall(req)) return res.status(401).json({ error: 'Unauthorized' });
+    try { res.json({ ok: true, ...(await refreshStale({ budgetMs: 33_000, hydrate: 14, refresh: 3, searches: 2 })) }); }
+    catch (e: any) { console.error('[Cron] import refresh failed:', e); res.status(500).json({ error: e?.message ?? 'import refresh failed' }); }
+};
 
 // Hourly reminder (12h) + auto-categorise (24h) sweep. Port of the retired auto-complete-requisitions edge
 // function. After an outage the 24h set can be large and each completion runs an AI review, so we cap how

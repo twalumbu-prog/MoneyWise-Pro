@@ -135,7 +135,7 @@ const CreateWalletModal: React.FC<CreateWalletModalProps> = ({ isOpen, onClose, 
                                 </label>
                                 {loadingQb ? (
                                     <div className="flex items-center space-x-2 py-3 px-4 bg-gray-50 border border-gray-100 rounded-2xl">
-                                        <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                                        <Loader2 className="h-4 w-4 animate-spin text-[#0B57D0]" />
                                         <span className="text-gray-400 text-xs font-medium">Loading QBO accounts...</span>
                                     </div>
                                 ) : (
@@ -176,7 +176,7 @@ const CreateWalletModal: React.FC<CreateWalletModalProps> = ({ isOpen, onClose, 
                         <button
                             type="submit"
                             disabled={isSubmitting}
-                            className="px-6 py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-black transition-all flex items-center text-xs disabled:opacity-50"
+                            className="px-6 py-2.5 bg-[#0B57D0] text-white rounded-xl font-bold hover:bg-[#0B57D0] transition-all flex items-center text-xs disabled:opacity-50"
                         >
                             {isSubmitting ? (
                                 <>

@@ -25,10 +25,10 @@ export const DeleteAccount = () => {
         <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 font-sans">
             <div className="max-w-2xl mx-auto bg-white p-8 sm:p-10 shadow rounded-2xl border border-gray-100">
                 <div className="mb-6 flex items-center justify-between">
-                    <Link to="/" className="text-brand-navy hover:text-brand-green flex items-center gap-2 transition-colors font-medium">
+                    <Link to="/" className="text-[#1F1F1F] hover:text-brand-green flex items-center gap-2 transition-colors font-medium">
                         <ArrowLeft size={16} /> Back to MoneyWise
                     </Link>
-                    <Link to="/privacy" className="text-xs text-gray-500 hover:text-brand-navy transition-colors">
+                    <Link to="/privacy" className="text-xs text-gray-500 hover:text-[#1F1F1F] transition-colors">
                         Privacy Policy &rarr;
                     </Link>
                 </div>
@@ -37,7 +37,7 @@ export const DeleteAccount = () => {
                     <div className="mx-auto w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-3">
                         <AlertTriangle className="w-6 h-6 text-red-600" />
                     </div>
-                    <h1 className="text-2xl sm:text-3xl font-bold text-brand-navy">Account &amp; Data Deletion</h1>
+                    <h1 className="text-2xl sm:text-3xl font-bold text-[#1F1F1F]">Account &amp; Data Deletion</h1>
                     <p className="text-sm text-gray-600 mt-2">
                         MoneyWise Pro &bull; Blue Opus (Stephen Kapambwe)
                     </p>
@@ -45,7 +45,7 @@ export const DeleteAccount = () => {
 
                 <div className="space-y-6 text-gray-700 text-sm sm:text-base leading-relaxed">
                     <section className="bg-gray-50 p-5 rounded-xl border border-gray-200">
-                        <h2 className="text-base font-semibold text-brand-navy mb-2 flex items-center gap-2">
+                        <h2 className="text-base font-semibold text-[#1F1F1F] mb-2 flex items-center gap-2">
                             <ShieldCheck className="w-5 h-5 text-brand-green" />
                             Our Commitment to User Data Control
                         </h2>
@@ -55,7 +55,7 @@ export const DeleteAccount = () => {
                     </section>
 
                     <section className="space-y-3">
-                        <h2 className="text-lg font-bold text-brand-navy">What happens when you delete your account?</h2>
+                        <h2 className="text-lg font-bold text-[#1F1F1F]">What happens when you delete your account?</h2>
                         <ul className="list-disc pl-5 space-y-1.5 text-sm text-gray-600">
                             <li><strong>Permanent Credential Removal:</strong> Your login authentication record, email, phone number, and password hashes are permanently deleted from Supabase Auth.</li>
                             <li><strong>Personal Identity Deletion:</strong> Your name, username, and contact details are permanently removed from our user profiles.</li>
@@ -67,11 +67,11 @@ export const DeleteAccount = () => {
                     <hr className="border-gray-200" />
 
                     <section className="space-y-4">
-                        <h2 className="text-lg font-bold text-brand-navy">How to Delete Your Account</h2>
+                        <h2 className="text-lg font-bold text-[#1F1F1F]">How to Delete Your Account</h2>
 
                         <div className="grid gap-4 sm:grid-cols-2">
                             <div className="p-4 rounded-xl border border-blue-100 bg-blue-50/50">
-                                <div className="flex items-center gap-2 font-semibold text-brand-navy mb-1.5">
+                                <div className="flex items-center gap-2 font-semibold text-[#1F1F1F] mb-1.5">
                                     <Smartphone className="w-4 h-4 text-brand-blue" />
                                     <span>Method 1: In the Mobile App (Instant)</span>
                                 </div>
@@ -85,7 +85,7 @@ export const DeleteAccount = () => {
                             </div>
 
                             <div className="p-4 rounded-xl border border-gray-200 bg-gray-50/50">
-                                <div className="flex items-center gap-2 font-semibold text-brand-navy mb-1.5">
+                                <div className="flex items-center gap-2 font-semibold text-[#1F1F1F] mb-1.5">
                                     <Globe className="w-4 h-4 text-gray-700" />
                                     <span>Method 2: In the Web App</span>
                                 </div>
@@ -99,7 +99,7 @@ export const DeleteAccount = () => {
                         </div>
 
                         <div className="p-5 rounded-xl border border-gray-200 bg-white">
-                            <div className="flex items-center gap-2 font-semibold text-brand-navy mb-2">
+                            <div className="flex items-center gap-2 font-semibold text-[#1F1F1F] mb-2">
                                 <Mail className="w-4 h-4 text-brand-green" />
                                 <span>Method 3: Submit Web Deletion Request</span>
                             </div>

@@ -270,7 +270,7 @@ export const GeneralSettings: React.FC = () => {
     if (loading) {
         return (
             <div className="bg-white shadow-sm rounded-xl border border-gray-200 p-12 flex justify-center items-center">
-                <Loader2 className="h-8 w-8 animate-spin text-brand-green" />
+                <Loader2 className="h-8 w-8 animate-spin text-[#0B57D0]" />
                 <span className="ml-3 text-gray-500 font-medium">Loading organization details...</span>
             </div>
         );
@@ -373,7 +373,7 @@ export const GeneralSettings: React.FC = () => {
                                     onChange={handleChange}
                                     disabled={!isAdmin || saving}
                                     required
-                                    className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-[#10A34A]/20 focus:border-[#10A34A] outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
+                                    className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-[#1E8E3E]/20 focus:border-[#1E8E3E] outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
                                     placeholder="Twalumbu Education Centre"
                                 />
                             </div>
@@ -388,7 +388,7 @@ export const GeneralSettings: React.FC = () => {
                                     value={formData.email}
                                     onChange={handleChange}
                                     disabled={!isAdmin || saving}
-                                    className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-[#10A34A]/20 focus:border-[#10A34A] outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
+                                    className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-[#1E8E3E]/20 focus:border-[#1E8E3E] outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
                                     placeholder="business@example.com"
                                 />
                             </div>
@@ -403,7 +403,7 @@ export const GeneralSettings: React.FC = () => {
                                     value={formData.phone}
                                     onChange={handleChange}
                                     disabled={!isAdmin || saving}
-                                    className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-[#10A34A]/20 focus:border-[#10A34A] outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
+                                    className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-[#1E8E3E]/20 focus:border-[#1E8E3E] outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
                                     placeholder="e.g. +260 977 000 000"
                                 />
                             </div>
@@ -418,7 +418,7 @@ export const GeneralSettings: React.FC = () => {
                                     value={formData.tax_id}
                                     onChange={handleChange}
                                     disabled={!isAdmin || saving}
-                                    className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-[#10A34A]/20 focus:border-[#10A34A] outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
+                                    className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-[#1E8E3E]/20 focus:border-[#1E8E3E] outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
                                     placeholder="e.g. VAT-12345678"
                                 />
                             </div>
@@ -433,7 +433,7 @@ export const GeneralSettings: React.FC = () => {
                                     onChange={handleChange}
                                     disabled={!isAdmin || saving}
                                     rows={3}
-                                    className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-[#10A34A]/20 focus:border-[#10A34A] outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500 resize-none"
+                                    className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-[#1E8E3E]/20 focus:border-[#1E8E3E] outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500 resize-none"
                                     placeholder="Street, town, province"
                                 />
                             </div>
@@ -448,7 +448,7 @@ export const GeneralSettings: React.FC = () => {
                                     value={formData.website}
                                     onChange={handleChange}
                                     disabled={!isAdmin || saving}
-                                    className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-[#10A34A]/20 focus:border-[#10A34A] outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
+                                    className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-[#1E8E3E]/20 focus:border-[#1E8E3E] outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
                                     placeholder="https://www.example.com"
                                 />
                             </div>
@@ -459,8 +459,8 @@ export const GeneralSettings: React.FC = () => {
                                 <div className="bg-gray-50/50 rounded-2xl p-6 border border-gray-100">
                                     {/* Header row: icon + title + toggle */}
                                     <div className="flex items-start justify-between gap-4 mb-1">
-                                        <label className="text-sm font-bold text-brand-navy flex items-center">
-                                            <Layers className="h-4 w-4 mr-2 text-[#006AFF]" />
+                                        <label className="text-sm font-bold text-[#1F1F1F] flex items-center">
+                                            <Layers className="h-4 w-4 mr-2 text-[#0B57D0]" />
                                             Departments
                                         </label>
                                         {isAdmin && (
@@ -471,13 +471,13 @@ export const GeneralSettings: React.FC = () => {
                                                 className="flex items-center gap-2 text-xs font-bold transition-colors flex-shrink-0"
                                             >
                                                 {savingDeptToggle ? (
-                                                    <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                                                    <Loader2 className="h-5 w-5 animate-spin text-[#0B57D0]" />
                                                 ) : useDepartments ? (
-                                                    <ToggleRight className="h-6 w-6 text-[#006AFF]" />
+                                                    <ToggleRight className="h-6 w-6 text-[#0B57D0]" />
                                                 ) : (
                                                     <ToggleLeft className="h-6 w-6 text-gray-300" />
                                                 )}
-                                                <span className={useDepartments ? 'text-[#006AFF]' : 'text-gray-400'}>
+                                                <span className={useDepartments ? 'text-[#0B57D0]' : 'text-gray-400'}>
                                                     {useDepartments ? 'Enabled' : 'Disabled'}
                                                 </span>
                                             </button>
@@ -511,7 +511,7 @@ export const GeneralSettings: React.FC = () => {
                                                                             if (e.key === 'Enter') handleSaveEditDept(dept.id);
                                                                             if (e.key === 'Escape') setEditingDeptId(null);
                                                                         }}
-                                                                        className="flex-1 text-sm font-medium text-brand-navy bg-transparent border-b border-[#006AFF] outline-none pb-0.5"
+                                                                        className="flex-1 text-sm font-medium text-[#1F1F1F] bg-transparent border-b border-[#0B57D0] outline-none pb-0.5"
                                                                     />
                                                                     <button
                                                                         type="button"
@@ -533,13 +533,13 @@ export const GeneralSettings: React.FC = () => {
                                                                 </>
                                                             ) : (
                                                                 <>
-                                                                    <span className="flex-1 text-sm font-medium text-brand-navy">{dept.name}</span>
+                                                                    <span className="flex-1 text-sm font-medium text-[#1F1F1F]">{dept.name}</span>
                                                                     {isAdmin && (
                                                                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                                             <button
                                                                                 type="button"
                                                                                 onClick={() => { setEditingDeptId(dept.id); setEditingDeptName(dept.name); }}
-                                                                                className="p-1.5 rounded-lg text-gray-400 hover:text-[#006AFF] hover:bg-blue-50 transition-colors"
+                                                                                className="p-1.5 rounded-lg text-gray-400 hover:text-[#0B57D0] hover:bg-blue-50 transition-colors"
                                                                                 title="Edit"
                                                                             >
                                                                                 <Pencil size={13} />
@@ -569,13 +569,13 @@ export const GeneralSettings: React.FC = () => {
                                                                 onChange={e => setNewDeptName(e.target.value)}
                                                                 onKeyDown={e => { if (e.key === 'Enter') handleAddDepartment(); }}
                                                                 placeholder="New department name..."
-                                                                className="flex-1 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] outline-none transition-all"
+                                                                className="flex-1 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] outline-none transition-all"
                                                             />
                                                             <button
                                                                 type="button"
                                                                 onClick={handleAddDepartment}
                                                                 disabled={!newDeptName.trim() || addingDept || savingDept}
-                                                                className="flex items-center gap-1.5 px-4 py-2.5 bg-[#006AFF] text-white text-xs font-bold rounded-xl hover:bg-blue-600 disabled:opacity-40 transition-all whitespace-nowrap"
+                                                                className="flex items-center gap-1.5 px-4 py-2.5 bg-[#0B57D0] text-white text-xs font-bold rounded-xl hover:bg-blue-600 disabled:opacity-40 transition-all whitespace-nowrap"
                                                             >
                                                                 {savingDept ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
                                                                 Add
@@ -594,7 +594,7 @@ export const GeneralSettings: React.FC = () => {
                                 <button
                                     type="submit"
                                     disabled={saving || !formData.name.trim()}
-                                    className="inline-flex items-center px-5 py-2 border border-transparent shadow-sm text-sm font-semibold rounded-lg text-white bg-[#10A34A] hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 transition-colors"
+                                    className="inline-flex items-center px-5 py-2 border border-transparent shadow-sm text-sm font-semibold rounded-lg text-white bg-[#0B57D0] hover:bg-[#0842A0] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#0B57D0] disabled:opacity-50 transition-colors"
                                 >
                                     {saving ? (
                                         <>

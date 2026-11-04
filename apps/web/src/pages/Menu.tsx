@@ -62,12 +62,12 @@ const OtherServiceButton: React.FC<OtherServiceButtonProps> = ({ icon: Icon, lab
                     <defs>
                         {/* Outer fill gradient: BL blue → TR white */}
                         <linearGradient id={outerGradId} x1="0%" y1="100%" x2="100%" y2="0%">
-                            <stop offset="0%" stopColor="#006AFF" />
+                            <stop offset="0%" stopColor="#0B57D0" />
                             <stop offset="100%" stopColor="#ffffff" />
                         </linearGradient>
                         {/* Inner fill gradient: TR blue → BL white (alternating) */}
                         <linearGradient id={innerGradId} x1="100%" y1="0%" x2="0%" y2="100%">
-                            <stop offset="0%" stopColor="#006AFF" />
+                            <stop offset="0%" stopColor="#0B57D0" />
                             <stop offset="100%" stopColor="#ffffff" />
                         </linearGradient>
                         {/* Noise filter */}
@@ -178,7 +178,7 @@ export const Menu: React.FC = () => {
                         <User size={26} />
                     </div>
                     <div className="flex-1 min-w-0">
-                        <h2 className="text-lg font-black text-brand-navy truncate">
+                        <h2 className="text-lg font-black text-[#1F1F1F] truncate">
                             {organizationName || 'My Business'}
                         </h2>
                         <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-0.5">
@@ -203,8 +203,8 @@ export const Menu: React.FC = () => {
                         {/* Row 2 */}
                         <div className="grid grid-cols-3 gap-4">
                             <OtherServiceButton icon={TrendingUp} label="Invest" onClick={() => navigate('/invest')} id="invest" />
-                            <OtherServiceButton icon={Landmark} label="Business Loans" onClick={() => setComingSoon('Business Loans')} id="loans" />
-                            <OtherServiceButton icon={Store} label="Marketplace" onClick={() => setComingSoon('Marketplace')} id="marketplace" />
+                            <OtherServiceButton icon={Landmark} label="Business Loans" onClick={() => navigate('/loans')} id="loans" />
+                            <OtherServiceButton icon={Store} label="Marketplace" onClick={() => navigate('/marketplace')} id="marketplace" />
                         </div>
                     </div>
                 </div>
@@ -222,7 +222,7 @@ export const Menu: React.FC = () => {
                                         onClick={item.onClick}
                                         className="w-full flex items-center gap-4 py-3.5 text-left active:bg-gray-50 rounded-xl transition-colors -mx-1 px-1"
                                     >
-                                        <div className="p-2.5 rounded-2xl bg-white text-[#006AFF] flex-shrink-0">
+                                        <div className="p-2.5 rounded-2xl bg-white text-[#0B57D0] flex-shrink-0">
                                             <Icon size={18} />
                                         </div>
                                         <div className="flex-1 min-w-0">
@@ -256,7 +256,7 @@ export const Menu: React.FC = () => {
                     >
                         <div className="w-12 h-1.5 bg-gray-200 rounded-full mb-2" />
                         <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center mb-1">
-                            {comingSoon === 'Business Loans' ? <Landmark size={28} className="text-[#006AFF]" /> : <Store size={28} className="text-[#006AFF]" />}
+                            {comingSoon === 'Business Loans' ? <Landmark size={28} className="text-[#0B57D0]" /> : <Store size={28} className="text-[#0B57D0]" />}
                         </div>
                         <div className="text-center">
                             <h2 className="text-lg font-bold text-gray-900">{comingSoon}</h2>
@@ -264,7 +264,7 @@ export const Menu: React.FC = () => {
                         </div>
                         <button
                             onClick={() => setComingSoon(null)}
-                            className="mt-2 w-full py-3.5 bg-[#006AFF] text-white font-bold rounded-2xl active:opacity-80 transition-opacity"
+                            className="mt-2 w-full py-3.5 bg-[#0B57D0] text-white font-bold rounded-2xl active:opacity-80 transition-opacity"
                         >
                             Got it
                         </button>
@@ -287,7 +287,7 @@ export const Menu: React.FC = () => {
                         {detail === 'users' && userRole === 'ADMIN' && (
                             <button
                                 onClick={() => openAddMemberRef.current?.()}
-                                className="flex-shrink-0 h-8 pl-3 pr-3 bg-[#0058DB] rounded-lg flex items-center gap-1.5 hover:opacity-90 transition-opacity"
+                                className="flex-shrink-0 h-8 pl-3 pr-3 bg-[#0B57D0] rounded-lg flex items-center gap-1.5 hover:opacity-90 transition-opacity"
                             >
                                 <Plus size={14} className="text-white" />
                                 <span className="text-white text-xs font-bold">Add Member</span>
@@ -303,11 +303,11 @@ export const Menu: React.FC = () => {
                         {detail === 'other' && (
                             <div className="space-y-10">
                                 <div>
-                                    <h3 className="text-base font-bold text-brand-navy mb-3">Chart of Accounts</h3>
+                                    <h3 className="text-base font-bold text-[#1F1F1F] mb-3">Chart of Accounts</h3>
                                     <ChartOfAccounts />
                                 </div>
                                 <div className="border-t border-gray-100 pt-8">
-                                    <h3 className="text-base font-bold text-brand-navy mb-3">AI &amp; Automation</h3>
+                                    <h3 className="text-base font-bold text-[#1F1F1F] mb-3">AI &amp; Automation</h3>
                                     <div className="space-y-12">
                                         <AIMetrics />
                                         <div className="border-t border-gray-100 pt-12">

@@ -2,7 +2,8 @@ import React from 'react';
 import { Layout } from '../../components/Layout';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
-import { TrendingUpIcon, StarIcon, UsersIcon, VerifiedIcon, INVEST_PROVIDERS } from './InvestHome';
+import { TrendingUpIcon, VerifiedIcon } from './InvestHome';
+import { useInvestProviders } from './investData';
 
 const TYPE_CONFIG = {
     UNIT_TRUST:    { dot: 'bg-blue-600',   label: 'Unit Trust'    },
@@ -11,25 +12,18 @@ const TYPE_CONFIG = {
 } as const;
 
 const UpArrowIcon = () => (
-    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#1E8E3E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
         <line x1="7" y1="17" x2="17" y2="7" />
         <polyline points="7 7 17 7 17 17" />
     </svg>
 );
 
-const InvestorsIcon = () => (
-    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-);
 
 export const InvestCompany: React.FC = () => {
     const { id } = useParams();
     const navigate = useNavigate();
-    const provider = INVEST_PROVIDERS.find(p => p.id === id) ?? INVEST_PROVIDERS[0];
+    const { providers } = useInvestProviders();
+    const provider = providers.find(p => p.id === id) ?? providers[0];
 
     return (
         <Layout noPadding backgroundColor="bg-white" mobileHeaderHidden>
@@ -39,7 +33,7 @@ export const InvestCompany: React.FC = () => {
                 <div className="md:hidden flex-1 overflow-y-auto bg-white">
 
                     {/* Banner — starts at very top, frosted back button overlaid */}
-                    <div className="relative w-full h-48 bg-gradient-to-br from-[#0058DB] via-[#1a6aff] to-[#0040b0] overflow-hidden flex-shrink-0">
+                    <div className="relative w-full h-48 bg-gradient-to-br from-[#0B57D0] via-[#1a6aff] to-[#0040b0] overflow-hidden flex-shrink-0">
                         {/* Decorative abstract circles */}
                         <div className="absolute -top-10 -right-10 w-48 h-48 rounded-full bg-white/10" />
                         <div className="absolute -bottom-14 -left-10 w-56 h-56 rounded-full bg-white/10" />
@@ -72,10 +66,6 @@ export const InvestCompany: React.FC = () => {
                             <div className="text-blue-600 flex-shrink-0 w-5 h-5">
                                 <VerifiedIcon />
                             </div>
-                        </div>
-                        <div className="flex items-center gap-5 text-xs text-gray-500 font-['DM_Sans']">
-                            <span className="flex items-center gap-1.5"><StarIcon /> {provider.reviews}</span>
-                            <span className="flex items-center gap-1.5"><UsersIcon /> {provider.investors}</span>
                         </div>
                     </div>
 
@@ -115,10 +105,6 @@ export const InvestCompany: React.FC = () => {
                                                 <div className={`w-[5px] h-[5px] rounded-full flex-shrink-0 ${TYPE_CONFIG[product.type as keyof typeof TYPE_CONFIG]?.dot ?? 'bg-gray-400'}`} />
                                                 <span className="text-gray-800 text-[8px] font-medium font-['DM_Sans']">{TYPE_CONFIG[product.type as keyof typeof TYPE_CONFIG]?.label ?? product.type}</span>
                                             </div>
-                                            <div className="flex items-center gap-1">
-                                                <InvestorsIcon />
-                                                <span className="text-neutral-700 text-[8px] font-medium font-['DM_Sans']">{product.productInvestors} Investors</span>
-                                            </div>
                                         </div>
                                     </div>
 
@@ -135,17 +121,13 @@ export const InvestCompany: React.FC = () => {
                         <div className="w-full bg-white rounded-[20px] p-6 shadow-sm flex flex-col gap-6 min-h-[600px] md:border md:border-gray-200">
 
                             {/* Company banner */}
-                            <div className="w-full bg-slate-50 border border-[#E8EEF8] rounded-xl p-8 flex flex-col items-center gap-4">
+                            <div className="w-full bg-slate-50 border border-[rgba(116,119,117,0.22)] rounded-xl p-8 flex flex-col items-center gap-4">
                                 <div className="w-20 h-20 bg-white rounded-xl shadow-md border border-violet-100 flex items-center justify-center overflow-hidden p-1">
                                     <img src={provider.logo} alt={provider.name} className="w-full h-full object-contain" />
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <h1 className="text-gray-900 text-xl font-bold font-['DM_Sans']">{provider.name}</h1>
                                     <div className="w-4 h-4 flex items-center justify-center text-blue-600"><VerifiedIcon /></div>
-                                </div>
-                                <div className="flex items-center gap-6 text-xs text-gray-500">
-                                    <span className="flex items-center gap-1"><StarIcon /> {provider.reviews}</span>
-                                    <span className="flex items-center gap-1"><UsersIcon /> {provider.investors}</span>
                                 </div>
                             </div>
 
@@ -157,7 +139,7 @@ export const InvestCompany: React.FC = () => {
                                         <Link
                                             to={`/invest/product/${product.id}`}
                                             key={index}
-                                            className="p-4 bg-white rounded-xl shadow-sm border border-[#E8EEF8] flex flex-col gap-3 hover:shadow-md transition-shadow"
+                                            className="p-4 bg-white rounded-xl shadow-sm border border-[rgba(116,119,117,0.22)] flex flex-col gap-3 hover:shadow-md transition-shadow"
                                         >
                                             <div>
                                                 <div className="text-black text-base font-medium font-['DM_Sans']">{product.name}</div>
@@ -170,10 +152,6 @@ export const InvestCompany: React.FC = () => {
                                                 </div>
                                             </div>
                                             <div className="flex justify-between items-center">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="text-black text-[10px] flex items-center gap-1"><StarIcon /> {provider.reviews}</div>
-                                                    <div className="text-black text-[10px] flex items-center gap-1"><UsersIcon /> {provider.investors}</div>
-                                                </div>
                                                 <div className="w-8 h-8 bg-neutral-100 rounded-full flex items-center justify-center">&rarr;</div>
                                             </div>
                                         </Link>

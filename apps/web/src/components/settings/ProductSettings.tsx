@@ -1,30 +1,36 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { productService, Product, ProductType, PRODUCT_TYPE_OPTIONS, isBookingProductType, DigitalAsset, CheckoutField } from '../../services/product.service';
 import { accountService } from '../../services/account.service';
 import { cashbookService } from '../../services/cashbook.service';
 import { masterFeesService, MasterFeesStatus, MasterFeesCategory } from '../../services/integration.service';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
+import { StoreAdvancedSettings } from './StoreAdvancedSettings';
+import { ProductList, canAuction } from './ProductList';
+import type { AuctionInfo } from './ProductList';
+import { StartAuctionDialog } from '../marketplace/StartAuctionDialog';
+import { AuctionFields, auctionBody, auctionProblem, defaultAuction } from '../marketplace/AuctionFields';
+import type { AuctionForm } from '../marketplace/AuctionFields';
+import { useQuery } from '@tanstack/react-query';
+import { apiJson } from 'core';
+import { LISTINGS_KEY } from '../marketplace/parts';
+import type { MarketplaceData } from '../marketplace/parts';
 import { compressImage } from '../../utils/file_utils';
 import ShareProductLinkModal from '../ShareProductLinkModal';
 import {
     ShoppingBag,
     Plus,
-    Edit2,
     Trash2,
     Loader2,
     CheckCircle,
     AlertCircle,
     X,
     Eye,
-    Download,
-    Share2,
     ImagePlus,
     Wallet,
     BookOpen,
     FileUp,
     FileText,
-    MoreHorizontal,
     GraduationCap,
     RefreshCw,
     ArrowUpRight
@@ -32,20 +38,6 @@ import {
 
 interface WalletOption { id: string; name: string; is_main?: boolean; }
 interface AccountOption { id: string; code: string; name: string; type: string; }
-
-const typeBadgeClass = (t?: ProductType) => {
-    switch (t) {
-        case 'SERVICE_FIXED': return 'bg-indigo-100 text-indigo-800';
-        case 'SERVICE_VARIABLE': return 'bg-amber-100 text-amber-800';
-        case 'SERVICE_BOOKING': return 'bg-teal-100 text-teal-800';
-        case 'SERVICE_BOOKING_DAILY': return 'bg-cyan-100 text-cyan-800';
-        case 'DIGITAL': return 'bg-violet-100 text-violet-800';
-        case 'DONATION': return 'bg-pink-100 text-pink-800';
-        default: return 'bg-slate-100 text-slate-700';
-    }
-};
-const typeLabel = (t?: ProductType) =>
-    PRODUCT_TYPE_OPTIONS.find(o => o.value === (t || 'PRODUCT'))?.label || 'Product';
 
 interface ProductSettingsProps {
     onRequestAdd?: (openFn: () => void) => void;
@@ -68,6 +60,20 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
 
     // Modal / Form state
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [showMore, setShowMore] = useState(false);
+    // Selling by auction: how this item is sold, and the auction details when it is.
+    const [sellAs, setSellAs] = useState<'FIXED' | 'AUCTION'>('FIXED');
+    const [auctionForm, setAuctionForm] = useState<AuctionForm>(() => defaultAuction(null));
+    const [auctionFor, setAuctionFor] = useState<Product | null>(null);
+    // Stock: whether to count it, how many, when to warn buyers, and the colours and sizes it comes in (each with its own count).
+    const [trackStock, setTrackStock] = useState(false);
+    const [stockQty, setStockQty] = useState('');
+    const [lowStock, setLowStock] = useState('5');
+    const [variantRows, setVariantRows] = useState<{ id?: string; color: string; size: string; stock: string }[]>([]);
+    const stockTotal = variantRows.length ? variantRows.reduce((n, v) => n + (Number(v.stock) || 0), 0) : Number(stockQty) || 0;
+    const { data: market, refetch: refetchMarket } = useQuery({ queryKey: LISTINGS_KEY, queryFn: () => apiJson<MarketplaceData>('/marketplace/listings'), staleTime: 60_000, enabled: isAdmin });
+    const onMarketplace = React.useMemo(() => new Set((market?.listings ?? []).filter((l) => l.isMine).map((l) => l.id)), [market]);
+    const auctionMap = React.useMemo(() => new Map<string, AuctionInfo>((market?.listings ?? []).filter((l) => l.isMine && l.auction).map((l) => [l.id, { id: l.auction!.id, status: l.auction!.status as 'OPEN' | 'SOLD', endsAt: l.auction!.endsAt, serverNow: l.auction!.serverNow, bidCount: l.auction!.bidCount, currentBid: l.auction!.status === 'SOLD' ? l.auction!.winningAmount : l.auction!.currentBid, startPrice: l.auction!.startPrice }])), [market]);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
     const [formData, setFormData] = useState({
         name: '',
@@ -79,9 +85,12 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
         image_url: '',
         category: '',
         is_active: true,
+        marketplace_listed: true,
         requires_delivery: false,
         allow_external_delivery: false,
         own_delivery_charge: '',
+        weight_kg: '',
+        parcel_size: '',
     });
     // Additional gallery images (ordered list of public URLs)
     const [additionalImages, setAdditionalImages] = useState<string[]>([]);
@@ -108,9 +117,6 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
     // Share-link modal state
     const [shareProduct, setShareProduct] = useState<Product | null>(null);
     const [activeTab, setActiveTab] = useState('ALL');
-    const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
-    const dropdownRef = useRef<HTMLDivElement>(null);
-
     // Master Fees tab state — a separate synced product/service source, not part
     // of the local `products` catalog.
     const [mfStatus, setMfStatus] = useState<MasterFeesStatus | null>(null);
@@ -122,16 +128,6 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
     // Whether this org has an active Master Fees integration — controls tab visibility.
     // null = still checking (hide tab until confirmed), true/false = resolved.
     const [mfConnected, setMfConnected] = useState<boolean | null>(null);
-
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-                setOpenDropdownId(null);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
 
     useEffect(() => {
         loadProducts();
@@ -212,6 +208,8 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
     };
 
     const handleOpenAddModal = () => {
+        setSellAs('FIXED'); setAuctionForm(defaultAuction(null));
+        setTrackStock(false); setStockQty(''); setLowStock('5'); setVariantRows([]);
         setEditingProduct(null);
         setAdditionalImages([]);
         setWhatsIncluded([]);
@@ -227,9 +225,12 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
             image_url: '',
             category: '',
             is_active: true,
+            marketplace_listed: true,
             requires_delivery: false,
             allow_external_delivery: false,
             own_delivery_charge: '',
+        weight_kg: '',
+        parcel_size: '',
         });
         setDigitalAssets([]);
         setError(null);
@@ -243,6 +244,12 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
     }, [onRequestAdd]);
 
     const handleOpenEditModal = (product: Product) => {
+        setSellAs('FIXED'); setAuctionForm(defaultAuction(product.price));
+        {
+            const sp = product as any;
+            setTrackStock(!!sp.track_stock); setStockQty(sp.stock_quantity != null ? String(sp.stock_quantity) : ''); setLowStock(String(sp.low_stock_threshold ?? 5));
+            setVariantRows(Array.isArray(sp.variants) ? sp.variants.map((v: any) => ({ id: v.id, color: v.color ?? '', size: v.size ?? '', stock: String(v.stock ?? 0) })) : []);
+        }
         setEditingProduct(product);
         setDigitalAssets(Array.isArray(product.digital_assets) ? product.digital_assets : []);
         setAdditionalImages(Array.isArray(product.additional_images) ? product.additional_images : []);
@@ -260,9 +267,12 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
             image_url: product.image_url || '',
             category: product.category || '',
             is_active: product.is_active,
+            marketplace_listed: product.marketplace_listed ?? false,
             requires_delivery: product.requires_delivery ?? false,
             allow_external_delivery: product.allow_external_delivery ?? false,
             own_delivery_charge: product.own_delivery_charge?.toString() ?? '',
+            weight_kg: (product as any).weight_kg?.toString() ?? '',
+            parcel_size: (product as any).parcel_size ?? '',
         });
         setError(null);
         setIsModalOpen(true);
@@ -308,23 +318,30 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
         }
     };
 
-    // Upload an extra gallery image and append its public URL to additionalImages.
+    // Upload one or more extra gallery photos (choose several at once) and append their public URLs to additionalImages.
+    const MAX_GALLERY_IMAGES = 10;
     const handleUploadAdditionalImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file || !isAdmin) return;
+        const files = Array.from(e.target.files ?? []);
         e.target.value = '';
+        if (files.length === 0 || !isAdmin) return;
+        const room = MAX_GALLERY_IMAGES - additionalImages.length;
+        if (room <= 0) { setError(`A listing can have up to ${MAX_GALLERY_IMAGES} extra photos.`); return; }
         try {
             setUploadingAdditionalImage(true);
             setError(null);
-            const compressed = await compressImage(file, { maxSizeMB: 0.3, maxWidthOrHeight: 1000, initialQuality: 0.72 });
             const folder = organizationId || 'shared';
-            const filePath = `${folder}/product-gallery-${Date.now()}.jpg`;
-            const { data: uploadData, error: uploadError } = await supabase.storage
-                .from('product-images')
-                .upload(filePath, compressed, { cacheControl: '31536000', upsert: true, contentType: 'image/jpeg' });
-            if (uploadError) throw uploadError;
-            const publicUrl = supabase.storage.from('product-images').getPublicUrl(uploadData.path).data.publicUrl;
-            setAdditionalImages(prev => [...prev, publicUrl]);
+            const urls: string[] = [];
+            for (const [i, file] of files.slice(0, room).entries()) {
+                const compressed = await compressImage(file, { maxSizeMB: 0.3, maxWidthOrHeight: 1000, initialQuality: 0.72 });
+                const filePath = `${folder}/product-gallery-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}.jpg`;
+                const { data: uploadData, error: uploadError } = await supabase.storage
+                    .from('product-images')
+                    .upload(filePath, compressed, { cacheControl: '31536000', upsert: true, contentType: 'image/jpeg' });
+                if (uploadError) throw uploadError;
+                urls.push(supabase.storage.from('product-images').getPublicUrl(uploadData.path).data.publicUrl);
+            }
+            setAdditionalImages(prev => [...prev, ...urls]);
+            if (files.length > room) setError(`Only ${room} more photo${room === 1 ? '' : 's'} fitted: a listing can have up to ${MAX_GALLERY_IMAGES} extra photos.`);
         } catch (err: any) {
             console.error('Gallery image upload failed:', err);
             setError(err.message || 'Failed to upload gallery image.');
@@ -390,6 +407,11 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
     const priceRequired = !isDonation && !isVariable;
     // Delivery only makes sense for tangible physical products
     const canHaveDelivery = formData.product_type === 'PRODUCT';
+    // Listing on the Marketplace asks for the full set of details; otherwise the form stays simple. An item that already has the extras
+    // keeps showing them, so editing never hides what was saved.
+    const hasExtras = !!(additionalImages.length || whatsIncluded.some((w) => w.trim()) || collectInfo || formData.requires_delivery || formData.parcel_size || formData.weight_kg);
+    const full = formData.marketplace_listed || showMore || hasExtras;
+    useEffect(() => { if (!isModalOpen) setShowMore(false); }, [isModalOpen]);
 
     // Existing categories across the catalog — offered as suggestions so admins
     // reuse consistent names (these drive the toggle tabs on the public portal).
@@ -417,6 +439,11 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                 setError('Please enter a price for this product/service.');
                 return;
             }
+        }
+
+        if (sellAs === 'AUCTION' && canAuction({ product_type: formData.product_type }) && !(editingProduct && auctionMap.get(editingProduct.id)?.status === 'OPEN')) {
+            const problem = auctionProblem(auctionForm);
+            if (problem) { setError(problem); return; }
         }
 
         if (isDigital && digitalAssets.length === 0) {
@@ -461,21 +488,46 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                 category: formData.category.trim() || null,
                 digital_assets: isDigital ? digitalAssets : null,
                 is_active: formData.is_active,
+                marketplace_listed: formData.marketplace_listed,
                 requires_delivery: formData.requires_delivery,
                 allow_external_delivery: formData.allow_external_delivery,
                 own_delivery_charge: Number(formData.own_delivery_charge) || 0,
+                // Sent only when set (or when clearing a value that was saved), so saving works before these columns exist.
+                ...(formData.weight_kg || (editingProduct as any)?.weight_kg ? { weight_kg: Number(formData.weight_kg) || null } : {}),
+                ...(formData.parcel_size || (editingProduct as any)?.parcel_size ? { parcel_size: formData.parcel_size || null } : {}),
+                ...(trackStock || (editingProduct as any)?.track_stock ? {
+                    track_stock: trackStock, stock_quantity: Number(stockQty) || 0, low_stock_threshold: Math.max(0, Number(lowStock) || 0),
+                    variants: trackStock ? variantRows.filter((v) => v.color.trim() || v.size.trim()).map((v) => ({ id: v.id, color: v.color.trim(), size: v.size.trim(), stock: Number(v.stock) || 0 })) : [],
+                } : {}),
                 additional_images: additionalImages,
                 whats_included: whatsIncluded.filter(s => s.trim()),
                 checkout_fields: collectInfo ? cleanedCheckoutFields : [],
             };
 
+            let savedId = editingProduct?.id ?? '';
             if (editingProduct) {
                 await productService.updateProduct(editingProduct.id, payload);
                 setSuccessMessage('Product updated successfully.');
             } else {
-                await productService.createProduct(payload);
+                const created = await productService.createProduct(payload);
+                savedId = (created as any)?.id ?? (created as any)?.product?.id ?? '';
                 setSuccessMessage('Product created successfully.');
             }
+
+            // Selling by auction: the item is saved first, then the auction starts.
+            const wantsAuction = sellAs === 'AUCTION' && canAuction({ product_type: formData.product_type }) && !(editingProduct && auctionMap.get(editingProduct.id)?.status === 'OPEN');
+            if (wantsAuction) {
+                if (!savedId) throw new Error('The item was saved but the auction could not be started. Use the Auction button on the item.');
+                try {
+                    await apiJson('/marketplace/auctions', { method: 'POST', body: JSON.stringify(auctionBody(savedId, auctionForm)) });
+                    setSuccessMessage('Saved, and the auction is live.');
+                } catch (auctionErr: any) {
+                    setIsModalOpen(false);
+                    loadProducts();
+                    throw new Error(`Saved, but the auction didn’t start: ${auctionErr?.message || 'try the Auction button on the item.'}`);
+                }
+            }
+            refetchMarket();
 
             setIsModalOpen(false);
             loadProducts();
@@ -485,6 +537,17 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
             setError(err.response?.data?.error || err.message || 'Failed to save product.');
         } finally {
             setSubmitting(false);
+        }
+    };
+
+    const handleToggleActive = async (product: Product, active: boolean) => {
+        if (!isAdmin) return;
+        try {
+            setError(null);
+            await productService.updateProduct(product.id, { is_active: active });
+            await loadProducts();
+        } catch (err: any) {
+            setError(err.response?.data?.error || err.message || 'Could not change that item.');
         }
     };
 
@@ -564,7 +627,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
     if (loading && products.length === 0) {
         return (
             <div className="bg-white shadow-sm rounded-xl border border-gray-200 p-12 flex justify-center items-center">
-                <Loader2 className="h-8 w-8 animate-spin text-brand-green" />
+                <Loader2 className="h-8 w-8 animate-spin text-[#0B57D0]" />
                 <span className="ml-3 text-gray-500 font-medium">Loading products & services...</span>
             </div>
         );
@@ -579,20 +642,21 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                     <div className="hidden md:flex justify-between items-center shrink-0 w-full p-2">
                         <div className="flex justify-start items-center gap-2">
                             <ShoppingBag className="w-4 h-4 text-gray-900" />
-                            <div className="justify-center text-gray-900 text-base font-semibold font-['DM_Sans'] leading-5">Products & Services</div>
+                            <div className="justify-center text-[#1F1F1F] text-lg font-bold font-['DM_Sans'] leading-5">Products &amp; Services <span className="ml-2 text-xs font-normal text-[#5F6368]">Everything you sell, in one place. Turn on “List on the Marketplace” and choose Fixed price or Auction when you add or edit one.</span></div>
                         </div>
                     </div>
 
                     {/* Filters and Actions Row */}
                     <div className="flex justify-between items-center w-full shrink-0 px-2">
                         {/* Tabs */}
-                        <div className="flex items-center gap-1 p-1 bg-[#F3F5FC] md:bg-[#F8FAFD] rounded-[10px] overflow-x-auto no-scrollbar">
+                        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
                             {[
                                 { value: 'ALL', label: 'All' },
                                 { value: 'PRODUCT', label: 'Physical' },
                                 { value: 'SERVICE', label: 'Services' },
                                 { value: 'DIGITAL', label: 'Digital' },
                                 { value: 'DONATION', label: 'Donations' },
+                                ...(isAdmin ? [{ value: 'ADVANCED', label: 'Advanced' }] : []),
                                 ...(mfConnected ? [{ value: 'MASTERFEES', label: 'Master Fees' }] : [])
                             ].map(tab => {
                                 const isActive = activeTab === tab.value;
@@ -600,13 +664,13 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                     <button
                                         key={tab.value}
                                         onClick={() => setActiveTab(tab.value)}
-                                        className={`px-3.5 py-1.5 rounded-lg text-[11px] whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                                            isActive ? 'font-bold bg-white text-[#111827] shadow-sm' : 'font-normal text-gray-500 hover:text-gray-700'
+                                        className={`h-9 px-4 rounded-full text-sm whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+                                            isActive ? 'font-bold bg-[#D3E3FD] text-[#041E49]' : 'font-medium text-[#5F6368] shadow-[inset_0_0_0_1px_#C4C7C5] hover:bg-[#F1F3F4]'
                                         }`}
                                     >
                                         {tab.value === 'MASTERFEES' && (
                                             mfLogoFailed ? (
-                                                <GraduationCap size={12} className="text-brand-navy flex-shrink-0" />
+                                                <GraduationCap size={12} className="text-[#1F1F1F] flex-shrink-0" />
                                             ) : (
                                                 <img
                                                     src="/masterfees-logo.png"
@@ -642,12 +706,12 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                     </button>
                                 )}
                             </div>
-                        ) : isAdmin && (
+                        ) : isAdmin && activeTab !== 'ADVANCED' && (
                             <button
                                 onClick={handleOpenAddModal}
-                                className="hidden md:flex h-8 pl-4 pr-3 bg-[#0058DB] md:bg-[#0059D8] rounded-lg items-center gap-2 hover:opacity-90 transition-opacity flex-shrink-0"
+                                className="hidden md:flex h-10 pl-5 pr-4 bg-[#0B57D0] rounded-full items-center gap-2 hover:bg-[#0842A0] transition-colors flex-shrink-0"
                             >
-                                <span className="text-white text-xs font-bold">Add Product</span>
+                                <span className="text-white text-sm font-bold">Add item</span>
                                 <Plus size={14} className="text-white" />
                             </button>
                         )}
@@ -660,7 +724,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                         </div>
                     )}
                     {successMessage && (
-                        <div className="bg-green-50 border border-[#34D399] text-green-700 px-4 py-3 mx-2 rounded-xl text-sm animate-in fade-in slide-in-from-top-2 shrink-0 flex items-center">
+                        <div className="bg-green-50 border border-[#34A853] text-green-700 px-4 py-3 mx-2 rounded-xl text-sm animate-in fade-in slide-in-from-top-2 shrink-0 flex items-center">
                             <CheckCircle className="h-4 w-4 mr-2" />
                             {successMessage}
                         </div>
@@ -673,13 +737,15 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                     )}
 
                     {/* Table Container */}
-                    <div className="flex-1 overflow-auto rounded-xl outline outline-1 outline-offset-[-1px] outline-[#E8EEF8] custom-scrollbar mx-2 mb-2">
-                        {activeTab === 'MASTERFEES' ? (
+                    <div className="flex-1 overflow-auto rounded-xl outline outline-1 outline-offset-[-1px] outline-[#E9EEF6] custom-scrollbar mx-2 mb-2">
+                        {activeTab === 'ADVANCED' ? (
+                            <StoreAdvancedSettings />
+                        ) : activeTab === 'MASTERFEES' ? (
                             (() => {
                                 if (mfLoading) {
                                     return (
                                         <div className="flex flex-col items-center justify-center h-full py-16 text-center">
-                                            <Loader2 className="h-8 w-8 text-gray-300 animate-spin mb-4" />
+                                            <Loader2 className="h-8 w-8 text-[#0B57D0] animate-spin mb-4" />
                                             <p className="text-gray-500 text-sm">Loading Master Fees…</p>
                                         </div>
                                     );
@@ -725,20 +791,20 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                 return (
                                     <table className="w-full text-left">
                                         <thead className="bg-white">
-                                            <tr className="border-b border-[#E8EEF8]">
-                                                <th className="py-2.5 px-6 text-xs font-semibold text-[#111827]">Fee Category</th>
-                                                <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Price</th>
-                                                <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Type</th>
-                                                <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Income Account</th>
+                                            <tr className="border-b border-[rgba(116,119,117,0.22)]">
+                                                <th className="py-2.5 px-6 text-xs font-semibold text-[#1F1F1F]">Fee Category</th>
+                                                <th className="py-2.5 px-3 text-xs font-semibold text-[#1F1F1F]">Price</th>
+                                                <th className="py-2.5 px-3 text-xs font-semibold text-[#1F1F1F]">Type</th>
+                                                <th className="py-2.5 px-3 text-xs font-semibold text-[#1F1F1F]">Income Account</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {mfCategories.map((cat) => (
-                                                <tr key={cat.id} className="group transition-colors border-b border-[#E8EEF8]/40 hover:bg-gray-50/70">
+                                                <tr key={cat.id} className="group transition-colors border-b border-[rgba(116,119,117,0.22)]/40 hover:bg-gray-50/70">
                                                     <td className="py-3.5 px-6">
                                                         <div className="flex items-center">
                                                             <div className="flex-shrink-0 h-10 w-10 rounded-xl bg-brand-navy/10 overflow-hidden flex items-center justify-center shadow-inner">
-                                                                <GraduationCap className="h-5 w-5 text-brand-navy" />
+                                                                <GraduationCap className="h-5 w-5 text-[#1F1F1F]" />
                                                             </div>
                                                             <div className="ml-4">
                                                                 <div className="text-sm font-bold text-gray-900 leading-tight">{cat.name}</div>
@@ -796,160 +862,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                             }
 
                             return (
-                                <>
-                                    {/* ── Mobile: cards ── */}
-                                    <div className="md:hidden divide-y divide-[#E8EEF8]">
-                                        {filteredProducts.map((product) => (
-                                            <div key={product.id} className="p-4 flex items-start gap-3">
-                                                <div className="flex-shrink-0 h-11 w-11 rounded-xl bg-[#0058DB]/10 overflow-hidden flex items-center justify-center shadow-inner">
-                                                    {product.image_url ? (
-                                                        <img src={product.image_url} alt="" className="h-full w-full object-cover" />
-                                                    ) : (
-                                                        <ShoppingBag className="h-5 w-5 text-[#0058DB]" />
-                                                    )}
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-start justify-between gap-2">
-                                                        <div className="min-w-0">
-                                                            <div className="text-base font-semibold font-['DM_Sans'] leading-5 text-gray-900 truncate">{product.name}</div>
-                                                            <div className="text-[10px] text-gray-400 font-bold tracking-wider uppercase truncate mt-0.5">{product.description || 'No description'}</div>
-                                                        </div>
-                                                        <div className="relative flex-shrink-0" ref={openDropdownId === product.id ? dropdownRef : null}>
-                                                            <button
-                                                                onClick={() => setOpenDropdownId(openDropdownId === product.id ? null : product.id)}
-                                                                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-all"
-                                                            >
-                                                                <MoreHorizontal size={16} />
-                                                            </button>
-                                                            {openDropdownId === product.id && (
-                                                                <div className="absolute right-0 top-[calc(100%+4px)] z-50 w-48 bg-white rounded-xl shadow-[0px_8px_24px_0px_rgba(17,24,39,0.12)] outline outline-1 outline-offset-[-1px] outline-[#E8EEF8] overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-                                                                    <button onClick={() => { setShareProduct(product); setOpenDropdownId(null); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F3F5FC] transition-colors">
-                                                                        <Share2 size={14} className="text-[#0058DB]" />
-                                                                        <span className="text-xs font-medium text-gray-700">Share Payment Link</span>
-                                                                    </button>
-                                                                    {isAdmin && (
-                                                                        <>
-                                                                            <button onClick={() => { handleOpenEditModal(product); setOpenDropdownId(null); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F3F5FC] transition-colors border-t border-[#E8EEF8]/50">
-                                                                                <Edit2 size={14} className="text-gray-500" />
-                                                                                <span className="text-xs font-medium text-gray-700">Edit Details</span>
-                                                                            </button>
-                                                                            <button onClick={() => { handleDownloadSalesCSV(product.id, product.name); setOpenDropdownId(null); }} disabled={downloadingId === product.id} className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F3F5FC] transition-colors disabled:opacity-50">
-                                                                                {downloadingId === product.id ? <Loader2 size={14} className="animate-spin text-gray-500" /> : <Download size={14} className="text-gray-500" />}
-                                                                                <span className="text-xs font-medium text-gray-700">Download Sales CSV</span>
-                                                                            </button>
-                                                                            <button onClick={() => { handleDelete(product.id, product.name); setOpenDropdownId(null); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-red-50 transition-colors border-t border-[#E8EEF8]/50 group/delete">
-                                                                                <Trash2 size={14} className="text-red-400 group-hover/delete:text-red-600" />
-                                                                                <span className="text-xs font-medium text-red-500 group-hover/delete:text-red-700">Delete Product</span>
-                                                                            </button>
-                                                                        </>
-                                                                    )}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-2 mt-2 flex-wrap">
-                                                        <span className="text-sm font-semibold font-['DM_Sans'] text-gray-900">
-                                                            {product.price != null ? `K${Number(product.price).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : <span className="text-gray-400 font-medium text-xs">Variable</span>}
-                                                        </span>
-                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase ${typeBadgeClass(product.product_type)}`}>
-                                                            {typeLabel(product.product_type)}
-                                                        </span>
-                                                        <span className={`px-2 py-0.5 inline-flex text-[10px] font-bold leading-5 rounded-full border ${product.is_active ? 'bg-green-50 text-green-700 border-green-100' : 'bg-gray-50 text-gray-700 border-gray-100'}`}>
-                                                            {product.is_active ? 'ACTIVE' : 'INACTIVE'}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-
-                                    {/* ── Desktop: table ── */}
-                                    <table className="hidden md:table w-full text-left">
-                                        <thead className="bg-white">
-                                            <tr className="border-b border-[#E8EEF8]">
-                                                <th className="py-2.5 px-6 text-xs font-semibold text-[#111827]">Product / Service</th>
-                                                <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Price</th>
-                                                <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Type</th>
-                                                <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Status</th>
-                                                <th className="py-2.5 px-6 w-12"></th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {filteredProducts.map((product) => (
-                                                <tr key={product.id} className="group transition-colors border-b border-[#E8EEF8]/40 hover:bg-gray-50/70">
-                                                    <td className="py-3.5 px-6">
-                                                        <div className="flex items-center">
-                                                            <div className="flex-shrink-0 h-10 w-10 rounded-xl bg-[#0058DB]/10 overflow-hidden flex items-center justify-center shadow-inner transition-transform group-hover:scale-110">
-                                                                {product.image_url ? (
-                                                                    <img src={product.image_url} alt="" className="h-full w-full object-cover" />
-                                                                ) : (
-                                                                    <ShoppingBag className="h-5 w-5 text-[#0058DB]" />
-                                                                )}
-                                                            </div>
-                                                            <div className="ml-4">
-                                                                <div className="text-sm font-bold text-gray-900 leading-tight">{product.name}</div>
-                                                                <div className="text-xs text-gray-500 font-medium max-w-[280px] truncate">{product.description || 'No description'}</div>
-                                                            </div>
-                                                        </div>
-                                                    </td>
-                                                    <td className="py-3.5 px-3 whitespace-nowrap">
-                                                        <div className="text-sm font-bold text-gray-900">
-                                                            {product.price != null ? `K${Number(product.price).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : <span className="text-gray-400 font-medium text-xs">Variable</span>}
-                                                        </div>
-                                                    </td>
-                                                    <td className="py-3.5 px-3 whitespace-nowrap">
-                                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase ${typeBadgeClass(product.product_type)}`}>
-                                                            {typeLabel(product.product_type)}
-                                                        </span>
-                                                    </td>
-                                                    <td className="py-3.5 px-3 whitespace-nowrap">
-                                                        <span className={`px-2.5 py-0.5 inline-flex text-[10px] font-bold leading-5 rounded-full border ${
-                                                            product.is_active
-                                                                ? 'bg-green-50 text-green-700 border-green-100'
-                                                                : 'bg-gray-50 text-gray-700 border-gray-100'
-                                                        }`}>
-                                                            {product.is_active ? 'ACTIVE' : 'INACTIVE'}
-                                                        </span>
-                                                    </td>
-                                                    <td className="py-3.5 px-6 whitespace-nowrap text-center">
-                                                        <div className="relative flex justify-end" ref={openDropdownId === product.id ? dropdownRef : null}>
-                                                            <button
-                                                                onClick={() => setOpenDropdownId(openDropdownId === product.id ? null : product.id)}
-                                                                className="p-1.5 rounded-lg border border-transparent hover:border-[#E8EEF8] hover:bg-[#F3F5FC] text-gray-400 hover:text-gray-600 transition-all"
-                                                            >
-                                                                <MoreHorizontal size={16} />
-                                                            </button>
-                                                            {openDropdownId === product.id && (
-                                                                <div className="absolute right-0 top-[calc(100%+4px)] z-50 w-48 bg-white rounded-xl shadow-[0px_8px_24px_0px_rgba(17,24,39,0.12)] outline outline-1 outline-offset-[-1px] outline-[#E8EEF8] overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-                                                                    <button onClick={() => { setShareProduct(product); setOpenDropdownId(null); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F3F5FC] transition-colors">
-                                                                        <Share2 size={14} className="text-[#0058DB]" />
-                                                                        <span className="text-xs font-medium text-gray-700">Share Payment Link</span>
-                                                                    </button>
-                                                                    {isAdmin && (
-                                                                        <>
-                                                                            <button onClick={() => { handleOpenEditModal(product); setOpenDropdownId(null); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F3F5FC] transition-colors border-t border-[#E8EEF8]/50">
-                                                                                <Edit2 size={14} className="text-gray-500" />
-                                                                                <span className="text-xs font-medium text-gray-700">Edit Details</span>
-                                                                            </button>
-                                                                            <button onClick={() => { handleDownloadSalesCSV(product.id, product.name); setOpenDropdownId(null); }} disabled={downloadingId === product.id} className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F3F5FC] transition-colors disabled:opacity-50">
-                                                                                {downloadingId === product.id ? <Loader2 size={14} className="animate-spin text-gray-500" /> : <Download size={14} className="text-gray-500" />}
-                                                                                <span className="text-xs font-medium text-gray-700">Download Sales CSV</span>
-                                                                            </button>
-                                                                            <button onClick={() => { handleDelete(product.id, product.name); setOpenDropdownId(null); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-red-50 transition-colors border-t border-[#E8EEF8]/50 group/delete">
-                                                                                <Trash2 size={14} className="text-red-400 group-hover/delete:text-red-600" />
-                                                                                <span className="text-xs font-medium text-red-500 group-hover/delete:text-red-700">Delete Product</span>
-                                                                            </button>
-                                                                        </>
-                                                                    )}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </>
+                                <ProductList products={filteredProducts} isAdmin={isAdmin} onMarketplace={onMarketplace} auctions={auctionMap} downloadingId={downloadingId} onEdit={handleOpenEditModal} onShare={setShareProduct} onDelete={(pr) => handleDelete(pr.id, pr.name)} onDownload={(pr) => handleDownloadSalesCSV(pr.id, pr.name)} onAuction={setAuctionFor} onAdd={handleOpenAddModal} onToggleActive={handleToggleActive} />
                             );
                         })()}
                     </div>
@@ -959,7 +872,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
 
             {isModalOpen && (
                 <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm sm:p-4 animate-in fade-in duration-200">
-                    <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-xl w-full sm:max-w-lg overflow-hidden animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200 max-h-[94vh] flex flex-col">
+                    <div className={`bg-white rounded-t-3xl sm:rounded-3xl shadow-xl w-full ${full ? 'sm:max-w-5xl' : 'sm:max-w-xl'} overflow-hidden animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200 max-h-[94vh] flex flex-col`}>
 
                         {/* Header */}
                         <div className="px-6 pt-6 pb-4 flex items-center justify-between shrink-0">
@@ -979,24 +892,63 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                         </div>
 
                         <form onSubmit={handleSubmit} className="flex flex-col overflow-hidden">
-                            <div className="px-6 pb-6 space-y-5 overflow-y-auto flex-1">
-                                {error && (
+                            <div className="px-6 pb-6 overflow-y-auto flex-1">
+    <div className={`mb-4 rounded-2xl p-4 border ${formData.marketplace_listed ? 'border-[#0B57D0]/40 bg-[#F0F6FF]' : 'border-gray-200 bg-gray-50'}`}>
+    <button type="button" role="switch" aria-checked={formData.marketplace_listed} onClick={() => setFormData(prev => ({ ...prev, marketplace_listed: !prev.marketplace_listed }))} disabled={submitting} className="w-full flex items-center justify-between gap-4 text-left">
+        <div>
+            <div className="text-sm font-bold text-gray-900">List on the Marketplace</div>
+            <div className="text-xs text-gray-500 mt-0.5">{formData.marketplace_listed ? 'Full listing: photos, size and weight, delivery and details, so people can find and order it.' : 'Simple listing for your own payment links: just the basics.'}</div>
+        </div>
+        <div className={`relative w-10 h-6 rounded-full transition-colors flex-shrink-0 ${formData.marketplace_listed ? 'bg-[#0B57D0]' : 'bg-gray-300'}`}>
+            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${formData.marketplace_listed ? 'translate-x-5' : 'translate-x-1'}`} />
+        </div>
+    </button>
+</div>
+
+{canAuction({ product_type: formData.product_type }) && (
+    <div className="mb-4 rounded-2xl border border-gray-200 bg-white p-4">
+        <div className="text-sm font-bold text-gray-900">How do you want to sell it?</div>
+        {editingProduct && auctionMap.get(editingProduct.id)?.status === 'OPEN' ? (
+            <p className="mt-2 rounded-xl bg-[#FEF7E0] px-3 py-2.5 text-xs text-[#B06000]">This item is on auction right now. Price changes won’t affect it. You can cancel an auction from the Marketplace listing until the first bid.</p>
+        ) : (
+            <>
+                <div className="mt-2 grid grid-cols-2 gap-2" role="radiogroup" aria-label="How to sell it">
+                    {([['FIXED', 'Fixed price', 'Buyers pay your price straight away.'], ['AUCTION', 'Auction', 'Buyers bid. The highest bid wins when time is up.']] as const).map(([id, label, hint]) => (
+                        <button key={id} type="button" role="radio" aria-checked={sellAs === id} disabled={submitting}
+                            onClick={() => { setSellAs(id); if (id === 'AUCTION') { setFormData(prev => ({ ...prev, marketplace_listed: true, is_active: true })); setAuctionForm((a) => (a.start && a.start !== '1' ? a : defaultAuction(formData.price))); } }}
+                            className={`rounded-xl border p-3 text-left transition ${sellAs === id ? 'border-[#0B57D0] bg-[#F0F6FF]' : 'border-gray-200 hover:border-gray-300'}`}>
+                            <span className="block text-sm font-bold text-gray-900">{label}</span><span className="text-xs text-gray-500">{hint}</span>
+                        </button>
+                    ))}
+                </div>
+                {sellAs === 'AUCTION' && <div className="mt-4 rounded-2xl bg-[#F8FAFD] p-4"><AuctionFields value={auctionForm} onChange={setAuctionForm} name={formData.name.trim() || undefined} /></div>}
+            </>
+        )}
+    </div>
+)}
+
+{error && (
                                     <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2.5 rounded-2xl text-sm flex items-center">
                                         <AlertCircle className="h-5 w-5 mr-2 flex-shrink-0" />
                                         {error}
                                     </div>
                                 )}
 
-                                {/* Image upload — prominent, top of form */}
+    {/* Two columns, two cards each, so the form stays short */}
+    <div className={`grid grid-cols-1 gap-4 ${full ? 'lg:grid-cols-2 lg:items-start' : ''}`}>
+        <div className="space-y-4">
+<section className="rounded-2xl border border-gray-100 bg-white p-4 space-y-4">
+    <div><h4 className="text-sm font-bold text-gray-900">Basics</h4><p className="text-xs text-gray-400 mt-0.5">What it is and what it costs</p></div>
+{/* Image upload — prominent, top of form */}
                                 <div className="flex items-center gap-4">
                                     <button
                                         type="button"
                                         onClick={() => document.getElementById('product-img-input')?.click()}
                                         aria-label="Upload product image"
-                                        className="relative w-20 h-20 rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden hover:border-[#0058DB]/50 hover:bg-blue-50/30 transition-all flex-shrink-0"
+                                        className="relative w-20 h-20 rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden hover:border-[#0842A0]/50 hover:bg-blue-50/30 transition-all flex-shrink-0"
                                     >
                                         {uploadingImage ? (
-                                            <Loader2 className="h-5 w-5 text-[#0058DB] animate-spin" />
+                                            <Loader2 className="h-5 w-5 text-[#0B57D0] animate-spin" />
                                         ) : formData.image_url ? (
                                             <img src={formData.image_url} alt="Product" className="h-full w-full object-cover" />
                                         ) : (
@@ -1025,7 +977,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                         onChange={handleChange}
                                         disabled={submitting}
                                         required
-                                        className="block w-full px-4 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none transition-all disabled:bg-gray-50 placeholder-gray-400"
+                                        className="block w-full px-4 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] outline-none transition-all disabled:bg-gray-50 placeholder-gray-400"
                                         placeholder="e.g. Men's Sneakers, Standard Haircut"
                                     />
                                 </div>
@@ -1039,7 +991,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                             value={formData.product_type}
                                             onChange={handleChange}
                                             disabled={submitting}
-                                            className="block w-full px-3 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none transition-all disabled:bg-gray-50"
+                                            className="block w-full px-3 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] outline-none transition-all disabled:bg-gray-50"
                                         >
                                             {PRODUCT_TYPE_OPTIONS.map(o => (
                                                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -1055,7 +1007,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                             value={formData.category}
                                             onChange={handleChange}
                                             disabled={submitting}
-                                            className="block w-full px-3 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none transition-all disabled:bg-gray-50 placeholder-gray-400"
+                                            className="block w-full px-3 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] outline-none transition-all disabled:bg-gray-50 placeholder-gray-400"
                                             placeholder="e.g. Shoes"
                                         />
                                         <datalist id="product-categories">
@@ -1114,7 +1066,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                                 onChange={handleChange}
                                                 disabled={submitting}
                                                 required={priceRequired}
-                                                className="block w-full pl-14 pr-4 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none transition-all disabled:bg-gray-50"
+                                                className="block w-full pl-14 pr-4 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] outline-none transition-all disabled:bg-gray-50"
                                                 placeholder="0.00"
                                             />
                                         </div>
@@ -1133,30 +1085,109 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                         onChange={handleChange}
                                         disabled={submitting}
                                         rows={2}
-                                        className="block w-full px-4 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none transition-all disabled:bg-gray-50 resize-none placeholder-gray-400"
+                                        className="block w-full px-4 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] outline-none transition-all disabled:bg-gray-50 resize-none placeholder-gray-400"
                                         placeholder="A short description customers will see..."
                                     />
                                 </div>
-
-                                {/* Revenue wallet + Income account */}
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-800 mb-1.5 flex items-center gap-1"><Wallet className="h-3.5 w-3.5 text-gray-400" />Wallet</label>
-                                        <select name="wallet_id" value={formData.wallet_id} onChange={handleChange} disabled={submitting} className="block w-full px-3 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none transition-all disabled:bg-gray-50">
-                                            <option value="">Default</option>
-                                            {wallets.map(w => <option key={w.id} value={w.id}>{w.name}{w.is_main ? ' (Main)' : ''}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-800 mb-1.5 flex items-center gap-1"><BookOpen className="h-3.5 w-3.5 text-gray-400" />Account</label>
-                                        <select name="income_account_id" value={formData.income_account_id} onChange={handleChange} disabled={submitting} className="block w-full px-3 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none transition-all disabled:bg-gray-50">
-                                            <option value="">Auto (AI)</option>
-                                            {incomeAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
-                                        </select>
-                                    </div>
+</section>
+{full && (<section className="rounded-2xl border border-gray-100 bg-white p-4 space-y-4">
+    <div><h4 className="text-sm font-bold text-gray-900">Photos and details</h4><p className="text-xs text-gray-400 mt-0.5">Pictures and what buyers get</p></div>
+{/* ── Additional gallery images ── */}
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-800 mb-1">
+                                        Additional Images <span className="text-xs font-medium text-gray-400 ml-1">Optional</span>
+                                    </label>
+                                    <p className="text-xs text-gray-400 mb-2">Works for products and services alike. Choose several photos at once; buyers can flip through them on the listing (up to 10). With no photos at all, the Marketplace shows a default picture for the category.</p>
+                                    {additionalImages.length > 0 && (
+                                        <div className="flex flex-wrap gap-2 mb-2">
+                                            {additionalImages.map((url, idx) => (
+                                                <div key={url} className="relative w-16 h-16 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0 group">
+                                                    <img src={url} alt={`Gallery ${idx + 1}`} className="w-full h-full object-cover" />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setAdditionalImages(prev => prev.filter((_, i) => i !== idx))}
+                                                        disabled={submitting}
+                                                        className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    >
+                                                        <X className="w-4 h-4 text-white" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    <label className={`inline-flex items-center px-4 py-2.5 text-xs font-bold text-gray-700 bg-white border border-gray-200 rounded-2xl hover:bg-gray-50 transition-colors ${(submitting || uploadingAdditionalImage) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                                        {uploadingAdditionalImage ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <ImagePlus className="h-4 w-4 mr-1.5" />}
+                                        {uploadingAdditionalImage ? 'Uploading...' : 'Add Photos'}
+                                        <input type="file" accept="image/*" multiple className="hidden" onChange={handleUploadAdditionalImage} disabled={submitting || uploadingAdditionalImage} />
+                                    </label>
                                 </div>
 
-                                {/* ── Delivery settings (physical products only) ── */}
+{/* ── What's Included bullet list ── */}
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-800 mb-1">
+                                        What's Included <span className="text-xs font-medium text-gray-400 ml-1">Optional</span>
+                                    </label>
+                                    <p className="text-xs text-gray-400 mb-2">Bullet points shown on the product detail page (e.g. "Free shipping", "1-year warranty").</p>
+                                    {whatsIncluded.length > 0 && (
+                                        <div className="space-y-2 mb-2">
+                                            {whatsIncluded.map((item, idx) => (
+                                                <div key={idx} className="flex items-center gap-2">
+                                                    <div className="w-1.5 h-1.5 rounded-full bg-[#0B57D0] md:bg-[#0B57D0] flex-shrink-0 mt-0.5" />
+                                                    <input
+                                                        type="text"
+                                                        value={item}
+                                                        onChange={(e) => setWhatsIncluded(prev => prev.map((s, i) => i === idx ? e.target.value : s))}
+                                                        disabled={submitting}
+                                                        placeholder="e.g. Free delivery included"
+                                                        className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] outline-none transition-all disabled:bg-gray-50 placeholder-gray-400"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setWhatsIncluded(prev => prev.filter((_, i) => i !== idx))}
+                                                        disabled={submitting}
+                                                        className="p-1.5 text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50"
+                                                    >
+                                                        <X className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => setWhatsIncluded(prev => [...prev, ''])}
+                                        disabled={submitting}
+                                        className="inline-flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold text-gray-700 bg-white border border-gray-200 rounded-2xl hover:bg-gray-50 transition-colors disabled:opacity-50"
+                                    >
+                                        <Plus className="h-4 w-4" />
+                                        Add Item
+                                    </button>
+                                </div>
+</section>)}
+        </div>
+        <div className="space-y-4">
+            {full && canHaveDelivery && (<section className="rounded-2xl border border-gray-100 bg-white p-4 space-y-4">
+    <div><h4 className="text-sm font-bold text-gray-900">Delivery</h4><p className="text-xs text-gray-400 mt-0.5">Size, weight and how it reaches the buyer</p></div>
+{/* ── Size and weight (physical products): prices the Opus Delivery trip ── */}
+                                {canHaveDelivery && (
+                                    <div className="border border-gray-100 rounded-2xl px-4 py-4">
+                                        <div className="text-sm font-bold text-gray-800">Size and weight</div>
+                                        <div className="text-xs text-gray-400 mb-3">Of one unit. They set the Opus Delivery price. Leave them blank and we estimate them from what the item is.</div>
+                                        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 mb-3">
+                                            {([['SMALL', 'Small', 'Bag or small box'], ['MEDIUM', 'Medium', 'TV, microwave, carton'], ['LARGE', 'Large', 'Fridge, sofa, wardrobe'], ['BULKY', 'Bulky', 'Full load of materials']] as const).map(([id, label, hint]) => (
+                                                <button key={id} type="button" disabled={submitting} onClick={() => setFormData(prev => ({ ...prev, parcel_size: prev.parcel_size === id ? '' : id }))}
+                                                    className={`rounded-xl px-3 py-2 text-left border text-xs transition ${formData.parcel_size === id ? 'border-[#0B57D0] bg-[#F0F6FF] font-bold text-[#041E49]' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                                                    <span className="block text-sm font-semibold">{label}</span><span className="text-gray-400">{hint}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <label className="block text-xs font-bold text-gray-700 mb-1.5">Weight of one unit (kg)</label>
+                                        <input type="number" name="weight_kg" step="0.1" min="0" value={formData.weight_kg} onChange={handleChange} disabled={submitting}
+                                            className="block w-40 px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] outline-none transition-all" placeholder="e.g. 12" />
+                                    </div>
+                                )}
+
+{/* ── Delivery settings (physical products only) ── */}
                                 {canHaveDelivery && (
                                     <div className="border border-gray-100 rounded-2xl overflow-hidden">
                                         {/* Toggle: requires delivery */}
@@ -1167,8 +1198,8 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                             className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-gray-50 transition-colors"
                                         >
                                             <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-xl bg-[#0058DB]/10 flex items-center justify-center flex-shrink-0">
-                                                    <svg className="w-4 h-4 text-[#0058DB]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                                <div className="w-8 h-8 rounded-xl bg-[#0B57D0]/10 flex items-center justify-center flex-shrink-0">
+                                                    <svg className="w-4 h-4 text-[#0B57D0]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                                         <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                                                         <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                                                     </svg>
@@ -1179,7 +1210,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                                 </div>
                                             </div>
                                             {/* Toggle pill */}
-                                            <div className={`relative w-10 h-6 rounded-full transition-colors flex-shrink-0 ${formData.requires_delivery ? 'bg-[#0058DB] md:bg-[#0059D8]' : 'bg-gray-200'}`}>
+                                            <div className={`relative w-10 h-6 rounded-full transition-colors flex-shrink-0 ${formData.requires_delivery ? 'bg-[#0B57D0] md:bg-[#0B57D0]' : 'bg-gray-200'}`}>
                                                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${formData.requires_delivery ? 'translate-x-5' : 'translate-x-1'}`} />
                                             </div>
                                         </button>
@@ -1198,7 +1229,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                                         <div className="text-sm font-bold text-gray-700">Allow External Deliveries</div>
                                                         <div className="text-xs text-gray-400">Show rider service options (Yango, etc.) at checkout</div>
                                                     </div>
-                                                    <div className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ml-3 ${formData.allow_external_delivery ? 'bg-[#0058DB] md:bg-[#0059D8]' : 'bg-gray-200'}`}>
+                                                    <div className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ml-3 ${formData.allow_external_delivery ? 'bg-[#0B57D0] md:bg-[#0B57D0]' : 'bg-gray-200'}`}>
                                                         <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${formData.allow_external_delivery ? 'translate-x-4' : 'translate-x-0.5'}`} />
                                                     </div>
                                                 </button>
@@ -1217,7 +1248,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                                                 value={formData.own_delivery_charge}
                                                                 onChange={handleChange}
                                                                 disabled={submitting}
-                                                                className="block w-full pl-7 pr-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none transition-all"
+                                                                className="block w-full pl-7 pr-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] outline-none transition-all"
                                                                 placeholder="0.00"
                                                             />
                                                         </div>
@@ -1228,9 +1259,75 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                         )}
                                     </div>
                                 )}
+</section>)}
+{full && canHaveDelivery && (<section className="rounded-2xl border border-gray-100 bg-white p-4 space-y-4">
+    <div><h4 className="text-sm font-bold text-gray-900">Stock</h4><p className="text-xs text-gray-400 mt-0.5">Count what you have, so buyers see “Only 2 left” and can’t order what’s gone</p></div>
+    <button type="button" role="switch" aria-checked={trackStock} onClick={() => setTrackStock((v) => !v)} disabled={submitting} className="w-full flex items-center justify-between gap-4 text-left">
+        <span><span className="block text-sm font-bold text-gray-800">Track stock</span><span className="block text-xs text-gray-400">Each Marketplace order takes one off, and a payment that fails puts it back</span></span>
+        <span className={`relative h-6 w-10 flex-shrink-0 rounded-full transition-colors ${trackStock ? 'bg-[#0B57D0]' : 'bg-gray-200'}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${trackStock ? 'translate-x-5' : 'translate-x-1'}`} /></span>
+    </button>
+    {trackStock && (
+        <>
+            <div className="grid grid-cols-2 gap-3">
+                {variantRows.length === 0 && (
+                    <div>
+                        <label className="block text-xs font-bold text-gray-700 mb-1.5">How many in stock</label>
+                        <input type="number" min="0" step="1" value={stockQty} onChange={(e) => setStockQty(e.target.value)} disabled={submitting} placeholder="e.g. 100" className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] outline-none" />
+                    </div>
+                )}
+                <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1.5">Warn buyers when</label>
+                    <div className="relative"><input type="number" min="0" step="1" value={lowStock} onChange={(e) => setLowStock(e.target.value)} disabled={submitting} className="block w-full px-3 py-2.5 pr-14 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] outline-none" /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">or fewer</span></div>
+                </div>
+            </div>
 
-                                {/* ── Customer information collected before payment ── */}
-                                {formData.product_type !== 'DONATION' && (
+            <div>
+                <p className="text-xs font-bold text-gray-700">Colours and sizes <span className="font-normal text-gray-400">(optional, each with its own count)</span></p>
+                <datalist id="stock-colours">{['Black', 'White', 'Red', 'Blue', 'Green', 'Yellow', 'Orange', 'Pink', 'Purple', 'Grey', 'Silver', 'Gold', 'Brown', 'Beige', 'Navy'].map((c) => <option key={c} value={c} />)}</datalist>
+                {variantRows.length > 0 && (
+                    <div className="mt-2 space-y-2">
+                        <div className="grid grid-cols-[1fr_1fr_80px_32px] gap-2 text-[10px] font-bold uppercase tracking-wide text-gray-400"><span>Colour</span><span>Size</span><span>In stock</span><span /></div>
+                        {variantRows.map((v, i) => (
+                            <div key={v.id ?? i} className="grid grid-cols-[1fr_1fr_80px_32px] items-center gap-2">
+                                <input list="stock-colours" value={v.color} onChange={(e) => setVariantRows((rows) => rows.map((r, k) => (k === i ? { ...r, color: e.target.value } : r)))} disabled={submitting} placeholder="Black" className="min-w-0 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm outline-none focus:border-[#0B57D0]" />
+                                <input value={v.size} onChange={(e) => setVariantRows((rows) => rows.map((r, k) => (k === i ? { ...r, size: e.target.value } : r)))} disabled={submitting} placeholder="128GB, M…" className="min-w-0 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm outline-none focus:border-[#0B57D0]" />
+                                <input type="number" min="0" step="1" value={v.stock} onChange={(e) => setVariantRows((rows) => rows.map((r, k) => (k === i ? { ...r, stock: e.target.value } : r)))} disabled={submitting} className="min-w-0 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm outline-none focus:border-[#0B57D0]" />
+                                <button type="button" aria-label="Remove this option" onClick={() => setVariantRows((rows) => rows.filter((_, k) => k !== i))} disabled={submitting} className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-500"><X className="w-4 h-4" /></button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                <button type="button" onClick={() => setVariantRows((rows) => [...rows, { color: '', size: '', stock: '' }])} disabled={submitting} className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-50"><Plus className="h-4 w-4" /> Add a colour or size</button>
+            </div>
+
+            <p className={`rounded-xl px-3 py-2 text-xs ${stockTotal <= 0 ? 'bg-red-50 text-red-700' : stockTotal <= (Number(lowStock) || 0) ? 'bg-amber-50 text-amber-800' : 'bg-green-50 text-green-700'}`}>
+                {stockTotal <= 0 ? 'Nothing in stock: buyers will see “Sold out”.' : stockTotal <= (Number(lowStock) || 0) ? `${stockTotal} in stock: buyers will see “Only ${stockTotal} left”.` : `${stockTotal} in stock.`}
+            </p>
+        </>
+    )}
+</section>)}
+<section className="rounded-2xl border border-gray-100 bg-white p-4 space-y-4">
+    <div><h4 className="text-sm font-bold text-gray-900">Selling and visibility</h4><p className="text-xs text-gray-400 mt-0.5">Where the money goes, what buyers fill in, who can see it</p></div>
+{/* Revenue wallet + Income account */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-800 mb-1.5 flex items-center gap-1"><Wallet className="h-3.5 w-3.5 text-gray-400" />Wallet</label>
+                                        <select name="wallet_id" value={formData.wallet_id} onChange={handleChange} disabled={submitting} className="block w-full px-3 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] outline-none transition-all disabled:bg-gray-50">
+                                            <option value="">Default</option>
+                                            {wallets.map(w => <option key={w.id} value={w.id}>{w.name}{w.is_main ? ' (Main)' : ''}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-800 mb-1.5 flex items-center gap-1"><BookOpen className="h-3.5 w-3.5 text-gray-400" />Account</label>
+                                        <select name="income_account_id" value={formData.income_account_id} onChange={handleChange} disabled={submitting} className="block w-full px-3 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] outline-none transition-all disabled:bg-gray-50">
+                                            <option value="">Auto (AI)</option>
+                                            {incomeAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+
+{/* ── Customer information collected before payment ── */}
+                                {full && formData.product_type !== 'DONATION' && (
                                     <div className="border border-gray-100 rounded-2xl overflow-hidden">
                                         <button
                                             type="button"
@@ -1242,7 +1339,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                                 <div className="text-sm font-bold text-gray-800">Collect customer information</div>
                                                 <div className="text-xs text-gray-400">Buyers fill these in on their own page right before paying (e.g. name, size)</div>
                                             </div>
-                                            <div className={`relative w-10 h-6 rounded-full transition-colors flex-shrink-0 ml-3 ${collectInfo ? 'bg-[#0058DB] md:bg-[#0059D8]' : 'bg-gray-200'}`}>
+                                            <div className={`relative w-10 h-6 rounded-full transition-colors flex-shrink-0 ml-3 ${collectInfo ? 'bg-[#0B57D0] md:bg-[#0B57D0]' : 'bg-gray-200'}`}>
                                                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${collectInfo ? 'translate-x-5' : 'translate-x-1'}`} />
                                             </div>
                                         </button>
@@ -1258,7 +1355,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                                                 onChange={e => updateCheckoutField(f.id, { label: e.target.value })}
                                                                 disabled={submitting}
                                                                 placeholder="Field label, e.g. Full name"
-                                                                className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none"
+                                                                className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] outline-none"
                                                             />
                                                             <select
                                                                 value={f.type}
@@ -1287,7 +1384,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                                                 onChange={e => updateCheckoutField(f.id, { optionsText: e.target.value })}
                                                                 disabled={submitting}
                                                                 placeholder="Options, separated by commas (S, M, L, XL)"
-                                                                className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none"
+                                                                className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] outline-none"
                                                             />
                                                         )}
                                                         <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
@@ -1307,86 +1404,14 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                                         <button type="button" onClick={() => addCheckoutField('size')} disabled={submitting} className="px-3 py-2 text-xs font-bold text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50">+ Sizes</button>
                                                     )}
                                                     <button type="button" onClick={() => addCheckoutField('email')} disabled={submitting} className="px-3 py-2 text-xs font-bold text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50">+ Email</button>
-                                                    <button type="button" onClick={() => addCheckoutField('custom')} disabled={submitting} className="px-3 py-2 text-xs font-bold text-[#0058DB] bg-white border border-[#0058DB]/30 rounded-xl hover:bg-blue-50">+ Custom field</button>
+                                                    <button type="button" onClick={() => addCheckoutField('custom')} disabled={submitting} className="px-3 py-2 text-xs font-bold text-[#0B57D0] bg-white border border-[#0B57D0]/30 rounded-xl hover:bg-blue-50">+ Custom field</button>
                                                 </div>
                                             </div>
                                         )}
                                     </div>
                                 )}
 
-                                {/* ── Additional gallery images ── */}
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-800 mb-1">
-                                        Additional Images <span className="text-xs font-medium text-gray-400 ml-1">Optional</span>
-                                    </label>
-                                    <p className="text-xs text-gray-400 mb-2">Customers can swipe through these on the product detail page.</p>
-                                    {additionalImages.length > 0 && (
-                                        <div className="flex flex-wrap gap-2 mb-2">
-                                            {additionalImages.map((url, idx) => (
-                                                <div key={url} className="relative w-16 h-16 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0 group">
-                                                    <img src={url} alt={`Gallery ${idx + 1}`} className="w-full h-full object-cover" />
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setAdditionalImages(prev => prev.filter((_, i) => i !== idx))}
-                                                        disabled={submitting}
-                                                        className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                                                    >
-                                                        <X className="w-4 h-4 text-white" />
-                                                    </button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                    <label className={`inline-flex items-center px-4 py-2.5 text-xs font-bold text-gray-700 bg-white border border-gray-200 rounded-2xl hover:bg-gray-50 transition-colors ${(submitting || uploadingAdditionalImage) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
-                                        {uploadingAdditionalImage ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <ImagePlus className="h-4 w-4 mr-1.5" />}
-                                        {uploadingAdditionalImage ? 'Uploading...' : 'Add Photo'}
-                                        <input type="file" accept="image/*" className="hidden" onChange={handleUploadAdditionalImage} disabled={submitting || uploadingAdditionalImage} />
-                                    </label>
-                                </div>
-
-                                {/* ── What's Included bullet list ── */}
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-800 mb-1">
-                                        What's Included <span className="text-xs font-medium text-gray-400 ml-1">Optional</span>
-                                    </label>
-                                    <p className="text-xs text-gray-400 mb-2">Bullet points shown on the product detail page (e.g. "Free shipping", "1-year warranty").</p>
-                                    {whatsIncluded.length > 0 && (
-                                        <div className="space-y-2 mb-2">
-                                            {whatsIncluded.map((item, idx) => (
-                                                <div key={idx} className="flex items-center gap-2">
-                                                    <div className="w-1.5 h-1.5 rounded-full bg-[#0058DB] md:bg-[#0059D8] flex-shrink-0 mt-0.5" />
-                                                    <input
-                                                        type="text"
-                                                        value={item}
-                                                        onChange={(e) => setWhatsIncluded(prev => prev.map((s, i) => i === idx ? e.target.value : s))}
-                                                        disabled={submitting}
-                                                        placeholder="e.g. Free delivery included"
-                                                        className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none transition-all disabled:bg-gray-50 placeholder-gray-400"
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setWhatsIncluded(prev => prev.filter((_, i) => i !== idx))}
-                                                        disabled={submitting}
-                                                        className="p-1.5 text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50"
-                                                    >
-                                                        <X className="w-3.5 h-3.5" />
-                                                    </button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                    <button
-                                        type="button"
-                                        onClick={() => setWhatsIncluded(prev => [...prev, ''])}
-                                        disabled={submitting}
-                                        className="inline-flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold text-gray-700 bg-white border border-gray-200 rounded-2xl hover:bg-gray-50 transition-colors disabled:opacity-50"
-                                    >
-                                        <Plus className="h-4 w-4" />
-                                        Add Item
-                                    </button>
-                                </div>
-
-                                {/* Active toggle */}
+{/* Active toggle */}
                                 <button
                                     type="button"
                                     onClick={() => setFormData(prev => ({ ...prev, is_active: !prev.is_active }))}
@@ -1397,11 +1422,17 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                         <div className="text-sm font-bold text-gray-800">Active</div>
                                         <div className="text-xs text-gray-400">Visible to customers on the payment portal</div>
                                     </div>
-                                    <div className={`relative w-10 h-6 rounded-full transition-colors flex-shrink-0 ${formData.is_active ? 'bg-[#0058DB] md:bg-[#0059D8]' : 'bg-gray-200'}`}>
+                                    <div className={`relative w-10 h-6 rounded-full transition-colors flex-shrink-0 ${formData.is_active ? 'bg-[#0B57D0] md:bg-[#0B57D0]' : 'bg-gray-200'}`}>
                                         <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${formData.is_active ? 'translate-x-5' : 'translate-x-1'}`} />
                                     </div>
                                 </button>
-                            </div>
+</section>
+        </div>
+    </div>
+    {!full && (
+        <button type="button" onClick={() => setShowMore(true)} className="mt-4 text-sm font-semibold text-[#0B57D0] hover:underline">Show more options (photos, delivery, checkout details)</button>
+    )}
+</div>
 
                             {/* Footer */}
                             <div className="px-6 py-4 border-t border-gray-100 bg-white flex justify-end gap-3 shrink-0">
@@ -1416,7 +1447,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                 <button
                                     type="submit"
                                     disabled={submitting || uploadingImage || uploadingAsset || !formData.name.trim()}
-                                    className="inline-flex items-center px-6 py-2.5 text-sm font-bold text-white bg-black hover:bg-gray-900 rounded-xl focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors disabled:opacity-50"
+                                    className="inline-flex items-center px-6 py-2.5 text-sm font-bold text-white bg-[#0B57D0] hover:bg-[#0B57D0] rounded-xl focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors disabled:opacity-50"
                                 >
                                     {submitting ? (
                                         <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</>
@@ -1429,6 +1460,8 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                     </div>
                 </div>
             )}
+
+            {auctionFor && <StartAuctionDialog listing={{ id: auctionFor.id, name: auctionFor.name, price: Number(auctionFor.price) || 0 }} open onClose={() => setAuctionFor(null)} onStarted={() => { refetchMarket(); loadProducts(); }} />}
 
             <ShareProductLinkModal
                 isOpen={!!shareProduct}

@@ -70,7 +70,7 @@ export const RewardsPanel: React.FC<{ canEdit: boolean }> = ({ canEdit }) => {
             </div>
 
             {isLoading ? (
-                <div className="py-16 flex justify-center"><Loader2 className="animate-spin text-gray-400" /></div>
+                <div className="py-16 flex justify-center"><Loader2 className="animate-spin text-[#0B57D0]" /></div>
             ) : loadError ? (
                 <div className="rounded-xl border border-red-100 bg-red-50 text-red-700 text-sm p-4">{(loadError as Error).message}</div>
             ) : items.length === 0 ? (

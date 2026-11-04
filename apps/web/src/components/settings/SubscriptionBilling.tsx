@@ -115,14 +115,14 @@ async function downloadInvoice(invoice: Invoice) {
             * { box-sizing: border-box; margin: 0; padding: 0; }
             body { font-family: system-ui, -apple-system, sans-serif; background: #fff; color: #111; padding: 56px 48px; max-width: 640px; margin: 0 auto; }
             .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; }
-            .brand { font-size: 22px; font-weight: 900; letter-spacing: -0.5px; color: #00347C; }
+            .brand { font-size: 22px; font-weight: 900; letter-spacing: -0.5px; color: #0842A0; }
             .brand-sub { font-size: 11px; color: #888; margin-top: 2px; }
             .invoice-label { text-align: right; }
             .invoice-label .tag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: #888; }
             .invoice-label .num { font-size: 18px; font-weight: 800; color: #111; margin-top: 2px; }
             .status-pill { display: inline-block; margin-top: 6px; padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: 700;
-                background: ${isPaid ? '#eff6ff' : '#fef9c3'};
-                color: ${isPaid ? '#1d4ed8' : '#854d0e'}; }
+                background: ${isPaid ? '#E8F0FE' : '#fef9c3'};
+                color: ${isPaid ? '#0842A0' : '#854d0e'}; }
             .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 0; margin-bottom: 36px; padding: 20px; background: #f8faff; border-radius: 12px; }
             .meta-item { display: flex; flex-direction: column; gap: 2px; }
             .meta-item .key { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
@@ -136,9 +136,9 @@ async function downloadInvoice(invoice: Invoice) {
             .divider { border: none; border-top: 1.5px solid #111; margin: 16px 0; }
             .total-line { display: flex; justify-content: space-between; align-items: center; padding: 14px 0 0; font-size: 18px; font-weight: 800; }
             .total-line .label { color: #111; }
-            .total-line .amt { color: #00347C; }
+            .total-line .amt { color: #0842A0; }
             .footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid #eee; font-size: 11px; color: #aaa; text-align: center; line-height: 1.6; }
-            .print-btn { margin-top: 32px; display: block; width: 100%; padding: 12px; background: #00347C; color: #fff; border: none; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; }
+            .print-btn { margin-top: 32px; display: block; width: 100%; padding: 12px; background: #0842A0; color: #fff; border: none; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; }
             @media print { .print-btn { display: none; } body { padding: 32px; } }
         </style>
         </head><body>
@@ -284,6 +284,7 @@ export const SubscriptionBilling: React.FC = () => {
 
     if (!subscription) return null;
 
+    const isEnterprise = subscription.plan_id === 'enterprise';
     const isPremium = subscription.plan_id === 'premium';
     const pricing = subscription.pricing ?? { base: 500, masterfees: 0, total: 500 };
     const creditsPct = Math.min(100, (subscription.fee_credits_zmw / pricing.total) * 100);
@@ -308,7 +309,7 @@ export const SubscriptionBilling: React.FC = () => {
                                 <div className="flex flex-col gap-1 flex-1">
                                     <p className="text-neutral-700 text-xs font-light leading-4">You are currently subscribed to the</p>
                                     <p className="text-black text-3xl font-bold leading-7">
-                                        {isPremium ? 'Premium' : 'Free'}
+                                        {isEnterprise ? 'Enterprise' : isPremium ? 'Premium' : 'Free'}
                                     </p>
                                 </div>
                                 {isPremium && (
@@ -321,11 +322,13 @@ export const SubscriptionBilling: React.FC = () => {
 
                             {/* Actions */}
                             <div className="flex items-center gap-3 h-7">
-                                {!isPremium ? (
+                                {isEnterprise ? (
+                                    <span className="text-xs text-neutral-600">Billed by agreement. Contact support to change your plan.</span>
+                                ) : !isPremium ? (
                                     <button
                                         onClick={handleUpgrade}
                                         disabled={actionLoading === 'upgrade'}
-                                        className="px-3 py-1.5 bg-[#00347C] text-white rounded-md text-[10px] font-semibold flex items-center gap-1.5 shadow-sm hover:bg-[#002460] transition-colors disabled:opacity-60"
+                                        className="px-3 py-1.5 bg-[#0842A0] text-white rounded-md text-[10px] font-semibold flex items-center gap-1.5 shadow-sm hover:bg-[#002460] transition-colors disabled:opacity-60"
                                     >
                                         <ArrowUpCircle size={11} />
                                         {actionLoading === 'upgrade' ? 'Upgrading…' : 'Upgrade to Premium'}
@@ -356,9 +359,9 @@ export const SubscriptionBilling: React.FC = () => {
                                     </span>
                                     <span className="text-neutral-700 text-xs font-bold leading-4">{periodPct}%</span>
                                 </div>
-                                <div className="h-1.5 bg-[#E8EEF8] rounded-full overflow-hidden">
+                                <div className="h-1.5 bg-[#E9EEF6] rounded-full overflow-hidden">
                                     <div
-                                        className="h-full bg-[#0058DB] rounded-full transition-all duration-500"
+                                        className="h-full bg-[#0B57D0] rounded-full transition-all duration-500"
                                         style={{ width: `${periodPct}%` }}
                                     />
                                 </div>
@@ -370,13 +373,13 @@ export const SubscriptionBilling: React.FC = () => {
                                             <span className="text-neutral-400 text-[10px] font-normal">
                                                 Fee credits earned: ZMW {subscription.fee_credits_zmw.toFixed(2)} of ZMW {pricing.total}
                                             </span>
-                                            <span className="text-[10px] font-semibold text-[#0058DB]">
+                                            <span className="text-[10px] font-semibold text-[#0B57D0]">
                                                 –{creditsPct.toFixed(0)}%
                                             </span>
                                         </div>
-                                        <div className="h-1.5 bg-[#E8EEF8] rounded-full overflow-hidden">
+                                        <div className="h-1.5 bg-[#E9EEF6] rounded-full overflow-hidden">
                                             <div
-                                                className="h-full bg-[#0058DB]/40 rounded-full transition-all duration-500"
+                                                className="h-full bg-[#0B57D0]/40 rounded-full transition-all duration-500"
                                                 style={{ width: `${creditsPct}%` }}
                                             />
                                         </div>
@@ -453,7 +456,7 @@ export const SubscriptionBilling: React.FC = () => {
                     <div className="bg-white rounded-xl outline outline-1 outline-zinc-100 overflow-hidden">
                         <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
                             <span className="text-sm font-semibold text-gray-800">Fee Credits This Period</span>
-                            <span className="text-xs text-[#111827] font-bold">
+                            <span className="text-xs text-[#1F1F1F] font-bold">
                                 ZMW {credits.reduce((s, c) => s + c.amount_zmw, 0).toFixed(2)} total
                             </span>
                         </div>
@@ -465,7 +468,7 @@ export const SubscriptionBilling: React.FC = () => {
                                         <p className="text-[10px] text-gray-400 font-mono">{cr.reference}</p>
                                     </div>
                                     <div className="text-right">
-                                        <p className="text-sm font-semibold text-[#111827]">+ZMW {cr.amount_zmw.toFixed(2)}</p>
+                                        <p className="text-sm font-semibold text-[#1F1F1F]">+ZMW {cr.amount_zmw.toFixed(2)}</p>
                                         <p className="text-[10px] text-gray-400">{formatShort(cr.created_at)}</p>
                                     </div>
                                 </div>
@@ -522,7 +525,7 @@ export const SubscriptionBilling: React.FC = () => {
                                             {inv.status === 'pending' && (
                                                 <button
                                                     onClick={() => setPayingInvoice(inv)}
-                                                    className="px-2.5 py-1 bg-[#00347C] text-white rounded-md text-[9px] font-semibold hover:bg-[#002460] transition-colors"
+                                                    className="px-2.5 py-1 bg-[#0842A0] text-white rounded-md text-[9px] font-semibold hover:bg-[#002460] transition-colors"
                                                 >
                                                     Pay Now
                                                 </button>

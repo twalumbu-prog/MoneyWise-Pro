@@ -42,7 +42,7 @@ export const DenominationInput: React.FC<DenominationInputProps> = ({
                                 onChange={(e) => handleCountChange(d.value, parseInt(e.target.value) || 0)}
                             />
                         </div>
-                        <span className="text-[10px] text-brand-navy font-medium mt-1">
+                        <span className="text-[10px] text-[#1F1F1F] font-medium mt-1">
                             = K{(d.value * d.count).toFixed(2)}
                         </span>
                     </div>

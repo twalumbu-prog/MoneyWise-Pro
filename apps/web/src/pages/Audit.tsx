@@ -44,9 +44,9 @@ export const Audit: React.FC = () => {
                             <p className="text-white/60 font-bold uppercase tracking-widest text-xs mb-2">Overall Accuracy</p>
                             <div className="flex items-baseline space-x-2">
                                 <h2 className="text-5xl md:text-6xl font-black">{report?.summary?.average_score || 0}%</h2>
-                                <TrendingUp className="h-6 w-6 text-emerald-400" />
+                                <TrendingUp className="h-6 w-6 text-[#CEEAD6]" />
                             </div>
-                            <p className="text-white/40 text-sm mt-3 md:mt-4 font-medium">Average score across {report?.summary?.total_audited || 0} transactions.</p>
+                            <p className="text-white/70 text-sm mt-3 md:mt-4 font-medium">Average score across {report?.summary?.total_audited || 0} transactions.</p>
                         </div>
                         <ShieldCheck className="absolute -bottom-10 -right-10 h-40 md:h-48 w-40 md:w-48 text-white/5" />
                     </div>
@@ -58,11 +58,11 @@ export const Audit: React.FC = () => {
                                 <div className="h-10 w-10 md:h-12 md:w-12 bg-emerald-50 rounded-2xl flex items-center justify-center mb-3 md:mb-4">
                                     <ShieldCheck className="h-5 w-5 md:h-6 md:w-6 text-emerald-600" />
                                 </div>
-                                <h3 className="text-sm md:text-lg font-black text-brand-navy">Compliance Health</h3>
+                                <h3 className="text-sm md:text-lg font-black text-[#1F1F1F]">Compliance Health</h3>
                                 <p className="text-gray-500 text-xs md:text-sm font-medium hidden md:block">Receipt documentation and OCR matching status.</p>
                             </div>
                             <div className="mt-4 md:mt-6 flex items-center space-x-2">
-                                <span className="text-xl md:text-2xl font-black text-brand-navy">Good</span>
+                                <span className="text-xl md:text-2xl font-black text-[#1F1F1F]">Good</span>
                                 <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-full">Optimal</span>
                             </div>
                         </div>
@@ -72,11 +72,11 @@ export const Audit: React.FC = () => {
                                 <div className="h-10 w-10 md:h-12 md:w-12 bg-amber-50 rounded-2xl flex items-center justify-center mb-3 md:mb-4">
                                     <AlertTriangle className="h-5 w-5 md:h-6 md:w-6 text-amber-600" />
                                 </div>
-                                <h3 className="text-sm md:text-lg font-black text-brand-navy">Efficiency</h3>
+                                <h3 className="text-sm md:text-lg font-black text-[#1F1F1F]">Efficiency</h3>
                                 <p className="text-gray-500 text-xs md:text-sm font-medium hidden md:block">Average time from Draft to final accounting.</p>
                             </div>
                             <div className="mt-4 md:mt-6 flex items-center space-x-2">
-                                <span className="text-xl md:text-2xl font-black text-brand-navy">~31h</span>
+                                <span className="text-xl md:text-2xl font-black text-[#1F1F1F]">~31h</span>
                                 <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-full">Needs Work</span>
                             </div>
                         </div>
@@ -86,7 +86,7 @@ export const Audit: React.FC = () => {
                 {/* Main Log Section */}
                 <div className="bg-white rounded-3xl md:rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
                     <div className="p-5 md:p-8 border-b border-gray-50">
-                        <h3 className="text-base md:text-xl font-black text-brand-navy mb-4">Transaction Audit Log</h3>
+                        <h3 className="text-base md:text-xl font-black text-[#1F1F1F] mb-4">Transaction Audit Log</h3>
                         <div className="flex flex-col gap-3">
                             {/* Search */}
                             <div className="relative">
@@ -105,7 +105,7 @@ export const Audit: React.FC = () => {
                                     <button
                                         key={f}
                                         onClick={() => setStatusFilter(f)}
-                                        className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all ${statusFilter === f ? 'bg-white text-brand-navy shadow-sm' : 'text-gray-400'}`}
+                                        className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all ${statusFilter === f ? 'bg-white text-[#1F1F1F] shadow-sm' : 'text-gray-400'}`}
                                     >
                                         {f}
                                     </button>
@@ -118,7 +118,7 @@ export const Audit: React.FC = () => {
                     <div className="md:hidden divide-y divide-gray-50">
                         {loading ? (
                             <div className="py-12 flex flex-col items-center gap-3 text-gray-400">
-                                <div className="animate-spin h-6 w-6 border-2 border-brand-navy border-t-transparent rounded-full" />
+                                <div className="animate-spin h-6 w-6 border-2 border-[#0B57D0] border-t-transparent rounded-full" />
                                 <span className="text-sm">Loading audit data…</span>
                             </div>
                         ) : filteredTransactions?.length === 0 ? (
@@ -126,13 +126,13 @@ export const Audit: React.FC = () => {
                         ) : filteredTransactions?.map((t: any) => (
                             <div key={t.id} className="p-4 flex items-start gap-3">
                                 {/* Avatar */}
-                                <div className="flex-shrink-0 h-10 w-10 rounded-xl bg-brand-navy/5 flex items-center justify-center text-[11px] font-bold text-brand-navy uppercase">
+                                <div className="flex-shrink-0 h-10 w-10 rounded-xl bg-brand-navy/5 flex items-center justify-center text-[11px] font-bold text-[#1F1F1F] uppercase">
                                     {t.requestor_name?.split(' ').map((n: string) => n[0]).join('') || '?'}
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center justify-between gap-2">
-                                        <span className="text-sm font-black text-brand-navy truncate">{t.reference_number || `REQ-${t.id.slice(0, 8)}`}</span>
-                                        <span className="text-sm font-black text-brand-navy flex-shrink-0">{Math.round(t.audit_score)}%</span>
+                                        <span className="text-sm font-black text-[#1F1F1F] truncate">{t.reference_number || `REQ-${t.id.slice(0, 8)}`}</span>
+                                        <span className="text-sm font-black text-[#1F1F1F] flex-shrink-0">{Math.round(t.audit_score)}%</span>
                                     </div>
                                     <span className="text-xs text-gray-400 truncate block mt-0.5">{t.description}</span>
                                     <div className="flex items-center gap-2 mt-2">
@@ -168,7 +168,7 @@ export const Audit: React.FC = () => {
                                 {loading ? (
                                     <tr>
                                         <td colSpan={5} className="px-8 py-12 text-center text-gray-400">
-                                            <div className="animate-spin h-6 w-6 border-2 border-brand-navy border-t-transparent rounded-full mx-auto mb-4" />
+                                            <div className="animate-spin h-6 w-6 border-2 border-[#0B57D0] border-t-transparent rounded-full mx-auto mb-4" />
                                             Loading audit data...
                                         </td>
                                     </tr>
@@ -182,13 +182,13 @@ export const Audit: React.FC = () => {
                                     <tr key={t.id} className="hover:bg-gray-50/50 transition-colors group">
                                         <td className="px-8 py-6">
                                             <div className="flex flex-col">
-                                                <span className="text-sm font-black text-brand-navy group-hover:text-brand-green transition-colors">{t.reference_number || `REQ-${t.id.slice(0, 8)}`}</span>
+                                                <span className="text-sm font-black text-[#1F1F1F] group-hover:text-brand-green transition-colors">{t.reference_number || `REQ-${t.id.slice(0, 8)}`}</span>
                                                 <span className="text-xs text-gray-400 font-medium truncate max-w-[200px]">{t.description}</span>
                                             </div>
                                         </td>
                                         <td className="px-8 py-6">
                                             <div className="flex items-center space-x-3">
-                                                <div className="h-8 w-8 bg-brand-navy/5 rounded-full flex items-center justify-center text-[10px] font-bold text-brand-navy uppercase">
+                                                <div className="h-8 w-8 bg-brand-navy/5 rounded-full flex items-center justify-center text-[10px] font-bold text-[#1F1F1F] uppercase">
                                                     {t.requestor_name?.split(' ').map((n: string) => n[0]).join('') || '?'}
                                                 </div>
                                                 <span className="text-xs font-bold text-gray-700">{t.requestor_name || 'System'}</span>
@@ -200,7 +200,7 @@ export const Audit: React.FC = () => {
                                             </span>
                                         </td>
                                         <td className="px-8 py-6 text-right">
-                                            <span className="text-sm font-black text-brand-navy">{Math.round(t.audit_score)}%</span>
+                                            <span className="text-sm font-black text-[#1F1F1F]">{Math.round(t.audit_score)}%</span>
                                         </td>
                                         <td className="px-8 py-6">
                                             <div className="flex justify-center">

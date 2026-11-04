@@ -176,7 +176,7 @@ export const LencoIntegration: React.FC<LencoIntegrationProps> = ({ onBack }) =>
     if (loading) {
         return (
             <div className="flex justify-center items-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin text-brand-green" />
+                <Loader2 className="h-8 w-8 animate-spin text-[#0B57D0]" />
                 <span className="ml-3 text-gray-500 font-medium">Loading settings...</span>
             </div>
         );
@@ -192,7 +192,7 @@ export const LencoIntegration: React.FC<LencoIntegrationProps> = ({ onBack }) =>
                     <ArrowLeft className="w-5 h-5 text-gray-500" />
                 </button>
                 <div>
-                    <h3 className="text-lg font-bold text-brand-navy">Lenco Integration</h3>
+                    <h3 className="text-lg font-bold text-[#1F1F1F]">Lenco Integration</h3>
                     <p className="text-sm text-gray-500">Manage your Lenco banking integration.</p>
                 </div>
             </div>
@@ -232,7 +232,7 @@ export const LencoIntegration: React.FC<LencoIntegrationProps> = ({ onBack }) =>
                     )}
                 </div>
                 
-                <p className="text-xs text-brand-navy/60 mb-6 font-brand-family">
+                <p className="text-xs text-[#1F1F1F]/60 mb-6 font-brand-family">
                     For security, each organization's wallet is automatically provisioned and locked. This prevents unauthorized fund transfers between organization wallets.
                 </p>
 
@@ -286,7 +286,7 @@ export const LencoIntegration: React.FC<LencoIntegrationProps> = ({ onBack }) =>
                             </div>
                             <div>
                                 <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Linked Subaccount ID</p>
-                                <p className="text-sm font-black text-brand-navy mt-0.5">{lencoSubaccountId}</p>
+                                <p className="text-sm font-black text-[#1F1F1F] mt-0.5">{lencoSubaccountId}</p>
                                 {fetchingLenco ? (
                                     <div className="flex items-center mt-1 text-[10px] text-gray-400">
                                         <Loader2 className="h-3 w-3 animate-spin mr-1" />

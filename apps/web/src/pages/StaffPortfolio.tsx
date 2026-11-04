@@ -18,7 +18,7 @@ export const StaffPortfolio: React.FC = () => {
         <div className="flex flex-col bg-gray-50 pt-2 pb-28 min-h-[100dvh] overflow-x-hidden w-full">
             {/* Top Summary Card (Net Worth) */}
             <div
-                className="mx-5 mb-5 rounded-2xl p-5 text-white shadow-[0px_2px_6px_3px_rgba(0,0,0,0.25)] relative overflow-hidden bg-gradient-to-l from-blue-950 to-slate-900"
+                className="mx-5 mb-5 rounded-2xl p-5 text-white shadow-[0px_2px_6px_3px_rgba(0,0,0,0.25)] relative overflow-hidden bg-gradient-to-l from-[#0B57D0] to-[#0842A0]"
                 style={{
                     animation: 'atabs-fade-up 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
                 }}
@@ -33,7 +33,7 @@ export const StaffPortfolio: React.FC = () => {
                         K{totals.netWorth.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </h2>
                     <span className="text-[28px] font-black leading-none font-bold">
-                        <span className="text-[#4D9FFF]">{totals.netWorthChange.isIncrease ? '+' : '-'}</span>
+                        <span className="text-[#669DF6]">{totals.netWorthChange.isIncrease ? '+' : '-'}</span>
                         <span className="text-white">{totals.netWorthChange.value}%</span>
                     </span>
                 </div>
@@ -41,7 +41,7 @@ export const StaffPortfolio: React.FC = () => {
                 {/* Secondary Band */}
                 <div className="bg-white/10 rounded-2xl px-4 py-3 mt-5 flex justify-between items-center text-[10px] font-bold text-white/90">
                     <div className="flex items-center gap-1.5">
-                        <ArrowUpRight size={14} className="text-[#34D399]" />
+                        <ArrowUpRight size={14} className="text-[#34A853]" />
                         <span>Total Investments <strong className="font-extrabold text-white">K{totals.totalInvestments.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span>
                     </div>
                     <div className="h-3 w-px bg-white/20"></div>
@@ -71,7 +71,7 @@ export const StaffPortfolio: React.FC = () => {
                             <div className="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mb-4">
                                 <Search size={28} />
                             </div>
-                            <h3 className="text-lg font-bold text-brand-navy">You have no investments yet</h3>
+                            <h3 className="text-lg font-bold text-[#1F1F1F]">You have no investments yet</h3>
                             <p className="text-sm text-gray-400 mt-2">Use the Invest option in the Inbox to start growing your money.</p>
                         </div>
                     ) : (
@@ -79,7 +79,7 @@ export const StaffPortfolio: React.FC = () => {
                             <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mb-4">
                                 <Search size={28} />
                             </div>
-                            <h3 className="text-lg font-bold text-brand-navy">You have no loans yet</h3>
+                            <h3 className="text-lg font-bold text-[#1F1F1F]">You have no loans yet</h3>
                             <p className="text-sm text-gray-400 mt-2">Use the New Staff Loan option in the Inbox if you need funds.</p>
                         </div>
                     )}

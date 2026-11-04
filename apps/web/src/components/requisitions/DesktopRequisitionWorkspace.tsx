@@ -78,7 +78,7 @@ const saveTogglePrefs = (prefs: TogglePrefs) => {
 
 const ComingSoonTab: React.FC<{ name: string }> = ({ name }) => (
     <div className="flex flex-col items-center justify-center h-full text-center px-8">
-        <div className="w-16 h-16 rounded-2xl bg-[#F3F5FC] flex items-center justify-center mb-4">
+        <div className="w-16 h-16 rounded-2xl bg-[#F8FAFD] flex items-center justify-center mb-4">
             <AlertCircle size={28} className="text-gray-400" />
         </div>
         <h3 className="text-base font-bold text-gray-500 mb-1">{name} Feature Loading</h3>
@@ -419,22 +419,22 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
             <div className="flex items-center justify-between shrink-0">
                 <button
                     onClick={onClose}
-                    className="h-8 pl-2.5 pr-3.5 bg-white rounded-lg outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E8EEF8] flex items-center gap-1.5 hover:bg-[#F3F5FC] transition-colors"
+                    className="h-8 pl-2.5 pr-3.5 bg-white rounded-lg outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E9EEF6] flex items-center gap-1.5 hover:bg-[#F8FAFD] transition-colors"
                 >
-                    <ArrowLeft size={15} className="text-[#111827]" />
-                    <span className="text-sm font-bold text-[#111827]">New Requisition</span>
+                    <ArrowLeft size={15} className="text-[#1F1F1F]" />
+                    <span className="text-sm font-bold text-[#1F1F1F]">New Requisition</span>
                 </button>
             </div>
 
             <div className="w-full max-w-md mx-auto shrink-0">
-                <div className="flex items-center gap-1 p-1 bg-[#F3F5FC] md:bg-[#F8FAFD] rounded-[10px]">
+                <div className="flex items-center gap-1 p-1 bg-[#F8FAFD] md:bg-[#F8FAFD] rounded-[10px]">
                     {TABS.map(tab => (
                         <button
                             key={tab.value}
                             onClick={() => setActiveTab(tab.value)}
                             className={`flex-1 py-2 rounded-lg text-xs transition-all ${
                                 activeTab === tab.value
-                                    ? 'font-bold bg-white text-[#111827] shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)] outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E8EEF8]'
+                                    ? 'font-bold bg-white text-[#1F1F1F] shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)] outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E9EEF6]'
                                     : 'font-normal text-gray-400 hover:text-gray-500'
                             }`}
                         >
@@ -444,7 +444,7 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
                 </div>
             </div>
 
-            <div className="flex-1 min-h-0 rounded-2xl outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E8EEF8] bg-white overflow-y-auto">
+            <div className="flex-1 min-h-0 rounded-2xl outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E9EEF6] bg-white overflow-y-auto">
                 {activeTab !== 'pay' ? (
                     <ComingSoonTab name={activeTab === 'buy' ? 'Buy' : 'Order'} />
                 ) : (
@@ -479,31 +479,31 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
                                 <div className="space-y-4">
                                     <div className="space-y-1.5">
                                         <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 ml-1">Purpose of funds</label>
-                                        <input type="text" value={description} onChange={e => setDescription(e.target.value)} placeholder="e.g. Office Supplies" className="w-full h-12 bg-white border border-gray-200 rounded-xl px-4 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] transition-all" />
+                                        <input type="text" value={description} onChange={e => setDescription(e.target.value)} placeholder="e.g. Office Supplies" className="w-full h-12 bg-white border border-gray-200 rounded-xl px-4 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] transition-all" />
                                     </div>
                                     {useDepartments && (
                                     <div className="space-y-1.5">
                                         <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 ml-1">Department</label>
-                                        <select value={department} onChange={e => setDepartment(e.target.value)} className="w-full h-12 bg-white border border-gray-200 rounded-xl px-4 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] transition-all">
+                                        <select value={department} onChange={e => setDepartment(e.target.value)} className="w-full h-12 bg-white border border-gray-200 rounded-xl px-4 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] transition-all">
                                             <option value="">Select Department</option>
                                             {orgDepartments.map(d => <option key={d} value={d}>{d}</option>)}
                                         </select>
                                     </div>
                                     )}
                                     <div className="pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <button onClick={() => { const v = !useMyAccount; setUseMyAccount(v); saveTogglePrefs({ useMyAccount: v, makeExpenseList, autoAuthorize }); }} className={`w-full flex flex-col p-4 rounded-xl border text-left transition-all ${useMyAccount ? 'bg-[#F3F5FC] border-[#006AFF]/30 shadow-sm' : 'bg-white border-gray-200 hover:border-gray-300'}`}>
+                                        <button onClick={() => { const v = !useMyAccount; setUseMyAccount(v); saveTogglePrefs({ useMyAccount: v, makeExpenseList, autoAuthorize }); }} className={`w-full flex flex-col p-4 rounded-xl border text-left transition-all ${useMyAccount ? 'bg-[#F8FAFD] border-[#0B57D0]/30 shadow-sm' : 'bg-white border-gray-200 hover:border-gray-300'}`}>
                                             <div className="flex items-center justify-between mb-3">
-                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${useMyAccount ? 'bg-[#0059D8] text-white' : 'bg-gray-100 text-gray-400'}`}><User size={16} /></div>
-                                                <div className={`w-10 h-5 rounded-full transition-all relative ${useMyAccount ? 'bg-[#0059D8]' : 'bg-gray-200'}`}><div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${useMyAccount ? 'right-0.5' : 'left-0.5'}`} /></div>
+                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${useMyAccount ? 'bg-[#0B57D0] text-white' : 'bg-gray-100 text-gray-400'}`}><User size={16} /></div>
+                                                <div className={`w-10 h-5 rounded-full transition-all relative ${useMyAccount ? 'bg-[#0B57D0]' : 'bg-gray-200'}`}><div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${useMyAccount ? 'right-0.5' : 'left-0.5'}`} /></div>
                                             </div>
                                             <p className="text-sm font-bold text-gray-900">Send to my account</p>
                                             <p className="text-[11px] text-gray-500 mt-0.5">Use details from your profile</p>
                                         </button>
 
-                                        <button onClick={() => { const v = !makeExpenseList; setMakeExpenseList(v); saveTogglePrefs({ useMyAccount, makeExpenseList: v, autoAuthorize }); }} className={`w-full flex flex-col p-4 rounded-xl border text-left transition-all ${makeExpenseList ? 'bg-[#F3F5FC] border-[#006AFF]/30 shadow-sm' : 'bg-white border-gray-200 hover:border-gray-300'}`}>
+                                        <button onClick={() => { const v = !makeExpenseList; setMakeExpenseList(v); saveTogglePrefs({ useMyAccount, makeExpenseList: v, autoAuthorize }); }} className={`w-full flex flex-col p-4 rounded-xl border text-left transition-all ${makeExpenseList ? 'bg-[#F8FAFD] border-[#0B57D0]/30 shadow-sm' : 'bg-white border-gray-200 hover:border-gray-300'}`}>
                                             <div className="flex items-center justify-between mb-3">
-                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${makeExpenseList ? 'bg-[#0059D8] text-white' : 'bg-gray-100 text-gray-400'}`}><List size={16} /></div>
-                                                <div className={`w-10 h-5 rounded-full transition-all relative ${makeExpenseList ? 'bg-[#0059D8]' : 'bg-gray-200'}`}><div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${makeExpenseList ? 'right-0.5' : 'left-0.5'}`} /></div>
+                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${makeExpenseList ? 'bg-[#0B57D0] text-white' : 'bg-gray-100 text-gray-400'}`}><List size={16} /></div>
+                                                <div className={`w-10 h-5 rounded-full transition-all relative ${makeExpenseList ? 'bg-[#0B57D0]' : 'bg-gray-200'}`}><div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${makeExpenseList ? 'right-0.5' : 'left-0.5'}`} /></div>
                                             </div>
                                             <p className="text-sm font-bold text-gray-900">Create item list</p>
                                             <p className="text-[11px] text-gray-500 mt-0.5">Add specific items and prices</p>
@@ -560,7 +560,7 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
                                     </div>
                                     <div className="text-right">
                                         <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-0.5">Total</p>
-                                        <p className="text-xl font-black text-[#006AFF]">K{getTotal().toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                        <p className="text-xl font-black text-[#0B57D0]">K{getTotal().toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                                     </div>
                                 </div>
                                 
@@ -568,15 +568,15 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
                                     {lineItems.map((item) => (
                                         <div key={item.id} className="flex gap-4 items-start p-4 bg-gray-50 rounded-xl border border-gray-100">
                                             <div className="flex-1 space-y-3">
-                                                <input type="text" value={item.description} onChange={e => updateLineItem(item.id, 'description', e.target.value)} placeholder="Item Description" className="w-full text-sm font-semibold text-gray-900 bg-transparent border-b border-gray-200 focus:border-[#006AFF] pb-1 placeholder:font-normal focus:outline-none transition-colors" />
+                                                <input type="text" value={item.description} onChange={e => updateLineItem(item.id, 'description', e.target.value)} placeholder="Item Description" className="w-full text-sm font-semibold text-gray-900 bg-transparent border-b border-gray-200 focus:border-[#0B57D0] pb-1 placeholder:font-normal focus:outline-none transition-colors" />
                                                 <div className="flex gap-4">
                                                     <div className="flex-1 relative">
                                                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-bold">K</span>
-                                                        <input type="number" value={item.unit_price || ''} onChange={e => updateLineItem(item.id, 'unit_price', e.target.value)} placeholder="0.00" className="w-full h-9 pl-7 pr-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF]" />
+                                                        <input type="number" value={item.unit_price || ''} onChange={e => updateLineItem(item.id, 'unit_price', e.target.value)} placeholder="0.00" className="w-full h-9 pl-7 pr-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0]" />
                                                     </div>
                                                     <div className="w-24 relative">
                                                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">Qty:</span>
-                                                        <input type="number" value={item.quantity} onChange={e => updateLineItem(item.id, 'quantity', e.target.value)} className="w-full h-9 pl-9 pr-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF]" />
+                                                        <input type="number" value={item.quantity} onChange={e => updateLineItem(item.id, 'quantity', e.target.value)} className="w-full h-9 pl-9 pr-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0]" />
                                                     </div>
                                                 </div>
                                             </div>
@@ -591,7 +591,7 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
                                         </div>
                                     ))}
                                     
-                                    <button onClick={addLineItem} className="w-full h-12 border border-dashed border-gray-300 rounded-xl flex items-center justify-center gap-2 text-gray-500 hover:text-[#006AFF] hover:bg-[#F3F5FC] hover:border-[#006AFF]/30 transition-all">
+                                    <button onClick={addLineItem} className="w-full h-12 border border-dashed border-gray-300 rounded-xl flex items-center justify-center gap-2 text-gray-500 hover:text-[#0B57D0] hover:bg-[#F8FAFD] hover:border-[#0B57D0]/30 transition-all">
                                         <Plus size={16} />
                                         <span className="text-xs font-bold">Add Another Item</span>
                                     </button>
@@ -614,7 +614,7 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
                                         onChange={e => setManualAmount(e.target.value)}
                                         placeholder="0.00"
                                         autoFocus
-                                        className="w-full h-20 bg-gray-50 border border-gray-200 rounded-2xl pl-14 pr-6 text-3xl font-black text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:bg-white transition-all text-center"
+                                        className="w-full h-20 bg-gray-50 border border-gray-200 rounded-2xl pl-14 pr-6 text-3xl font-black text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:bg-white transition-all text-center"
                                     />
                                 </div>
                             </div>
@@ -627,9 +627,9 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
                                     <p className="text-xs text-gray-500 mt-1">Where should the funds go?</p>
                                 </div>
                                 
-                                <div className="flex p-1 bg-[#F3F5FC] rounded-xl mb-6">
-                                    <button onClick={() => setPaymentMethod('mobile')} className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-all ${paymentMethod === 'mobile' ? 'bg-white text-[#0058DB] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Mobile Money</button>
-                                    <button onClick={() => setPaymentMethod('bank')} className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-all ${paymentMethod === 'bank' ? 'bg-white text-[#0058DB] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Bank Account</button>
+                                <div className="flex p-1 bg-[#F8FAFD] rounded-xl mb-6">
+                                    <button onClick={() => setPaymentMethod('mobile')} className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-all ${paymentMethod === 'mobile' ? 'bg-white text-[#0B57D0] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Mobile Money</button>
+                                    <button onClick={() => setPaymentMethod('bank')} className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-all ${paymentMethod === 'bank' ? 'bg-white text-[#0B57D0] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Bank Account</button>
                                 </div>
 
                                 {paymentMethod === 'mobile' ? (
@@ -651,7 +651,7 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
                                                     setMomoOperator(operator);
                                                 }}
                                                 placeholder="Enter phone number"
-                                                className="w-full h-12 bg-white border border-gray-200 rounded-xl px-4 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] transition-all pr-20"
+                                                className="w-full h-12 bg-white border border-gray-200 rounded-xl px-4 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] transition-all pr-20"
                                             />
                                             {momoOperator && (
                                                 <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -670,21 +670,21 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
                                                 banks={banks}
                                                 value={bankId}
                                                 onChange={setBankId}
-                                                className="w-full h-12 bg-white border border-gray-200 rounded-xl px-4 text-sm text-gray-900 focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF]"
+                                                className="w-full h-12 bg-white border border-gray-200 rounded-xl px-4 text-sm text-gray-900 focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0]"
                                                 placeholder="Select Bank"
                                             />
                                         </div>
                                         <div className="space-y-1.5">
                                             <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 ml-1">Account Number</label>
-                                            <input type="text" value={accountNumber} onChange={e => setAccountNumber(e.target.value)} placeholder="Enter account number" className="w-full h-12 bg-white border border-gray-200 rounded-xl px-4 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] transition-all" />
+                                            <input type="text" value={accountNumber} onChange={e => setAccountNumber(e.target.value)} placeholder="Enter account number" className="w-full h-12 bg-white border border-gray-200 rounded-xl px-4 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] transition-all" />
                                         </div>
                                     </div>
                                 )}
 
                                 {(phoneNumber.length >= 10 || accountNumber.length >= 5) && (
-                                    <div className="mt-6 p-4 rounded-xl bg-[#F3F5FC] border border-[#E8EEF8] flex items-center gap-3">
+                                    <div className="mt-6 p-4 rounded-xl bg-[#F8FAFD] border border-[rgba(116,119,117,0.22)] flex items-center gap-3">
                                         {confirmingName ? (
-                                            <RotateCcw size={16} className="text-[#0058DB] animate-spin shrink-0" />
+                                            <RotateCcw size={16} className="text-[#0B57D0] animate-spin shrink-0" />
                                         ) : resolvedName ? (
                                             <CheckCircle size={16} className="text-emerald-500 shrink-0" />
                                         ) : (
@@ -798,7 +798,7 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
                     {!isLastStage ? (
                         <button
                             onClick={handleProceed}
-                            className="h-10 px-6 rounded-xl bg-[#0059D8] text-xs font-bold text-white flex items-center gap-1.5 hover:bg-blue-700 transition-colors"
+                            className="h-10 px-6 rounded-xl bg-[#0B57D0] text-xs font-bold text-white flex items-center gap-1.5 hover:bg-blue-700 transition-colors"
                         >
                             Next
                             <ArrowRight size={16} />
@@ -807,7 +807,7 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
                         <button
                             onClick={handleSubmit}
                             disabled={submitting || isWalletBalanceInsufficient}
-                            className="h-10 px-8 rounded-xl bg-[#0059D8] text-xs font-bold text-white flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                            className="h-10 px-8 rounded-xl bg-[#0B57D0] text-xs font-bold text-white flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-50 transition-colors"
                         >
                             {submitting ? (
                                 <>

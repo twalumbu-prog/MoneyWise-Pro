@@ -17,7 +17,7 @@ interface InflowDetailDrawerProps {
 const STATUS_MAP: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
     COMPLETED: { label: 'Completed', icon: <CheckCircle2 size={13} className="text-emerald-500" />, color: 'text-emerald-600' },
     ACCOUNTED: { label: 'Accounted', icon: <CheckCircle2 size={13} className="text-emerald-500" />, color: 'text-emerald-600' },
-    PENDING: { label: 'Pending', icon: <Clock size={13} className="text-[#0058DB]" />, color: 'text-[#0058DB]' },
+    PENDING: { label: 'Pending', icon: <Clock size={13} className="text-[#0B57D0]" />, color: 'text-[#0B57D0]' },
     FAILED: { label: 'Failed', icon: <AlertTriangle size={13} className="text-red-500" />, color: 'text-red-600' },
     PROCESSING: { label: 'Processing', icon: <RotateCcw size={13} className="text-gray-400" />, color: 'text-gray-500' },
 };
@@ -141,7 +141,7 @@ const InflowDetailDrawer: React.FC<InflowDetailDrawerProps> = ({ inflow, onClose
                             <div className={`${card} space-y-1.5`}>
                                 {receipt.payer.name && <p className="text-sm font-semibold text-gray-800">{receipt.payer.name}</p>}
                                 {receipt.payer.phone && (
-                                    <a href={`tel:${receipt.payer.phone}`} className="text-xs text-gray-500 flex items-center gap-1.5 hover:text-[#0058DB]">
+                                    <a href={`tel:${receipt.payer.phone}`} className="text-xs text-gray-500 flex items-center gap-1.5 hover:text-[#0842A0]">
                                         <Phone size={12} />{receipt.payer.phone}
                                     </a>
                                 )}
@@ -160,10 +160,10 @@ const InflowDetailDrawer: React.FC<InflowDetailDrawerProps> = ({ inflow, onClose
                                     return (
                                         <div key={sale.id} className="bg-gray-50 rounded-2xl overflow-hidden">
                                             <div className="flex items-center gap-3 p-3">
-                                                <div className="w-11 h-11 rounded-xl bg-[#0058DB]/10 overflow-hidden flex items-center justify-center flex-shrink-0">
+                                                <div className="w-11 h-11 rounded-xl bg-[#0B57D0]/10 overflow-hidden flex items-center justify-center flex-shrink-0">
                                                     {sale.products?.image_url
                                                         ? <img src={sale.products.image_url} alt="" className="w-full h-full object-cover" />
-                                                        : <ShoppingBag size={16} className="text-[#0058DB]" />}
+                                                        : <ShoppingBag size={16} className="text-[#0B57D0]" />}
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <p className="text-sm font-semibold text-gray-800 truncate">{sale.products?.name ?? 'Unknown product'}</p>
@@ -196,7 +196,7 @@ const InflowDetailDrawer: React.FC<InflowDetailDrawerProps> = ({ inflow, onClose
                                                     <button
                                                         onClick={() => toggleDelivered(sale)}
                                                         disabled={togglingId === sale.id}
-                                                        className={`text-[11px] font-bold px-3 py-1.5 rounded-full transition-colors disabled:opacity-60 ${done ? 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50' : 'bg-[#0058DB] md:bg-[#0059D8] text-white hover:bg-[#004bb8]'}`}
+                                                        className={`text-[11px] font-bold px-3 py-1.5 rounded-full transition-colors disabled:opacity-60 ${done ? 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50' : 'bg-[#0B57D0] md:bg-[#0B57D0] text-white hover:bg-[#004bb8]'}`}
                                                     >
                                                         {togglingId === sale.id ? '…' : done ? 'Undo' : 'Mark delivered'}
                                                     </button>
@@ -217,7 +217,7 @@ const InflowDetailDrawer: React.FC<InflowDetailDrawerProps> = ({ inflow, onClose
                         <div>
                             <SectionTitle icon={<Truck size={12} />}>{delivery.mode === 'pickup' ? 'Pick-Up Order' : 'Delivery Details'}</SectionTitle>
                             <div className="p-4 bg-blue-50 rounded-2xl space-y-3">
-                                <div className="flex items-center gap-2 text-sm font-bold text-[#0058DB]">
+                                <div className="flex items-center gap-2 text-sm font-bold text-[#0B57D0]">
                                     {delivery.mode === 'pickup' ? <ShoppingBag size={15} /> : <Truck size={15} />}
                                     {delivery.mode === 'pickup' ? 'Customer will pick up' : 'Deliver to customer'}
                                 </div>
@@ -282,7 +282,7 @@ const InflowDetailDrawer: React.FC<InflowDetailDrawerProps> = ({ inflow, onClose
                     <button
                         onClick={() => receipt && downloadInflowReceiptPdf(receipt)}
                         disabled={!receipt}
-                        className="w-full flex items-center justify-center gap-2 bg-[#0058DB] md:bg-[#0059D8] hover:bg-[#004bb8] disabled:opacity-50 text-white text-sm font-bold rounded-2xl py-3 transition-colors"
+                        className="w-full flex items-center justify-center gap-2 bg-[#0B57D0] md:bg-[#0B57D0] hover:bg-[#004bb8] disabled:opacity-50 text-white text-sm font-bold rounded-2xl py-3 transition-colors"
                     >
                         <Download size={16} />Download receipt
                     </button>

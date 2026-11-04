@@ -866,7 +866,7 @@ export const PublicPaymentLink: React.FC = () => {
                     {orgAvatar}
                     <div className="flex items-center gap-2 min-w-0">
                         <span className="text-sm font-bold text-black truncate">{ctx.organization.name}</span>
-                        <BadgeCheck size={18} fill="#2563EB" className="text-white flex-shrink-0" strokeWidth={2} />
+                        <BadgeCheck size={18} fill="#0B57D0" className="text-white flex-shrink-0" strokeWidth={2} />
                     </div>
                 </div>
 
@@ -881,7 +881,7 @@ export const PublicPaymentLink: React.FC = () => {
                         {orgAvatar}
                         <div className="flex items-center gap-2">
                             <span className="text-base font-bold text-black">{ctx.organization.name}</span>
-                            <BadgeCheck size={20} fill="#2563EB" className="text-white" strokeWidth={2} />
+                            <BadgeCheck size={20} fill="#0B57D0" className="text-white" strokeWidth={2} />
                         </div>
                     </div>
 
@@ -1077,7 +1077,7 @@ export const PublicPaymentLink: React.FC = () => {
                             {phoneComplete && (
                                 <div className="mt-3 px-4 py-3 rounded-2xl bg-white border border-slate-200 flex items-center gap-3">
                                     {resolvingAccountName ? (
-                                        <Loader2 size={16} className="text-blue-600 animate-spin flex-shrink-0" />
+                                        <Loader2 size={16} className="text-[#0B57D0] animate-spin flex-shrink-0" />
                                     ) : resolvedAccountName ? (
                                         <Check size={16} className="text-emerald-500 flex-shrink-0" />
                                     ) : (
@@ -1133,7 +1133,7 @@ export const PublicPaymentLink: React.FC = () => {
                             onClick={handlePayMobileMoney}
                             disabled={!canPay}
                             className={`w-full h-14 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${
-                                canPay ? 'bg-black hover:bg-slate-800 text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
+                                canPay ? 'bg-[#0B57D0] hover:bg-[#0842A0] text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
                             }`}
                         >
                             {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
@@ -1169,7 +1169,7 @@ export const PublicPaymentLink: React.FC = () => {
 
                 {step === 'LOADING' && (
                     <div className="p-10 flex flex-col items-center justify-center min-h-[450px]">
-                        <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl animate-spin mb-4">
+                        <div className="p-4 bg-blue-50 text-[#0B57D0] rounded-2xl animate-spin mb-4">
                             <Loader2 size={32} />
                         </div>
                         <h3 className="text-sm font-bold text-slate-700 uppercase tracking-widest">Loading Payment Link</h3>
@@ -1242,7 +1242,7 @@ export const PublicPaymentLink: React.FC = () => {
                                 </p>
                                 <button
                                     onClick={() => { setStep('CHECKOUT'); setVerificationStep('POLLING'); }}
-                                    className="mt-5 px-5 py-2.5 rounded-xl bg-slate-950 hover:bg-slate-900 text-white text-[11px] font-black uppercase tracking-wider transition-all"
+                                    className="mt-5 px-5 py-2.5 rounded-xl bg-slate-950 hover:bg-[#0B57D0] text-white text-[11px] font-black uppercase tracking-wider transition-all"
                                 >
                                     Try Again
                                 </button>
@@ -1258,7 +1258,7 @@ export const PublicPaymentLink: React.FC = () => {
                             <div className="relative w-24 h-24 animate-in zoom-in-75 duration-300">
                                 <BadgeCheck
                                     className="w-24 h-24 text-[#002962]"
-                                    fill="#006AFF"
+                                    fill="#0B57D0"
                                     strokeWidth={1.5}
                                     style={{ filter: 'drop-shadow(-5px 5px 0 rgba(0,41,98,1))' }}
                                 />
@@ -1362,7 +1362,7 @@ export const PublicPaymentLink: React.FC = () => {
                         {(errorInfo?.retry ?? true) && (
                             <button
                                 onClick={loadContext}
-                                className="mt-6 w-full bg-slate-950 hover:bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.15em] transition-all shadow-lg flex items-center justify-center gap-2"
+                                className="mt-6 w-full bg-slate-950 hover:bg-[#0B57D0] text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.15em] transition-all shadow-lg flex items-center justify-center gap-2"
                             >
                                 <RefreshCw size={14} /> Try Again
                             </button>

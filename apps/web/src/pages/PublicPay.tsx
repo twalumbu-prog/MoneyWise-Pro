@@ -1500,8 +1500,8 @@ export const PublicPay: React.FC = () => {
                 format: 'a4'
             });
 
-            const primaryColor = '#1e293b'; // slate-800
-            const accentColor = '#2563eb'; // blue-600
+            const primaryColor = '#3C4043'; // slate-800
+            const accentColor = '#0B57D0'; // blue-600
 
             // 1. Draw branding header
             doc.setFont('Helvetica', 'bold');
@@ -1511,7 +1511,7 @@ export const PublicPay: React.FC = () => {
 
             doc.setFontSize(9);
             doc.setFont('Helvetica', 'normal');
-            doc.setTextColor('#64748b'); // slate-500
+            doc.setTextColor('#5F6368'); // slate-500
             doc.text('Official Payment Receipt', 20, 31);
 
             // Right-aligned title
@@ -1521,14 +1521,14 @@ export const PublicPay: React.FC = () => {
             doc.text('RECEIPT', 190, 25, { align: 'right' });
 
             // Divider
-            doc.setDrawColor('#e2e8f0'); // slate-200
+            doc.setDrawColor('#E8EAED'); // slate-200
             doc.setLineWidth(0.5);
             doc.line(20, 36, 190, 36);
 
             // 2. Receipt metadata
             doc.setFont('Helvetica', 'normal');
             doc.setFontSize(9);
-            doc.setTextColor('#334155'); // slate-700
+            doc.setTextColor('#3C4043'); // slate-700
             doc.text(`Receipt No: #${receiptNumber || currentReference.replace('-PUB', '')}`, 20, 46);
             doc.text(`Date: ${new Date().toLocaleString()}`, 20, 52);
             doc.text(`Payment Method: Lenco (Card/Mobile Money)`, 20, 58);
@@ -1543,11 +1543,11 @@ export const PublicPay: React.FC = () => {
             doc.line(20, 65, 190, 65);
 
             // 3. Products Table Header
-            doc.setFillColor('#f8fafc'); // slate-50
+            doc.setFillColor('#F8FAFD'); // slate-50
             doc.rect(20, 72, 170, 8, 'F');
             doc.setFont('Helvetica', 'bold');
             doc.setFontSize(9);
-            doc.setTextColor('#475569'); // slate-600
+            doc.setTextColor('#5F6368'); // slate-600
             doc.text('Item Description', 24, 77);
             doc.text('Qty', 110, 77, { align: 'center' });
             doc.text('Unit Price (K)', 145, 77, { align: 'right' });
@@ -1555,7 +1555,7 @@ export const PublicPay: React.FC = () => {
 
             let y = 86;
             doc.setFont('Helvetica', 'normal');
-            doc.setTextColor('#334155');
+            doc.setTextColor('#3C4043');
 
             lineItems.forEach((li) => {
                 const qty = li.quantity;
@@ -1568,7 +1568,7 @@ export const PublicPay: React.FC = () => {
                 doc.text(total.toFixed(2), 186, y, { align: 'right' });
 
                 // Underline for items
-                doc.setDrawColor('#f1f5f9');
+                doc.setDrawColor('#F1F3F4');
                 doc.line(20, y + 3, 190, y + 3);
                 y += 10;
             });
@@ -1609,7 +1609,7 @@ Status: VERIFIED`;
                 // Add small helper label
                 doc.setFont('Helvetica', 'normal');
                 doc.setFontSize(6.5);
-                doc.setTextColor('#94a3b8'); // slate-400
+                doc.setTextColor('#9AA0A6'); // slate-400
                 doc.text('SCAN TO VERIFY RECEIPT', 34, calculationsStartY + 29, { align: 'center' });
             } catch (qrErr) {
                 console.error('Failed to add QR code to PDF:', qrErr);
@@ -1617,14 +1617,14 @@ Status: VERIFIED`;
 
             // Divider
             y += 10;
-            doc.setDrawColor('#e2e8f0');
+            doc.setDrawColor('#E8EAED');
             doc.line(20, y, 190, y);
 
             // 5. Footer
             y += 12;
             doc.setFont('Helvetica', 'italic');
             doc.setFontSize(9);
-            doc.setTextColor('#94a3b8'); // slate-400
+            doc.setTextColor('#9AA0A6'); // slate-400
             doc.text('Thank you for your payment!', 105, y, { align: 'center' });
 
             y += 5;
@@ -1673,8 +1673,8 @@ Status: VERIFIED`;
                 format: 'a4'
             });
 
-            const primaryColor = '#1e293b'; // slate-800
-            const accentColor = '#2563eb'; // blue-600
+            const primaryColor = '#3C4043'; // slate-800
+            const accentColor = '#0B57D0'; // blue-600
 
             // 1. Draw branding header
             doc.setFont('Helvetica', 'bold');
@@ -1684,7 +1684,7 @@ Status: VERIFIED`;
 
             doc.setFontSize(9);
             doc.setFont('Helvetica', 'normal');
-            doc.setTextColor('#64748b'); // slate-500
+            doc.setTextColor('#5F6368'); // slate-500
             doc.text('Official Payment Receipt', 20, 31);
 
             // Right-aligned title
@@ -1694,14 +1694,14 @@ Status: VERIFIED`;
             doc.text('RECEIPT', 190, 25, { align: 'right' });
 
             // Divider
-            doc.setDrawColor('#e2e8f0'); // slate-200
+            doc.setDrawColor('#E8EAED'); // slate-200
             doc.setLineWidth(0.5);
             doc.line(20, 36, 190, 36);
 
             // 2. Receipt metadata
             doc.setFont('Helvetica', 'normal');
             doc.setFontSize(9);
-            doc.setTextColor('#334155'); // slate-700
+            doc.setTextColor('#3C4043'); // slate-700
             doc.text(`Receipt No: #${details.receiptNumber}`, 20, 46);
             doc.text(`Date: ${new Date(details.date).toLocaleString()}`, 20, 52);
             doc.text(`Payment Method: Lenco (Card/Mobile Money)`, 20, 58);
@@ -1716,11 +1716,11 @@ Status: VERIFIED`;
             doc.line(20, 65, 190, 65);
 
             // 3. Products Table Header
-            doc.setFillColor('#f8fafc'); // slate-50
+            doc.setFillColor('#F8FAFD'); // slate-50
             doc.rect(20, 72, 170, 8, 'F');
             doc.setFont('Helvetica', 'bold');
             doc.setFontSize(9);
-            doc.setTextColor('#475569'); // slate-600
+            doc.setTextColor('#5F6368'); // slate-600
             doc.text('Item Description', 24, 77);
             doc.text('Qty', 110, 77, { align: 'center' });
             doc.text('Unit Price (K)', 145, 77, { align: 'right' });
@@ -1728,7 +1728,7 @@ Status: VERIFIED`;
 
             let y = 86;
             doc.setFont('Helvetica', 'normal');
-            doc.setTextColor('#334155');
+            doc.setTextColor('#3C4043');
 
             details.items.forEach((item: any) => {
                 doc.text(item.name, 24, y);
@@ -1737,7 +1737,7 @@ Status: VERIFIED`;
                 doc.text(Number(item.total).toFixed(2), 186, y, { align: 'right' });
 
                 // Underline for items
-                doc.setDrawColor('#f1f5f9');
+                doc.setDrawColor('#F1F3F4');
                 doc.line(20, y + 3, 190, y + 3);
                 y += 10;
             });
@@ -1778,7 +1778,7 @@ Status: VERIFIED`;
                 // Add small helper label
                 doc.setFont('Helvetica', 'normal');
                 doc.setFontSize(6.5);
-                doc.setTextColor('#94a3b8');
+                doc.setTextColor('#9AA0A6');
                 doc.text('SCAN TO VERIFY RECEIPT', 34, calculationsStartY + 29, { align: 'center' });
             } catch (qrErr) {
                 console.error('Failed to add QR code to PDF:', qrErr);
@@ -1786,14 +1786,14 @@ Status: VERIFIED`;
 
             // Divider
             y += 10;
-            doc.setDrawColor('#e2e8f0');
+            doc.setDrawColor('#E8EAED');
             doc.line(20, y, 190, y);
 
             // 5. Footer
             y += 12;
             doc.setFont('Helvetica', 'italic');
             doc.setFontSize(9);
-            doc.setTextColor('#94a3b8');
+            doc.setTextColor('#9AA0A6');
             doc.text('Thank you for your payment!', 105, y, { align: 'center' });
 
             y += 5;
@@ -1838,7 +1838,7 @@ Status: VERIFIED`;
                 <div className="flex-1 flex flex-col gap-1.5 min-w-0 ml-4">
                     {/* Name + price row */}
                     <div className="flex flex-col">
-                        <span className="text-[#55595E] text-base font-semibold truncate leading-snug">{product.name}</span>
+                        <span className="text-[#5F6368] text-base font-semibold truncate leading-snug">{product.name}</span>
                         <div className="flex items-center gap-2 mt-0.5">
                             {isDonation ? (
                                 isInCart ? (
@@ -1956,8 +1956,8 @@ Status: VERIFIED`;
                         style={poppedId === product.id ? { animation: 'mw-add-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)' } : undefined}
                         className={`relative w-7 h-7 rounded-full flex items-center justify-center transition-colors duration-200 active:scale-90 ${
                             isInCart
-                                ? 'bg-black border border-black text-white hover:bg-slate-800'
-                                : 'border border-black text-black hover:bg-black hover:text-white'
+                                ? 'bg-[#0B57D0] border border-black text-white hover:bg-[#0842A0]'
+                                : 'border border-black text-black hover:bg-[#0B57D0] hover:text-white'
                         }`}
                         title={isInCart ? (isBooking ? 'Remove booking' : 'Remove from cart') : (isBooking ? 'Choose dates' : 'Add to cart')}
                     >
@@ -2054,7 +2054,7 @@ Status: VERIFIED`;
                 {/* Info + action */}
                 <div className="pt-3 flex flex-col gap-2.5">
                     <div className="flex flex-col gap-0.5 min-w-0 cursor-pointer" onClick={openDetail}>
-                        <span className="text-[#55595E] text-[11px] truncate">{product.name}</span>
+                        <span className="text-[#5F6368] text-[11px] truncate">{product.name}</span>
                         <span className="text-slate-900 text-sm font-bold">
                             {isDonation
                                 ? 'Open amount'
@@ -2076,7 +2076,7 @@ Status: VERIFIED`;
                             className={`w-full py-2.5 rounded-lg border text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors active:scale-95 ${
                                 isInCart
                                     ? 'bg-black border-black text-white'
-                                    : 'border-[#55595E] text-black hover:bg-black hover:text-white'
+                                    : 'border-[#5F6368] text-black hover:bg-[#0B57D0] hover:text-white'
                             }`}
                         >
                             {isInCart ? <Check size={13} strokeWidth={2.5} /> : <CalendarDays size={13} />}
@@ -2128,7 +2128,7 @@ Status: VERIFIED`;
                                         className={`w-full py-2.5 rounded-lg border text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors active:scale-95 ${
                                             isInCart && isDonation
                                                 ? 'bg-black border-black text-white'
-                                                : 'border-[#55595E] text-black hover:bg-black hover:text-white'
+                                                : 'border-[#5F6368] text-black hover:bg-[#0B57D0] hover:text-white'
                                         }`}
                                     >
                                         {isInCart && isDonation ? (
@@ -2183,9 +2183,9 @@ Status: VERIFIED`;
                             <div className="flex flex-col">
                                 <div className="flex items-center gap-1.5">
                                     <h4 className="text-lg font-black text-slate-900 uppercase tracking-tight">{org.name}</h4>
-                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#2563eb" />
+                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#0B57D0" />
                                 </div>
-                                <p className="text-xs font-thin text-[#5A5A5A]">Payment Checkout Portal</p>
+                                <p className="text-xs font-thin text-[#5F6368]">Payment Checkout Portal</p>
                             </div>
                         </div>
                         <button
@@ -2200,13 +2200,13 @@ Status: VERIFIED`;
                     {/* Search */}
                     <div className="mt-6 max-w-md">
                         <div className="relative">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#55595E]" size={16} />
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#5F6368]" size={16} />
                             <input
                                 type="text"
                                 value={productSearch}
                                 onChange={(e) => setProductSearch(e.target.value)}
                                 aria-label="Search products"
-                                className="w-full pl-11 pr-4 py-3.5 bg-[#F5F5F5] rounded-full text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-slate-200 transition-all"
+                                className="w-full pl-11 pr-4 py-3.5 bg-[#F1F3F4] rounded-full text-sm font-medium text-[#5F6368] outline-none focus:ring-2 focus:ring-slate-200 transition-all"
                             />
                         </div>
                     </div>
@@ -2219,7 +2219,7 @@ Status: VERIFIED`;
                                 <div className="mb-6 max-w-md">
                                     <SegmentedControl
                                         variant="capsule"
-                                        trackBgClassName="bg-[#F5F5F5]"
+                                        trackBgClassName="bg-[#F1F3F4]"
                                         inactiveTextClassName="text-black"
                                         options={productCategories.map(cat => ({ value: cat, label: cat }))}
                                         value={activeCategory}
@@ -2253,7 +2253,7 @@ Status: VERIFIED`;
                                 <div className="mb-6 invisible" aria-hidden="true">
                                     <SegmentedControl
                                         variant="capsule"
-                                        trackBgClassName="bg-[#F5F5F5]"
+                                        trackBgClassName="bg-[#F1F3F4]"
                                         inactiveTextClassName="text-black"
                                         options={productCategories.map(cat => ({ value: cat, label: cat }))}
                                         value={activeCategory}
@@ -2277,7 +2277,7 @@ Status: VERIFIED`;
                                 <div className="flex-1 overflow-y-auto p-5">
                                     {lineItems.length === 0 ? (
                                         <div className="h-full flex items-center justify-center text-center">
-                                            <p className="text-xs font-thin text-[#5A5A5A] leading-relaxed">
+                                            <p className="text-xs font-thin text-[#5F6368] leading-relaxed">
                                                 Items you add will appear here.
                                             </p>
                                         </div>
@@ -2297,7 +2297,7 @@ Status: VERIFIED`;
                                     <button
                                         onClick={handleProceedToSummary}
                                         disabled={subtotal <= 0}
-                                        className="w-full bg-black hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-2xl font-bold text-xs tracking-wide transition-all flex items-center justify-center gap-1.5"
+                                        className="w-full bg-[#0B57D0] hover:bg-[#0842A0] disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-2xl font-bold text-xs tracking-wide transition-all flex items-center justify-center gap-1.5"
                                     >
                                         <span>Checkout</span>
                                         <ChevronRight size={14} strokeWidth={2.5} />
@@ -2419,7 +2419,7 @@ Status: VERIFIED`;
                                                 <button
                                                     onClick={() => handleDownloadPublicReceipt(receipt.reference)}
                                                     disabled={downloadingReference === receipt.reference}
-                                                    className="p-3 bg-slate-950 hover:bg-slate-900 text-white rounded-xl shadow-sm hover:shadow-md transition-all active:scale-95 disabled:opacity-50"
+                                                    className="p-3 bg-slate-950 hover:bg-[#0B57D0] text-white rounded-xl shadow-sm hover:shadow-md transition-all active:scale-95 disabled:opacity-50"
                                                     title="Download Receipt"
                                                 >
                                                     {downloadingReference === receipt.reference ? (
@@ -2456,7 +2456,7 @@ Status: VERIFIED`;
                 {step === 'LOADING' && (
                     <div className="p-10 flex flex-col items-center justify-center min-h-[450px] animate-in fade-in duration-300">
                         {/* Bare ring spinner — no filled tile behind it */}
-                        <svg className="w-10 h-10 animate-spin text-blue-600 mb-6" viewBox="0 0 40 40" fill="none" aria-label="Loading">
+                        <svg className="w-10 h-10 animate-spin text-[#0B57D0] mb-6" viewBox="0 0 40 40" fill="none" aria-label="Loading">
                             <circle cx="20" cy="20" r="16" stroke="currentColor" strokeOpacity="0.15" strokeWidth="3" />
                             <path d="M20 4a16 16 0 0 1 16 16" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
                         </svg>
@@ -2601,7 +2601,7 @@ Status: VERIFIED`;
                                 {/* Rating (static) + Sold count — right below the name */}
                                 <div className="mt-1 flex items-center gap-2">
                                     <span className="flex items-center gap-1">
-                                        <Star size={12} className="text-yellow-400" fill="#facc15" />
+                                        <Star size={12} className="text-yellow-400" fill="#FBBC04" />
                                         <span className="text-xs text-[#757575]">4.9 (320 Reviews)</span>
                                     </span>
                                     <span className={`text-xs font-bold ${salesCount > 0 ? 'text-[#757575]' : 'text-teal-600'}`}>
@@ -2680,22 +2680,22 @@ Status: VERIFIED`;
                             <div className="flex flex-col min-w-0">
                                 <div className="flex items-center gap-1.5">
                                     <h4 className="text-base font-black text-slate-900 uppercase tracking-tight truncate">{org.name}</h4>
-                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#2563eb" />
+                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#0B57D0" />
                                 </div>
-                                <p className="text-xs font-thin text-[#5A5A5A]">Payment Checkout Portal</p>
+                                <p className="text-xs font-thin text-[#5F6368]">Payment Checkout Portal</p>
                             </div>
                         </div>
 
                         {/* Search */}
                         <div className="px-4 flex-shrink-0">
                             <div className="relative">
-                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#55595E]" size={16} />
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#5F6368]" size={16} />
                                 <input
                                     type="text"
                                     value={productSearch}
                                     onChange={(e) => setProductSearch(e.target.value)}
                                     aria-label="Search products"
-                                    className="w-full pl-11 pr-4 py-3.5 bg-[#F5F5F5] rounded-full text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-slate-200 transition-all"
+                                    className="w-full pl-11 pr-4 py-3.5 bg-[#F1F3F4] rounded-full text-sm font-medium text-[#5F6368] outline-none focus:ring-2 focus:ring-slate-200 transition-all"
                                 />
                             </div>
                         </div>
@@ -2705,7 +2705,7 @@ Status: VERIFIED`;
                             <div className="px-4 pt-4 flex-shrink-0">
                                 <SegmentedControl
                                     variant="capsule"
-                                    trackBgClassName="bg-[#F5F5F5]"
+                                    trackBgClassName="bg-[#F1F3F4]"
                                     inactiveTextClassName="text-black"
                                     options={productCategories.map(cat => ({ value: cat, label: cat }))}
                                     value={activeCategory}
@@ -2761,7 +2761,7 @@ Status: VERIFIED`;
                                             });
                                             setStep('CATALOG');
                                         }}
-                                        className="w-full bg-black hover:bg-slate-800 text-white py-4 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2.5"
+                                        className="w-full bg-[#0B57D0] hover:bg-[#0842A0] text-white py-4 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2.5"
                                     >
                                         <ShoppingBag size={18} />
                                         <span>Go to Cart</span>
@@ -2794,7 +2794,7 @@ Status: VERIFIED`;
                             <div className="flex flex-col min-w-0 gap-1">
                                 <div className="flex items-center gap-2">
                                     <h4 className="text-base font-bold text-black uppercase tracking-tight truncate">{org.name}</h4>
-                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#2563eb" />
+                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#0B57D0" />
                                 </div>
                                 <p className="text-xs font-normal text-black">Payment Checkout Portal</p>
                             </div>
@@ -2809,7 +2809,7 @@ Status: VERIFIED`;
                         <div className="flex-1 min-h-0 overflow-y-auto px-7 pt-4 pb-2">
                             {lineItems.length === 0 ? (
                                 <div className="flex items-center justify-center py-16">
-                                    <p className="text-center text-xs font-thin text-[#5A5A5A] leading-relaxed">
+                                    <p className="text-center text-xs font-thin text-[#5F6368] leading-relaxed">
                                         Items will appear in your cart when you<br />Add Products and Services
                                     </p>
                                 </div>
@@ -2994,8 +2994,8 @@ Status: VERIFIED`;
                             {org.logo_url ? (
                                 <img src={org.logo_url} alt={org.name} className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
                             ) : (
-                                <div className="w-10 h-10 rounded-xl bg-[#0058DB]/10 flex items-center justify-center flex-shrink-0">
-                                    <ShoppingBag className="h-5 w-5 text-[#0058DB]" />
+                                <div className="w-10 h-10 rounded-xl bg-[#0B57D0]/10 flex items-center justify-center flex-shrink-0">
+                                    <ShoppingBag className="h-5 w-5 text-[#0B57D0]" />
                                 </div>
                             )}
                             <div>
@@ -3041,7 +3041,7 @@ Status: VERIFIED`;
                                         className="w-full flex items-center justify-center gap-3 py-3 px-5 bg-white border border-slate-300 rounded-full shadow-sm text-sm text-gray-800 hover:bg-gray-50 active:scale-[0.98] transition-all disabled:opacity-60"
                                     >
                                         {locating ? (
-                                            <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+                                            <Loader2 className="h-4 w-4 animate-spin text-[#0B57D0]" />
                                         ) : (
                                             <MapPin className="h-4 w-4 text-gray-700" />
                                         )}
@@ -3056,7 +3056,7 @@ Status: VERIFIED`;
                                         {/* Country */}
                                         <div>
                                             <label className="text-xs font-semibold text-gray-700 mb-1 block">Country</label>
-                                            <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-full border" style={{borderColor:'#EFF2F6'}}>
+                                            <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-full border" style={{borderColor:'#F1F3F4'}}>
                                                 <span className="text-sm leading-none">🇿🇲</span>
                                                 <span className="flex-1 text-xs text-gray-600 font-normal">{deliveryCountry}</span>
                                                 <span className="text-xs font-semibold text-gray-600">ZM</span>
@@ -3073,7 +3073,7 @@ Status: VERIFIED`;
                                                     value={deliveryState}
                                                     onChange={e => setDeliveryState(e.target.value)}
                                                     placeholder="e.g. Lusaka"
-                                                    className="w-full pl-10 pr-10 py-3 bg-white rounded-full border text-xs text-gray-700 outline-none focus:border-[#0058DB] transition-colors" style={{borderColor:'#EFF2F6'}}
+                                                    className="w-full pl-10 pr-10 py-3 bg-white rounded-full border text-xs text-gray-700 outline-none focus:border-[#0B57D0] transition-colors" style={{borderColor:'#F1F3F4'}}
                                                 />
                                                 <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
                                             </div>
@@ -3088,7 +3088,7 @@ Status: VERIFIED`;
                                                     value={deliveryStreet}
                                                     onChange={e => setDeliveryStreet(e.target.value)}
                                                     placeholder="e.g. E7158 Whitechapel High St"
-                                                    className="w-full pl-10 pr-10 py-3 bg-white rounded-full border text-xs text-gray-700 outline-none focus:border-[#0058DB] transition-colors" style={{borderColor:'#EFF2F6'}}
+                                                    className="w-full pl-10 pr-10 py-3 bg-white rounded-full border text-xs text-gray-700 outline-none focus:border-[#0B57D0] transition-colors" style={{borderColor:'#F1F3F4'}}
                                                 />
                                                 <Edit2 className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                                             </div>
@@ -3103,7 +3103,7 @@ Status: VERIFIED`;
                                                     value={deliveryApartment}
                                                     onChange={e => setDeliveryApartment(e.target.value)}
                                                     placeholder="Suite B225, House No. 12"
-                                                    className="w-full pl-10 pr-10 py-3 bg-white rounded-full border text-xs text-gray-700 outline-none focus:border-[#0058DB] transition-colors" style={{borderColor:'#EFF2F6'}}
+                                                    className="w-full pl-10 pr-10 py-3 bg-white rounded-full border text-xs text-gray-700 outline-none focus:border-[#0B57D0] transition-colors" style={{borderColor:'#F1F3F4'}}
                                                 />
                                                 <Edit2 className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                                             </div>
@@ -3131,7 +3131,7 @@ Status: VERIFIED`;
                                                             }, 50);
                                                         }
                                                     }}
-                                                    className="w-full bg-white rounded-2xl border px-5 py-3 flex items-center gap-2.5 text-left" style={{borderColor:'#EFF2F6'}}
+                                                    className="w-full bg-white rounded-2xl border px-5 py-3 flex items-center gap-2.5 text-left" style={{borderColor:'#F1F3F4'}}
                                                 >
                                                     <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-xl flex-shrink-0 overflow-hidden">
                                                         {activeSvc.logoUrl
@@ -3151,7 +3151,7 @@ Status: VERIFIED`;
                                                 {/* Inline list — not absolute, so it pushes layout down and
                                                     never overlaps the sticky footer */}
                                                 {riderDropdownOpen && (
-                                                    <div className="mt-1.5 bg-white border rounded-2xl overflow-hidden" style={{borderColor:'#EFF2F6'}}>
+                                                    <div className="mt-1.5 bg-white border rounded-2xl overflow-hidden" style={{borderColor:'#F1F3F4'}}>
                                                         {RIDER_SERVICES.map((svc, idx) => (
                                                             <button
                                                                 key={svc.id}
@@ -3173,7 +3173,7 @@ Status: VERIFIED`;
                                                                     </div>
                                                                 </div>
                                                                 {selectedRider === svc.id && (
-                                                                    <div className="w-4 h-4 rounded-full bg-[#0058DB] flex-shrink-0 flex items-center justify-center">
+                                                                    <div className="w-4 h-4 rounded-full bg-[#0B57D0] flex-shrink-0 flex items-center justify-center">
                                                                         <div className="w-2 h-2 bg-white rounded-full" />
                                                                     </div>
                                                                 )}
@@ -3211,7 +3211,7 @@ Status: VERIFIED`;
                                 </button>
                                 <button
                                     onClick={() => setStep('SUMMARY')}
-                                    className="flex-1 h-11 px-3 py-2 bg-gray-900 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-white hover:bg-black transition-colors"
+                                    className="flex-1 h-11 px-3 py-2 bg-[#0B57D0] rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-white hover:bg-[#0B57D0] transition-colors"
                                 >
                                     <CreditCard className="h-3.5 w-3.5" />
                                     Checkout
@@ -3228,8 +3228,8 @@ Status: VERIFIED`;
                             {org.logo_url ? (
                                 <img src={org.logo_url} alt={org.name} className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
                             ) : (
-                                <div className="w-10 h-10 rounded-xl bg-[#0058DB]/10 flex items-center justify-center flex-shrink-0">
-                                    <ShoppingBag className="h-5 w-5 text-[#0058DB]" />
+                                <div className="w-10 h-10 rounded-xl bg-[#0B57D0]/10 flex items-center justify-center flex-shrink-0">
+                                    <ShoppingBag className="h-5 w-5 text-[#0B57D0]" />
                                 </div>
                             )}
                             <div>
@@ -3280,7 +3280,7 @@ Status: VERIFIED`;
                                                         value={value}
                                                         maxLength={200}
                                                         onChange={e => setInfoAnswer(li.product.id, f.id, e.target.value)}
-                                                        className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none"
+                                                        className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] outline-none"
                                                     />
                                                 )}
                                             </div>
@@ -3309,7 +3309,7 @@ Status: VERIFIED`;
                                         setError(null);
                                         startPayment();
                                     }}
-                                    className="flex-1 h-11 px-3 py-2 bg-gray-900 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-white hover:bg-black transition-colors"
+                                    className="flex-1 h-11 px-3 py-2 bg-[#0B57D0] rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-white hover:bg-[#0B57D0] transition-colors"
                                 >
                                     <CreditCard className="h-3.5 w-3.5" />
                                     Pay
@@ -3331,9 +3331,9 @@ Status: VERIFIED`;
                             <div className="flex flex-col min-w-0">
                                 <div className="flex items-center gap-1.5">
                                     <h4 className="text-base font-black text-slate-900 uppercase tracking-tight truncate">{org.name}</h4>
-                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#2563eb" />
+                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#0B57D0" />
                                 </div>
-                                <p className="text-xs font-thin text-[#5A5A5A]">Payment Checkout Portal</p>
+                                <p className="text-xs font-thin text-[#5F6368]">Payment Checkout Portal</p>
                             </div>
                         </div>
 
@@ -3436,7 +3436,7 @@ Status: VERIFIED`;
                                                 value={customerName}
                                                 onChange={(e) => setCustomerName(e.target.value)}
                                                 placeholder="Your full name"
-                                                className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-xl text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
+                                                className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-xl text-sm font-medium text-[#5F6368] outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
                                             />
                                         </div>
                                         <div className="relative">
@@ -3446,7 +3446,7 @@ Status: VERIFIED`;
                                                 value={customerPhone}
                                                 onChange={(e) => setCustomerPhone(e.target.value)}
                                                 placeholder="Phone number"
-                                                className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-xl text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
+                                                className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-xl text-sm font-medium text-[#5F6368] outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
                                             />
                                         </div>
                                     </div>
@@ -3471,7 +3471,7 @@ Status: VERIFIED`;
                                             value={customerEmail}
                                             onChange={(e) => setCustomerEmail(e.target.value)}
                                             placeholder="you@example.com"
-                                            className="w-full pl-11 pr-4 py-3.5 bg-white rounded-xl text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-violet-200 placeholder:text-slate-400 transition-all"
+                                            className="w-full pl-11 pr-4 py-3.5 bg-white rounded-xl text-sm font-medium text-[#5F6368] outline-none focus:ring-2 focus:ring-violet-200 placeholder:text-slate-400 transition-all"
                                         />
                                     </div>
                                 </div>
@@ -3501,7 +3501,7 @@ Status: VERIFIED`;
                                 disabled={!canPay}
                                 className={`w-full py-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${
                                     canPay
-                                        ? 'bg-black hover:bg-slate-800 text-white'
+                                        ? 'bg-[#0B57D0] hover:bg-[#0842A0] text-white'
                                         : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
                                 }`}
                             >
@@ -3601,7 +3601,7 @@ Status: VERIFIED`;
                                     {checkoutPhone.length >= 9 && (
                                         <div className="mt-3 px-4 py-3 rounded-2xl bg-white border border-slate-200 flex items-center gap-3">
                                             {resolvingAccountName ? (
-                                                <Loader2 size={16} className="text-blue-600 animate-spin flex-shrink-0" />
+                                                <Loader2 size={16} className="text-[#0B57D0] animate-spin flex-shrink-0" />
                                             ) : resolvedAccountName ? (
                                                 <Check size={16} className="text-emerald-500 flex-shrink-0" />
                                             ) : (
@@ -3649,7 +3649,7 @@ Status: VERIFIED`;
                                     disabled={submitting || !detectOperator(checkoutPhone) || resolvingAccountName}
                                     className={`w-full h-14 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${
                                         !submitting && detectOperator(checkoutPhone) && !resolvingAccountName
-                                            ? 'bg-black hover:bg-slate-800 text-white'
+                                            ? 'bg-[#0B57D0] hover:bg-[#0842A0] text-white'
                                             : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
                                     }`}
                                 >
@@ -3755,9 +3755,9 @@ Status: VERIFIED`;
                             <div className="flex flex-col min-w-0">
                                 <div className="flex items-center gap-1.5">
                                     <h4 className="text-base font-black text-slate-900 uppercase tracking-tight truncate">{org.name}</h4>
-                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#2563eb" />
+                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#0B57D0" />
                                 </div>
-                                <p className="text-xs font-thin text-[#5A5A5A]">Payment Checkout Portal</p>
+                                <p className="text-xs font-thin text-[#5F6368]">Payment Checkout Portal</p>
                             </div>
                         </div>
 
@@ -3770,7 +3770,7 @@ Status: VERIFIED`;
                                 >
                                     <BadgeCheck
                                         className="w-24 h-24 text-[#002962]"
-                                        fill="#006AFF"
+                                        fill="#0B57D0"
                                         strokeWidth={1.5}
                                         style={{ filter: 'drop-shadow(-5px 5px 0 rgba(0,41,98,1))' }}
                                     />
@@ -3851,7 +3851,7 @@ Status: VERIFIED`;
                             <button
                                 onClick={handleDownloadReceipt}
                                 disabled={isGeneratingReceipt}
-                                className="w-full bg-black hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-2xl font-bold text-xs transition-all flex items-center justify-center gap-2"
+                                className="w-full bg-[#0B57D0] hover:bg-[#0842A0] disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-2xl font-bold text-xs transition-all flex items-center justify-center gap-2"
                             >
                                 {isGeneratingReceipt ? (
                                     <Loader2 size={14} className="animate-spin" />
@@ -3902,7 +3902,7 @@ Status: VERIFIED`;
                         {(errorInfo?.retry ?? true) && (
                             <button
                                 onClick={handleTryAgain}
-                                className="w-full bg-slate-950 hover:bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.15em] transition-all shadow-lg flex items-center justify-center gap-2"
+                                className="w-full bg-slate-950 hover:bg-[#0B57D0] text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.15em] transition-all shadow-lg flex items-center justify-center gap-2"
                             >
                                 <RefreshCw size={14} /> Try Again
                             </button>
@@ -3950,7 +3950,7 @@ Status: VERIFIED`;
                                     value={productSearch}
                                     onChange={(e) => setProductSearch(e.target.value)}
                                     placeholder="Search products"
-                                    className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-full text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
+                                    className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-full text-sm font-medium text-[#5F6368] outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
                                 />
                             </div>
                         </div>
@@ -3960,7 +3960,7 @@ Status: VERIFIED`;
                             <div className="px-4 pt-6 flex-shrink-0">
                                 <SegmentedControl
                                     variant="capsule"
-                                    trackBgClassName="bg-[#F5F5F5]"
+                                    trackBgClassName="bg-[#F1F3F4]"
                                     inactiveTextClassName="text-black"
                                     options={productCategories.map(cat => ({ value: cat, label: cat }))}
                                     value={activeCategory}
@@ -4000,7 +4000,7 @@ Status: VERIFIED`;
                             <button
                                 onClick={closeProductSheet}
                                 disabled={cartItemCount === 0}
-                                className="w-full bg-black hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed text-white py-4 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2"
+                                className="w-full bg-[#0B57D0] hover:bg-[#0842A0] disabled:opacity-40 disabled:cursor-not-allowed text-white py-4 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2"
                             >
                                 <ShoppingBag size={16} />
                                 <span>{cartItemCount > 0 ? `Add ${cartItemCount} Item${cartItemCount === 1 ? '' : 's'}` : 'Add Items'}</span>

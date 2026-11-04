@@ -3,6 +3,9 @@ import { Layout } from '../../components/Layout';
 import { Link } from 'react-router-dom';
 import { Search, ChevronRight } from 'lucide-react';
 import { SegmentedControl, AnimatedTabContent } from '../../components/AnimatedTabs';
+import { useInvestProviders } from './investData';
+import { useQuery } from '@tanstack/react-query';
+import { apiJson } from 'core';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export type ProductType = 'UNIT_TRUST' | 'FIXED_DEPOSIT' | 'BOND';
@@ -21,6 +24,10 @@ export interface InvestProduct {
     productInvestors: string;
     isNew?: boolean;
     trending?: boolean;
+    /** Invented figures, shown until the company sends real prices. */
+    sample?: boolean;
+    /** Set for a fund whose prices come from the company. */
+    fundId?: string;
 }
 
 export interface InvestProvider {
@@ -31,6 +38,8 @@ export interface InvestProvider {
     reviews: string;
     investors: string;
     products: InvestProduct[];
+    /** A firm set up to try the platform with: shown even before it has funds, and labelled so. */
+    demo?: boolean;
 }
 
 export const TYPE_CONFIG: Record<ProductType, { dot: string; label: string }> = {
@@ -40,59 +49,16 @@ export const TYPE_CONFIG: Record<ProductType, { dot: string; label: string }> = 
 };
 
 // ── Provider data ─────────────────────────────────────────────────────────────
+/**
+ * The investment companies MoneyWise knows about: only their name, logo and page. Their funds, prices and returns are never written here; they
+ * come from the prices each company sends (see investData.ts), so nothing on screen is invented.
+ */
 export const INVEST_PROVIDERS: InvestProvider[] = [
-    {
-        id: 'longhorn',
-        name: 'Longhorn Investment Associates',
-        logo: '/invest-logos/longhorn.jpeg',
-        route: '/invest/company/longhorn',
-        reviews: '4.9 (320 Reviews)',
-        investors: '232k Investors',
-        products: [
-            { id: 'lh-1', name: 'Premium FX Fund',    price: 'K25,502.0', ytd: '34% YTD', type: 'UNIT_TRUST',    performance: 'K25,502 (34%)', lastUpdated: 'today', productInvestors: '232,000', isNew: true,  trending: true  },
-            { id: 'lh-2', name: 'Equity Growth Fund', price: 'K15,200.0', ytd: '21% YTD', type: 'FIXED_DEPOSIT', performance: '21% APR',       lastUpdated: 'today', productInvestors: '85,000'                                    },
-            { id: 'lh-3', name: 'Mixed Capital Fund', price: 'K8,400.0',  ytd: '12% YTD', type: 'BOND',          performance: 'K8,400 (12%)',  lastUpdated: 'today', productInvestors: '41,000',             trending: true  },
-        ],
-    },
-    {
-        id: 'hobbiton',
-        name: 'Hobbiton Investments',
-        logo: '/invest-logos/hobbiton.png',
-        route: '/invest/company/hobbiton',
-        reviews: '4.8 (150 Reviews)',
-        investors: '85k Investors',
-        products: [
-            { id: 'hb-1', name: 'Real Estate Trust',    price: 'K55,000.0', ytd: '18% YTD', type: 'UNIT_TRUST',    performance: 'K55,000 (18%)', lastUpdated: 'today', productInvestors: '85,000',              trending: true  },
-            { id: 'hb-2', name: 'Agri-Business Fund',   price: 'K12,300.0', ytd: '42% YTD', type: 'FIXED_DEPOSIT', performance: '42% APR',       lastUpdated: 'today', productInvestors: '120,000', isNew: true                   },
-            { id: 'hb-3', name: 'Infrastructure Bond',  price: 'K9,800.0',  ytd: '15% YTD', type: 'BOND',          performance: 'K9,800 (15%)',  lastUpdated: 'today', productInvestors: '41,000'                                  },
-        ],
-    },
-    {
-        id: 'aflife',
-        name: 'Aflife Investments',
-        logo: '/invest-logos/aflife.png',
-        route: '/invest/company/aflife',
-        reviews: '4.7 (98 Reviews)',
-        investors: '41k Investors',
-        products: [
-            { id: 'af-1', name: 'Life Savings Plan',    price: 'K5,000.0',  ytd: '11% YTD', type: 'UNIT_TRUST',    performance: 'K5,000 (11%)',  lastUpdated: 'today', productInvestors: '41,000'                                  },
-            { id: 'af-2', name: 'Education Trust Fund', price: 'K7,500.0',  ytd: '14% YTD', type: 'FIXED_DEPOSIT', performance: '14% APR',       lastUpdated: 'today', productInvestors: '32,000',             trending: true  },
-            { id: 'af-3', name: 'Balanced Growth Fund', price: 'K10,200.0', ytd: '19% YTD', type: 'BOND',          performance: 'K10,200 (19%)', lastUpdated: 'today', productInvestors: '28,000'                                  },
-        ],
-    },
-    {
-        id: 'abc',
-        name: 'ABC Asset Management',
-        logo: '/invest-logos/abc.jpeg',
-        route: '/invest/company/abc',
-        reviews: '4.6 (212 Reviews)',
-        investors: '120k Investors',
-        products: [
-            { id: 'abc-1', name: 'Money Market Fund',    price: 'K3,200.0',  ytd: '9% YTD',  type: 'UNIT_TRUST',    performance: 'K3,200 (9%)',   lastUpdated: 'today', productInvestors: '120,000'                                 },
-            { id: 'abc-2', name: 'Government Bond Fund', price: 'K18,750.0', ytd: '16% YTD', type: 'BOND',          performance: 'K18,750 (16%)', lastUpdated: 'today', productInvestors: '95,000',  isNew: true                   },
-            { id: 'abc-3', name: 'Diversified Equity',   price: 'K22,400.0', ytd: '28% YTD', type: 'FIXED_DEPOSIT', performance: '28% APR',       lastUpdated: 'today', productInvestors: '75,000',             trending: true  },
-        ],
-    },
+    { id: 'longhorn', name: 'Longhorn Investment Associates', logo: '/invest-logos/longhorn.jpeg', route: '/invest/company/longhorn', reviews: '', investors: '', products: [] },
+    { id: 'hobbiton', name: 'Hobbiton Investments', logo: '/invest-logos/hobbiton.png', route: '/invest/company/hobbiton', reviews: '', investors: '', products: [] },
+    { id: 'aflife', name: 'Aflife Investments', logo: '/invest-logos/aflife.png', route: '/invest/company/aflife', reviews: '', investors: '', products: [] },
+    { id: 'kapstone', name: 'Kapstone Capital', logo: 'https://ahatvfmvhecakpxtpnay.supabase.co/storage/v1/object/public/organization-logos/0dfe477d-2ee3-4d2b-a20f-f5c3a751d951/logo-1790775832178.jpg', route: '/invest/company/kapstone', reviews: '', investors: '', products: [], demo: true },
+    { id: 'abc', name: 'ABC Asset Management', logo: '/invest-logos/abc.jpeg', route: '/invest/company/abc', reviews: '', investors: '', products: [] },
 ];
 
 // ── InvestHome ────────────────────────────────────────────────────────────────
@@ -103,7 +69,9 @@ export const InvestHome: React.FC = () => {
     const activeTabIndex              = TAB_ORDER.indexOf(activeTab);
 
     // Filter products per tab and search
-    const mobileProviders = INVEST_PROVIDERS.flatMap(provider => {
+    const { providers: allProviders } = useInvestProviders();
+    const myCompany = useQuery({ queryKey: ['invest', 'funds', 'mine'], queryFn: () => apiJson<{ isTarget: boolean }>('/investments/funds/mine'), retry: false, staleTime: 5 * 60_000 });
+    const mobileProviders = allProviders.flatMap(provider => {
         let products = provider.products;
 
         if (activeTab === 'TRENDING')    products = products.filter(p => p.trending);
@@ -117,12 +85,12 @@ export const InvestHome: React.FC = () => {
             );
         }
 
-        if (products.length === 0) return [];
+        if (products.length === 0 && !(provider.demo && !search && activeTab === 'HOME')) return [];
         return [{ provider, products }];
     });
 
     // Desktop search filter
-    const desktopFiltered = INVEST_PROVIDERS.filter(p =>
+    const desktopFiltered = allProviders.filter(p =>
         search === '' ||
         p.name.toLowerCase().includes(search.toLowerCase()) ||
         p.products.some(pr => pr.name.toLowerCase().includes(search.toLowerCase()))
@@ -181,8 +149,13 @@ export const InvestHome: React.FC = () => {
                             value={search}
                             onChange={e => setSearch(e.target.value)}
                             placeholder="Search products or companies…"
-                            className="flex-1 min-w-0 bg-transparent border-none outline-none text-xs text-brand-navy placeholder:text-stone-300 font-normal"
+                            className="flex-1 min-w-0 bg-transparent border-none outline-none text-xs text-[#1F1F1F] placeholder:text-stone-300 font-normal"
                         />
+                    </div>
+                    <div className="ml-3 flex flex-shrink-0 gap-2">
+                        {myCompany.data?.isTarget && <Link to="/invest/prices" className="inline-flex h-10 items-center rounded-full bg-[#0B57D0] px-4 text-xs font-semibold text-white hover:bg-[#0842A0]">Fund prices</Link>}
+                        <Link to="/invest/accounts" className="inline-flex h-10 items-center rounded-full bg-[#D3E3FD] px-4 text-xs font-semibold text-[#041E49] hover:bg-[#C2D7FA]">Investor accounts</Link>
+                        <Link to="/invest/kyc" className="inline-flex h-10 items-center rounded-full px-4 text-xs font-semibold text-[#0B57D0] shadow-[inset_0_0_0_1px_#C4C7C5] hover:bg-[#F1F3F4]">KYC profile</Link>
                     </div>
                 </div>
 
@@ -204,7 +177,7 @@ export const InvestHome: React.FC = () => {
                                         <div className="w-9 h-9 bg-white rounded-lg shadow-[0px_0px_8px_4px_rgba(141,115,115,0.15)] flex items-center justify-center overflow-hidden p-1 flex-shrink-0">
                                             <img src={provider.logo} alt={provider.name} className="w-full h-full object-contain" />
                                         </div>
-                                        <span className="text-gray-900 text-sm font-semibold font-['DM_Sans'] truncate min-w-0">{provider.name}</span>
+                                        <span className="text-gray-900 text-sm font-semibold font-['DM_Sans'] truncate min-w-0">{provider.name}</span>{provider.demo && <span className="ml-1.5 flex-shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-800">Demo firm</span>}
                                     </div>
                                     <Link to={provider.route} className="flex items-center gap-0.5 text-sm text-gray-900 font-normal font-['DM_Sans'] flex-shrink-0">
                                         See more <ChevronRight size={14} strokeWidth={1.5} />
@@ -241,10 +214,6 @@ export const InvestHome: React.FC = () => {
                                                         <div className={`w-[5px] h-[5px] rounded-full flex-shrink-0 ${TYPE_CONFIG[product.type].dot}`} />
                                                         <span className="text-gray-800 text-[8px] font-medium font-['DM_Sans']">{TYPE_CONFIG[product.type].label}</span>
                                                     </div>
-                                                    <div className="flex items-center gap-1">
-                                                        <InvestorsIcon />
-                                                        <span className="text-neutral-700 text-[8px] font-medium font-['DM_Sans']">{product.productInvestors} Investors</span>
-                                                    </div>
                                                 </div>
                                             </div>
 
@@ -262,7 +231,7 @@ export const InvestHome: React.FC = () => {
                     <div className="hidden md:block px-6 pb-6">
                         <div className="bg-white rounded-[20px] p-6 shadow-sm flex flex-col gap-8 md:border md:border-gray-200">
                             {desktopFiltered.length === 0 ? (
-                                <div className="py-12 text-center text-sm text-gray-400">No results for "{search}"</div>
+                                <div className="py-12 text-center text-sm text-gray-400">{search ? <>No results for “{search}”</> : 'No funds to show yet. Investment companies appear here once their real prices are in.'}</div>
                             ) : desktopFiltered.map(provider => (
                                 <div key={provider.id} className="flex flex-col gap-3">
                                     <div className="flex justify-between items-center">
@@ -270,12 +239,12 @@ export const InvestHome: React.FC = () => {
                                             <div className="w-8 h-8 rounded-md border border-violet-100 shadow-sm flex items-center justify-center overflow-hidden p-0.5 flex-shrink-0">
                                                 <img src={provider.logo} alt={provider.name} className="w-full h-full object-contain" />
                                             </div>
-                                            <span className="text-sm font-semibold text-gray-900 font-['DM_Sans'] truncate">{provider.name}</span>
+                                            <span className="text-sm font-semibold text-gray-900 font-['DM_Sans'] truncate">{provider.name}</span>{provider.demo && <span className="ml-1.5 flex-shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-800">Demo firm</span>}
                                             <div className="w-4 h-4 flex items-center justify-center text-blue-600 flex-shrink-0">
                                                 <VerifiedIcon />
                                             </div>
                                         </div>
-                                        <Link to={provider.route} className="text-[#006AFF] text-xs font-semibold flex-shrink-0 ml-2">
+                                        <Link to={provider.route} className="text-[#0B57D0] text-xs font-semibold flex-shrink-0 ml-2">
                                             See all →
                                         </Link>
                                     </div>
@@ -285,7 +254,7 @@ export const InvestHome: React.FC = () => {
                                             <Link
                                                 to={`/invest/product/${product.id}`}
                                                 key={product.id}
-                                                className="min-w-[224px] p-4 bg-white rounded-xl shadow-sm border border-[#E8EEF8] flex flex-col justify-between active:shadow-md transition-shadow"
+                                                className="min-w-[224px] p-4 bg-white rounded-xl shadow-sm border border-[rgba(116,119,117,0.22)] flex flex-col justify-between active:shadow-md transition-shadow"
                                             >
                                                 <div className="flex flex-col gap-2.5">
                                                     <div>
@@ -299,9 +268,7 @@ export const InvestHome: React.FC = () => {
                                                         </div>
                                                     </div>
                                                     <div className="flex justify-between items-center mt-1">
-                                                        <span className="text-[10px] text-gray-500 flex items-center gap-0.5">
-                                                            <StarIcon /> {provider.reviews}
-                                                        </span>
+                                                        <span />
                                                         <div className="w-7 h-7 bg-neutral-100 rounded-full flex items-center justify-center text-xs">→</div>
                                                     </div>
                                                 </div>
@@ -321,7 +288,7 @@ export const InvestHome: React.FC = () => {
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 const HomeIcon = () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0B57D0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z" />
         <path d="M9 21V12h6v9" />
     </svg>
@@ -335,20 +302,12 @@ const TrendingTabIcon = () => (
 );
 
 const UpArrowIcon = () => (
-    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#1E8E3E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
         <line x1="7" y1="17" x2="17" y2="7" />
         <polyline points="7 7 17 7 17 17" />
     </svg>
 );
 
-const InvestorsIcon = () => (
-    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-);
 
 export const TrendingUpIcon = () => (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">

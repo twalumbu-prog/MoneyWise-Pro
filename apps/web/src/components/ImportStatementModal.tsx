@@ -162,9 +162,9 @@ const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
                                 onDragOver={handleDragOver}
                                 onDrop={handleDrop}
                                 onClick={() => fileInputRef.current?.click()}
-                                className="w-full max-w-lg border-2 border-dashed border-gray-200 bg-white rounded-2xl p-10 text-center hover:border-[#006AFF]/40 hover:bg-[#006AFF]/5 transition-all duration-300 cursor-pointer flex flex-col items-center justify-center space-y-4 shadow-sm"
+                                className="w-full max-w-lg border-2 border-dashed border-gray-200 bg-white rounded-2xl p-10 text-center hover:border-[#0B57D0]/40 hover:bg-[#0B57D0]/5 transition-all duration-300 cursor-pointer flex flex-col items-center justify-center space-y-4 shadow-sm"
                             >
-                                <div className="p-4 bg-[#006AFF]/10 text-[#006AFF] rounded-full">
+                                <div className="p-4 bg-[#0B57D0]/10 text-[#0B57D0] rounded-full">
                                     <Upload className="h-8 w-8" />
                                 </div>
                                 <div>
@@ -210,7 +210,7 @@ const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
                                 <button
                                     onClick={handleParseAndPreview}
                                     disabled={!file || loading}
-                                    className="py-3 px-6 bg-[#006AFF] hover:bg-[#0052cc] text-white text-xs font-bold rounded-xl transition-all disabled:opacity-50 flex items-center space-x-2"
+                                    className="py-3 px-6 bg-[#0B57D0] hover:bg-[#0842A0] text-white text-xs font-bold rounded-xl transition-all disabled:opacity-50 flex items-center space-x-2"
                                 >
                                     {loading ? (
                                         <>
@@ -327,7 +327,7 @@ const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
                                 <button
                                     onClick={handleConfirmImport}
                                     disabled={previewItems.every(i => i.status === 'DUPLICATE') || loading}
-                                    className="py-3 px-6 bg-[#006AFF] hover:bg-[#0052cc] text-white text-xs font-bold rounded-xl transition-all disabled:opacity-50 flex items-center space-x-2"
+                                    className="py-3 px-6 bg-[#0B57D0] hover:bg-[#0842A0] text-white text-xs font-bold rounded-xl transition-all disabled:opacity-50 flex items-center space-x-2"
                                 >
                                     {loading ? (
                                         <>
@@ -356,7 +356,7 @@ const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
                                     onSuccess();
                                     onClose();
                                 }}
-                                className="mt-6 py-3 px-8 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all"
+                                className="mt-6 py-3 px-8 bg-[#0B57D0] hover:bg-[#0842A0] text-white text-xs font-bold rounded-xl transition-all"
                             >
                                 Done
                             </button>

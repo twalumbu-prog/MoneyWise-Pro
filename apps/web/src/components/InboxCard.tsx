@@ -103,18 +103,18 @@ export const InboxCard: React.FC<InboxCardProps> = ({
                 <TabPillGroup
                     value={mode}
                     onChange={(v) => onModeChange(v as 'outflows' | 'inflows')}
-                    trackClassName="h-8 px-1 bg-white rounded-lg outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E8EEF8] flex items-center"
+                    trackClassName="h-8 px-1 bg-white rounded-lg outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E9EEF6] flex items-center"
                     indicatorClassName="bg-transparent rounded-md"
-                    separator={<div className="w-[1px] h-4 bg-[#E8EEF8] shrink-0" />}
+                    separator={<div className="w-[1px] h-4 bg-[#E9EEF6] shrink-0" />}
                     tabs={[
                         {
                             value: 'outflows',
                             buttonClassName: 'flex items-center gap-2 px-3 h-8',
                             label: (
                                 <>
-                                    {mode === 'outflows' && <span className="w-1 h-1 rounded-full bg-[#0058DB] md:bg-[#0059D8]" />}
-                                    <span className={`text-sm ${mode === 'outflows' ? 'font-bold text-[#111827]' : 'font-normal text-gray-400'}`}>Outflows</span>
-                                    <span className="min-w-[18px] px-1 bg-[#F3F5FC] rounded text-center text-[10px] text-neutral-500">{outflowCount}</span>
+                                    {mode === 'outflows' && <span className="w-1 h-1 rounded-full bg-[#0B57D0] md:bg-[#0B57D0]" />}
+                                    <span className={`text-sm ${mode === 'outflows' ? 'font-bold text-[#1F1F1F]' : 'font-normal text-gray-400'}`}>Outflows</span>
+                                    <span className="min-w-[18px] px-1 bg-[#F8FAFD] rounded text-center text-[10px] text-neutral-500">{outflowCount}</span>
                                 </>
                             ),
                         },
@@ -123,9 +123,9 @@ export const InboxCard: React.FC<InboxCardProps> = ({
                             buttonClassName: 'flex items-center gap-2 px-3 h-8',
                             label: (
                                 <div data-tour-target="inbox-mode-inflows" className="flex items-center gap-2">
-                                    {mode === 'inflows' && <span className="w-1 h-1 rounded-full bg-[#0058DB] md:bg-[#0059D8]" />}
-                                    <span className={`text-sm ${mode === 'inflows' ? 'font-bold text-[#111827]' : 'font-normal text-gray-400'}`}>Inflows</span>
-                                    <span className="min-w-[18px] px-1 bg-[#F3F5FC] rounded text-center text-[10px] text-neutral-500">{inflowCount}</span>
+                                    {mode === 'inflows' && <span className="w-1 h-1 rounded-full bg-[#0B57D0] md:bg-[#0B57D0]" />}
+                                    <span className={`text-sm ${mode === 'inflows' ? 'font-bold text-[#1F1F1F]' : 'font-normal text-gray-400'}`}>Inflows</span>
+                                    <span className="min-w-[18px] px-1 bg-[#F8FAFD] rounded text-center text-[10px] text-neutral-500">{inflowCount}</span>
                                 </div>
                             ),
                         },
@@ -137,21 +137,21 @@ export const InboxCard: React.FC<InboxCardProps> = ({
                         <div className="relative" ref={newMenuRef} data-tour-target="new-request-btn">
                             <button
                                 onClick={() => setIsNewMenuOpen(prev => !prev)}
-                                className="h-8 pl-4 pr-3 bg-[#0058DB] md:bg-[#0059D8] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity"
+                                className="h-8 pl-4 pr-3 bg-[#0B57D0] md:bg-[#0B57D0] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity"
                             >
                                 <span className="text-white text-xs font-bold">{newLabel}</span>
                                 <Plus size={14} className="text-white" />
                             </button>
 
                             {isNewMenuOpen && (
-                                <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-72 bg-white rounded-2xl shadow-[0px_8px_24px_0px_rgba(17,24,39,0.12)] outline outline-1 outline-offset-[-1px] outline-[#E8EEF8] overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                                <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-72 bg-white rounded-2xl shadow-[0px_8px_24px_0px_rgba(17,24,39,0.12)] outline outline-1 outline-offset-[-1px] outline-[#E9EEF6] overflow-hidden animate-in fade-in zoom-in-95 duration-100">
                                     {newMenuItems.map((item) => {
                                         const Icon = item.icon;
                                         return (
                                             <button
                                                 key={item.label}
                                                 onClick={() => { setIsNewMenuOpen(false); item.onSelect(); }}
-                                                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#F3F5FC] transition-colors"
+                                                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#F8FAFD] transition-colors"
                                             >
                                                 <div
                                                     className="w-9 h-9 flex items-center justify-center flex-shrink-0"
@@ -160,7 +160,7 @@ export const InboxCard: React.FC<InboxCardProps> = ({
                                                     <Icon size={18} />
                                                 </div>
                                                 <div className="min-w-0">
-                                                    <div className="text-xs font-bold text-[#111827] truncate">{item.label}</div>
+                                                    <div className="text-xs font-bold text-[#1F1F1F] truncate">{item.label}</div>
                                                     <div className="text-[11px] text-gray-400 truncate">{item.description}</div>
                                                 </div>
                                             </button>
@@ -173,7 +173,7 @@ export const InboxCard: React.FC<InboxCardProps> = ({
                         <button
                             data-tour-target="new-request-btn"
                             onClick={onNew}
-                            className="h-8 pl-4 pr-3 bg-[#0058DB] md:bg-[#0059D8] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity"
+                            className="h-8 pl-4 pr-3 bg-[#0B57D0] md:bg-[#0B57D0] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity"
                         >
                             <span className="text-white text-xs font-bold">{newLabel}</span>
                             <Plus size={14} className="text-white" />
@@ -185,7 +185,7 @@ export const InboxCard: React.FC<InboxCardProps> = ({
             {/* Row 2: status tab pills + search / sort / filter / refresh */}
             <div className="flex items-center justify-between gap-4">
                 {showTabs ? (
-                    <div className="flex items-center gap-1 p-1 bg-[#F3F5FC] md:bg-[#F8FAFD] rounded-[10px] overflow-x-auto no-scrollbar">
+                    <div className="flex items-center gap-1 p-1 bg-[#F8FAFD] md:bg-[#F8FAFD] rounded-[10px] overflow-x-auto no-scrollbar">
                         {tabs.map(tab => {
                             const isActive = activeTab.length === 1 && activeTab[0] === tab.value;
                             const count = getTabCount(tab.value);
@@ -194,12 +194,12 @@ export const InboxCard: React.FC<InboxCardProps> = ({
                                     key={tab.value}
                                     onClick={() => onTabChange(tab.value)}
                                     className={`px-3.5 py-1.5 rounded-lg text-[11px] whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                                        isActive ? 'font-bold bg-white text-[#111827] shadow-sm' : 'font-normal text-gray-500 hover:text-gray-700'
+                                        isActive ? 'font-bold bg-white text-[#1F1F1F] shadow-sm' : 'font-normal text-gray-500 hover:text-gray-700'
                                     }`}
                                 >
                                     {tab.label}
                                     {count > 0 && (
-                                        <span className={`px-1 rounded text-[9px] ${isActive ? 'bg-[#E8EEF8] text-[#0058DB] md:bg-[#C3010A] md:text-white' : 'bg-gray-200 text-gray-500'}`}>
+                                        <span className={`px-1 rounded text-[9px] ${isActive ? 'bg-[#E9EEF6] text-[#0B57D0] md:bg-[#C3010A] md:text-white' : 'bg-gray-200 text-gray-500'}`}>
                                             {count}
                                         </span>
                                     )}
@@ -217,12 +217,12 @@ export const InboxCard: React.FC<InboxCardProps> = ({
                             placeholder="Search..."
                             value={searchQuery}
                             onChange={(e) => onSearchChange(e.target.value)}
-                            className="w-48 pl-8 pr-3 py-2 bg-[#F3F5FC] border border-[#E8EEF8] rounded-lg text-xs font-medium text-brand-navy placeholder:text-gray-300 focus:ring-2 focus:ring-[#0058DB]/10 focus:bg-white transition-all"
+                            className="w-48 pl-8 pr-3 py-2 bg-[#F8FAFD] border border-[rgba(116,119,117,0.22)] rounded-lg text-xs font-medium text-[#1F1F1F] placeholder:text-gray-300 focus:ring-2 focus:ring-[#0B57D0]/10 focus:bg-white transition-all"
                         />
                     </div>
                     <button
                         onClick={onToggleSort}
-                        className={`p-2 rounded-lg border border-[#E8EEF8] transition-all ${sortOrder !== 'desc' ? 'text-[#0058DB] bg-[#E8EEF8] border-[#0058DB]/20' : 'text-gray-400 hover:text-gray-600 hover:bg-[#F3F5FC]'}`}
+                        className={`p-2 rounded-lg border border-[rgba(116,119,117,0.22)] transition-all ${sortOrder !== 'desc' ? 'text-[#0B57D0] bg-[#E9EEF6] border-[#0B57D0]/20' : 'text-gray-400 hover:text-gray-600 hover:bg-[#F8FAFD]'}`}
                         title="Sort by date"
                     >
                         <ArrowUpDown size={14} />
@@ -230,7 +230,7 @@ export const InboxCard: React.FC<InboxCardProps> = ({
                     {showTabs && (
                         <button
                             onClick={onOpenFilters}
-                            className={`p-2 rounded-lg border border-[#E8EEF8] transition-all ${hasActiveFilters ? 'text-[#0058DB] bg-[#E8EEF8] border-[#0058DB]/20' : 'text-gray-400 hover:text-gray-600 hover:bg-[#F3F5FC]'}`}
+                            className={`p-2 rounded-lg border border-[rgba(116,119,117,0.22)] transition-all ${hasActiveFilters ? 'text-[#0B57D0] bg-[#E9EEF6] border-[#0B57D0]/20' : 'text-gray-400 hover:text-gray-600 hover:bg-[#F8FAFD]'}`}
                             title="Filters"
                         >
                             <ListFilter size={14} />
@@ -238,7 +238,7 @@ export const InboxCard: React.FC<InboxCardProps> = ({
                     )}
                     <button
                         onClick={onRefresh}
-                        className="p-2 rounded-lg border border-[#E8EEF8] text-gray-400 hover:text-[#0058DB] hover:bg-[#F3F5FC] transition-all"
+                        className="p-2 rounded-lg border border-[rgba(116,119,117,0.22)] text-gray-400 hover:text-[#0842A0] hover:bg-[#F8FAFD] transition-all"
                         title="Refresh"
                     >
                         <RefreshCw size={14} />

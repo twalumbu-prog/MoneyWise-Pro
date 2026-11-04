@@ -343,7 +343,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
                     <div className={inflowType === 'WALLET' ? "p-6 overflow-y-auto custom-scrollbar" : "p-8 overflow-y-auto custom-scrollbar"}>
                         {loadingOrg ? (
                             <div className="py-20 flex flex-col items-center justify-center space-y-4">
-                                <Loader2 className={`h-10 w-10 animate-spin ${inflowType === 'WALLET' ? 'text-blue-500' : 'text-emerald-500'}`} />
+                                <Loader2 className={`h-10 w-10 animate-spin ${inflowType === 'WALLET' ? 'text-[#0B57D0]' : 'text-[#0B57D0]'}`} />
                                 <p className="text-gray-500 font-bold">Synchronizing with Lenco Wallet...</p>
                             </div>
                         ) : isVerifying ? (
@@ -351,7 +351,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
                                 {verificationStep === 'POLLING' ? (
                                     <>
                                         <div className="relative">
-                                            <div className="h-20 w-20 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin" />
+                                            <div className="h-20 w-20 border-4 border-[#0B57D0] border-t-[#0B57D0] rounded-full animate-spin" />
                                             <Wallet className="h-8 w-8 text-blue-600 absolute inset-0 m-auto animate-pulse" />
                                         </div>
                                         <div>
@@ -397,7 +397,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
                                                 onSuccess();
                                                 onClose();
                                             }}
-                                            className="px-10 py-4 bg-emerald-600 text-white rounded-2xl font-black shadow-xl shadow-emerald-100 hover:bg-emerald-700 transition-all hover:scale-105 active:scale-95 mt-4"
+                                            className="px-10 py-4 bg-[#0B57D0] text-white rounded-2xl font-black shadow-xl shadow-[#0B57D0]/20 hover:bg-[#0842A0] transition-all hover:scale-105 active:scale-95 mt-4"
                                         >
                                             Finish
                                         </button>
@@ -433,7 +433,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
                                                     onSuccess();
                                                     onClose();
                                                 }}
-                                                className="px-8 py-4 bg-gray-900 text-white rounded-2xl font-black hover:bg-black transition-all"
+                                                className="px-8 py-4 bg-[#0B57D0] text-white rounded-2xl font-black hover:bg-[#0B57D0] transition-all"
                                             >
                                                 Close & Check Later
                                             </button>
@@ -622,7 +622,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
                                     <button
                                         type="submit"
                                         disabled={isSubmitting || totalAmount <= 0 || loadingOrg}
-                                        className="flex items-center px-7 py-3 bg-slate-950 text-white text-xs font-black uppercase tracking-wider rounded-2xl shadow-md shadow-slate-950/10 hover:bg-slate-900 disabled:opacity-50 disabled:shadow-none transition-all active:scale-95"
+                                        className="flex items-center px-7 py-3 bg-slate-950 text-white text-xs font-black uppercase tracking-wider rounded-2xl shadow-md shadow-slate-950/10 hover:bg-[#0B57D0] disabled:opacity-50 disabled:shadow-none transition-all active:scale-95"
                                     >
                                         {isSubmitting ? (
                                             <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
@@ -636,7 +636,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
                                         type="button"
                                         onClick={handleWalletDeposit}
                                         disabled={Number(walletAmount) <= 0 || loadingOrg}
-                                        className="flex items-center px-7 py-3 bg-slate-950 text-white text-xs font-black uppercase tracking-wider rounded-2xl shadow-md shadow-slate-950/10 hover:bg-slate-900 disabled:opacity-50 disabled:shadow-none transition-all active:scale-95"
+                                        className="flex items-center px-7 py-3 bg-slate-950 text-white text-xs font-black uppercase tracking-wider rounded-2xl shadow-md shadow-slate-950/10 hover:bg-[#0B57D0] disabled:opacity-50 disabled:shadow-none transition-all active:scale-95"
                                     >
                                         <ArrowDownToLine size={16} className="mr-2" />
                                         Deposit

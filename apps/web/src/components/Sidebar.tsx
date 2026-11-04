@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
+    House,
     Inbox,
     CalendarDays,
     TrendingUp,
@@ -16,9 +17,11 @@ import {
     Store,
     LineChart,
     Landmark,
+    PiggyBank,
 } from 'lucide-react';
 import { WalletCardsIcon, AstroidIcon } from './icons/BrandIcons';
 import { useAuth, NotificationCounts } from '../context/AuthContext';
+import { usePersonalAccount } from '../hooks/usePersonalAccount';
 
 interface NavItem {
     label: string;
@@ -29,6 +32,9 @@ interface NavItem {
     getBadge?: (counts: NotificationCounts) => number;
     tourTarget?: string;
 }
+
+const PLAN_ITEM: NavItem = { label: 'Plan', path: '/savings', icon: PiggyBank, isActive: (p) => p.startsWith('/savings') || p === '/budgets' || p.startsWith('/rewards') };
+const HOME_ITEM: NavItem = { label: 'Home', path: '/', icon: House, isActive: (p) => p === '/' };
 
 const GENERAL_ITEMS: NavItem[] = [
     {
@@ -49,12 +55,12 @@ const GENERAL_ITEMS: NavItem[] = [
     { label: 'Reporting', path: '/reporting', icon: TrendingUp, isActive: (p) => p === '/reporting' },
     { label: 'Business Intelligence', path: '/intelligence', icon: AstroidIcon, isActive: (p) => p === '/intelligence', tourTarget: 'nav-bi-tab' },
     { label: 'Audit', path: '/audit', icon: ShieldCheck, isActive: (p) => p === '/audit' },
-    { label: 'Products & Services', path: '/products', icon: ShoppingBag, isActive: (p) => p === '/products' },
 ];
 
 const SUPPORT_ITEMS: NavItem[] = [
     { label: 'Apps', path: '/apps', icon: Grid3x3, isActive: (p) => p.startsWith('/apps') },
     { label: 'Integrations', path: '/settings?tab=integrations', icon: Share2, isActive: (p, s) => p === '/settings' && s.includes('tab=integrations') },
+    { label: 'Products & Services', path: '/products', icon: ShoppingBag, isActive: (p) => p === '/products' },
     { label: 'Customer Care & Help', path: '#', icon: HelpCircle, isActive: () => false, disabled: true },
     {
         label: 'Settings',
@@ -67,9 +73,9 @@ const SUPPORT_ITEMS: NavItem[] = [
 ];
 
 const SERVICES_ITEMS: NavItem[] = [
-    { label: 'Marketplace', path: '#', icon: Store, isActive: () => false, disabled: true },
+    { label: 'Marketplace', path: '/marketplace', icon: Store, isActive: (p) => p.startsWith('/marketplace') },
     { label: 'Invest', path: '/invest', icon: LineChart, isActive: (p) => p.startsWith('/invest') },
-    { label: 'Loans', path: '#', icon: Landmark, isActive: () => false, disabled: true },
+    { label: 'Loans', path: '/loans', icon: Landmark, isActive: (p) => p.startsWith('/loans') },
 ];
 
 const COLLAPSE_KEY = 'moneywise:sidebarCollapsed';
@@ -83,14 +89,14 @@ const SidebarLink: React.FC<{ item: NavItem; active: boolean; collapsed: boolean
         <>
             {/* Icon — with a tiny dot overlay when collapsed */}
             <span className="relative flex-shrink-0">
-                <Icon size={15} className={active ? 'text-[#0058DB]' : 'text-gray-500'} />
+                <Icon size={15} className={active ? 'text-[#041E49]' : 'text-[#5F6368]'} />
                 {collapsed && showBadge && (
-                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#C3010A] border border-[#F8FAFD]" />
+                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#B3261D] border border-[#F8FAFD]" />
                 )}
             </span>
 
             {!collapsed && (
-                <span className={`truncate ${active ? 'font-semibold text-[#111827]' : 'font-medium text-gray-600'}`}>
+                <span className={`truncate ${active ? 'font-semibold text-[#041E49]' : 'font-medium text-[#3C4043]'}`}>
                     {item.label}
                 </span>
             )}
@@ -99,19 +105,19 @@ const SidebarLink: React.FC<{ item: NavItem; active: boolean; collapsed: boolean
             )}
             {/* Numeric badge — expanded sidebar only */}
             {!collapsed && showBadge && (
-                <span className="ml-auto flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-[#C3010A] text-white text-[10px] font-bold leading-none flex items-center justify-center tabular-nums">
+                <span className="ml-auto flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-[#B3261D] text-white text-[10px] font-bold leading-none flex items-center justify-center tabular-nums">
                     {badgeLabel}
                 </span>
             )}
         </>
     );
 
-    const className = `flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-[13px] transition-all ${collapsed ? 'justify-center' : ''} ${
+    const className = `flex items-center gap-2.5 rounded-full px-3.5 py-2 text-[13px] transition-colors ${collapsed ? 'justify-center' : ''} ${
         item.disabled
             ? 'text-gray-300 cursor-not-allowed'
             : active
-                ? 'bg-[#CFE4FF]'
-                : 'hover:bg-gray-100/60 text-gray-600'
+                ? 'bg-[#D3E3FD] text-[#041E49]'
+                : 'hover:bg-[#1F1F1F]/[0.07] text-gray-600'
     }`;
 
     if (item.disabled) {
@@ -138,6 +144,9 @@ export const Sidebar: React.FC = () => {
     const location = useLocation();
     const navigate = useNavigate();
     const { signOut, notificationCounts } = useAuth();
+    // A personal account's first item is Home; the Inbox is behind its bell, so it moves out of the sidebar's lead spot.
+    const { isPersonal } = usePersonalAccount();
+    const generalItems = isPersonal ? [HOME_ITEM, ...GENERAL_ITEMS.map(i => i.label === 'Inbox' ? { ...i, isActive: (p: string) => p === '/requisitions' } : i).flatMap(i => i.label === 'Wallets' ? [i, PLAN_ITEM] : [i])] : GENERAL_ITEMS;
     const [collapsed, setCollapsed] = useState<boolean>(() => {
         try {
             return localStorage.getItem(COLLAPSE_KEY) === '1';
@@ -169,7 +178,7 @@ export const Sidebar: React.FC = () => {
                 <Link to="/requisitions" className="flex items-center gap-2 overflow-hidden min-w-0">
                     <img src="/logo-mark.svg" alt="MoneyWise" className="h-4 w-auto flex-shrink-0" />
                     {!collapsed && (
-                        <span className="font-advercase text-base font-normal text-[#111827] whitespace-nowrap truncate">
+                        <span className="font-advercase text-base font-normal text-[#1F1F1F] whitespace-nowrap truncate">
                             Moneywise
                         </span>
                     )}
@@ -209,7 +218,7 @@ export const Sidebar: React.FC = () => {
                     </div>
                 )}
                 <nav className={`flex flex-col gap-[3px] ${collapsed ? 'pt-3' : ''} mb-6`}>
-                    {GENERAL_ITEMS.map(item => (
+                    {generalItems.map(item => (
                         <SidebarLink
                             key={item.path}
                             item={item}

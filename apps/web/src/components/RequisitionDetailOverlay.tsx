@@ -66,13 +66,13 @@ export const RequisitionDetailOverlay: React.FC<RequisitionDetailOverlayProps> =
                                 {requisition?.status || 'Loading...'}
                             </span>
                         </div>
-                        <h2 className="text-xl font-bold text-brand-navy">
+                        <h2 className="text-xl font-bold text-[#1F1F1F]">
                             {requisition?.description || 'Loading requisition...'}
                         </h2>
                     </div>
                     <button 
                         onClick={onClose}
-                        className="p-2 hover:bg-white rounded-full transition-colors text-gray-400 hover:text-brand-navy border border-transparent hover:border-gray-100 shadow-sm hover:shadow"
+                        className="p-2 hover:bg-white rounded-full transition-colors text-gray-400 hover:text-[#1F1F1F] border border-transparent hover:border-gray-100 shadow-sm hover:shadow"
                     >
                         <X size={20} />
                     </button>
@@ -82,7 +82,7 @@ export const RequisitionDetailOverlay: React.FC<RequisitionDetailOverlayProps> =
                 <div className="flex-1 overflow-y-auto p-8 space-y-8">
                     {loading ? (
                         <div className="flex flex-col items-center justify-center py-20 space-y-4">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#006AFF]"></div>
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0B57D0]"></div>
                             <p className="text-gray-400 text-sm font-medium">Fetching details...</p>
                         </div>
                     ) : error ? (
@@ -95,12 +95,12 @@ export const RequisitionDetailOverlay: React.FC<RequisitionDetailOverlayProps> =
                         <>
                              {/* Key Stats Row */}
                             <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-[#F0F7FF] p-5 rounded-xl border border-blue-50">
-                                    <div className="flex items-center space-x-2 text-[#006AFF] mb-1">
+                                <div className="bg-[#E8F0FE] p-5 rounded-xl border border-blue-50">
+                                    <div className="flex items-center space-x-2 text-[#0B57D0] mb-1">
                                         <Banknote size={16} />
                                         <span className="text-[10px] font-black uppercase tracking-widest">Total Amount</span>
                                     </div>
-                                    <div className="text-2xl font-black text-brand-navy tracking-tight">
+                                    <div className="text-2xl font-black text-[#1F1F1F] tracking-tight">
                                         K{requisition.estimated_total.toLocaleString()}
                                     </div>
                                 </div>
@@ -109,7 +109,7 @@ export const RequisitionDetailOverlay: React.FC<RequisitionDetailOverlayProps> =
                                         <Calendar size={16} />
                                         <span className="text-[10px] font-black uppercase tracking-widest">Created Date</span>
                                     </div>
-                                    <div className="text-xl font-bold text-brand-navy tracking-tight">
+                                    <div className="text-xl font-bold text-[#1F1F1F] tracking-tight">
                                         {new Date(requisition.created_at).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
                                     </div>
                                 </div>
@@ -123,7 +123,7 @@ export const RequisitionDetailOverlay: React.FC<RequisitionDetailOverlayProps> =
                                     </div>
                                     <div>
                                         <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Requestor</div>
-                                        <div className="text-base font-bold text-brand-navy">{requisition.requestor_name || 'System User'}</div>
+                                        <div className="text-base font-bold text-[#1F1F1F]">{requisition.requestor_name || 'System User'}</div>
                                     </div>
                                 </div>
 
@@ -133,7 +133,7 @@ export const RequisitionDetailOverlay: React.FC<RequisitionDetailOverlayProps> =
                                     </div>
                                     <div>
                                         <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Department</div>
-                                        <div className="text-base font-bold text-brand-navy">{requisition.department || 'Not Assigned'}</div>
+                                        <div className="text-base font-bold text-[#1F1F1F]">{requisition.department || 'Not Assigned'}</div>
                                     </div>
                                 </div>
 
@@ -147,10 +147,10 @@ export const RequisitionDetailOverlay: React.FC<RequisitionDetailOverlayProps> =
                                             {requisition.items?.map((item: any) => (
                                                 <div key={item.id} className="p-4 flex justify-between items-center bg-white hover:bg-gray-50/50 transition-colors">
                                                     <div>
-                                                        <div className="text-sm font-bold text-brand-navy">{item.description}</div>
+                                                        <div className="text-sm font-bold text-[#1F1F1F]">{item.description}</div>
                                                         <div className="text-[10px] text-gray-400 font-medium">Qty: {item.quantity} | Unit: K{item.unit_price}</div>
                                                     </div>
-                                                    <div className="text-sm font-black text-brand-navy">K{item.estimated_amount.toLocaleString()}</div>
+                                                    <div className="text-sm font-black text-[#1F1F1F]">K{item.estimated_amount.toLocaleString()}</div>
                                                 </div>
                                             ))}
                                         </div>
@@ -165,13 +165,13 @@ export const RequisitionDetailOverlay: React.FC<RequisitionDetailOverlayProps> =
                 {!loading && requisition && (
                     <div className="p-8 border-t border-gray-100 bg-gray-50/30 flex items-center space-x-4">
                         <button 
-                            className="flex-1 bg-white border border-gray-200 text-brand-navy py-4 rounded-xl font-black text-sm hover:bg-gray-50 transition-all shadow-sm flex items-center justify-center space-x-2"
+                            className="flex-1 bg-white border border-gray-200 text-[#1F1F1F] py-4 rounded-xl font-black text-sm hover:bg-gray-50 transition-all shadow-sm flex items-center justify-center space-x-2"
                             onClick={() => navigate(`/requisitions?id=${requisition.id}`)}
                         >
                             <History size={18} />
                             <span>View Timeline</span>
                         </button>
-                        <button className="flex-1 bg-[#006AFF] text-white py-4 rounded-xl font-black text-sm hover:bg-blue-600 transition-all shadow-lg shadow-blue-100 flex items-center justify-center space-x-2">
+                        <button className="flex-1 bg-[#0B57D0] text-white py-4 rounded-xl font-black text-sm hover:bg-blue-600 transition-all shadow-lg shadow-blue-100 flex items-center justify-center space-x-2">
                             <CheckCircle2 size={18} />
                             <span>Approve Now</span>
                         </button>

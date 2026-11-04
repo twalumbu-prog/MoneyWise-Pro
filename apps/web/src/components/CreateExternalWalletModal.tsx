@@ -161,7 +161,7 @@ const CreateExternalWalletModal: React.FC<CreateExternalWalletModalProps> = ({ i
                                     }}
                                     className={`py-3 px-2 text-center text-xs font-bold rounded-xl border transition-all ${
                                         providerType === type
-                                            ? 'border-[#006AFF] bg-[#006AFF]/5 text-[#006AFF]'
+                                            ? 'border-[#0B57D0] bg-[#0B57D0]/5 text-[#0B57D0]'
                                             : 'border-gray-200 text-gray-600 hover:bg-gray-50'
                                     }`}
                                 >
@@ -177,7 +177,7 @@ const CreateExternalWalletModal: React.FC<CreateExternalWalletModalProps> = ({ i
                             <select
                                 value={selectedProvider}
                                 onChange={(e) => setSelectedProvider(e.target.value)}
-                                className="w-full h-12 bg-gray-50 border border-gray-100 rounded-xl px-4 text-xs outline-none focus:border-[#006AFF]/20 focus:bg-white transition-all font-semibold text-gray-800"
+                                className="w-full h-12 bg-gray-50 border border-gray-100 rounded-xl px-4 text-xs outline-none focus:border-[#0B57D0]/20 focus:bg-white transition-all font-semibold text-gray-800"
                             >
                                 {PROVIDER_BANKS.map((b) => (
                                     <option key={b.code} value={b.code}>{b.name}</option>
@@ -192,7 +192,7 @@ const CreateExternalWalletModal: React.FC<CreateExternalWalletModalProps> = ({ i
                             <select
                                 value={selectedProvider}
                                 onChange={(e) => setSelectedProvider(e.target.value)}
-                                className="w-full h-12 bg-gray-50 border border-gray-100 rounded-xl px-4 text-xs outline-none focus:border-[#006AFF]/20 focus:bg-white transition-all font-semibold text-gray-800"
+                                className="w-full h-12 bg-gray-50 border border-gray-100 rounded-xl px-4 text-xs outline-none focus:border-[#0B57D0]/20 focus:bg-white transition-all font-semibold text-gray-800"
                             >
                                 {PROVIDER_MOMO.map((m) => (
                                     <option key={m.code} value={m.code}>{m.name}</option>
@@ -211,7 +211,7 @@ const CreateExternalWalletModal: React.FC<CreateExternalWalletModalProps> = ({ i
                                 value={customName}
                                 onChange={(e) => setCustomName(e.target.value)}
                                 placeholder={providerType === 'CUSTOM' ? 'e.g. Petty Cash Vault' : 'e.g. My Custom Provider'}
-                                className="w-full h-12 bg-gray-50 border border-gray-100 rounded-xl px-4 text-xs outline-none focus:border-[#006AFF]/20 focus:bg-white transition-all font-semibold text-gray-800 placeholder:text-gray-400"
+                                className="w-full h-12 bg-gray-50 border border-gray-100 rounded-xl px-4 text-xs outline-none focus:border-[#0B57D0]/20 focus:bg-white transition-all font-semibold text-gray-800 placeholder:text-gray-400"
                             />
                         </div>
                     )}
@@ -228,7 +228,7 @@ const CreateExternalWalletModal: React.FC<CreateExternalWalletModalProps> = ({ i
                                 <select
                                     value={selectedQbAccountId}
                                     onChange={(e) => setSelectedQbAccountId(e.target.value)}
-                                    className="w-full h-12 bg-gray-50 border border-gray-100 rounded-xl px-4 text-xs outline-none focus:border-[#006AFF]/20 focus:bg-white transition-all font-semibold text-gray-800"
+                                    className="w-full h-12 bg-gray-50 border border-gray-100 rounded-xl px-4 text-xs outline-none focus:border-[#0B57D0]/20 focus:bg-white transition-all font-semibold text-gray-800"
                                 >
                                     <option value="">Don't map to QuickBooks</option>
                                     {qbAccounts.map((a) => (
@@ -252,7 +252,7 @@ const CreateExternalWalletModal: React.FC<CreateExternalWalletModalProps> = ({ i
                         <button
                             type="submit"
                             disabled={isSubmitting}
-                            className="flex-1 py-4 bg-[#006AFF] hover:bg-[#0052cc] text-white font-bold rounded-2xl transition-all flex items-center justify-center space-x-2 shadow-lg shadow-blue-500/10 hover:shadow-blue-500/20"
+                            className="flex-1 py-4 bg-[#0B57D0] hover:bg-[#0842A0] text-white font-bold rounded-2xl transition-all flex items-center justify-center space-x-2 shadow-lg shadow-blue-500/10 hover:shadow-blue-500/20"
                         >
                             {isSubmitting ? (
                                 <>

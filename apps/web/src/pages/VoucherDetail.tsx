@@ -34,7 +34,7 @@ export const VoucherDetail: React.FC = () => {
                 <div className="flex justify-between items-center print:hidden">
                     <button
                         onClick={() => navigate('/vouchers')}
-                        className="flex items-center text-gray-500 hover:text-brand-navy transition-colors font-medium"
+                        className="flex items-center text-gray-500 hover:text-[#1F1F1F] transition-colors font-medium"
                     >
                         <ArrowLeft className="h-4 w-4 mr-2" />
                         Back to Vouchers
@@ -54,7 +54,7 @@ export const VoucherDetail: React.FC = () => {
                 <div className="bg-white shadow overflow-hidden sm:rounded-lg" id="voucher-print">
                     <div className="px-4 py-5 sm:px-6 border-b border-gray-200 flex justify-between items-center">
                         <div>
-                            <h3 className="text-lg leading-6 font-bold text-brand-navy">
+                            <h3 className="text-lg leading-6 font-bold text-[#1F1F1F]">
                                 Payment Voucher
                             </h3>
                             <p className="mt-1 max-w-2xl text-sm text-gray-500">
@@ -81,7 +81,7 @@ export const VoucherDetail: React.FC = () => {
                                             }
                                         }
                                     }}
-                                    className="ml-4 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-bold rounded-lg shadow-sm text-white bg-brand-green hover:bg-green-600 focus:outline-none"
+                                    className="ml-4 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-bold rounded-lg shadow-sm text-white bg-brand-green hover:bg-[#0842A0] focus:outline-none"
                                 >
                                     Post to Ledger
                                 </button>
@@ -165,7 +165,7 @@ export const VoucherDetail: React.FC = () => {
                     {/* Supporting Documents Section */}
                     {(voucher.requisitions?.line_items?.some((i: any) => i.receipt_url) || (voucher.requisitions as any)?.disbursements?.[0]?.transfer_proof_url) && (
                         <div className="px-4 py-5 sm:px-6 border-t border-gray-200">
-                            <h4 className="text-sm font-bold text-brand-navy mb-4 flex items-center">
+                            <h4 className="text-sm font-bold text-[#1F1F1F] mb-4 flex items-center">
                                 <FileText className="h-4 w-4 mr-2" />
                                 Supporting Documents
                             </h4>

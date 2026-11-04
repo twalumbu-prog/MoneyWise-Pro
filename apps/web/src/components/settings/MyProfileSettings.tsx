@@ -121,7 +121,7 @@ export const MyProfileSettings: React.FC = () => {
     if (loading) {
         return (
             <div className="bg-white shadow-sm rounded-xl border border-gray-200 p-12 flex justify-center items-center">
-                <Loader2 className="h-8 w-8 animate-spin text-brand-green" />
+                <Loader2 className="h-8 w-8 animate-spin text-[#0B57D0]" />
                 <span className="ml-3 text-gray-500 font-medium">Loading profile...</span>
             </div>
         );
@@ -159,8 +159,8 @@ export const MyProfileSettings: React.FC = () => {
                     <form onSubmit={handleSubmit} className="space-y-8">
                         {/* Bank Account Section */}
                         <div className="border-2 border-gray-200 bg-gray-50/30 rounded-xl p-6">
-                            <h4 className="text-sm font-black text-brand-navy uppercase tracking-widest mb-4 flex items-center">
-                                <Building2 className="h-4 w-4 mr-2 text-[#006AFF]" />
+                            <h4 className="text-sm font-black text-[#1F1F1F] uppercase tracking-widest mb-4 flex items-center">
+                                <Building2 className="h-4 w-4 mr-2 text-[#0B57D0]" />
                                 Bank Account Details
                             </h4>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -170,7 +170,7 @@ export const MyProfileSettings: React.FC = () => {
                                         name="bank_name"
                                         value={paymentInfo.bank_name}
                                         onChange={handlePaymentChange}
-                                        className="block w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] outline-none transition-all"
+                                        className="block w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] outline-none transition-all"
                                     >
                                         <option value="">Select a bank...</option>
                                         {bankChoices.map(bank => (
@@ -186,7 +186,7 @@ export const MyProfileSettings: React.FC = () => {
                                         value={paymentInfo.bank_account_number}
                                         onChange={handlePaymentChange}
                                         placeholder="Enter account number"
-                                        className="block w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] outline-none transition-all"
+                                        className="block w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] outline-none transition-all"
                                     />
                                 </div>
                                 <div className="md:col-span-2">
@@ -198,9 +198,9 @@ export const MyProfileSettings: React.FC = () => {
                                         onChange={handlePaymentChange}
                                         readOnly={lookup.status === 'found'}
                                         placeholder={lookup.status === 'checking' ? 'Looking up account…' : 'Filled in automatically from the bank'}
-                                        className={`block w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] outline-none transition-all ${lookup.status === 'found' ? 'bg-emerald-50/50 font-semibold' : 'bg-white'}`}
+                                        className={`block w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] outline-none transition-all ${lookup.status === 'found' ? 'bg-emerald-50/50 font-semibold' : 'bg-white'}`}
                                     />
-                                    {lookup.status === 'checking' && <p className="mt-1.5 text-xs text-gray-400 flex items-center"><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Verifying with the bank…</p>}
+                                    {lookup.status === 'checking' && <p className="mt-1.5 text-xs text-[#0B57D0] flex items-center"><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Verifying with the bank…</p>}
                                     {lookup.status === 'found' && <p className="mt-1.5 text-xs text-emerald-600 flex items-center"><CheckCircle className="h-3 w-3 mr-1" /> Verified with the bank</p>}
                                     {lookup.status === 'failed' && <p className="mt-1.5 text-xs text-amber-600 flex items-center"><AlertCircle className="h-3 w-3 mr-1" /> Couldn't verify this account. Check the bank and number, or type the name yourself.</p>}
                                 </div>
@@ -209,7 +209,7 @@ export const MyProfileSettings: React.FC = () => {
 
                         {/* Mobile Money Section */}
                         <div className="border-2 border-gray-200 bg-gray-50/30 rounded-xl p-6">
-                            <h4 className="text-sm font-black text-brand-navy uppercase tracking-widest mb-4 flex items-center">
+                            <h4 className="text-sm font-black text-[#1F1F1F] uppercase tracking-widest mb-4 flex items-center">
                                 <Smartphone className="h-4 w-4 mr-2 text-emerald-600" />
                                 Mobile Money Details
                             </h4>
@@ -257,7 +257,7 @@ export const MyProfileSettings: React.FC = () => {
                             <button
                                 type="submit"
                                 disabled={saving}
-                                className="inline-flex items-center px-5 py-2 border border-transparent shadow-sm text-sm font-semibold rounded-lg text-white bg-[#10A34A] hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 transition-colors"
+                                className="inline-flex items-center px-5 py-2 border border-transparent shadow-sm text-sm font-semibold rounded-lg text-white bg-[#0B57D0] hover:bg-[#0842A0] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#0B57D0] disabled:opacity-50 transition-colors"
                             >
                                 {saving ? (
                                     <>

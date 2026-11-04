@@ -13,7 +13,7 @@ export const CustomerLoyaltyPanel: React.FC<{ customerId: string }> = ({ custome
     });
 
     if (isLoading) {
-        return <div className="flex items-center justify-center h-32 gap-2 text-sm text-gray-400"><Loader2 size={14} className="animate-spin" /> Loading loyalty…</div>;
+        return <div className="flex items-center justify-center h-32 gap-2 text-sm text-[#0B57D0]"><Loader2 size={14} className="animate-spin" /> Loading loyalty…</div>;
     }
     if (isError || !data) {
         return <div className="flex items-center justify-center h-32 text-sm text-red-500">Couldn't load loyalty data for this customer.</div>;
@@ -44,11 +44,11 @@ export const CustomerLoyaltyPanel: React.FC<{ customerId: string }> = ({ custome
                     <ol className="flex flex-col gap-3">
                         {data.top_products.map((p, i) => (
                             <li key={p.key} className="flex items-center gap-3">
-                                <div className="h-11 w-11 rounded-xl bg-[#0058DB]/10 overflow-hidden flex items-center justify-center shadow-inner flex-shrink-0">
+                                <div className="h-11 w-11 rounded-xl bg-[#0B57D0]/10 overflow-hidden flex items-center justify-center shadow-inner flex-shrink-0">
                                     {p.image_url ? (
                                         <img src={p.image_url} alt="" className="h-full w-full object-cover" />
                                     ) : (
-                                        <ShoppingBag className="h-5 w-5 text-[#0058DB]" />
+                                        <ShoppingBag className="h-5 w-5 text-[#0B57D0]" />
                                     )}
                                 </div>
                                 <div className="flex-1 min-w-0">

@@ -81,7 +81,7 @@ const RequisitionAttachments: React.FC<RequisitionAttachmentsProps> = ({
                     {docs.some(d => d.isAvailable) && (
                         <button
                             onClick={() => setPreviewDoc({ type: 'all', title: 'Complete Audit Trail' })}
-                            className="flex-shrink-0 h-9 md:h-11 px-4 md:px-6 bg-[#006AFF] hover:bg-[#0052cc] text-white rounded-full text-xs md:text-sm font-bold shadow-xl shadow-blue-500/20 transition-all flex items-center gap-1.5"
+                            className="flex-shrink-0 h-9 md:h-11 px-4 md:px-6 bg-[#0B57D0] hover:bg-[#0842A0] text-white rounded-full text-xs md:text-sm font-bold shadow-xl shadow-blue-500/20 transition-all flex items-center gap-1.5"
                         >
                             <FileDown size={14} className="md:w-[18px] md:h-[18px]" />
                             <span className="whitespace-nowrap">Combine to PDF</span>
@@ -108,8 +108,8 @@ const RequisitionAttachments: React.FC<RequisitionAttachmentsProps> = ({
                                         style={{ width: ICON_SIZE_SM, height: ICON_SIZE_SM }}
                                     >
                                         {doc.isCompleted ? (
-                                            <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-blue-100 border border-[#006AFF] flex items-center justify-center">
-                                                <svg className="w-3 h-3 md:w-4 md:h-4" fill="none" stroke="#006AFF" strokeWidth={3} viewBox="0 0 24 24">
+                                            <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-blue-100 border border-[#0B57D0] flex items-center justify-center">
+                                                <svg className="w-3 h-3 md:w-4 md:h-4" fill="none" stroke="#0B57D0" strokeWidth={3} viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                                                 </svg>
                                             </div>
@@ -118,8 +118,8 @@ const RequisitionAttachments: React.FC<RequisitionAttachmentsProps> = ({
                                                 <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-gray-200" />
                                             </div>
                                         ) : (
-                                            <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-white border-2 border-[#006AFF] flex items-center justify-center">
-                                                <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-[#006AFF]" />
+                                            <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-white border-2 border-[#0B57D0] flex items-center justify-center">
+                                                <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-[#0B57D0]" />
                                             </div>
                                         )}
                                     </div>

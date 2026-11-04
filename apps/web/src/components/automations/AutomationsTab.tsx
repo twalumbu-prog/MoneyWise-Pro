@@ -120,13 +120,13 @@ const RunRow: React.FC<{ run: AutomationRun; canRetry: boolean; retrying: boolea
                     <div className="flex items-center gap-2 mt-3">
                         {run.requisition_id && (
                             <button type="button" onClick={() => navigate(`/requisitions?id=${run.requisition_id}`)}
-                                className="flex items-center gap-1 text-[11px] font-semibold text-[#0058DB] hover:underline">
+                                className="flex items-center gap-1 text-[11px] font-semibold text-[#0B57D0] hover:underline">
                                 View payout <ArrowRight size={11} />
                             </button>
                         )}
                         {run.status === 'FAILED' && canRetry && (
                             <button type="button" onClick={onRetry} disabled={retrying}
-                                className="ml-auto flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#0058DB] md:bg-[#0059D8] text-white text-[11px] font-bold hover:opacity-90 disabled:opacity-60 transition">
+                                className="ml-auto flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#0B57D0] md:bg-[#0B57D0] text-white text-[11px] font-bold hover:opacity-90 disabled:opacity-60 transition">
                                 {retrying ? <Loader2 size={11} className="animate-spin" /> : <RotateCcw size={11} />}
                                 Retry
                             </button>
@@ -203,7 +203,7 @@ const DetailPanel: React.FC<DetailProps> = ({ automation, isAdmin, running, onRu
                                 </div>
                             )}
                             {email && (
-                                <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 rounded-xl text-[10px] text-[#0058DB]">
+                                <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 rounded-xl text-[10px] text-[#0B57D0]">
                                     <Mail size={10} className="flex-shrink-0" />
                                     <span className="font-semibold">Proof of Payment →</span>
                                     <span className="truncate">{email}</span>
@@ -227,7 +227,7 @@ const DetailPanel: React.FC<DetailProps> = ({ automation, isAdmin, running, onRu
                     </p>
                     {isAdmin && (
                         <button type="button" onClick={onRun} disabled={running}
-                            className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-[#0058DB] md:bg-[#0059D8] hover:opacity-90 text-white text-xs font-bold rounded-lg transition disabled:opacity-60">
+                            className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-[#0B57D0] md:bg-[#0B57D0] hover:opacity-90 text-white text-xs font-bold rounded-lg transition disabled:opacity-60">
                             {running ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} fill="white" />}
                             Run Now
                         </button>
@@ -237,7 +237,7 @@ const DetailPanel: React.FC<DetailProps> = ({ automation, isAdmin, running, onRu
                 <div className="flex-1 overflow-y-auto px-4 py-4">
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Run History</p>
                     {isLoading ? (
-                        <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin text-gray-300" /></div>
+                        <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin text-[#0B57D0]" /></div>
                     ) : runs.length === 0 ? (
                         <div className="text-center py-8 text-xs text-gray-400">No runs yet. The first deposit will show up here.</div>
                     ) : (
@@ -320,7 +320,7 @@ export const AutomationsTab: React.FC<{ onCreate: () => void }> = ({ onCreate })
                 <p className="text-xs text-gray-400 flex-1">Rules that run by themselves, the same way every time.</p>
                 {isAdmin && (
                     <button type="button" onClick={onCreate}
-                        className="h-8 pl-4 pr-3 bg-[#0058DB] md:bg-[#0059D8] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity">
+                        className="h-8 pl-4 pr-3 bg-[#0B57D0] md:bg-[#0B57D0] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity">
                         <Plus size={13} className="text-white" />
                         <span className="text-white text-xs font-bold">New automation</span>
                     </button>
@@ -329,7 +329,7 @@ export const AutomationsTab: React.FC<{ onCreate: () => void }> = ({ onCreate })
 
             <div className="flex-1 overflow-y-auto px-4 pb-4">
                 {isLoading ? (
-                    <div className="flex justify-center items-center py-20"><Loader2 size={24} className="animate-spin text-gray-300" /></div>
+                    <div className="flex justify-center items-center py-20"><Loader2 size={24} className="animate-spin text-[#0B57D0]" /></div>
                 ) : automations.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-24 text-center">
                         <div className="w-12 h-12 rounded-2xl bg-purple-50 flex items-center justify-center mb-4">
@@ -341,7 +341,7 @@ export const AutomationsTab: React.FC<{ onCreate: () => void }> = ({ onCreate })
                         </p>
                         {isAdmin && (
                             <button type="button" onClick={onCreate}
-                                className="h-8 pl-4 pr-3 bg-[#0058DB] md:bg-[#0059D8] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity">
+                                className="h-8 pl-4 pr-3 bg-[#0B57D0] md:bg-[#0B57D0] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity">
                                 <Sparkles size={13} className="text-white" />
                                 <span className="text-white text-xs font-bold">Create with Assistant</span>
                             </button>

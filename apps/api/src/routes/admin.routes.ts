@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { requireSuperAdmin } from '../middleware/superAdmin';
+import * as importsAdmin from '../controllers/imports.controller';
 import {
     whoami,
     getReconciliationList,
@@ -29,6 +30,7 @@ import {
 import { getVercelLogs } from '../controllers/admin.logs.controller';
 import { getLedgerAudit, healLedger } from '../controllers/admin.ledger.controller';
 import { getCronHealth } from '../controllers/cron.controller';
+import { adminAds, adminApprove, adminReject } from '../controllers/marketplaceAds.controller';
 
 const router = Router();
 
@@ -60,6 +62,23 @@ router.get('/analytics/payment-links/attempts', getPaymentLinkAttemptsHandler);
 router.put('/analytics/posthog-key', setPostHogKeyHandler);
 
 router.get('/logs', getVercelLogs);
+
+// MoneyWise Ads: review the Marketplace ads sellers have paid for
+router.get('/ads', adminAds);
+router.post('/ads/:id/approve', adminApprove);
+router.post('/ads/:id/reject', adminReject);
+
+// Imported products: the purchasing queue, tracking, the catalogue and its prices
+router.get('/imports', importsAdmin.adminOverview);
+router.patch('/imports/orders/:id', importsAdmin.adminUpdateOrder);
+router.post('/imports/orders/:id/cancel', importsAdmin.adminCancelOrder);
+router.post('/imports/products', importsAdmin.adminSaveProduct);
+router.patch('/imports/products/:id', importsAdmin.adminSaveProduct);
+router.post('/imports/products/:id/refresh', importsAdmin.adminRefreshProduct);
+router.post('/imports/search', importsAdmin.adminSearch);
+router.post('/imports/add', importsAdmin.adminAdd);
+router.put('/imports/settings', importsAdmin.adminSaveSettings);
+router.post('/imports/refresh-now', importsAdmin.adminRefreshNow);
 
 // Ledger integrity: do the books tie to the wallets? (+ one-click repair)
 router.get('/ledger-audit/:orgId', getLedgerAudit);

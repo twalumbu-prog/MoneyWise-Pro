@@ -9,6 +9,8 @@ import WalletPool from './pages/WalletPool';
 import TestCollections from './pages/TestCollections';
 import PaymentLinkAnalytics from './pages/PaymentLinkAnalytics';
 import Logs from './pages/Logs';
+import Ads from './pages/Ads';
+import Imports from './pages/Imports';
 
 export default function App() {
     return (
@@ -62,6 +64,26 @@ export default function App() {
                             <ProtectedRoute>
                                 <Layout>
                                     <PaymentLinkAnalytics />
+                                </Layout>
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/imports"
+                        element={
+                            <ProtectedRoute>
+                                <Layout>
+                                    <Imports />
+                                </Layout>
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/ads"
+                        element={
+                            <ProtectedRoute>
+                                <Layout>
+                                    <Ads />
                                 </Layout>
                             </ProtectedRoute>
                         }

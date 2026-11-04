@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { autoCompleteSweep, healFeesCron, cronWatchdog } from '../controllers/cron.controller';
+import { autoCompleteSweep, healFeesCron, cronWatchdog, importRefresh, fundFeeds } from '../controllers/cron.controller';
 
 const router = Router();
 
@@ -7,5 +7,7 @@ const router = Router();
 router.post('/auto-sweep', autoCompleteSweep);
 router.post('/heal-fees', healFeesCron);
 router.post('/watchdog', cronWatchdog);
+router.post('/import-refresh', importRefresh);
+router.post('/fund-feeds', fundFeeds);
 
 export default router;

@@ -363,20 +363,31 @@ export const savingsService = {
         return toSummary(goal, 0, 'OWNER', members);
     },
 
-    /** Everything the caller can see: their own org's savings plus groups they've joined. */
+    /**
+     * Everything the caller can see: their own org's savings plus groups they've joined.
+     * Each database round trip is slow on a long link, so independent reads run together: settling pending deposits and the
+     * unassigned-entry repair no longer queue ahead of the goal lists, and the member lookup runs alongside the joined-goal read.
+     */
     async list(orgId: string, userId: string) {
-        await settleMine(userId).catch(() => undefined);
-        await classifyRecentSavingsEntries(orgId).catch(() => 0); // anything still unassigned in a savings pot
-        const { data: own } = await supabase
-            .from('savings_goals').select('*').eq('organization_id', orgId).eq('status', 'ACTIVE').order('created_at', { ascending: false });
-        const { data: memberships } = await supabase.from('savings_group_members').select('goal_id').eq('user_id', userId);
-        const joinedIds = (memberships ?? []).map(m => m.goal_id).filter(id => !(own ?? []).some(g => g.id === id));
-        const { data: joined } = joinedIds.length
-            ? await supabase.from('savings_goals').select('*').in('id', joinedIds).eq('status', 'ACTIVE')
-            : { data: [] as any[] };
+        const [, , ownRes, membershipsRes] = await Promise.all([
+            settleMine(userId).catch(() => undefined),
+            classifyRecentSavingsEntries(orgId).catch(() => 0), // anything still unassigned in a savings pot
+            supabase.from('savings_goals').select('*').eq('organization_id', orgId).eq('status', 'ACTIVE').order('created_at', { ascending: false }),
+            supabase.from('savings_group_members').select('goal_id').eq('user_id', userId),
+        ]);
+        const own = ownRes.data;
+        const joinedIds = (membershipsRes.data ?? []).map(m => m.goal_id).filter(id => !(own ?? []).some(g => g.id === id));
+        // Joined goals are groups by definition, so their members can be read without waiting to see the goals.
+        const ownGroupIds = (own ?? []).filter(g => g.kind === 'GROUP').map(g => g.id);
+        const [joinedRes, members] = await Promise.all([
+            joinedIds.length
+                ? supabase.from('savings_goals').select('*').in('id', joinedIds).eq('status', 'ACTIVE')
+                : Promise.resolve({ data: [] as any[] }),
+            membersOf([...ownGroupIds, ...joinedIds]),
+        ]);
+        const joined = joinedRes.data;
 
         const all = [...(own ?? []).map(g => ({ g, role: 'OWNER' as const })), ...(joined ?? []).map(g => ({ g, role: 'MEMBER' as const }))];
-        const members = await membersOf(all.filter(x => x.g.kind === 'GROUP').map(x => x.g.id));
         const items = await Promise.all(all.map(async ({ g, role }) =>
             toSummary(g, await walletBalance(g.organization_id, g.wallet_id), role, members.get(g.id) ?? [])));
 

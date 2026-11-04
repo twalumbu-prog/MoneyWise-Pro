@@ -542,7 +542,7 @@ export const RequisitionCreate: React.FC = () => {
     return (
         <Layout>
             <div className="max-w-4xl mx-auto space-y-6">
-                <h1 className="text-2xl font-bold text-brand-navy">
+                <h1 className="text-2xl font-bold text-[#1F1F1F]">
                     {reqType === 'LOAN' ? 'New Staff Loan' : reqType === 'ADVANCE' ? 'New Salary Advance' : reqType === 'PAYROLL' ? 'New Payroll Requisition' : 'New Requisition'}
                 </h1>
 
@@ -569,7 +569,7 @@ export const RequisitionCreate: React.FC = () => {
                                             <div className="bg-white/60 rounded-xl p-4 border border-amber-100 flex flex-col sm:flex-row justify-between sm:items-center group gap-3">
                                                 <div>
                                                     <p className="text-[10px] text-amber-600 font-black uppercase tracking-widest">Active Request</p>
-                                                    <p className="text-sm font-bold text-brand-navy">#{req.id.slice(0, 8)} - {req.description}</p>
+                                                    <p className="text-sm font-bold text-[#1F1F1F]">#{req.id.slice(0, 8)} - {req.description}</p>
                                                     <div className="flex items-center mt-1">
                                                         <span className={`w-2 h-2 rounded-full mr-2 ${req.status === 'RECEIVED' ? 'bg-blue-500' : 'bg-amber-500 animate-pulse'}`} />
                                                         <span className={`text-xs font-bold uppercase tracking-wider ${req.status === 'RECEIVED' ? 'text-blue-700' : 'text-amber-700'}`}>{req.status}</span>
@@ -766,7 +766,7 @@ export const RequisitionCreate: React.FC = () => {
                                     ))}
 
                                     <div className="bg-brand-gray rounded-lg p-4 flex justify-between items-center border border-gray-100">
-                                        <span className="text-sm font-bold text-brand-navy">Total Estimated</span>
+                                        <span className="text-sm font-bold text-[#1F1F1F]">Total Estimated</span>
                                         <span className="text-xl font-black text-brand-green">
                                             K{getEstimatedTotal().toLocaleString()}
                                         </span>
@@ -799,7 +799,7 @@ export const RequisitionCreate: React.FC = () => {
                                     <Plus className="h-8 w-8" />
                                 </div>
                                 <div>
-                                    <p className="text-sm font-bold text-brand-navy">Upload employee payroll sheet</p>
+                                    <p className="text-sm font-bold text-[#1F1F1F]">Upload employee payroll sheet</p>
                                     <p className="text-xs text-gray-500 mt-1">Supports Excel (.xlsx, .xls) and CSV files</p>
                                 </div>
                             </div>
@@ -817,8 +817,8 @@ export const RequisitionCreate: React.FC = () => {
                             </button>
 
                             {/* Excel Template Guide */}
-                            <div className="bg-brand-navy/5 rounded-xl p-4 border border-brand-navy/10 text-xs text-brand-navy space-y-2">
-                                <p className="font-black uppercase tracking-wider text-[10px] tracking-widest text-brand-navy/80">Required Column Schema</p>
+                            <div className="bg-brand-navy/5 rounded-xl p-4 border border-brand-navy/10 text-xs text-[#1F1F1F] space-y-2">
+                                <p className="font-black uppercase tracking-wider text-[10px] tracking-widest text-[#1F1F1F]/80">Required Column Schema</p>
                                 <p className="leading-relaxed">
                                     Your spreadsheet should contain columns matching: 
                                     <span className="font-bold"> Employee ID</span>, 
@@ -849,12 +849,12 @@ export const RequisitionCreate: React.FC = () => {
                             {lineItems.length > 0 && lineItems[0].employee_name && (
                                 <div className="space-y-4 animate-in fade-in duration-300">
                                     <div className="flex justify-between items-center">
-                                        <h3 className="text-lg font-bold text-brand-navy">Payroll Sheet Preview ({lineItems.length} employees)</h3>
+                                        <h3 className="text-lg font-bold text-[#1F1F1F]">Payroll Sheet Preview ({lineItems.length} employees)</h3>
                                         <button
                                             type="button"
                                             onClick={handleVerifyAll}
                                             disabled={isVerifying}
-                                            className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-100 transition-all"
+                                            className="px-4 py-2 bg-[#0B57D0] hover:bg-[#0842A0] disabled:opacity-50 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md shadow-[#0B57D0]/20 transition-all"
                                         >
                                             {isVerifying ? (
                                                 <>
@@ -977,7 +977,7 @@ export const RequisitionCreate: React.FC = () => {
                                                                 )}
                                                                 {status === 'pending' && (
                                                                     <span className="inline-flex items-center gap-1 text-xs text-gray-400">
-                                                                        <Loader2 size={12} className="animate-spin text-[#006AFF]" />
+                                                                        <Loader2 size={12} className="animate-spin text-[#0B57D0]" />
                                                                         <span>Verifying...</span>
                                                                     </span>
                                                                 )}
@@ -998,7 +998,7 @@ export const RequisitionCreate: React.FC = () => {
                                                                     </span>
                                                                 )}
                                                             </td>
-                                                            <td className="px-4 py-3 text-right font-bold text-brand-navy">K{Number(item.estimated_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                                            <td className="px-4 py-3 text-right font-bold text-[#1F1F1F]">K{Number(item.estimated_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                                             <td className="px-4 py-3 text-center">
                                                                 <button
                                                                     type="button"
@@ -1023,7 +1023,7 @@ export const RequisitionCreate: React.FC = () => {
                                             </tbody>
                                             <tfoot className="bg-gray-50">
                                                 <tr>
-                                                    <td colSpan={6} className="px-4 py-3 text-sm font-bold text-brand-navy text-right">Total Payroll Sum:</td>
+                                                    <td colSpan={6} className="px-4 py-3 text-sm font-bold text-[#1F1F1F] text-right">Total Payroll Sum:</td>
                                                     <td className="px-4 py-3 text-right font-black text-brand-green text-base">K{getEstimatedTotal().toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                                     <td></td>
                                                 </tr>
@@ -1143,7 +1143,7 @@ export const RequisitionCreate: React.FC = () => {
                             type="submit"
                             data-tour-target="req-submit-btn"
                             disabled={loading || !allPayrollVerified || isVerifying}
-                            className="px-6 py-2.5 bg-brand-green text-white font-bold rounded-xl hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-green-200 transition-all transform hover:-translate-y-0.5"
+                            className="px-6 py-2.5 bg-brand-green text-white font-bold rounded-xl hover:bg-[#0842A0] disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-green-200 transition-all transform hover:-translate-y-0.5"
                         >
                             {loading ? 'Submitting...' : 'Submit Requisition'}
                         </button>

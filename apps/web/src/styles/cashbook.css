@@ -13,7 +13,7 @@
 
 .cashbook-header h1 {
     font-size: 2rem;
-    color: #1e293b;
+    color: #3C4043;
 }
 
 .balance-display {
@@ -56,15 +56,15 @@
 
 .filter-group label {
     font-weight: 500;
-    color: #64748b;
+    color: #5F6368;
 }
 
 .filter-group input[type="date"] {
     padding: 0.5rem 0.5rem 0.5rem 2.5rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid #E8EAED;
     border-radius: 8px;
     font-size: 0.875rem;
-    color: #1e293b;
+    color: #3C4043;
     width: 160px;
 }
 
@@ -95,20 +95,20 @@
 }
 
 .cashbook-table thead {
-    background: #f8fafc;
+    background: #F8FAFD;
 }
 
 .cashbook-table th {
     padding: 1rem;
     text-align: left;
     font-weight: 600;
-    color: #475569;
-    border-bottom: 2px solid #e2e8f0;
+    color: #5F6368;
+    border-bottom: 2px solid #E8EAED;
 }
 
 .cashbook-table td {
     padding: 1rem;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid #F1F3F4;
 }
 
 .amount-col {
@@ -117,21 +117,21 @@
 }
 
 .debit {
-    color: #059669;
+    color: #1E8E3E;
 }
 
 .credit {
-    color: #dc2626;
+    color: #D93025;
 }
 
 .balance {
     font-weight: 600;
-    color: #1e293b;
+    color: #3C4043;
 }
 
 .details-row td {
     padding: 0 !important;
-    background: #f8fafc;
+    background: #F8FAFD;
 }
 
 .details-content {
@@ -160,7 +160,7 @@
 .breakdown-section h4 {
     font-size: 0.75rem;
     font-weight: 700;
-    color: #64748b;
+    color: #5F6368;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     margin-bottom: 0.75rem;
@@ -173,7 +173,7 @@
 
 .line-items-mini td {
     padding: 0.5rem 0 !important;
-    border-bottom: 1px solid #e2e8f0 !important;
+    border-bottom: 1px solid #E8EAED !important;
 }
 
 .summary-grid {
@@ -186,13 +186,13 @@
     padding: 1rem;
     background: white;
     border-radius: 8px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid #E8EAED;
 }
 
 .summary-card .label {
     display: block;
     font-size: 0.7rem;
-    color: #94a3b8;
+    color: #9AA0A6;
     margin-bottom: 0.25rem;
 }
 
@@ -202,11 +202,11 @@
 }
 
 .value.expenditure {
-    color: #dc2626;
+    color: #D93025;
 }
 
 .value.change {
-    color: #059669;
+    color: #1E8E3E;
 }
 
 .value.discrepancy {
@@ -219,7 +219,7 @@
 }
 
 .clickable-row:hover {
-    background: #f1f5f9 !important;
+    background: #F1F3F4 !important;
 }
 
 /* Modern Breakdown Table Redesign */
@@ -236,19 +236,19 @@
 }
 
 .breakdown-table-modern th {
-    background: #f8fafc;
-    color: #64748b;
+    background: #F8FAFD;
+    color: #5F6368;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     padding: 0.75rem 1rem;
     font-size: 0.7rem;
-    border-bottom: 2px solid #f1f5f9;
+    border-bottom: 2px solid #F1F3F4;
 }
 
 .breakdown-table-modern td {
     padding: 0.875rem 1rem;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid #F1F3F4;
     vertical-align: middle;
 }
 
@@ -261,11 +261,11 @@
 }
 
 .breakdown-table-modern .cash-distributed {
-    background: #f1f5f9;
+    background: #F1F3F4;
 }
 
 .breakdown-table-modern .expenditure-row {
-    border-top: 2px solid #e2e8f0;
+    border-top: 2px solid #E8EAED;
 }
 
 .breakdown-table-modern .discrepancy-row {
@@ -276,28 +276,28 @@
     width: 100%;
     max-width: 280px;
     padding: 0.4rem 0.6rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid #E8EAED;
     border-radius: 0.5rem;
     font-size: 0.75rem;
-    color: #1e293b;
+    color: #3C4043;
     background: #ffffff;
     cursor: pointer;
     transition: all 0.2s;
 }
 
 .accounting-select:hover {
-    border-color: #cbd5e1;
-    background: #f8fafc;
+    border-color: #DADCE0;
+    background: #F8FAFD;
 }
 
 .accounting-select:focus {
     outline: none;
-    border-color: #006AFF;
-    box-shadow: 0 0 0 3px rgba(0, 106, 255, 0.1);
+    border-color: #0B57D0;
+    box-shadow: 0 0 0 3px rgba(11,87,208, 0.1);
 }
 
-.breakdown-table-modern .text-brand-navy { color: #1a2333; }
-.breakdown-table-modern .text-emerald-600 { color: #059669; }
+.breakdown-table-modern .text-[#1F1F1F] { color: #1a2333; }
+.breakdown-table-modern .text-emerald-600 { color: #1E8E3E; }
 .breakdown-table-modern .text-rose-600 { color: #e11d48; }
 
 /* Reconciliation Page Styles */
@@ -319,10 +319,10 @@
 .section-title {
     font-size: 1.125rem;
     font-weight: 700;
-    color: #1e293b;
+    color: #3C4043;
     margin-bottom: 1.5rem;
     padding-bottom: 0.75rem;
-    border-bottom: 2px solid #f1f5f9;
+    border-bottom: 2px solid #F1F3F4;
 }
 
 .denominations-list {
@@ -338,37 +338,37 @@
     gap: 0.5rem;
     padding: 0.75rem;
     border-radius: 8px;
-    background: #f8fafc;
-    border: 1px solid #f1f5f9;
+    background: #F8FAFD;
+    border: 1px solid #F1F3F4;
     transition: all 0.2s;
 }
 
 .denomination-row:hover {
-    border-color: #e2e8f0;
-    background: #f1f5f9;
+    border-color: #E8EAED;
+    background: #F1F3F4;
 }
 
 .denom-label {
     font-weight: 700;
-    color: #475569;
+    color: #5F6368;
     font-size: 1rem;
 }
 
 .denom-times,
 .denom-equals {
-    color: #94a3b8;
+    color: #9AA0A6;
     text-align: center;
     font-weight: 600;
 }
 
 .denom-input {
     padding: 0.5rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid #DADCE0;
     border-radius: 6px;
     text-align: center;
     font-size: 1rem;
     font-weight: 600;
-    color: #0f172a;
+    color: #1F1F1F;
     width: 100%;
 }
 
@@ -381,7 +381,7 @@
 
 .denom-total {
     font-weight: 700;
-    color: #1e293b;
+    color: #3C4043;
     text-align: right;
     font-family: 'Courier New', monospace;
     font-size: 1.125rem;
@@ -393,7 +393,7 @@
     gap: 1.5rem;
     margin-bottom: 2rem;
     padding-bottom: 1.5rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid #E8EAED;
 }
 
 .balance-item {
@@ -405,7 +405,7 @@
 .balance-item label {
     font-size: 0.75rem;
     font-weight: 600;
-    color: #64748b;
+    color: #5F6368;
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
@@ -420,15 +420,15 @@
 }
 
 .balance-item .balance-value.physical {
-    color: #0f172a;
+    color: #1F1F1F;
 }
 
 .balance-item.variance.over .balance-value {
-    color: #059669;
+    color: #1E8E3E;
 }
 
 .balance-item.variance.short .balance-value {
-    color: #dc2626;
+    color: #D93025;
 }
 
 .reconciliation-form {
@@ -441,14 +441,14 @@
     display: block;
     font-size: 0.875rem;
     font-weight: 600;
-    color: #475569;
+    color: #5F6368;
     margin-bottom: 0.5rem;
 }
 
 .form-group textarea {
     width: 100%;
     padding: 0.75rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid #E8EAED;
     border-radius: 8px;
     resize: none;
     font-size: 0.875rem;
@@ -484,7 +484,7 @@
 
 .result.balanced {
     background: #ecfdf5;
-    border: 1px solid #10b981;
+    border: 1px solid #1E8E3E;
     color: #065f46;
 }
 

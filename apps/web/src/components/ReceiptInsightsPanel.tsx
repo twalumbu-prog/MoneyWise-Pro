@@ -146,7 +146,7 @@ export const ReceiptInsightsPanel: React.FC<Props> = ({
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             {isPending ? (
-                                <Loader2 className="h-4 w-4 text-indigo-500 animate-spin" />
+                                <Loader2 className="h-4 w-4 text-[#0B57D0] animate-spin" />
                             ) : hasFailed ? (
                                 <FileWarning className="h-4 w-4 text-red-500" />
                             ) : (

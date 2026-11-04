@@ -407,19 +407,19 @@ export const CashierDashboard: React.FC = () => {
         <Layout>
             <div className="space-y-6">
                 <div className="flex justify-between items-center">
-                    <h1 className="text-2xl font-bold text-brand-navy">Cashier Dashboard</h1>
+                    <h1 className="text-2xl font-bold text-[#1F1F1F]">Cashier Dashboard</h1>
                     
                     <div className="flex bg-gray-100 p-1 rounded-xl">
                         <button
                             onClick={() => setActiveTab('pending')}
-                            className={`flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'pending' ? 'bg-white text-brand-navy shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                            className={`flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'pending' ? 'bg-white text-[#1F1F1F] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                         >
                             <Clock className="h-4 w-4 mr-2" />
                             Pending
                         </button>
                         <button
                             onClick={() => setActiveTab('history')}
-                            className={`flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'history' ? 'bg-white text-brand-navy shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                            className={`flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'history' ? 'bg-white text-[#1F1F1F] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                         >
                             <History className="h-4 w-4 mr-2" />
                             History
@@ -484,7 +484,7 @@ export const CashierDashboard: React.FC = () => {
                                             <div className="flex justify-between items-center">
                                                 <div className="flex-1">
                                                     <div className="flex items-center space-x-3">
-                                                        <span className="font-bold text-lg text-brand-navy">#{disb.requisition_id.slice(0, 8)}</span>
+                                                        <span className="font-bold text-lg text-[#1F1F1F]">#{disb.requisition_id.slice(0, 8)}</span>
                                                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold tracking-wider uppercase ${disb.confirmed_at ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
                                                             {disb.confirmed_at ? 'Received' : 'Pending Acknowledgment'}
                                                         </span>
@@ -507,7 +507,7 @@ export const CashierDashboard: React.FC = () => {
                                                     </div>
                                                 </div>
                                                 <div className="text-right flex flex-col items-end min-w-[150px]">
-                                                    <span className="text-2xl font-black text-brand-navy">K{Number(disb.total_prepared).toLocaleString()}</span>
+                                                    <span className="text-2xl font-black text-[#1F1F1F]">K{Number(disb.total_prepared).toLocaleString()}</span>
                                                     {!disb.confirmed_at && (
                                                         <button
                                                             onClick={(e) => {
@@ -594,7 +594,7 @@ export const CashierDashboard: React.FC = () => {
 
                                         <button
                                             onClick={() => setPaymentMethod('CASH')}
-                                            className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 transition-all duration-300 ${paymentMethod === 'CASH' ? 'text-brand-navy' : 'text-gray-500 hover:text-gray-700'}`}
+                                            className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 transition-all duration-300 ${paymentMethod === 'CASH' ? 'text-[#1F1F1F]' : 'text-gray-500 hover:text-gray-700'}`}
                                         >
                                             <Banknote className="h-4 w-4" />
                                             <span className="text-[11px] font-black whitespace-nowrap">Cash</span>
@@ -647,7 +647,7 @@ export const CashierDashboard: React.FC = () => {
                                                                 setRecipientAccountName('');
                                                                 setAccountResolved(false);
                                                             }}
-                                                            className={`flex-1 flex items-center justify-center py-2 text-xs font-bold rounded-lg transition-all ${subMethod === 'MOBILE_MONEY' ? 'bg-white text-brand-navy shadow-sm' : 'text-gray-500'}`}
+                                                            className={`flex-1 flex items-center justify-center py-2 text-xs font-bold rounded-lg transition-all ${subMethod === 'MOBILE_MONEY' ? 'bg-white text-[#1F1F1F] shadow-sm' : 'text-gray-500'}`}
                                                         >
                                                             Mobile Money
                                                         </button>
@@ -658,7 +658,7 @@ export const CashierDashboard: React.FC = () => {
                                                                 setRecipientAccountName('');
                                                                 setAccountResolved(false);
                                                             }}
-                                                            className={`flex-1 flex items-center justify-center py-2 text-xs font-bold rounded-lg transition-all ${subMethod === 'BANK_TRANSFER' ? 'bg-white text-brand-navy shadow-sm' : 'text-gray-500'}`}
+                                                            className={`flex-1 flex items-center justify-center py-2 text-xs font-bold rounded-lg transition-all ${subMethod === 'BANK_TRANSFER' ? 'bg-white text-[#1F1F1F] shadow-sm' : 'text-gray-500'}`}
                                                         >
                                                             Bank Transfer
                                                         </button>
@@ -743,7 +743,7 @@ export const CashierDashboard: React.FC = () => {
                                                         <button
                                                             onClick={resolveRecipient}
                                                             disabled={resolvingAccount || !recipientAccount || (subMethod === 'BANK_TRANSFER' && !recipientBankCode)}
-                                                            className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-gray-100 text-brand-navy rounded-xl text-xs font-bold hover:bg-gray-200 transition-colors disabled:opacity-50"
+                                                            className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-gray-100 text-[#1F1F1F] rounded-xl text-xs font-bold hover:bg-gray-200 transition-colors disabled:opacity-50"
                                                         >
                                                             {resolvingAccount ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3 text-brand-pink" />}
                                                             {accountResolved ? 'Change Details' : 'Confirm'}
@@ -764,16 +764,16 @@ export const CashierDashboard: React.FC = () => {
                                                                 <div className="space-y-1">
                                                                     <div className="flex items-center space-x-2">
                                                                         <Wallet className={`h-4 w-4 ${walletBalance !== null && (Number(selectedReq.estimated_total) + lencoService.calculatePayoutFee(Number(selectedReq.estimated_total), selectedReqFeeType)) > walletBalance ? 'text-red-500' : 'text-brand-green'}`} />
-                                                                        <span className="text-sm font-bold text-brand-navy">MoneyWise Wallet Safeguard</span>
+                                                                        <span className="text-sm font-bold text-[#1F1F1F]">MoneyWise Wallet Safeguard</span>
                                                                     </div>
                                                                     <p className="text-xs text-gray-500">
-                                                                        All wallet withdrawals incur a tiered Lenco transaction charge (starting from <span className="font-bold text-brand-navy">K8.50</span>)
+                                                                        All wallet withdrawals incur a tiered Lenco transaction charge (starting from <span className="font-bold text-[#1F1F1F]">K8.50</span>)
                                                                     </p>
                                                                 </div>
                                                                 <div className="text-right">
                                                                     <p className="text-[10px] text-gray-400 uppercase font-black tracking-wider">Available Balance</p>
                                                                     {fetchingBalance ? (
-                                                                        <Loader2 className="h-4 w-4 animate-spin text-brand-green ml-auto" />
+                                                                        <Loader2 className="h-4 w-4 animate-spin text-[#0B57D0] ml-auto" />
                                                                     ) : (
                                                                         <p className={`text-lg font-black ${walletBalance !== null && (Number(selectedReq.estimated_total) + lencoService.calculatePayoutFee(Number(selectedReq.estimated_total), selectedReqFeeType)) > walletBalance ? 'text-red-600' : 'text-brand-green'}`}>
                                                                             K{walletBalance?.toLocaleString() || '0.00'}
@@ -785,7 +785,7 @@ export const CashierDashboard: React.FC = () => {
                                                             <div className="mt-4 pt-4 border-t border-dashed border-gray-200 grid grid-cols-2 gap-4">
                                                                 <div>
                                                                     <p className="text-[10px] text-gray-400 uppercase font-bold">Requisition Total</p>
-                                                                    <p className="text-sm font-bold text-brand-navy">
+                                                                    <p className="text-sm font-bold text-[#1F1F1F]">
                                                                         K{Number(selectedReq.estimated_total).toLocaleString()}
                                                                     </p>
                                                                 </div>
@@ -794,8 +794,8 @@ export const CashierDashboard: React.FC = () => {
                                                                     <p className="text-sm font-bold text-gray-600">K{lencoService.calculatePayoutFee(Number(selectedReq.estimated_total), selectedReqFeeType).toFixed(2)}</p>
                                                                 </div>
                                                                 <div className="col-span-2 pt-2 flex justify-between items-center border-t border-gray-100 mt-2">
-                                                                    <p className="text-xs font-black text-brand-navy uppercase">Total Wallet Deduction</p>
-                                                                    <p className={`text-xl font-black ${walletBalance !== null && (Number(selectedReq.estimated_total) + lencoService.calculatePayoutFee(Number(selectedReq.estimated_total), selectedReqFeeType)) > walletBalance ? 'text-red-600' : 'text-brand-navy'}`}>
+                                                                    <p className="text-xs font-black text-[#1F1F1F] uppercase">Total Wallet Deduction</p>
+                                                                    <p className={`text-xl font-black ${walletBalance !== null && (Number(selectedReq.estimated_total) + lencoService.calculatePayoutFee(Number(selectedReq.estimated_total), selectedReqFeeType)) > walletBalance ? 'text-red-600' : 'text-[#1F1F1F]'}`}>
                                                                         K{(Number(selectedReq.estimated_total) + lencoService.calculatePayoutFee(Number(selectedReq.estimated_total), selectedReqFeeType)).toLocaleString()}
                                                                     </p>
                                                                 </div>
@@ -823,10 +823,10 @@ export const CashierDashboard: React.FC = () => {
                                                                             </div>
                                                                             
                                                                             <div className="h-20 w-20 bg-brand-green/10 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-brand-green/20">
-                                                                                <Loader2 className="h-10 w-10 text-brand-green animate-spin" />
+                                                                                <Loader2 className="h-10 w-10 text-[#0B57D0] animate-spin" />
                                                                             </div>
                                                                             
-                                                                            <h3 className="text-2xl font-black text-brand-navy">Processing Payout</h3>
+                                                                            <h3 className="text-2xl font-black text-[#1F1F1F]">Processing Payout</h3>
                                                                             <p className="text-gray-500 font-medium">
                                                                                 {verificationStep}
                                                                             </p>
@@ -834,7 +834,7 @@ export const CashierDashboard: React.FC = () => {
                                                                             <div className="grid grid-cols-2 gap-4 text-left bg-gray-50 p-4 rounded-2xl border border-gray-100">
                                                                                 <div>
                                                                                     <p className="text-[10px] text-gray-400 uppercase font-bold">Recipient</p>
-                                                                                    <p className="text-sm font-black text-brand-navy truncate">{recipientAccountName}</p>
+                                                                                    <p className="text-sm font-black text-[#1F1F1F] truncate">{recipientAccountName}</p>
                                                                                 </div>
                                                                                 <div>
                                                                                     <p className="text-[10px] text-gray-400 uppercase font-bold">Amount</p>
@@ -855,7 +855,7 @@ export const CashierDashboard: React.FC = () => {
                                                                                 <CheckCircle className="h-10 w-10 text-green-500" />
                                                                             </div>
                                                                             
-                                                                            <h3 className="text-2xl font-black text-brand-navy">Transfer Successful!</h3>
+                                                                            <h3 className="text-2xl font-black text-[#1F1F1F]">Transfer Successful!</h3>
                                                                             <p className="text-green-600 font-bold text-sm bg-green-50 py-2 px-4 rounded-full inline-block border border-green-100">
                                                                                 Successfully logged to MoneyWise Ledger
                                                                             </p>
@@ -864,7 +864,7 @@ export const CashierDashboard: React.FC = () => {
                                                                                 <div className="grid grid-cols-2 gap-4">
                                                                                     <div>
                                                                                         <p className="text-[10px] text-gray-400 uppercase font-bold">Lenco Ref</p>
-                                                                                        <p className="text-xs font-mono font-black text-brand-navy">{verifiedDetails.reference || 'N/A'}</p>
+                                                                                        <p className="text-xs font-mono font-black text-[#1F1F1F]">{verifiedDetails.reference || 'N/A'}</p>
                                                                                     </div>
                                                                                     <div>
                                                                                         <p className="text-[10px] text-gray-400 uppercase font-bold">Amount Sent</p>

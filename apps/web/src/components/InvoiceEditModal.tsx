@@ -28,8 +28,8 @@ const Field: React.FC<{
 );
 
 const inputClass =
-    'w-full px-3.5 py-2.5 rounded-xl border border-[#E8EEF8] bg-white text-sm text-gray-800 font-medium ' +
-    'placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] transition';
+    'w-full px-3.5 py-2.5 rounded-xl border border-[rgba(116,119,117,0.22)] bg-white text-sm text-gray-800 font-medium ' +
+    'placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] transition';
 
 export const InvoiceEditModal: React.FC<InvoiceEditModalProps> = ({
     invoice,
@@ -103,7 +103,7 @@ export const InvoiceEditModal: React.FC<InvoiceEditModalProps> = ({
                 <div className="px-6 pt-6 pb-4 border-b border-gray-100 flex items-start justify-between">
                     <div>
                         <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">Edit Invoice</p>
-                        <h2 className="text-lg font-bold text-brand-navy">{invoiceNumber(invoice.token)}</h2>
+                        <h2 className="text-lg font-bold text-[#1F1F1F]">{invoiceNumber(invoice.token)}</h2>
                     </div>
                     <button
                         onClick={onClose}
@@ -160,14 +160,14 @@ export const InvoiceEditModal: React.FC<InvoiceEditModalProps> = ({
                         <button
                             type="button"
                             onClick={onClose}
-                            className="flex-1 py-2.5 rounded-2xl border border-[#E8EEF8] text-sm font-bold text-gray-500 hover:bg-gray-50 transition-colors"
+                            className="flex-1 py-2.5 rounded-2xl border border-[rgba(116,119,117,0.22)] text-sm font-bold text-gray-500 hover:bg-gray-50 transition-colors"
                         >
                             Cancel
                         </button>
                         <button
                             type="submit"
                             disabled={saving || !isDirty}
-                            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#0058DB] text-white text-sm font-bold rounded-2xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#0B57D0] text-white text-sm font-bold rounded-2xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                         >
                             {saving && <Loader2 size={14} className="animate-spin" />}
                             {saving ? 'Saving…' : 'Save changes'}

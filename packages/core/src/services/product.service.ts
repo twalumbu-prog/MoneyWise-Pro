@@ -143,6 +143,8 @@ export interface Product {
     digital_assets?: DigitalAsset[] | null;
     /** Whether this product requires physical delivery / pick-up at checkout. */
     requires_delivery?: boolean;
+    /** Whether the seller has chosen to list this product in the in-app Marketplace. */
+    marketplace_listed?: boolean;
     /** When true, the checkout shows the rider-service selector;
      *  when false, the merchant handles delivery at a flat charge. */
     allow_external_delivery?: boolean;

@@ -178,7 +178,7 @@ const ShareProductLinkModal: React.FC<ShareProductLinkModalProps> = ({ isOpen, o
                                     className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center space-x-1.5 ${
                                         copied
                                             ? 'bg-emerald-500 text-white shadow-md shadow-emerald-100'
-                                            : 'bg-slate-950 text-white hover:bg-slate-900 shadow-md shadow-slate-950/10'
+                                            : 'bg-slate-950 text-white hover:bg-[#0B57D0] shadow-md shadow-slate-950/10'
                                     }`}
                                 >
                                     {copied ? <><Check size={14} strokeWidth={3} /><span>Copied</span></> : <><Copy size={14} /><span>Copy</span></>}

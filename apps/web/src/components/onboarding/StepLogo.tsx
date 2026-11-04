@@ -124,7 +124,7 @@ export const StepLogo: React.FC<Props> = ({
                 }`}
             >
                 {uploading ? (
-                    <Loader2 className="h-10 w-10 text-blue-700 animate-spin" />
+                    <Loader2 className="h-10 w-10 text-[#0B57D0] animate-spin" />
                 ) : logoUrl ? (
                     <img src={logoUrl} alt="Business logo" className="w-full h-full object-contain p-6" />
                 ) : (

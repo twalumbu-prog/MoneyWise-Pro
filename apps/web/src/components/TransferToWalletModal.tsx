@@ -191,7 +191,7 @@ const TransferToWalletModal: React.FC<TransferToWalletModalProps> = ({
                             <h3 className="text-xl font-black text-emerald-600">Transfer Complete!</h3>
                             <p className="text-gray-500 mt-1 text-sm">K{netToWallet.toLocaleString(undefined, { minimumFractionDigits: 2 })} reached {destWallet?.name || 'your wallet'} (K{gross.toLocaleString(undefined, { minimumFractionDigits: 2 })} charged, less fees).</p>
                         </div>
-                        <button onClick={onClose} className="px-10 py-3.5 bg-slate-900 text-white rounded-2xl font-bold text-sm hover:bg-black transition-all">
+                        <button onClick={onClose} className="px-10 py-3.5 bg-[#0B57D0] text-white rounded-2xl font-bold text-sm hover:bg-[#0B57D0] transition-all">
                             Finish
                         </button>
                     </div>
@@ -283,7 +283,7 @@ const TransferToWalletModal: React.FC<TransferToWalletModalProps> = ({
                                 type="button"
                                 onClick={handleTransfer}
                                 disabled={loadingOrg || !amount || !destinationWalletId}
-                                className="px-6 py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-black transition-all flex items-center text-xs disabled:opacity-50"
+                                className="px-6 py-2.5 bg-[#0B57D0] text-white rounded-xl font-bold hover:bg-[#0B57D0] transition-all flex items-center text-xs disabled:opacity-50"
                             >
                                 {loadingOrg ? (<><Loader2 className="h-4 w-4 animate-spin mr-1.5" /> Loading…</>) : 'Continue to Lenco'}
                             </button>

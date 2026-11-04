@@ -251,7 +251,7 @@ export const QuickBooksIntegration: React.FC<QuickBooksIntegrationProps> = ({ on
                     <ArrowLeft className="w-5 h-5 text-gray-500" />
                 </button>
                 <div>
-                    <h3 className="text-lg font-bold text-brand-navy">QuickBooks Integration</h3>
+                    <h3 className="text-lg font-bold text-[#1F1F1F]">QuickBooks Integration</h3>
                     <p className="text-sm text-gray-500">Manage connections and sync options.</p>
                 </div>
             </div>
@@ -277,7 +277,7 @@ export const QuickBooksIntegration: React.FC<QuickBooksIntegrationProps> = ({ on
                         </div>
                         <div>
                             {loading ? (
-                                <RefreshCw className="h-5 w-5 animate-spin text-gray-400" />
+                                <RefreshCw className="h-5 w-5 animate-spin text-[#0B57D0]" />
                             ) : status?.connected ? (
                                 <div className="flex items-center space-x-4">
                                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
@@ -346,7 +346,7 @@ export const QuickBooksIntegration: React.FC<QuickBooksIntegrationProps> = ({ on
             {status?.connected && (
                 <div className="pt-8 border-t border-gray-100">
                     <div className="mb-5">
-                        <h3 className="text-lg font-bold text-brand-navy flex items-center">
+                        <h3 className="text-lg font-bold text-[#1F1F1F] flex items-center">
                             <BookOpen className="h-5 w-5 mr-2 text-brand-green" />
                             QB Account Statement
                         </h3>
@@ -492,7 +492,7 @@ export const QuickBooksIntegration: React.FC<QuickBooksIntegrationProps> = ({ on
                 <div className="pt-8 border-t border-gray-100">
                     <div className="flex items-center justify-between mb-6">
                         <div>
-                            <h3 className="text-lg font-bold text-brand-navy flex items-center">
+                            <h3 className="text-lg font-bold text-[#1F1F1F] flex items-center">
                                 <ArrowRightLeft className="h-5 w-5 mr-2 text-brand-green" />
                                 Chart of Accounts Mapping
                             </h3>
@@ -603,7 +603,7 @@ export const QuickBooksIntegration: React.FC<QuickBooksIntegrationProps> = ({ on
                                                         ))}
                                                 </select>
                                                 {saving === account.id && (
-                                                    <RefreshCw className="h-4 w-4 animate-spin text-brand-green" />
+                                                    <RefreshCw className="h-4 w-4 animate-spin text-[#0B57D0]" />
                                                 )}
                                             </div>
                                         </td>

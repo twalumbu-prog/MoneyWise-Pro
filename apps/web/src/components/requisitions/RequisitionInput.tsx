@@ -66,7 +66,7 @@ const RequisitionInput: React.FC<RequisitionInputProps> = ({
                     </label>
                 </div>
             )}
-            <div className="flex-1 relative bg-gray-50 border border-gray-100 rounded-full overflow-hidden focus-within:border-[#006AFF]/20 focus-within:bg-white transition-all duration-200">
+            <div className="flex-1 relative bg-gray-50 border border-gray-100 rounded-full overflow-hidden focus-within:border-[#0B57D0]/20 focus-within:bg-white transition-all duration-200">
 
                 <textarea
                     ref={textareaRef}
@@ -82,7 +82,7 @@ const RequisitionInput: React.FC<RequisitionInputProps> = ({
             <button
                 onClick={handleSend}
                 disabled={disabled || !message.trim()}
-                className="flex items-center justify-center w-[40px] h-[40px] min-w-[40px] bg-[#006AFF] text-white rounded-full hover:bg-[#0052cc] disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-all active:scale-95 shadow-sm hover:shadow-md"
+                className="flex items-center justify-center w-[40px] h-[40px] min-w-[40px] bg-[#0B57D0] text-white rounded-full hover:bg-[#0842A0] disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-all active:scale-95 shadow-sm hover:shadow-md"
             >
                 <svg className="w-5 h-5 transform rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />

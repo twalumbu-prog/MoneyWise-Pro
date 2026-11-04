@@ -211,14 +211,14 @@ const BankSelect: React.FC<BankSelectProps> = ({
                                 onClick={() => handleSelect(b)}
                                 className={`flex items-center gap-3 px-3 py-2 mx-1.5 rounded-xl cursor-pointer transition-colors duration-100 ${
                                     (b.id === value || b.code === value)
-                                        ? 'bg-[#006AFF]/8 text-[#006AFF]'
+                                        ? 'bg-[#0B57D0]/8 text-[#0B57D0]'
                                         : 'hover:bg-gray-50 text-gray-900'
                                 }`}
                             >
                                 <BankAvatar name={b.name} size={28} />
                                 <span className="text-sm font-semibold truncate">{b.name}</span>
                                 {(b.id === value || b.code === value) && (
-                                    <span className="ml-auto text-[#006AFF] text-xs font-bold">✓</span>
+                                    <span className="ml-auto text-[#0B57D0] text-xs font-bold">✓</span>
                                 )}
                             </li>
                         ))}

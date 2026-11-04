@@ -6,19 +6,19 @@ export const PrivacyPolicy = () => {
         <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 font-sans">
             <div className="max-w-3xl mx-auto bg-white p-8 shadow rounded-lg">
                 <div className="mb-6 flex items-center justify-between">
-                    <Link to="/" className="text-brand-navy hover:text-brand-green flex items-center gap-2 transition-colors font-medium">
+                    <Link to="/" className="text-[#1F1F1F] hover:text-brand-green flex items-center gap-2 transition-colors font-medium">
                         <ArrowLeft size={16} /> Back to Home
                     </Link>
-                    <Link to="/delete-account" className="text-xs text-gray-500 hover:text-brand-navy transition-colors">
+                    <Link to="/delete-account" className="text-xs text-gray-500 hover:text-[#1F1F1F] transition-colors">
                         Account Deletion Portal &rarr;
                     </Link>
                 </div>
-                <h1 className="text-3xl font-bold text-brand-navy mb-2">Privacy Policy</h1>
+                <h1 className="text-3xl font-bold text-[#1F1F1F] mb-2">Privacy Policy</h1>
                 <p className="text-sm text-gray-500 mb-8">Last Updated: October 14, 2026 &bull; Effective Date: October 14, 2026</p>
 
                 <div className="prose prose-indigo max-w-none space-y-6 text-gray-700">
                     <section>
-                        <h2 className="text-xl font-bold text-brand-navy mb-3">1. Introduction &amp; Entity Identification</h2>
+                        <h2 className="text-xl font-bold text-[#1F1F1F] mb-3">1. Introduction &amp; Entity Identification</h2>
                         <p className="mb-4">
                             This Privacy Policy applies to the <strong>MoneyWise Pro</strong> application (also known as "MoneyWise", "Service", "App"), available on the web at <a href="https://moneywise.blueopus.cloud" className="text-brand-green hover:underline">moneywise.blueopus.cloud</a>, on Android via Google Play, and on iOS via the Apple App Store.
                         </p>
@@ -29,7 +29,7 @@ export const PrivacyPolicy = () => {
                             We are committed to maintaining user trust, transparency, and data privacy. This Policy explains how we collect, handle, use, process, and protect your personal and sensitive user data, the third-party integrations we use, and your rights regarding data access, rectification, and deletion.
                         </p>
                         <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
-                            <p className="font-bold text-brand-navy mb-1">Developer &amp; Privacy Contact:</p>
+                            <p className="font-bold text-[#1F1F1F] mb-1">Developer &amp; Privacy Contact:</p>
                             <p className="text-sm">Entity: Stephen Kapambwe / Blue Opus</p>
                             <p className="text-sm">Primary Privacy Email: <a href="mailto:stephe@blueopus.cloud" className="text-brand-green hover:underline">stephe@blueopus.cloud</a></p>
                             <p className="text-sm">Physical Address: Chongwe, Lusaka, Zambia</p>
@@ -38,7 +38,7 @@ export const PrivacyPolicy = () => {
                     </section>
 
                     <section>
-                        <h2 className="text-xl font-bold text-brand-navy mb-3">2. Information We Collect and Access</h2>
+                        <h2 className="text-xl font-bold text-[#1F1F1F] mb-3">2. Information We Collect and Access</h2>
                         <p className="mb-3">
                             We only collect data necessary to provide and operate the core financial, expense-tracking, payment, and accounting services of MoneyWise Pro. We do not collect extraneous data beyond what is required for app functionality.
                         </p>
@@ -101,7 +101,7 @@ export const PrivacyPolicy = () => {
 
                         <h3 className="text-lg font-semibold text-gray-900 mb-2">2.4 Persistent Device Identifiers &amp; Tracking Restrictions</h3>
                         <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-sm mb-4">
-                            <p className="font-semibold text-brand-navy mb-1">Strict Commitment Against Device Identifier Tracking:</p>
+                            <p className="font-semibold text-[#1F1F1F] mb-1">Strict Commitment Against Device Identifier Tracking:</p>
                             <p className="mb-2">
                                 In strict adherence to the Google Play User Data Policy:
                             </p>
@@ -134,7 +134,7 @@ export const PrivacyPolicy = () => {
                     </section>
 
                     <section>
-                        <h2 className="text-xl font-bold text-brand-navy mb-3">3. How We Use Your Data</h2>
+                        <h2 className="text-xl font-bold text-[#1F1F1F] mb-3">3. How We Use Your Data</h2>
                         <p className="mb-2">We process your information exclusively to provide, maintain, and secure the Service, including to:</p>
                         <ul className="list-disc pl-5 mb-4 space-y-1">
                             <li>Process, route, and record financial requisitions, approvals, and vouchers.</li>
@@ -154,7 +154,7 @@ export const PrivacyPolicy = () => {
                     </section>
 
                     <section>
-                        <h2 className="text-xl font-bold text-brand-navy mb-3">4. Third-Party Service Providers</h2>
+                        <h2 className="text-xl font-bold text-[#1F1F1F] mb-3">4. Third-Party Service Providers</h2>
                         <p className="mb-2">We share only the minimum necessary data with trusted service providers to operate our application infrastructure:</p>
                         <div className="overflow-x-auto mb-4">
                             <table className="min-w-full text-sm text-left border border-gray-200 divide-y divide-gray-200">
@@ -215,7 +215,7 @@ export const PrivacyPolicy = () => {
                     </section>
 
                     <section>
-                        <h2 className="text-xl font-bold text-brand-navy mb-3">5. Data Security &amp; Cryptography</h2>
+                        <h2 className="text-xl font-bold text-[#1F1F1F] mb-3">5. Data Security &amp; Cryptography</h2>
                         <ul className="list-disc pl-5 mb-4 space-y-1">
                             <li><strong>Encryption in Transit:</strong> All data transmitted between your device, our servers, and third-party APIs is encrypted using modern cryptography over <strong>HTTPS with TLS 1.2 or TLS 1.3</strong>.</li>
                             <li><strong>Encryption at Rest:</strong> Database records and file attachments are stored in encrypted cloud storage using <strong>AES-256</strong>.</li>
@@ -225,7 +225,7 @@ export const PrivacyPolicy = () => {
                     </section>
 
                     <section>
-                        <h2 className="text-xl font-bold text-brand-navy mb-3">6. Data Retention and Account Deletion Policy</h2>
+                        <h2 className="text-xl font-bold text-[#1F1F1F] mb-3">6. Data Retention and Account Deletion Policy</h2>
                         <h3 className="text-lg font-semibold text-gray-900 mb-2">6.1 Retention Period</h3>
                         <p className="mb-2">We retain your information as follows:</p>
                         <ul className="list-disc pl-5 mb-4 space-y-1">
@@ -240,19 +240,19 @@ export const PrivacyPolicy = () => {
                         </p>
                         <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3 mb-4">
                             <div>
-                                <p className="font-semibold text-brand-navy">Option 1: In-App Account Deletion</p>
+                                <p className="font-semibold text-[#1F1F1F]">Option 1: In-App Account Deletion</p>
                                 <p className="text-sm text-gray-700">
                                     Open the MoneyWise Pro mobile app &rarr; Navigate to <strong>Menu</strong> tab &rarr; Under <strong>Legal &amp; account</strong>, tap <strong>Delete my account</strong> &rarr; Confirm deletion.
                                 </p>
                             </div>
                             <div>
-                                <p className="font-semibold text-brand-navy">Option 2: External Web Resource</p>
+                                <p className="font-semibold text-[#1F1F1F]">Option 2: External Web Resource</p>
                                 <p className="text-sm text-gray-700">
                                     Visit our dedicated web deletion resource at <a href="/delete-account" className="text-brand-green hover:underline font-medium">https://moneywise.blueopus.cloud/delete-account</a> where you can initiate account deletion online without the mobile app.
                                 </p>
                             </div>
                             <div>
-                                <p className="font-semibold text-brand-navy">Option 3: Written Request via Email</p>
+                                <p className="font-semibold text-[#1F1F1F]">Option 3: Written Request via Email</p>
                                 <p className="text-sm text-gray-700">
                                     Send an email from your registered account address to <a href="mailto:stephe@blueopus.cloud" className="text-brand-green hover:underline">stephe@blueopus.cloud</a> with the subject line "Account Deletion Request". Requests are verified and processed promptly within 30 days.
                                 </p>
@@ -270,14 +270,14 @@ export const PrivacyPolicy = () => {
                     </section>
 
                     <section>
-                        <h2 className="text-xl font-bold text-brand-navy mb-3">7. Children&apos;s Privacy</h2>
+                        <h2 className="text-xl font-bold text-[#1F1F1F] mb-3">7. Children&apos;s Privacy</h2>
                         <p className="mb-4">
                             MoneyWise Pro is intended strictly for professional, business, and adult financial management. The Service is not directed to children under the age of 18 (or the age of majority in your jurisdiction). We do not knowingly collect, solicit, or process personal data from children. No third-party SDKs used in the app are directed at children. If we become aware that a child has provided us with personal information, we immediately delete that data from our servers.
                         </p>
                     </section>
 
                     <section>
-                        <h2 className="text-xl font-bold text-brand-navy mb-3">8. Your Rights and Choices</h2>
+                        <h2 className="text-xl font-bold text-[#1F1F1F] mb-3">8. Your Rights and Choices</h2>
                         <p className="mb-2">Depending on your jurisdiction (including the Zambian Data Protection Act, No. 3 of 2021, and the GDPR / UK GDPR), you have the right to:</p>
                         <ul className="list-disc pl-5 mb-4 space-y-1">
                             <li><strong>Access:</strong> Request a copy of the personal data we hold about you.</li>
@@ -293,26 +293,26 @@ export const PrivacyPolicy = () => {
                     </section>
 
                     <section>
-                        <h2 className="text-xl font-bold text-brand-navy mb-3">9. International Data Transfers</h2>
+                        <h2 className="text-xl font-bold text-[#1F1F1F] mb-3">9. International Data Transfers</h2>
                         <p className="mb-4">
                             Our application infrastructure and databases are hosted in certified cloud facilities in the United States and the European Union via Vercel and Supabase. Where personal data is transferred across borders, we ensure adequate data protection safeguards are implemented in accordance with applicable data protection laws.
                         </p>
                     </section>
 
                     <section>
-                        <h2 className="text-xl font-bold text-brand-navy mb-3">10. Changes to This Privacy Policy</h2>
+                        <h2 className="text-xl font-bold text-[#1F1F1F] mb-3">10. Changes to This Privacy Policy</h2>
                         <p className="mb-4">
                             We may update this Privacy Policy periodically to reflect enhancements to our service, changes in legal obligations, or updates to Google Play and Apple App Store policies. Any changes will be published on this page with an updated "Last Updated" date. We encourage you to review this policy periodically.
                         </p>
                     </section>
 
                     <section>
-                        <h2 className="text-xl font-bold text-brand-navy mb-3">11. Governing Law &amp; Inquiries</h2>
+                        <h2 className="text-xl font-bold text-[#1F1F1F] mb-3">11. Governing Law &amp; Inquiries</h2>
                         <p className="mb-4">
                             This Privacy Policy is governed by the laws of Zambia, including the <strong>Data Protection Act, No. 3 of 2021</strong>, without regard to conflict of law principles.
                         </p>
                         <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 text-sm">
-                            <p className="font-bold text-brand-navy mb-1">Privacy Point of Contact:</p>
+                            <p className="font-bold text-[#1F1F1F] mb-1">Privacy Point of Contact:</p>
                             <p>Stephen Kapambwe / Blue Opus</p>
                             <p>Email: <a href="mailto:stephe@blueopus.cloud" className="text-brand-green hover:underline">stephe@blueopus.cloud</a></p>
                             <p>Location: Chongwe, Lusaka, Zambia</p>

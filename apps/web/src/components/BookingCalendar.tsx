@@ -297,7 +297,7 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({
                     <button
                         onClick={() => checkIn && checkOut && onConfirm(checkIn, checkOut, nights, total)}
                         disabled={!checkIn || !checkOut}
-                        className="flex-shrink-0 bg-black hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed text-white px-6 py-3.5 rounded-xl font-semibold text-sm transition-all flex items-center gap-2"
+                        className="flex-shrink-0 bg-[#0B57D0] hover:bg-[#0842A0] disabled:opacity-40 disabled:cursor-not-allowed text-white px-6 py-3.5 rounded-xl font-semibold text-sm transition-all flex items-center gap-2"
                     >
                         <Check size={16} strokeWidth={2.5} />
                         <span>Reserve</span>

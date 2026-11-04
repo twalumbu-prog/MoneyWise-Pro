@@ -48,7 +48,7 @@ export async function downloadInvestmentCertificate(details: CertificateDetails)
     ctx.fillRect(0, 0, W, H);
 
     // Outer decorative border
-    ctx.strokeStyle = '#0058DB';
+    ctx.strokeStyle = '#0B57D0';
     ctx.lineWidth = 6;
     roundRect(ctx, 28, 28, W - 56, H - 56, 4);
     ctx.stroke();
@@ -59,7 +59,7 @@ export async function downloadInvestmentCertificate(details: CertificateDetails)
     ctx.stroke();
 
     // Corner flourishes
-    ctx.fillStyle = '#0058DB';
+    ctx.fillStyle = '#0B57D0';
     [[28, 28], [W - 28, 28], [28, H - 28], [W - 28, H - 28]].forEach(([cx, cy]) => {
         ctx.beginPath();
         ctx.arc(cx, cy, 5, 0, Math.PI * 2);
@@ -72,7 +72,7 @@ export async function downloadInvestmentCertificate(details: CertificateDetails)
     const logoX = W / 2 - logoSize / 2;
     const logoY = 78;
     ctx.save();
-    ctx.strokeStyle = '#E8EEF8';
+    ctx.strokeStyle = '#E9EEF6';
     ctx.lineWidth = 2;
     roundRect(ctx, logoX - 4, logoY - 4, logoSize + 8, logoSize + 8, 16);
     ctx.fillStyle = '#FFFFFF';
@@ -89,12 +89,12 @@ export async function downloadInvestmentCertificate(details: CertificateDetails)
 
     // Title
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#111827';
+    ctx.fillStyle = '#1F1F1F';
     ctx.font = '700 40px Georgia, "Times New Roman", serif';
     ctx.fillText('Certificate of Deposit', W / 2, logoY + logoSize + 68);
 
     ctx.font = '400 15px Georgia, serif';
-    ctx.fillStyle = '#6B7280';
+    ctx.fillStyle = '#5F6368';
     ctx.fillText(details.companyName, W / 2, logoY + logoSize + 96);
 
     // Divider
@@ -107,14 +107,14 @@ export async function downloadInvestmentCertificate(details: CertificateDetails)
 
     // Body copy
     ctx.font = '400 16px "DM Sans", Arial, sans-serif';
-    ctx.fillStyle = '#374151';
+    ctx.fillStyle = '#3C4043';
     const bodyY = logoY + logoSize + 160;
     ctx.fillText('This certifies that a deposit was made through MoneyWise Pro into the', W / 2, bodyY);
     ctx.font = '700 18px "DM Sans", Arial, sans-serif';
-    ctx.fillStyle = '#111827';
+    ctx.fillStyle = '#1F1F1F';
     ctx.fillText(details.productName, W / 2, bodyY + 30);
     ctx.font = '400 14px "DM Sans", Arial, sans-serif';
-    ctx.fillStyle = '#6B7280';
+    ctx.fillStyle = '#5F6368';
     ctx.fillText(details.productTypeLabel, W / 2, bodyY + 52);
 
     // Details table
@@ -132,7 +132,7 @@ export async function downloadInvestmentCertificate(details: CertificateDetails)
     const tableX = W / 2 - tableW / 2;
     const rowH = 40;
 
-    ctx.strokeStyle = '#E8EEF8';
+    ctx.strokeStyle = '#E9EEF6';
     ctx.lineWidth = 1;
     roundRect(ctx, tableX, tableTop, tableW, rowH * rows.length, 12);
     ctx.fillStyle = '#FFFFFF';
@@ -150,23 +150,23 @@ export async function downloadInvestmentCertificate(details: CertificateDetails)
         }
         ctx.textAlign = 'left';
         ctx.font = '400 14px "DM Sans", Arial, sans-serif';
-        ctx.fillStyle = '#6B7280';
+        ctx.fillStyle = '#5F6368';
         ctx.fillText(label, tableX + 24, y + rowH / 2 + 5);
 
         ctx.textAlign = 'right';
         ctx.font = '700 14px "DM Sans", Arial, sans-serif';
-        ctx.fillStyle = '#111827';
+        ctx.fillStyle = '#1F1F1F';
         ctx.fillText(value, tableX + tableW - 24, y + rowH / 2 + 5);
     });
 
     // Footer
     ctx.textAlign = 'center';
     ctx.font = 'italic 400 12px Georgia, serif';
-    ctx.fillStyle = '#9CA3AF';
+    ctx.fillStyle = '#9AA0A6';
     ctx.fillText('This certificate is auto-generated and serves as a record of deposit. Not a negotiable instrument.', W / 2, H - 70);
 
     ctx.font = '700 13px "DM Sans", Arial, sans-serif';
-    ctx.fillStyle = '#0058DB';
+    ctx.fillStyle = '#0B57D0';
     ctx.fillText('MoneyWise Pro', W / 2, H - 46);
 
     const blob: Blob | null = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));

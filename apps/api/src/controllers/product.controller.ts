@@ -1,6 +1,20 @@
+import { cleanVariants } from '../services/stock';
 import { Response } from 'express';
 import { supabase } from '../lib/supabase';
 
+const PARCEL_SIZES = ['SMALL', 'MEDIUM', 'LARGE', 'BULKY'];
+
+/** The stock columns from what the seller sent: whether it is tracked, the count (or, with options, a count for each), and the low-stock warning. */
+function stockFields(track: unknown, quantity: unknown, threshold: unknown, variants: unknown) {
+    const tracked = track === true;
+    const options = tracked ? cleanVariants(variants) : [];
+    return {
+        track_stock: tracked,
+        stock_quantity: tracked && options.length === 0 ? Math.max(0, Math.floor(Number(quantity) || 0)) : null,
+        low_stock_threshold: Math.max(0, Math.floor(Number(threshold ?? 5) || 0)),
+        variants: options,
+    };
+}
 const VALID_PRODUCT_TYPES = ['PRODUCT', 'SERVICE_FIXED', 'SERVICE_VARIABLE', 'DONATION', 'SERVICE_BOOKING', 'SERVICE_BOOKING_DAILY', 'DIGITAL'];
 
 /**
@@ -106,8 +120,8 @@ export const createProduct = async (req: any, res: Response): Promise<any> => {
         }
 
         const { name, description, price, image_url, product_type, wallet_id, income_account_id, category, digital_assets,
-                requires_delivery, allow_external_delivery, own_delivery_charge,
-                additional_images, whats_included, checkout_fields } = req.body;
+                requires_delivery, allow_external_delivery, own_delivery_charge, weight_kg, parcel_size, track_stock, stock_quantity, low_stock_threshold, variants,
+                additional_images, whats_included, checkout_fields, marketplace_listed } = req.body;
 
         if (!name || name.trim() === '') {
             return res.status(400).json({ error: 'Product name is required' });
@@ -153,9 +167,16 @@ export const createProduct = async (req: any, res: Response): Promise<any> => {
                 requires_delivery: requires_delivery === true,
                 allow_external_delivery: allow_external_delivery === true,
                 own_delivery_charge: Number(own_delivery_charge) || 0,
+                // Only sent when the seller sets them, so listings still save before the weight/size columns exist.
+                ...(Number(weight_kg) > 0 ? { weight_kg: Number(weight_kg) } : {}),
+                ...(PARCEL_SIZES.includes(parcel_size) ? { parcel_size } : {}),
+                // Stock is saved only when the seller turns tracking on, so saving works before the stock columns exist.
+                ...(track_stock === true ? stockFields(track_stock, stock_quantity, low_stock_threshold, variants) : {}),
                 additional_images: Array.isArray(additional_images) ? additional_images.filter((u: any) => typeof u === 'string' && u.trim()) : [],
                 whats_included: Array.isArray(whats_included) ? whats_included.filter((s: any) => typeof s === 'string' && s.trim()) : [],
                 checkout_fields: sanitizeCheckoutFields(checkout_fields),
+                // Listed on the Marketplace unless the seller switches it off.
+                marketplace_listed: marketplace_listed !== false,
             })
             .select()
             .single();
@@ -198,9 +219,12 @@ export const updateProduct = async (req: any, res: Response): Promise<any> => {
         }
 
         const { name, description, price, is_active, image_url, product_type, wallet_id, income_account_id, category, digital_assets,
-                requires_delivery, allow_external_delivery, own_delivery_charge,
-                additional_images, whats_included, checkout_fields } = req.body;
+                requires_delivery, allow_external_delivery, own_delivery_charge, weight_kg, parcel_size, track_stock, stock_quantity, low_stock_threshold, variants,
+                additional_images, whats_included, checkout_fields, marketplace_listed } = req.body;
         const updateData: any = {};
+        if (weight_kg !== undefined) updateData.weight_kg = Number(weight_kg) > 0 ? Number(weight_kg) : null;
+        if (parcel_size !== undefined) updateData.parcel_size = PARCEL_SIZES.includes(parcel_size) ? parcel_size : null;
+        if (track_stock !== undefined) Object.assign(updateData, stockFields(track_stock, stock_quantity, low_stock_threshold, variants));
 
         if (name !== undefined) {
             if (name.trim() === '') {
@@ -270,6 +294,7 @@ export const updateProduct = async (req: any, res: Response): Promise<any> => {
         if (additional_images !== undefined) updateData.additional_images = Array.isArray(additional_images) ? additional_images.filter((u: any) => typeof u === 'string' && u.trim()) : [];
         if (whats_included !== undefined) updateData.whats_included = Array.isArray(whats_included) ? whats_included.filter((s: any) => typeof s === 'string' && s.trim()) : [];
         if (checkout_fields !== undefined) updateData.checkout_fields = sanitizeCheckoutFields(checkout_fields);
+        if (marketplace_listed !== undefined) updateData.marketplace_listed = marketplace_listed === true;
         updateData.updated_at = new Date().toISOString();
 
         const { data, error } = await supabase

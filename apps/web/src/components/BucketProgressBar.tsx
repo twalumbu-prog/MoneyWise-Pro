@@ -6,7 +6,7 @@ const BUCKET_COLORS = {
     quarter: '#8E8FA3',
     month: '#D85BB5',
     week: '#7657E8',
-    today: '#006AFF'
+    today: '#0B57D0'
 };
 
 const BUCKET_LABELS = {

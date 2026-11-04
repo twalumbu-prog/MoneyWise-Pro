@@ -151,7 +151,7 @@ export const FinancialHighlights: React.FC<{ className?: string }> = ({ classNam
                         if (achievement) {
                             return (
                                 <div key={card.id} className="snap-center shrink-0 w-full px-1">
-                                    <div className="flex items-center gap-3 px-4 py-1.5 rounded-xl bg-gradient-to-r from-[#006AFF] to-[#0A4FBF] shadow-[0_10px_24px_-12px_rgba(0,106,255,0.9)]">
+                                    <div className="flex items-center gap-3 px-4 py-1.5 rounded-xl bg-gradient-to-r from-[#0B57D0] to-[#0A4FBF] shadow-[0_10px_24px_-12px_rgba(11,87,208,0.9)]">
                                         <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
                                             <Trophy size={14} className="text-white" strokeWidth={2} />
                                         </div>

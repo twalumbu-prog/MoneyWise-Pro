@@ -47,7 +47,7 @@ export const AchievementUnlockedOverlay: React.FC = () => {
                         MISSION COMPLETE • +{recentlyUnlocked.xp} XP
                     </div>
 
-                    <h2 className="text-2xl font-black text-brand-navy tracking-tight mb-1">
+                    <h2 className="text-2xl font-black text-[#1F1F1F] tracking-tight mb-1">
                         Congratulations!
                     </h2>
                     <p className="text-sm font-bold text-gray-700 mb-2">
@@ -59,9 +59,9 @@ export const AchievementUnlockedOverlay: React.FC = () => {
 
                     {/* Unlocked Badge Pill */}
                     <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-2xl p-3 mb-6 flex items-center justify-center gap-2">
-                        <Award size={18} className="text-[#006AFF]" />
-                        <span className="text-xs font-black text-brand-navy">
-                            Badge Unlocked: <span className="text-[#006AFF]">{recentlyUnlocked.badgeName}</span>
+                        <Award size={18} className="text-[#0B57D0]" />
+                        <span className="text-xs font-black text-[#1F1F1F]">
+                            Badge Unlocked: <span className="text-[#0B57D0]">{recentlyUnlocked.badgeName}</span>
                         </span>
                     </div>
 
@@ -69,7 +69,7 @@ export const AchievementUnlockedOverlay: React.FC = () => {
                     <div className="space-y-2">
                         <button
                             onClick={startNextAvailableMission}
-                            className="w-full py-3.5 bg-[#006AFF] hover:bg-[#0058DB] active:scale-98 text-white font-bold text-sm rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all"
+                            className="w-full py-3.5 bg-[#0B57D0] hover:bg-[#0842A0] active:scale-98 text-white font-bold text-sm rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all"
                         >
                             Try Next Challenge
                             <ArrowRight size={18} />
@@ -77,7 +77,7 @@ export const AchievementUnlockedOverlay: React.FC = () => {
 
                         <button
                             onClick={dismissCelebration}
-                            className="w-full py-2.5 text-xs font-bold text-gray-500 hover:text-brand-navy transition-colors"
+                            className="w-full py-2.5 text-xs font-bold text-gray-500 hover:text-[#1F1F1F] transition-colors"
                         >
                             View Achievements & Exit
                         </button>

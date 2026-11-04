@@ -71,7 +71,7 @@ export const ToolTimeline: React.FC<{ steps: Step[]; live: boolean }> = ({ steps
                         <li key={step.id} className="flex items-start gap-2 text-[11px] leading-snug">
                             <span className="mt-[3px] flex-shrink-0">
                                 {step.status === 'running' ? (
-                                    <Loader2 size={10} className="animate-spin text-[#006AFF]" />
+                                    <Loader2 size={10} className="animate-spin text-[#0B57D0]" />
                                 ) : step.status === 'failed' ? (
                                     <AlertCircle size={10} className="text-rose-400" />
                                 ) : (

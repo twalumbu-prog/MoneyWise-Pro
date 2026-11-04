@@ -774,20 +774,20 @@ export const NewSale: React.FC = () => {
         setIsGeneratingReceipt(true);
         try {
             const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-            const primaryColor = '#1e293b';
-            const accentColor = '#2563eb';
+            const primaryColor = '#3C4043';
+            const accentColor = '#0B57D0';
             const receiptId = receiptNumber || currentReference;
             const feeForReceipt = Math.max(0, paidTotal - subtotal);
 
             doc.setFont('Helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(primaryColor);
             doc.text((org.name || 'MoneyWise').toUpperCase(), 20, 25);
-            doc.setFontSize(9); doc.setFont('Helvetica', 'normal'); doc.setTextColor('#64748b');
+            doc.setFontSize(9); doc.setFont('Helvetica', 'normal'); doc.setTextColor('#5F6368');
             doc.text('Official Payment Receipt', 20, 31);
             doc.setFont('Helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(accentColor);
             doc.text('RECEIPT', 190, 25, { align: 'right' });
-            doc.setDrawColor('#e2e8f0'); doc.setLineWidth(0.5); doc.line(20, 36, 190, 36);
+            doc.setDrawColor('#E8EAED'); doc.setLineWidth(0.5); doc.line(20, 36, 190, 36);
 
-            doc.setFont('Helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor('#334155');
+            doc.setFont('Helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor('#3C4043');
             doc.text(`Receipt No: #${receiptId}`, 20, 46);
             doc.text(`Date: ${new Date().toLocaleString()}`, 20, 52);
             doc.text(`Payment Method: ${paidMethodLabel}`, 20, 58);
@@ -796,21 +796,21 @@ export const NewSale: React.FC = () => {
             doc.setFont('Helvetica', 'normal'); doc.text(`Phone: ${customerPhone || 'N/A'}`, 120, 58);
             doc.line(20, 65, 190, 65);
 
-            doc.setFillColor('#f8fafc'); doc.rect(20, 72, 170, 8, 'F');
-            doc.setFont('Helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor('#475569');
+            doc.setFillColor('#F8FAFD'); doc.rect(20, 72, 170, 8, 'F');
+            doc.setFont('Helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor('#5F6368');
             doc.text('Item Description', 24, 77);
             doc.text('Qty', 110, 77, { align: 'center' });
             doc.text('Unit Price (K)', 145, 77, { align: 'right' });
             doc.text('Total (K)', 186, 77, { align: 'right' });
 
             let y = 86;
-            doc.setFont('Helvetica', 'normal'); doc.setTextColor('#334155');
+            doc.setFont('Helvetica', 'normal'); doc.setTextColor('#3C4043');
             receiptLines.forEach((li) => {
                 doc.text(li.name, 24, y);
                 doc.text(String(li.quantity), 110, y, { align: 'center' });
                 doc.text(li.unitPrice.toFixed(2), 145, y, { align: 'right' });
                 doc.text(li.total.toFixed(2), 186, y, { align: 'right' });
-                doc.setDrawColor('#f1f5f9'); doc.line(20, y + 3, 190, y + 3);
+                doc.setDrawColor('#F1F3F4'); doc.line(20, y + 3, 190, y + 3);
                 y += 10;
             });
 
@@ -832,12 +832,12 @@ export const NewSale: React.FC = () => {
                 const qrText = `Receipt Verification\nMerchant: ${org.name}\nReceipt No: #${receiptId}\nClient: ${customerName || 'Walk-in'}\nTotal Paid: ZMW ${paidTotal.toFixed(2)}\nDate: ${new Date().toLocaleString()}\nStatus: VERIFIED`;
                 const qr = await getQRCodeDataUrl(qrText);
                 doc.addImage(qr, 'PNG', 20, calcStartY - 2, 28, 28);
-                doc.setFont('Helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor('#94a3b8');
+                doc.setFont('Helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor('#9AA0A6');
                 doc.text('SCAN TO VERIFY RECEIPT', 34, calcStartY + 29, { align: 'center' });
             } catch (qrErr) { console.error('QR generation failed:', qrErr); }
 
-            y += 10; doc.setDrawColor('#e2e8f0'); doc.line(20, y, 190, y);
-            y += 12; doc.setFont('Helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor('#94a3b8');
+            y += 10; doc.setDrawColor('#E8EAED'); doc.line(20, y, 190, y);
+            y += 12; doc.setFont('Helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor('#9AA0A6');
             doc.text('Thank you for your payment!', 105, y, { align: 'center' });
             y += 5; doc.setFont('Helvetica', 'normal'); doc.setFontSize(8);
             doc.text('Secured by MoneyWise Ledger Gateway', 105, y, { align: 'center' });
@@ -1364,7 +1364,7 @@ export const NewSale: React.FC = () => {
                                         {/* Auto-verification status (no button) */}
                                         <div className="mt-2 min-h-[18px]">
                                             {isResolving ? (
-                                                <span className="flex items-center gap-1.5 text-slate-400 text-xs font-semibold"><Loader2 size={13} className="animate-spin" /> Verifying name…</span>
+                                                <span className="flex items-center gap-1.5 text-[#0B57D0] text-xs font-semibold"><Loader2 size={13} className="animate-spin" /> Verifying name…</span>
                                             ) : posResolvedName ? (
                                                 <span className="flex items-center gap-1.5 text-emerald-600 text-xs font-bold"><BadgeCheck size={14} /> {posResolvedName}</span>
                                             ) : resolveError ? (
@@ -1399,7 +1399,7 @@ export const NewSale: React.FC = () => {
                                 <button
                                     onClick={handleManualSubmit}
                                     disabled={isSubmitting}
-                                    className="w-full py-4 rounded-2xl bg-emerald-600 text-white font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.99]"
+                                    className="w-full py-4 rounded-2xl bg-[#0B57D0] text-white font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.99]"
                                 >
                                     {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle2 size={18} />}
                                     Record Sale · K{(Number(manualAmount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
@@ -1421,7 +1421,7 @@ export const NewSale: React.FC = () => {
                     <div className="flex-1 flex flex-col items-center justify-center p-10 min-h-[60vh] text-center">
                         {verificationStep === 'POLLING' ? (
                             <>
-                                <Loader2 className="animate-spin text-blue-500 mb-4" size={36} />
+                                <Loader2 className="animate-spin text-[#0B57D0] mb-4" size={36} />
                                 <h3 className="text-base font-black text-slate-900 uppercase tracking-wide">Verifying payment</h3>
                                 <p className="text-sm text-slate-400 font-medium mt-2 max-w-xs">Confirming the payment with Lenco and syncing it to your ledger…</p>
                             </>
@@ -1450,7 +1450,7 @@ export const NewSale: React.FC = () => {
                         <div className="relative w-20 h-20 animate-in zoom-in-75 duration-300">
                             <BadgeCheck
                                 className="w-20 h-20 text-[#002962]"
-                                fill="#006AFF"
+                                fill="#0B57D0"
                                 strokeWidth={1.5}
                                 style={{ filter: 'drop-shadow(-5px 5px 0 rgba(0,41,98,1))' }}
                             />
@@ -1636,7 +1636,7 @@ export const NewSale: React.FC = () => {
                                 {isGeneratingReceipt ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
                                 Download Receipt
                             </button>
-                            <button onClick={finishToInbox} className="w-full py-3.5 rounded-2xl bg-emerald-600 text-white font-black text-sm">
+                            <button onClick={finishToInbox} className="w-full py-3.5 rounded-2xl bg-[#0B57D0] text-white font-black text-sm">
                                 Done
                             </button>
                         </div>
