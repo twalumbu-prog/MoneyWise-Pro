@@ -19,7 +19,7 @@ import fs from 'fs';
 import path from 'path';
 import { supabase } from '../lib/supabase';
 import {
-    redateEntry, markUnverified, restoreUnverified, moveEntryToWallet, linkEntryToStatementLines, queueForReview, rebuildBalances,
+    redateEntry, markUnverified, restoreUnverified, moveEntryToWallet, linkEntryToStatementLines, loadStatementLineIndex, queueForReview, rebuildBalances,
     CorrectionResult,
 } from '../services/ledgerCorrections/ledgerCorrections.service';
 
@@ -49,7 +49,12 @@ const csvOut = (rows: any[]) => { if (!rows.length) return ''; const h = Object.
 async function guards() {
     if (!ORG || !WALLET || !STAGE) throw new Error('usage: --org <id> --wallet <id> --stage <links|fix-high|queue-medium|unverified|apply-approved> [--file <csv>]');
     const probe = await supabase.from('cashbook_entries').select('recorded_date, verification_status, held_amount, qb_resync_required').limit(1);
-    if (probe.error) throw new Error(`the migration 20261104120000_ledger_deposit_corrections.sql has not been applied: ${probe.error.message}`);
+    if (probe.error) {
+        const missing = /does not exist|schema cache|could not find/i.test(String(probe.error.message));
+        throw new Error(missing
+            ? `the migration 20261104120000_ledger_deposit_corrections.sql has not been applied: ${probe.error.message}`
+            : `could not check the database (${probe.error.message}); this looks like a network problem, not a missing migration. Try again.`);
+    }
     if (APPLY) {
         const { data: mf } = await supabase.from('integrations').select('config').eq('provider', 'MASTERFEES').eq('organization_id', ORG).maybeSingle();
         const qb = (mf?.config as any)?.qbAutoPost;
@@ -95,13 +100,19 @@ async function main() {
         if (!FILE) throw new Error('--file <moneywise_entries_worklist.csv> is required for this stage');
         const rows = parseCsv(fs.readFileSync(FILE, 'utf8'));
         const byRef = await entriesByRef();
+        let lineIndex: Map<string, string> | undefined;
+        if (STAGE === 'links') {
+            lineIndex = await loadStatementLineIndex(WALLET!);
+            console.log(`statement lines imported for this wallet: ${lineIndex.size}`);
+            if (lineIndex.size === 0) console.log('No statement lines are imported yet, so nothing can be linked. Import them first (the import is on hold).');
+        }
         for (const w of rows) {
             const ref = w.external_reference; const e = byRef.get(ref);
             const pick = (a: string, c?: string) => w.action === a && (!c || w.confidence === c);
             if (!e) { if (['links', 'fix-high', 'queue-medium', 'unverified'].includes(STAGE!)) rec(STAGE!, ref, { outcome: 'NOT_FOUND', detail: 'not on this wallet' }); continue; }
             if (STAGE === 'links' && (w.action === 'OK' || w.action === 'FIX_DATE') && w.bank_external_ids) {
                 const ids = w.bank_external_ids.split(';').map(x => x.trim()).filter(Boolean);
-                const r = await linkEntryToStatementLines(ORG!, WALLET!, e.id, ids, w.confidence === 'MEDIUM' ? 'MEDIUM' : 'HIGH', SOURCE_TAG, APPLY);
+                const r = await linkEntryToStatementLines(ORG!, WALLET!, e.id, ids, w.confidence === 'MEDIUM' ? 'MEDIUM' : 'HIGH', SOURCE_TAG, APPLY, lineIndex);
                 rec('links', ref, { outcome: r.missingLines.length ? 'NOOP' : (APPLY ? 'APPLIED' : 'WOULD_APPLY'), detail: `${r.linked}/${ids.length} lines${r.missingLines.length ? ' · statement lines not imported yet: ' + r.missingLines.join(';') : ''}` });
             } else if (STAGE === 'fix-high' && pick('FIX_DATE', 'HIGH')) {
                 rec('fix-high', ref, await redateEntry(ORG!, e.id, w.correct_date, ref, `Bank deposit date (${w.days_off} days off); matched ${w.bank_external_ids}`, ctx));

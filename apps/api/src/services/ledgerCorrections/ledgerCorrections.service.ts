@@ -138,11 +138,18 @@ export async function moveEntryToWallet(orgId: string, entryId: string, targetAc
 /** Link an entry to the bank statement line(s) of the deposit behind it. Idempotent. */
 export async function linkEntryToStatementLines(
     orgId: string, walletId: string, entryId: string, statementExternalIds: string[], confidence: 'HIGH' | 'MEDIUM' | 'MANUAL', matchedBy: string, apply: boolean,
+    /** external_id -> statement line id for the whole wallet, loaded once by a batch caller (see loadStatementLineIndex). Looked up per call when omitted. */
+    lineIndex?: Map<string, string>,
 ): Promise<{ linked: number; missingLines: string[] }> {
     if (!statementExternalIds.length) return { linked: 0, missingLines: [] };
-    const { data: lines, error } = await supabase.from('bank_statement_lines').select('id, external_id').eq('external_wallet_id', walletId).in('external_id', statementExternalIds);
-    if (error) throw new Error(`could not look up statement lines: ${error.message}`);
-    const found = new Map((lines ?? []).map((l: any) => [l.external_id, l.id]));
+    let found: Map<string, string>;
+    if (lineIndex) {
+        found = new Map(statementExternalIds.filter(x => lineIndex.has(x)).map(x => [x, lineIndex.get(x)!]));
+    } else {
+        const { data: lines, error } = await supabase.from('bank_statement_lines').select('id, external_id').eq('external_wallet_id', walletId).in('external_id', statementExternalIds);
+        if (error) throw new Error(`could not look up statement lines: ${error.message}`);
+        found = new Map((lines ?? []).map((l: any) => [l.external_id as string, l.id as string]));
+    }
     const missingLines = statementExternalIds.filter(x => !found.has(x));
     if (!apply) return { linked: found.size, missingLines };
     const rows = [...found.values()].map(lineId => ({ organization_id: orgId, ledger_entry_id: entryId, statement_line_id: lineId, match_confidence: confidence, matched_by: matchedBy }));
@@ -151,6 +158,18 @@ export async function linkEntryToStatementLines(
         if (insErr) throw new Error(`could not link statement lines: ${insErr.message}`);
     }
     return { linked: rows.length, missingLines };
+}
+
+/** Every imported statement line of a wallet that carries an external_id, in as few requests as possible. */
+export async function loadStatementLineIndex(walletId: string): Promise<Map<string, string>> {
+    const idx = new Map<string, string>();
+    for (let f = 0; ; f += 1000) {
+        const { data, error } = await supabase.from('bank_statement_lines').select('id, external_id').eq('external_wallet_id', walletId).not('external_id', 'is', null).order('id').range(f, f + 999);
+        if (error) throw new Error(`could not load statement lines: ${error.message}`);
+        for (const l of data ?? []) idx.set((l as any).external_id, (l as any).id);
+        if (!data || data.length < 1000) break;
+    }
+    return idx;
 }
 
 /** Add an entry to the review queue (idempotent on entry + action). */
