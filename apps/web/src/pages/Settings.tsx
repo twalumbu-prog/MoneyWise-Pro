@@ -5,6 +5,7 @@ import { LencoIntegration } from '../components/settings/integrations/LencoInteg
 import { MetaMessagingIntegration } from '../components/settings/integrations/MetaMessagingIntegration';
 import { MasterfeesIntegration } from '../components/settings/integrations/MasterfeesIntegration';
 import { SageIntegration } from '../components/settings/integrations/SageIntegration';
+import { GmailIntegration, GmailLogo } from '../components/settings/integrations/GmailIntegration';
 import { DeveloperAPI } from '../components/settings/DeveloperAPI';
 import { InvestorPayouts } from '../components/settings/InvestorPayouts';
 import { useQuery } from '@tanstack/react-query';
@@ -40,7 +41,7 @@ export const Settings: React.FC = () => {
         staleTime: 5 * 60_000,
     });
 
-    const [activeIntegration, setActiveIntegration] = useState<'quickbooks' | 'sage' | 'lenco' | 'masterfees' | 'meta' | null>(null);
+    const [activeIntegration, setActiveIntegration] = useState<'quickbooks' | 'sage' | 'lenco' | 'masterfees' | 'meta' | 'gmail' | null>(null);
     const [integrationError, setIntegrationError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -62,6 +63,13 @@ export const Settings: React.FC = () => {
             if (mfStatus === 'error') {
                 setIntegrationError(searchParams.get('mf_message') || 'Master Fees connection failed');
             }
+            return;
+        }
+        // Gmail OAuth callback (?gmail=connected|error) — the card reads and clears its own params
+        const gmailStatus = searchParams.get('gmail');
+        if (gmailStatus === 'connected' || gmailStatus === 'error') {
+            setActiveTab('integrations');
+            setActiveIntegration('gmail');
         }
     }, [searchParams]);
 
@@ -203,6 +211,15 @@ export const Settings: React.FC = () => {
                                                             <h4 className="text-base font-bold text-gray-900 mb-1">WhatsApp, Facebook &amp; Instagram</h4>
                                                             <p className="text-sm text-gray-500">Spot orders and payments in customer messages</p>
                                                         </button>
+                                                        {/* Gmail Card */}
+                                                        <button
+                                                            onClick={() => setActiveIntegration('gmail')}
+                                                            className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-navy/30 transition-all text-left group"
+                                                        >
+                                                            <GmailLogo className="mb-4 group-hover:scale-105 transition-transform" />
+                                                            <h4 className="text-base font-bold text-gray-900 mb-1">Gmail</h4>
+                                                            <p className="text-sm text-gray-500">Pick up receipts, invoices and payment emails</p>
+                                                        </button>
                                                     </div>
                                                 </>
                                             ) : activeIntegration === 'quickbooks' ? (
@@ -214,6 +231,8 @@ export const Settings: React.FC = () => {
                                                 <SageIntegration onBack={() => setActiveIntegration(null)} />
                                             ) : activeIntegration === 'meta' ? (
                                                 <MetaMessagingIntegration onBack={() => setActiveIntegration(null)} />
+                                            ) : activeIntegration === 'gmail' ? (
+                                                <GmailIntegration onBack={() => setActiveIntegration(null)} />
                                             ) : activeIntegration === 'masterfees' ? (
                                                 <MasterfeesIntegration
                                                     onBack={() => setActiveIntegration(null)}

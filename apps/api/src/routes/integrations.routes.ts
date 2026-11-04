@@ -46,6 +46,13 @@ import {
     updateSageMapping,
     syncSageNow,
 } from '../controllers/sage.controller';
+import {
+    getGmailStatus,
+    getGmailConnectUrl,
+    gmailOAuthCallback,
+    disconnectGmail,
+    gmailSyncCron,
+} from '../controllers/gmail.controller';
 
 const router = Router();
 
@@ -108,5 +115,14 @@ router.get('/sage/accounts', requireAuth, getSageAccounts);
 router.get('/sage/mappings', requireAuth, getSageMappings);
 router.put('/sage/mappings', requireAuth, updateSageMapping);
 router.post('/sage/sync', requireAuth, syncSageNow);
+
+// ── Gmail capture (read-only, AI Transaction Capture) ────────────────────────
+// Callback is unauthenticated by design (identity comes from the HMAC-signed state); /sync is the internal
+// scheduler entry point, secured inside the handler with LENCO_SYNC_SECRET.
+router.get('/gmail/callback', gmailOAuthCallback);
+router.post('/gmail/sync', gmailSyncCron);
+router.get('/gmail/status', requireAuth, getGmailStatus);
+router.get('/gmail/connect', requireAuth, getGmailConnectUrl);
+router.delete('/gmail/:id', requireAuth, disconnectGmail);
 
 export default router;
