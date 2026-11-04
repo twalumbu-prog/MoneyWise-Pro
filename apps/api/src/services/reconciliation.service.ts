@@ -110,6 +110,23 @@ const n = (v: any): number => {
 
 const round2 = (v: number): number => Math.round((v + Number.EPSILON) * 100) / 100;
 
+/**
+ * Reads EVERY row of a query. Supabase/PostgREST silently returns at most 1,000 rows per request (a bigger .limit() is ignored),
+ * so an unpaged read of a busy organisation's cashbook understated its wallet — Twalumbu (1,122 rows) showed -K36,540 against
+ * K49,660 in Lenco and Blue Opus (1,554) K3,607, both false alarms. `build` must return a fresh query each call and carry a
+ * stable .order() so pages never overlap or skip.
+ */
+async function fetchAllRows<T = any>(build: () => any, pageSize = 1000): Promise<T[]> {
+    const out: T[] = [];
+    for (let from = 0; ; from += pageSize) {
+        const { data, error } = await build().range(from, from + pageSize - 1);
+        if (error) throw new Error(error.message);
+        out.push(...((data ?? []) as T[]));
+        if (!data || data.length < pageSize) break;
+    }
+    return out;
+}
+
 /** The MoneyWise platform-fee sweep leg (debit → Blue Opus). Mirrors the sync filter. */
 function isSweepDebit(narration: string, reference: string): boolean {
     // Shared with the Lenco sync and the Ledger Guardian so the three can never disagree about what a commission sweep is.
@@ -117,18 +134,22 @@ function isSweepDebit(narration: string, reference: string): boolean {
 }
 
 async function getMoneyWiseTotals(orgId: string): Promise<MoneyWiseTotals> {
-    const { data, error } = await supabase
-        .from('cashbook_entries')
-        .select('debit, credit, status')
-        .eq('organization_id', orgId)
-        .eq('account_type', 'MONEYWISE_WALLET');
-
-    if (error) throw new Error(`cashbook query failed: ${error.message}`);
+    let data: any[];
+    try {
+        data = await fetchAllRows(() => supabase
+            .from('cashbook_entries')
+            .select('debit, credit, status')
+            .eq('organization_id', orgId)
+            .eq('account_type', 'MONEYWISE_WALLET')
+            .order('id'));
+    } catch (e: any) {
+        throw new Error(`cashbook query failed: ${e.message}`);
+    }
 
     let inflow = 0;
     let outflow = 0;
     let entryCount = 0;
-    for (const r of data ?? []) {
+    for (const r of data) {
         if (String((r as any).status ?? '').toUpperCase() === 'PENDING') continue;
         inflow += n((r as any).debit);
         outflow += n((r as any).credit);
@@ -478,12 +499,13 @@ async function buildOrgDetail(org: OrgRow): Promise<OrgReconDetail> {
       try {
         const secretKey = org.lenco_secret_key || undefined;
 
-        const { data: entries } = await supabase
+        const entries = await fetchAllRows(() => supabase
             .from('cashbook_entries')
             .select('id, date, description, debit, credit, external_reference, wallet_id, entry_type, status, requisition_id')
             .eq('organization_id', org.id)
             .eq('account_type', 'MONEYWISE_WALLET')
-            .order('date', { ascending: false });
+            .order('date', { ascending: false })
+            .order('id'));
 
         const [{ txns, diagnostics }, collectionsRef] = await Promise.all([
             fetchAllLencoTransactions(org.lenco_subaccount_id, secretKey),
@@ -648,24 +670,24 @@ export async function getQuickOverview(): Promise<OrgReconSummary[]> {
     const lastCheckedAt = new Date().toISOString();
     // 3 batched queries total (orgs + all wallet rows + all wallet cashbook rows),
     // aggregated in JS — no per-org round-trips, so first paint is fast.
-    const [orgs, walletsRes, entriesRes] = await Promise.all([
+    const [orgs, walletRows, entryRows] = await Promise.all([
         fetchOrgRows(),
-        supabase.from('organization_wallets').select('organization_id'),
-        supabase
+        fetchAllRows(() => supabase.from('organization_wallets').select('organization_id').order('id')),
+        fetchAllRows(() => supabase
             .from('cashbook_entries')
             .select('organization_id, debit, credit, status')
             .eq('account_type', 'MONEYWISE_WALLET')
-            .limit(100000),
+            .order('id')),
     ]);
 
     const walletCounts = new Map<string, number>();
-    for (const w of walletsRes.data ?? []) {
+    for (const w of walletRows) {
         const id = (w as any).organization_id;
         walletCounts.set(id, (walletCounts.get(id) ?? 0) + 1);
     }
 
     const totals = new Map<string, { inflow: number; outflow: number }>();
-    for (const r of entriesRes.data ?? []) {
+    for (const r of entryRows) {
         if (String((r as any).status ?? '').toUpperCase() === 'PENDING') continue;
         const id = (r as any).organization_id;
         const a = totals.get(id) ?? { inflow: 0, outflow: 0 };
@@ -770,8 +792,26 @@ export async function healMissingPlatformFees(orgId: string, opts: { apply?: boo
         const match = feeRows.find(f => feeFree.get(f) && f.date === inflow.date && Math.abs((f.lencoAmount ?? 0) - target) < 0.5);
         if (match) feeFree.set(match, false);
     }
-    const genuinelyMissing = feeRows.filter(f => feeFree.get(f));
+    let genuinelyMissing = feeRows.filter(f => feeFree.get(f));
     if (!genuinelyMissing.length) return empty;
+
+    // Second opinion. The greedy same-day pairing above fails to see a sale that is already booked NET when this screen's
+    // transaction matching misses it (older sales, MoneyWise Pay rows), and then books the commission a SECOND time: K83.48 on
+    // Lubangi Technology Consulting. (27 Oct 2026) and K0.03 ×2 on Wing'in (3–4 Nov). The Ledger Guardian pairs credits to rows
+    // far more thoroughly, so a fee is only posted when the Guardian ALSO reports that very sweep as unaccounted for. If the
+    // Guardian cannot run, nothing is posted — a missing fee row is visible and fixable, a double-counted one is silent.
+    if (apply) {
+        try {
+            const { runOrgGuardian } = await import('./ledgerGuardian/guardian.service');
+            const g = await runOrgGuardian(orgId, { full: true, persist: false, heal: false });
+            const confirmed = new Set((g.health?.issues ?? []).filter((i: any) => i.code === 'SWEEP_NOT_IN_LEDGER' && i.txnId).map((i: any) => i.txnId as string));
+            genuinelyMissing = genuinelyMissing.filter(f => confirmed.has(f.lencoId as string));
+        } catch (e: any) {
+            console.warn(`[FeeHeal] Ledger Guardian could not confirm the unabsorbed fees for org ${orgId}; posting none: ${e?.message}`);
+            return empty;
+        }
+        if (!genuinelyMissing.length) return empty;
+    }
 
     const { data: mainWallet } = await supabase
         .from('organization_wallets')

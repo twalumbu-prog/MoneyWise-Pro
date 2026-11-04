@@ -63,6 +63,40 @@ export function isPublicSaleRow(row: { description?: string | null; external_ref
 
 export const sweepReferenceFor = (originalReference: string) => `SPLIT-${originalReference}`;
 
+/**
+ * PREVENTION counterpart of pairRows' "net-of-fee" pairing, used by the Lenco sync before it books a new inflow.
+ *
+ * The sync links a Lenco credit to the sale it already booked (a DEP-… merchant-reference row) through the
+ * settlement→reference map built from Lenco's collections list. When that map is missing entries (a page of the list came
+ * back incomplete — 22 credits on 12 June 2026 were booked a second time, K2,638.24, on 3 Nov 2026) the credit looked brand new
+ * and was booked again as a raw bank-narration row. This finds the existing row that already accounts for such a credit:
+ * a merchant-referenced inflow that no resolvable transaction claims, booked at the credit's amount or a little below it
+ * (net of the customer-paid fee), within a day. Returns null when there is no such row, i.e. the credit really is new.
+ *
+ * @param rows        same-organisation inflow rows around the credit's day (any status but PENDING)
+ * @param linkedRefs  lower-cased merchant references some resolvable Lenco transaction already points at
+ * @param claimed     row ids already paired during this run
+ */
+export function findUnclaimedMerchantRow<R extends { id: string; date: string; debit: number | string | null; external_reference?: string | null }>(
+    rows: R[],
+    txn: { amount: number; day: string },
+    linkedRefs: Set<string>,
+    claimed: Set<string>,
+): R | null {
+    let best: { k: number; row: R } | null = null;
+    for (const r of rows) {
+        const ref = String(r.external_reference ?? '').trim();
+        if (!/^DEP-/i.test(ref) || linkedRefs.has(ref.toLowerCase()) || claimed.has(r.id)) continue;
+        const gap = r2(txn.amount - n(r.debit));
+        if (gap < -TOLERANCE || gap > Math.max(1, txn.amount * 0.035)) continue;
+        const d = Math.abs(Date.parse(txn.day) - Date.parse(String(r.date).slice(0, 10))) / 86400000;
+        if (!(d <= 1)) continue;
+        const k = Math.max(gap, 0) + d;
+        if (!best || k < best.k) best = { k, row: r };
+    }
+    return best ? best.row : null;
+}
+
 // ───────────────────────────────────────────────── types ─────────────────────────────────────────────────────
 
 export interface RawLencoTxn { id: string; type: string; amount: number | string; datetime: string; narration?: string; balance: number | string; }
@@ -306,9 +340,12 @@ export function analyze(input: AnalyzeInput): Analysis {
     // A sweep that already has its own ledger row (older syncs booked them as outflows) is booked: its cash effect is exactly 0.
     const sweepBooked = (t: LencoTxn) => (pairing.rowsByTxn.get(t.id) ?? []).reduce((a, r) => a + rowAmount(r), 0);
     const sweepEffect = (t: LencoTxn) => r2(t.gross + sweepBooked(t));
-    const findSweep = (credit: LencoTxn, gap: number) => {
-        if (credit.ref) {
-            const x = sweepByRef.get(`split-${lower(credit.ref)}`);
+    const findSweep = (credit: LencoTxn, gap: number, rowRef?: string | null) => {
+        // The credit's own merchant reference, else the one on the ledger row it is paired with: an on-us MoneyWise Pay credit has
+        // no reference in Lenco's feed, but the row booked for it carries MWPAY-<id> and its sweep is named SPLIT-MWPAY-<id>.
+        const ref = credit.ref || (rowRef ? String(rowRef).trim() : '');
+        if (ref) {
+            const x = sweepByRef.get(`split-${lower(ref)}`);
             if (x && !x.used && Math.abs(x.t.amount - gap) <= Math.max(0.5, gap * 0.1)) { x.used = true; return x; }
         }
         const tol = Math.max(0.06, gap * 0.02);
@@ -366,7 +403,7 @@ export function analyze(input: AnalyzeInput): Analysis {
         if (t.type === 'credit' && diff < 0) {
             const gap = r2(-diff);
             const feeLike = gap <= Math.min(t.amount * MAX_FEE_RATIO, MAX_FEE_ABS);
-            const sweep = feeLike ? findSweep(t, gap) : undefined;
+            const sweep = feeLike ? findSweep(t, gap, row.external_reference) : undefined;
             if (sweep) {                                              // booked net and the commission was swept: exactly right (any row type)
                 add(t.day, -gap, 'net+swept'); add(sweep.t.day, sweepEffect(sweep.t), 'net+swept');    // …recorded explicitly so a few ngwee of rounding between them still balance
                 continue;

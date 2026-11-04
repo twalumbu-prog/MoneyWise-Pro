@@ -43,11 +43,33 @@ export async function matchesRecordedInternalTransfer(
             .gte('created_at', since)
             .order('created_at', { ascending: true })
             .limit(10);
-        if (!rows?.length) return deferIfBookingPending(txn);
+        let candidates: { id: string }[] = rows ?? [];
 
-        const { data: used } = await supabase.from('app_settings').select('key').in('key', rows.map(r => ENTRY_KEY(r.id)));
+        // A MoneyWise Pay payment carrying a MoneyWise fee: the payer sends amount + fee, Lenco credits the recipient the whole of it
+        // (K1.03) and then sweeps the fee, while we book the recipient NET (K1.00 — "the wallet mirrors the Lenco balance after the
+        // sweep"). An exact-amount match never finds that row, so the sync booked Lenco's K1.03 again: Wing'in showed K1.00 more than
+        // Lenco for every such payment (3–4 Nov 2026). For credits also accept an MWPAY- row booked a little below the credit.
+        if (txn.type === 'credit') {
+            const slack = Math.max(1, txn.amount * 0.035);
+            const { data: netRows } = await supabase
+                .from('cashbook_entries')
+                .select('id')
+                .eq('organization_id', orgId)
+                .eq('account_type', 'MONEYWISE_WALLET')
+                .like('external_reference', 'MWPAY-%')
+                .gte('debit', txn.amount - slack)
+                .lte('debit', txn.amount + 0.01)
+                .gt('debit', 0)
+                .gte('created_at', since)
+                .order('created_at', { ascending: true })
+                .limit(10);
+            for (const r of netRows ?? []) if (!candidates.some(c => c.id === r.id)) candidates.push(r);
+        }
+        if (!candidates.length) return deferIfBookingPending(txn);
+
+        const { data: used } = await supabase.from('app_settings').select('key').in('key', candidates.map(r => ENTRY_KEY(r.id)));
         const usedKeys = new Set((used ?? []).map(u => u.key));
-        const free = rows.find(r => !usedKeys.has(ENTRY_KEY(r.id)));
+        const free = candidates.find(r => !usedKeys.has(ENTRY_KEY(r.id)));
         if (!free) return deferIfBookingPending(txn);
 
         const now = new Date().toISOString();
