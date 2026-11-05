@@ -1,7 +1,8 @@
 import { supabase } from '../lib/supabase';
 import { QuickBooksService } from './quickbooks.service';
 import { getMasterFeesIntegration, MasterFeesConfig, acquireMasterFeesLock, releaseMasterFeesLock, touchMasterFeesLock } from './masterfees.service';
-import { matchStudentName, NameCandidate } from './masterfees_qb/name_match';
+import { NameCandidate } from './masterfees_qb/name_match';
+import { buildCustomerMap, resolveStudentCustomer, CustomerMap } from './masterfees_qb/customer_map';
 import { buildMfNumberIndex, buildImpDocIndex, findQbInvoiceForItem, normDesc, qbTermOf, QbInvoiceLike } from './masterfees_qb/mf_qb_link';
 import { chooseQbItem, resolveItemId } from './masterfees_qb/fee_mapping';
 
@@ -99,6 +100,14 @@ export async function runQuickBooksAutoPost(
     // Master Fees "IMP-<n>-R<n>" payment references carry the QuickBooks DocNumber of the invoice they were imported from — the strongest link there is for
     // the invoices that came FROM QuickBooks. Built once per run from the payments MoneyWise already holds. (The poster used to ignore it, so ~950 Term 1
     // invoices that exist in QuickBooks were parked as "not in QuickBooks".)
+    // Student -> QuickBooks customer, read before any name matching. If it cannot be read the poster falls back to names, as it did before the map existed.
+    let custMapCache: CustomerMap | null = null;
+    const getCustMap = async (): Promise<CustomerMap> => {
+        if (custMapCache) return custMapCache;
+        try { custMapCache = buildCustomerMap(await pageAll((a, b) => supabase.from('masterfees_qb_customer_map').select('student_id,qb_customer_id,qb_customer_name').eq('organization_id', organizationId).order('student_id').range(a, b))); }
+        catch (e: any) { console.warn('[MasterFees→QB] customer map unavailable, using name matching only:', e?.message); custMapCache = buildCustomerMap([]); }
+        return custMapCache;
+    };
     let impIdxCache: Map<string, string> | null = null;
     const getImpIdx = async (): Promise<Map<string, string>> => {
         if (impIdxCache) return impIdxCache;
@@ -122,7 +131,7 @@ export async function runQuickBooksAutoPost(
             const inv = rec.raw ?? {}; const student = inv.student?.full_name || ''; const label = `${student} · ${money(Number(inv.total_amount))} · ${inv.date_issued || inv.due_date}`;
             const review = async (reason: string) => { result.invoices.review++; result.decisions.push({ kind: 'INVOICE', id: rec.mf_id, label, outcome: 'REVIEW', reason }); await markInvoice(rec.id, { qb_sync_status: 'REVIEW', qb_sync_error: reason }, rec.mf_id); };
             try {
-                const m = matchStudentName(student, roster);
+                const m = resolveStudentCustomer(inv.student?.student_id, student, roster, await getCustMap());
                 if (m.tier !== 'EXACT' && m.tier !== 'CONTAINED') { await review(`Customer match is ${m.tier}: ${m.detail}`); return; }
                 const custInvs = await getCust(m.match!.id);
                 const { data: claimedRows } = await supabase.from('masterfees_records').select('qb_invoice_id').eq('organization_id', organizationId).eq('record_type', 'INVOICE').neq('mf_id', rec.mf_id).not('qb_invoice_id', 'is', null).in('qb_invoice_id', custInvs.map(q => q.id));
@@ -208,7 +217,7 @@ export async function runQuickBooksAutoPost(
                 if (qbIds.length !== items.length) { await park('QuickBooks invoice ids do not line up with the Master Fees fee items'); continue; }
                 if (items.length > 1 && Math.abs(amount - Number(invRec.raw?.total_amount)) > 0.01) { await park('Part-payment of a multi-item invoice — which item it paid cannot be told automatically'); continue; }
                 // customer = the customer who owns the linked QuickBooks invoice
-                const roster = await getRoster(organizationId); const m = matchStudentName(invRec.raw?.student?.full_name || '', roster);
+                const roster = await getRoster(organizationId); const m = resolveStudentCustomer(invRec.raw?.student?.student_id, invRec.raw?.student?.full_name || '', roster, await getCustMap());
                 if (m.tier !== 'EXACT' && m.tier !== 'CONTAINED') { await park(`Customer match is ${m.tier}`); continue; }
                 let custInvs = await getCust(m.match!.id); const lines: Array<{ invoiceId: string; amount: number }> = [];
                 // an invoice created earlier in this same run may not be in the cached list yet — refresh once before judging it missing

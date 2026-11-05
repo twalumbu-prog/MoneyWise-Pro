@@ -1,0 +1,21 @@
+/** Student -> QuickBooks customer resolution — pure tests:  npx ts-node --transpile-only src/scripts/test_customer_map.ts */
+import { buildCustomerMap, resolveStudentCustomer } from '../services/masterfees_qb/customer_map';
+let pass = 0, fail = 0;
+const ok = (n: string, c: any, d = '') => { if (c) { pass++; console.log(`PASS  ${n}`); } else { fail++; console.log(`FAIL  ${n} ${d}`); } };
+const roster = [{ id: '487', name: 'MICHEALA MAGAI  2025-03-0076' }, { id: '669', name: 'MICHAEL MAGAI  2025-11-0002' }, { id: '513', name: 'NATASHA PHIRI  2025-05-0069' }, { id: '50', name: 'JOHN BANDA  2025-01-0001' }, { id: '63', name: 'SIMAAMBA TATIANA  2025-02-0062' }];
+const map = buildCustomerMap([{ student_id: 'mic', qb_customer_id: '669', qb_customer_name: 'MICHAEL MAGAI  2025-11-0002' }, { student_id: 'nat1', qb_customer_id: '513', qb_customer_name: 'NATASHA PHIRI  2025-05-0069' }, { student_id: 'sim1', qb_customer_id: '63' }, { student_id: 'sim2', qb_customer_id: '63' }]);
+let r = resolveStudentCustomer('mic', 'Micheal Magai', roster, map);
+ok('C1 the map wins over a fuzzy name guess (Micheal -> MICHAEL #669, not MICHEALA)', r.tier === 'EXACT' && r.match?.id === '669', JSON.stringify(r));
+r = resolveStudentCustomer('nat2', 'Natasha Phiri', roster, map);
+ok('C2 same name, different student: refused, the customer already belongs to another child', r.tier === 'AMBIGUOUS' && /different student/.test(r.detail), JSON.stringify(r));
+r = resolveStudentCustomer('nat1', 'Natasha Phiri', roster, map);
+ok('C3 the mapped Natasha still resolves to her own customer', r.match?.id === '513' && r.tier === 'EXACT');
+r = resolveStudentCustomer('new1', 'John Banda', roster, map);
+ok('C4 an unmapped student whose exact name is an unowned customer still matches by name', r.match?.id === '50' && r.tier !== 'AMBIGUOUS', JSON.stringify(r));
+r = resolveStudentCustomer('sim2', 'Simamba Tatiana', roster, map);
+ok('C5 two student records deliberately mapped to one customer both resolve', r.match?.id === '63' && r.tier === 'EXACT');
+r = resolveStudentCustomer(null, 'John Banda', roster, buildCustomerMap([]));
+ok('C6 no map at all behaves exactly as name matching did', r.match?.id === '50');
+r = resolveStudentCustomer('x', 'Totally Unknown', roster, map);
+ok('C7 no match stays no match', r.tier === 'NONE');
+console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
