@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, Switch, Alert, Platform, AppState, ActivityIndicator } from 'react-native';
 import { Stack, router, useFocusEffect } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, MessageSquare, Workflow, Inbox, ChevronRight, Check, ClipboardPaste, Unplug } from 'lucide-react-native';
+import { Bell, MessageSquare, Workflow, Inbox, ChevronRight, Check, ClipboardPaste, Unplug, ScanLine } from 'lucide-react-native';
 import { momoCaptureService } from 'core';
 import type { MomoCaptureSettings } from 'core';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
@@ -129,6 +129,11 @@ export default function MomoCaptureSettingsScreen() {
                 <Text style={[styles.sectionLabel, { marginTop: 24 }]}>CAPTURED TRANSACTIONS</Text>
                 <View style={styles.card}>
                     <Row
+                        icon={<ScanLine size={18} color={colors.blue} />} label="All captured transactions"
+                        sub="Receipts and messages in one list" onPress={() => router.push('/captures')}
+                        right={<ChevronRight size={18} color={colors.textFaint} />}
+                    />
+                    <Row border
                         icon={<Inbox size={18} color={colors.blue} />} label="Review captured" onPress={() => router.push('/momo-captures')}
                         sub={s ? (s.pendingCount ? `${s.pendingCount} waiting for you to confirm` : 'Nothing waiting') : ' '}
                         right={<ChevronRight size={18} color={colors.textFaint} />}

@@ -8,6 +8,21 @@ import { describe, type ParsedMomoMessage } from '../momoCapture/parser';
 import { getCaptureSettings } from './capture.settings';
 import { captureDedupeKey, mirrorStatus, lusakaDate } from './capture.logic';
 
+/**
+ * The ledger entry a queue capture already booked for this MoMo confirmation, if any. Any failure (including the
+ * capture tables not existing yet) returns null, so MoMo Capture carries on booking exactly as it always has.
+ */
+export async function findBookedCaptureEntry(orgId: string, momoDedupeKey: string): Promise<string | null> {
+    try {
+        const { data } = await supabase.from('transaction_captures').select('cashbook_entry_id')
+            .eq('organization_id', orgId).eq('dedupe_key', captureDedupeKey({ momoRowKey: momoDedupeKey }))
+            .is('momo_capture_id', null).not('cashbook_entry_id', 'is', null).maybeSingle();
+        return data?.cashbook_entry_id ?? null;
+    } catch {
+        return null;
+    }
+}
+
 export async function mirrorMomoCapture(row: any, opts: { autoPosted?: boolean } = {}): Promise<void> {
     try {
         if (!row?.id || !row.organization_id) return;
@@ -24,10 +39,11 @@ export async function mirrorMomoCapture(row: any, opts: { autoPosted?: boolean }
             .eq('organization_id', orgId).eq('dedupe_key', dedupe).maybeSingle();
         const prior: any = byMomo ?? byKey ?? null;
 
-        // A screenshot of this same confirmation was already booked through the queue: keep that booking, flag for a person.
+        // A screenshot of this same confirmation was already booked through the queue: keep that booking.
+        // The provider's SMS now backs it up, and ingest has already stored the row as MATCHED to that entry.
         if (prior && !prior.momo_capture_id && prior.cashbook_entry_id) {
             await supabase.from('transaction_captures').update({
-                flags: Array.from(new Set([...(prior.flags || []), 'POSSIBLE_DUPLICATE_MOMO'])),
+                claim_state: 'CORROBORATED',
                 source_ids: Array.from(new Set([...(prior.source_ids || []), row.id])), updated_at: now,
             }).eq('id', prior.id).eq('organization_id', orgId);
             return;

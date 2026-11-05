@@ -14,7 +14,7 @@ import crypto from 'crypto';
 import { supabase } from '../../lib/supabase';
 import { recordManualEntry, ensureCashWallet, listExternalWallets, ManualEntryError } from '../manualEntry.service';
 import { parseMomoMessage, dedupeKey, describe, type MomoProvider, type ParsedMomoMessage } from './parser';
-import { mirrorMomoCapture } from '../capture/capture.momoMirror';
+import { mirrorMomoCapture, findBookedCaptureEntry } from '../capture/capture.momoMirror';
 
 export class MomoCaptureError extends Error {
     constructor(message: string, public httpStatus = 400) { super(message); }
@@ -119,7 +119,9 @@ export async function ingest(input: IngestInput) {
         .update({ last_capture_at: new Date().toISOString(), last_capture_source: source }).eq('user_id', input.userId);
     if (!parsed) return { accepted: false as const, reason: 'NOT_A_TRANSACTION' };
 
-    const twin = await findLencoTwin(input.orgId, parsed, occurredAt);
+    // Already in the ledger: through Lenco, or because a screenshot of this same confirmation was approved first.
+    const twin = await findLencoTwin(input.orgId, parsed, occurredAt)
+        ?? await findBookedCaptureEntry(input.orgId, dedupeKey(parsed, text));
     const { data: row, error } = await supabase.from('momo_captures').insert({
         organization_id: input.orgId, user_id: input.userId, source, provider: parsed.provider, sender,
         raw_text: text.slice(0, 1200), direction: parsed.direction, amount: parsed.amount, fee: parsed.fee,

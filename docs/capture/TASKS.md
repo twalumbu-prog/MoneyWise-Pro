@@ -1,6 +1,10 @@
 # AI Transaction Capture — remaining tasks
 
-As of 2026-11-04. Phase 0 code is written but not applied or committed (see PROGRESS.md). Each task below can be done and merged on its own; **Needs** lists the tasks that must land first. Paths are relative to `MoneyWise-Pro/`.
+Updated 2026-11-05. Nothing has run against a database yet (see PROGRESS.md). Paths are relative to `MoneyWise-Pro/`.
+
+**Code written, still to be tested:** P0-2, P0-3 (integrity check only; L1-L3 not written), P0-4, P0-5, P0-6, P0-9, P0-10 (except the share-sheet target), P1-6, P1-7, P1-8, P1-9, P1-10, P1-11 (evidence only; no drawer), G-2. Conversations from P1-1 are in; the legacy columns stay.
+
+**Superseded:** D1 is decided: keep the legacy `messaging_messages` columns until the old path is removed. D2 is decided: Resend, Premium only, Blue Opus owns App Review. For P0-1, do not use `db push`: production's migration history is out of sync.
 
 ## Before anything else
 
@@ -96,8 +100,8 @@ As of 2026-11-04. Phase 0 code is written but not applied or committed (see PROG
 
 **P1-8 Chat extraction (Stage 2 text)**
 - New `services/capture/capture.extract.ts`. One `openRouterComplete` call with a strict JSON schema; the context is the last 10 conversation messages, the product list and the currency. No tools. Invalid JSON or no amount → NEEDS_REVIEW. Always `claim_state = 'CLAIMED'`; run `looksLikeInjection`.
-- `capture.worker.ts`: the `META_MESSAGE` branch runs prefilter → conversation grouping → extract → `matchAndRoute`, instead of `classifyMessage`.
-- Delete `services/messageIntent.service.ts`.
+- `capture.worker.ts`: the `META_MESSAGE` branch runs `capture.chat.ts` instead of `classifyMessage`.
+- Delete `services/messageIntent.service.ts` when the legacy columns go.
 - Done when: "I'll take 2" … "sent K450" yields one capture.
 
 **P1-9 Products and CRM matching (Stage 4)**

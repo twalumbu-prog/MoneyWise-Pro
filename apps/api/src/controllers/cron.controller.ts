@@ -3,6 +3,7 @@ import { emailService } from '../services/email.service';
 import { healMissingPlatformFeesWithinBudget } from '../services/reconciliation.service';
 import { autoCompleteRequisition, sendAutoCategorizationReminder } from './requisition.controller';
 import { drainCaptureJobs } from '../services/capture/capture.worker';
+import { sendCaptureDigests } from '../services/capture/capture.digest';
 
 /**
  * Handlers for the internal scheduler (public.internal_cron_call -> these routes). All secret-gated with
@@ -177,6 +178,16 @@ export const captureWorker = async (req: any, res: any) => {
         return res.json({ success: true, budget_ms: CAPTURE_WORKER_BUDGET_MS, ...r });
     } catch (e: any) {
         console.error('[CaptureWorker] Worker execution failed:', e?.message);
+        return res.status(500).json({ success: false, error: e?.message });
+    }
+};
+
+export const captureDigest = async (req: any, res: any) => {
+    if (!isCronCall(req)) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+        return res.json({ success: true, ...(await sendCaptureDigests(45_000)) });
+    } catch (e: any) {
+        console.error('[CaptureDigest] failed:', e?.message);
         return res.status(500).json({ success: false, error: e?.message });
     }
 };

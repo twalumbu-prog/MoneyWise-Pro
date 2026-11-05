@@ -41,6 +41,9 @@ export interface InboundMessage {
     body: string | null;
     sentAt: Date;
     direction: 'IN' | 'OUT';
+    /** WhatsApp media id, or a Messenger/Instagram attachment URL. Downloaded by the worker. */
+    mediaRef?: string | null;
+    mediaMime?: string | null;
 }
 
 /** Flattens a Meta webhook payload (whatsapp_business_account | page | instagram) into messages. */
@@ -58,8 +61,9 @@ export function parseWebhook(payload: any): InboundMessage[] {
                     out.push({
                         platform: 'WHATSAPP', externalAccountId: String(phoneNumberId), externalMessageId: m.id,
                         contactId: m.from, contactName: names.get(m.from) || null, contactPhone: m.from, type: m.type || 'text',
-                        body: m.text?.body ?? m.button?.text ?? m.interactive?.button_reply?.title ?? m.image?.caption ?? null,
+                        body: m.text?.body ?? m.button?.text ?? m.interactive?.button_reply?.title ?? m.image?.caption ?? m.document?.caption ?? null,
                         sentAt: new Date(Number(m.timestamp) * 1000), direction: 'IN',
+                        mediaRef: m.image?.id ?? m.document?.id ?? null, mediaMime: m.image?.mime_type ?? m.document?.mime_type ?? null,
                     });
                 }
             }
@@ -71,6 +75,7 @@ export function parseWebhook(payload: any): InboundMessage[] {
                     platform, externalAccountId: String(entry.id), externalMessageId: ev.message.mid,
                     contactId: String(ev.sender?.id), type: ev.message.attachments ? 'attachment' : 'text',
                     body: ev.message.text ?? null, sentAt: new Date(ev.timestamp || Date.now()), direction: 'IN',
+                    mediaRef: ev.message.attachments?.find((a: any) => a?.type === 'image' || a?.type === 'file')?.payload?.url ?? null,
                 });
             }
         }
@@ -96,6 +101,8 @@ export async function ingestMessages(
                 p_message_type: m.type,
                 p_body: m.body,
                 p_sent_at: m.sentAt.toISOString(),
+                p_media_ref: m.mediaRef ?? null,
+                p_media_mime: m.mediaMime ?? null,
             });
 
             // A database failure must propagate so Meta can retry.

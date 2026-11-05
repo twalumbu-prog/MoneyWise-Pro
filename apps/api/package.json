@@ -12,7 +12,8 @@
         "test:ai": "tsc && node dist/scripts/sanity_ai.js",
         "oauth:create-client": "ts-node --transpile-only src/scripts/create_oauth_client.ts",
         "test:momo": "tsc && node dist/scripts/test_momo_parser.js",
-        "test:capture": "tsc && node dist/scripts/test_capture_logic.js"
+        "test:capture": "tsc && node dist/scripts/test_capture_logic.js",
+        "test:capture-chat": "tsc && node dist/scripts/test_capture_chat.js"
     },
     "dependencies": {
         "@google/generative-ai": "^0.24.1",

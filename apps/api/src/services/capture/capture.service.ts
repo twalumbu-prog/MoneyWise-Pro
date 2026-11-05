@@ -17,7 +17,7 @@ import {
 } from '../manualEntry.service';
 import { ledgerService } from '../ledger.service';
 import { cashbookService } from '../cashbook.service';
-import { releaseAllocationsIfNotReceivable } from '../customerInvoice.service';
+import { releaseAllocationsIfNotReceivable, listOpenInvoices, allocatePayment } from '../customerInvoice.service';
 import { getCaptureSettings, type CaptureSettings } from './capture.settings';
 import { mirrorMomoCapture } from './capture.momoMirror';
 import {
@@ -68,11 +68,10 @@ async function lockCapture(orgId: string, id: string, from: string[]) {
     return data;
 }
 
-async function aiCallsToday(orgId: string): Promise<number> {
-    const since = `${lusakaDate(now())}T00:00:00+02:00`;
-    const { count } = await supabase.from('transaction_captures').select('id', { count: 'exact', head: true })
-        .eq('organization_id', orgId).gt('ai_calls', 0).gte('created_at', since);
-    return count ?? 0;
+/** Reserves one AI call against today's budget. Any failure means no: the budget fails closed. */
+export async function reserveAiCall(orgId: string, budget: number): Promise<boolean> {
+    const { data, error } = await supabase.rpc('reserve_capture_ai_call', { p_org: orgId, p_day: lusakaDate(now()), p_budget: budget });
+    return !error && data === true;
 }
 
 // ───────────────────────────────────────────── upload ─────────────────────────────────────────────
@@ -135,7 +134,7 @@ export async function processAttachmentJob(job: { attachment_id: string; organiz
     let ocr: ReceiptOcrData | null = (att.ocr_json as ReceiptOcrData) ?? null;
     let aiCalls = 0;
     if (!ocr) {
-        if (await aiCallsToday(orgId) >= settings.dailyAiBudget) {
+        if (!(await reserveAiCall(orgId, settings.dailyAiBudget))) {
             flags.push('AI_BUDGET_EXCEEDED');
         } else {
             const { data: file, error } = await supabase.storage.from(CAPTURE_BUCKET).download(att.storage_path);
@@ -181,9 +180,18 @@ export async function processAttachmentJob(job: { attachment_id: string; organiz
         };
     }
 
-    const occurredAt = at ?? att.created_at;
+    // A file sent in a chat is a customer's proof of payment: money in, and only ever a claim.
+    const { data: msg } = att.source_table === 'messaging_messages' && att.source_id
+        ? await supabase.from('messaging_messages').select('id, platform, contact_phone, contact_name, conversation_id, sent_at').eq('id', att.source_id).eq('organization_id', orgId).maybeSingle()
+        : { data: null as any };
+    if (msg) Object.assign(draft, {
+        direction: 'IN', intent: draft.amount ? 'PAYMENT_PROOF' : null, counterparty_phone: msg.contact_phone ?? null,
+        counterparty_name: msg.contact_name ?? draft.counterparty_name ?? null, conversation_id: msg.conversation_id ?? null,
+    });
+
+    const occurredAt = at ?? msg?.sent_at ?? att.created_at;
     const { data: inserted, error } = await supabase.from('transaction_captures').insert({
-        ...draft, organization_id: orgId, source: 'RECEIPT_UPLOAD', source_ids: [att.id], created_by: att.uploaded_by,
+        ...draft, organization_id: orgId, source: msg?.platform ?? 'RECEIPT_UPLOAD', source_ids: msg ? [att.id, msg.id] : [att.id], created_by: att.uploaded_by,
         occurred_at: occurredAt, occurred_on: lusakaDate(occurredAt), claim_state: 'CLAIMED', ai_calls: aiCalls, flags, status: 'NEW',
         reasoning: hasTime ? null : 'Receipt has no time; matched on the whole day',
     }).select('*').single();
@@ -258,7 +266,7 @@ async function mergeIntoCapture(cap: any, target: any, matchType: string, score:
  * Stage 3 → 5 for one capture. Order: Lenco entry → MoMo capture → new off-platform draft. Only an unambiguous,
  * confident match merges automatically; ties and multiples are suggested for a person.
  */
-async function matchAndRoute(cap: any, settings: CaptureSettings, opts: { windowMin: number; categorise: boolean }) {
+export async function matchAndRoute(cap: any, settings: CaptureSettings, opts: { windowMin: number; categorise: boolean }) {
     const orgId = cap.organization_id;
     const base = { last_matched_at: now(), updated_at: now() };
     if (!cap.direction || !(Number(cap.zmw_amount) > 0) || !cap.occurred_at) {
@@ -295,18 +303,28 @@ async function matchAndRoute(cap: any, settings: CaptureSettings, opts: { window
         }
     }
 
+    // Nothing in the wallet yet, but this customer owes exactly this amount on one open invoice.
+    let invoiceId: string | null = null;
+    if (cap.direction === 'IN' && cap.suggested_crm_contact_id && lenco.action === 'NONE' && mm.action === 'NONE') {
+        const fits = (await listOpenInvoices(orgId, cap.suggested_crm_contact_id))
+            .filter((i: any) => Math.abs(Number(i.total) - Number(i.amount_paid) - Number(cap.zmw_amount)) < 0.005);
+        if (fits.length === 1) invoiceId = fits[0].id;
+    }
+
     const suggestions = [
         ...(lenco.action === 'SUGGEST' ? lenco.candidates.map(c => ({ ...c, kind: 'LENCO_ENTRY' })) : []),
         ...(mm.action === 'SUGGEST' ? mm.candidates.map(c => ({ ...c, kind: 'MOMO_CAPTURE' })) : []),
     ];
-    const update: Record<string, any> = { ...base, match_candidates: suggestions };
+    const update: Record<string, any> = {
+        ...base, match_candidates: suggestions, match_type: invoiceId ? 'INVOICE' : 'NONE', matched_invoice_id: invoiceId,
+    };
 
     if (opts.categorise && cap.status === 'NEW') {
         Object.assign(update, await draftBooking(cap, settings));
         const auto = decideAutoPost({
             captureEnabled: settings.enabled, autoPostEnabled: settings.autoPostEnabled, autoPostLimit: settings.autoPostLimit,
             amount: cap.zmw_amount, confidence: cap.confidence, deterministic: !!cap.deterministic, claimState: cap.claim_state,
-            matchType: suggestions.length ? 'SUGGESTED' : 'NONE', hasWallet: !!update.suggested_wallet_id, hasAccount: !!update.suggested_account_id,
+            matchType: invoiceId ? 'INVOICE' : suggestions.length ? 'SUGGESTED' : 'NONE', hasWallet: !!update.suggested_wallet_id, hasAccount: !!update.suggested_account_id,
             flags: cap.flags || [],
         });
         update.status = 'NEEDS_REVIEW';
@@ -340,7 +358,8 @@ async function draftBooking(cap: any, settings: CaptureSettings): Promise<Record
         : cap.payment_method === 'MOMO_PERSONAL' ? (wallets.filter(w => w.provider_type === 'MOBILE_MONEY').length === 1 ? wallets.find(w => w.provider_type === 'MOBILE_MONEY')! : null)
         : null;
     if (wallet) out.suggested_wallet_id = wallet.id;
-    if (await aiCallsToday(cap.organization_id) < settings.dailyAiBudget || cap.ai_calls > 0) {
+    if (cap.suggested_account_id) return out;   // a matched product already decided the category
+    if (await reserveAiCall(cap.organization_id, settings.dailyAiBudget)) {
         const s = await suggestCategory(cap.organization_id, cap.direction, cap.evidence_summary || cap.counterparty_name || 'Captured transaction', Number(cap.zmw_amount));
         out.ai_calls = (cap.ai_calls || 0) + 1;
         if (s) { out.suggested_account_id = s.account.id; out.reasoning = s.reasoning ?? cap.reasoning ?? null; }
@@ -354,7 +373,7 @@ async function draftBooking(cap: any, settings: CaptureSettings): Promise<Record
  */
 export async function rematchPending(deadline: number, limit = 25): Promise<number> {
     const { data } = await supabase.from('transaction_captures').select('*')
-        .eq('status', 'NEEDS_REVIEW').eq('match_type', 'NONE').not('zmw_amount', 'is', null)
+        .eq('status', 'NEEDS_REVIEW').in('match_type', ['NONE', 'INVOICE']).not('zmw_amount', 'is', null)
         .gte('created_at', new Date(Date.now() - 7 * 86400_000).toISOString())
         .order('last_matched_at', { ascending: true, nullsFirst: true }).limit(limit);
     let n = 0;
@@ -423,6 +442,14 @@ function finalValues(cap: any, edits: Record<string, any>) {
     return { draft, v };
 }
 
+function cleanLineItems(raw: unknown) {
+    if (!Array.isArray(raw)) return null;
+    const num = (n: unknown) => (n === null || n === '' || n === undefined || !Number.isFinite(Number(n)) ? null : Number(n));
+    return raw.slice(0, 50).filter((l: any) => typeof l?.name === 'string' && l.name.trim()).map((l: any) => ({
+        name: l.name.trim().slice(0, 200), qty: num(l.qty), unit_price: num(l.unit_price), total: num(l.total), product_id: typeof l.product_id === 'string' ? l.product_id : null,
+    }));
+}
+
 export async function approve(orgId: string, userId: string, id: string, edits: Record<string, any> = {}) {
     const cap = await loadCapture(orgId, id);
     if (['APPROVED', 'AUTO_POSTED'].includes(cap.status)) return { capture: cap, entryId: cap.cashbook_entry_id, alreadyApproved: true };
@@ -434,7 +461,12 @@ export async function approve(orgId: string, userId: string, id: string, edits: 
     if (!(Number(v.amount) > 0)) throw new CaptureError('Enter the amount in Kwacha');
     if (!v.occurred_on || !/^\d{4}-\d{2}-\d{2}$/.test(v.occurred_on)) throw new CaptureError('Enter the date');
     if (!v.description || String(v.description).trim().length < 2) v.description = cap.counterparty_name || 'Captured transaction';
-    const diff = draftDiff(draft, v);
+    const diff: Record<string, any> = draftDiff(draft, v);
+    const lineItems = cleanLineItems(edits.line_items);
+    if (lineItems) {
+        diff.line_items = { from: cap.line_items, to: lineItems };
+        await supabase.from('transaction_captures').update({ line_items: lineItems }).eq('id', id).eq('organization_id', orgId);
+    }
 
     // MoMo rows book through MoMo Capture's own post (fees, provider wallet) — same as before the queue existed.
     if (cap.momo_capture_id) {
@@ -473,6 +505,7 @@ export async function approve(orgId: string, userId: string, id: string, edits: 
         const result = await bookOffPlatform(locked, userId, {
             direction: v.direction, amount: r2(Number(v.amount)), date: v.occurred_on, walletId, accountId: v.account_id ?? null, description: String(v.description),
         }, 'APPROVED', userId, { diff });
+        await applyToInvoice(locked, userId, result.entryId, Number(v.amount), v.direction);
         await learn(orgId, v, diff);
         await audit(orgId, userId, id, 'CAPTURE_APPROVED', { entry_id: result.entryId, diff });
         return { capture: result.capture, entryId: result.entryId, alreadyApproved: false };
@@ -481,6 +514,18 @@ export async function approve(orgId: string, userId: string, id: string, edits: 
             .eq('id', id).eq('organization_id', orgId).eq('status', 'POSTING');
         if (e instanceof ManualEntryError) throw new CaptureError(e.message, e.httpStatus);
         throw e;
+    }
+}
+
+/** The money is booked either way; a refused allocation is flagged for a person instead of failing the approval. */
+async function applyToInvoice(cap: any, userId: string, entryId: string, amount: number, direction: string) {
+    if (!cap.matched_invoice_id || direction !== 'IN') return;
+    try {
+        await allocatePayment(cap.organization_id, userId, entryId, [{ invoice_id: cap.matched_invoice_id, amount }]);
+    } catch (e: any) {
+        console.error('[Capture] invoice allocation failed:', e?.message);
+        await supabase.from('transaction_captures').update({ flags: Array.from(new Set([...(cap.flags || []), 'INVOICE_NOT_APPLIED'])) })
+            .eq('id', cap.id).eq('organization_id', cap.organization_id);
     }
 }
 
@@ -602,6 +647,8 @@ export async function undo(orgId: string, userId: string, id: string) {
             .eq('id', cap.cashbook_entry_id).eq('organization_id', orgId).maybeSingle();
         if (entry?.bank_statement_reference) throw new CaptureError('This entry is reconciled to a bank statement; reverse it from the ledger', 409);
         if (entry && (Number(entry.debit) !== 0 || Number(entry.credit) !== 0)) {
+            // Release the invoice first: allocatePayment needs the amount still on the entry.
+            if (cap.matched_invoice_id) await allocatePayment(orgId, userId, entry.id, []);
             const was = Number(entry.debit) - Number(entry.credit);
             const tag = `[Voided: ${lusakaDate(now())} capture undo] | was ${was >= 0 ? '+' : ''}${was.toFixed(2)} | `;
             const { error } = await supabase.from('cashbook_entries').update({ debit: 0, credit: 0, description: `${tag}${entry.description ?? ''}`.slice(0, 500) })
@@ -614,6 +661,11 @@ export async function undo(orgId: string, userId: string, id: string) {
             status: 'NEEDS_REVIEW', cashbook_entry_id: null, posted_at: null, post_seq: (locked.post_seq || 0) + 1,
             voided_entry_ids: Array.from(new Set([...(locked.voided_entry_ids || []), ...(entry ? [entry.id] : [])])), updated_at: now(),
         }).eq('id', id).eq('organization_id', orgId).eq('status', 'POSTING').select('*').maybeSingle();
+        // An SMS that stood down because this entry existed must come back, or the money would vanish from review.
+        if (entry) {
+            await supabase.from('momo_captures').update({ status: 'PENDING', matched_entry_id: null, updated_at: now() })
+                .eq('organization_id', orgId).eq('matched_entry_id', entry.id).eq('status', 'MATCHED');
+        }
         await audit(orgId, userId, id, 'CAPTURE_UNDO', { from: cap.status, voided_entry_id: entry?.id ?? null });
         return data;
     } catch (e) {
@@ -647,6 +699,13 @@ export async function count(orgId: string) {
     return { needsReview: n ?? 0 };
 }
 
+/** The capture behind a ledger entry, booked by it or matched to it. */
+export async function byEntry(orgId: string, entryId: string) {
+    const { data } = await supabase.from('transaction_captures').select('id, source, status')
+        .eq('organization_id', orgId).or(`cashbook_entry_id.eq.${entryId},matched_cashbook_entry_id.eq.${entryId}`).limit(1).maybeSingle();
+    return { capture: data ?? null };
+}
+
 export async function detail(orgId: string, id: string) {
     const cap = await loadCapture(orgId, id);
     const ids: string[] = cap.source_ids || [];
@@ -658,6 +717,10 @@ export async function detail(orgId: string, id: string) {
         const { data } = await supabase.storage.from(CAPTURE_BUCKET).createSignedUrl(a.storage_path, SIGNED_URL_TTL_S);
         return { id: a.id, mime: a.mime, url: data?.signedUrl ?? null, created_at: a.created_at };
     }));
+    const { data: chatRows } = cap.conversation_id
+        ? await supabase.from('messaging_messages').select('id, direction, body, message_type, sent_at, contact_name')
+            .eq('organization_id', orgId).eq('conversation_id', cap.conversation_id).order('sent_at', { ascending: true }).limit(30)
+        : { data: [] as any[] };
     const candIds = (cap.match_candidates || []).filter((c: any) => c.kind === 'LENCO_ENTRY').map((c: any) => c.id);
     if (cap.matched_cashbook_entry_id) candIds.push(cap.matched_cashbook_entry_id);
     const { data: entries } = candIds.length
@@ -668,6 +731,7 @@ export async function detail(orgId: string, id: string) {
         capture: cap,
         attachments,
         momoMessages: momoRows || [],
+        chatMessages: chatRows || [],
         entries: entries || [],
         wallets,
         categories: (categories || []).map((a: any) => ({ id: a.id, name: a.name, code: a.code, emoji: a.emoji ?? null })),

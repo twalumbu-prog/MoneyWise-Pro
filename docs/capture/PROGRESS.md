@@ -42,4 +42,12 @@
 - Do not run `supabase db push`: production migration history is out of sync with the repo. Confirm production's contents first.
 - Approve of an upload capture before its MoMo SMS arrives can still double-book if MoMo auto-post is on (flagged `POSSIBLE_DUPLICATE_MOMO`). Guardian check "no Lenco-matched capture has its own entry" not added. AI budget counts captures, not calls. Mobile app screens not built.
 
-**Next:** confirm what production contains, agree a safe way to apply migrations, pilot 2 orgs (Phase 0 gate), then Phase 1 (WhatsApp).
+**Added 2026-11-05 (uncommitted, untested against a database)**
+
+- Phase 0: double-booking fix, integrity check, exact AI budget, ledger evidence link, editable line items, daily digest, mobile Captured screens.
+- Phase 1: pre-filter, chat extraction, conversations, product/customer/invoice matching, media download. The worker now runs `capture.chat.ts`; `messageIntent.service.ts` is unused and stays until the legacy columns go.
+- New migrations, in order after Phase 0: `20261105120000`, `20261105130000`, `20261105140000`, `20261105150000`.
+- Deploy order matters: apply `20261105150000_capture_chat.sql` before the API, because `ingestMessages` now sends the media arguments. Otherwise Meta webhooks fail.
+- Assumptions: a conversation lasts 6 hours; two same-amount payments from one contact in that window merge into one capture (a missed entry is safer than a duplicate). Files sent in chat are treated as money in.
+
+**Next:** Meta connect, disconnect and token health; data deletion; privacy wording; retention; key rotation. Then Phase 2. Test everything once a staging database exists.

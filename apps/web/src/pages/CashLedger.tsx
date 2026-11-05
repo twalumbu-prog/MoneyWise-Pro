@@ -44,6 +44,7 @@ import TransferModal from '../components/TransferModal';
 import TransferToWalletModal from '../components/TransferToWalletModal';
 import ShareWalletLinkModal from '../components/ShareWalletLinkModal';
 import { useAuth } from '../context/AuthContext';
+import { CaptureEvidenceLink } from '../components/capture/CaptureEvidenceLink';
 import { getStatusConfig, requisitionService } from '../services/requisition.service';
 import { accountService, Account } from '../services/account.service';
 import { onboardingService, WalletStatus } from '../services/onboarding.service';
@@ -2587,6 +2588,7 @@ Status: VERIFIED`;
                                                 <span className="text-[11px] font-bold text-gray-900 font-mono truncate max-w-[180px]">{entry.external_reference}</span>
                                             </div>
                                         )}
+                                        <CaptureEvidenceLink entryId={entry.id} />
                                         {/* Inflow-specific: show sender name/phone (from structured fields, fallback to description parse) + channel */}
                                         {entry.entry_type === 'INFLOW' && (() => {
                                             // Prefer the structured sender_name/sender_phone fields. For historical

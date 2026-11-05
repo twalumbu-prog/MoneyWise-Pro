@@ -3,7 +3,8 @@ import {
     autoCompleteSweep,
     healFeesCron,
     cronWatchdog,
-    captureWorker
+    captureWorker,
+    captureDigest
 } from '../controllers/cron.controller';
 const router = Router();
 
@@ -12,5 +13,6 @@ router.post('/auto-sweep', autoCompleteSweep);
 router.post('/heal-fees', healFeesCron);
 router.post('/watchdog', cronWatchdog);
 router.post('/capture-worker', captureWorker);
+router.post('/capture-digest', captureDigest);
 
 export default router;

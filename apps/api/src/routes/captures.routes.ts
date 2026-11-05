@@ -27,6 +27,7 @@ const handle = (label: string, fn: (req: any) => Promise<any>) => async (req: an
     }
 };
 const org = (req: any): string => req.user.organization_id;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Open to every plan: the app needs these to show an upgrade message and a zero badge.
 router.get('/settings', handle('settings', async (req) => ({
@@ -36,6 +37,10 @@ router.get('/settings', handle('settings', async (req) => ({
 router.get('/count', handle('count', async (req) => (
     (await isCapturePlanEligible(org(req))) ? capture.count(org(req)) : { needsReview: 0 }
 )));
+router.get('/by-entry/:entryId', handle('by-entry', async (req) => {
+    if (!UUID.test(req.params.entryId) || !(await isCapturePlanEligible(org(req)))) return { capture: null };
+    return capture.byEntry(org(req), req.params.entryId);
+}));
 
 // Everything below needs an active Premium plan.
 router.use(async (req: any, res: any, next: any) => {

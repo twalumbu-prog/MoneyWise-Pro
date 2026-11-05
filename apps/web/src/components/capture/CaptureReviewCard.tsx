@@ -19,8 +19,10 @@ const FLAG_TEXT: Record<string, string> = {
     UNCONVERTED_CURRENCY: 'This is not in Kwacha. Enter the Kwacha amount.',
     AI_BUDGET_EXCEEDED: "Today's reading limit was reached, so nothing was filled in.",
     AI_UNAVAILABLE: 'The receipt could not be read automatically.',
-    POSSIBLE_DUPLICATE_MOMO: 'A mobile money message for this same payment also arrived. Check it is not booked twice.',
     MATCH_CONFLICT: 'The matching wallet entry is already linked to another capture.',
+    AMOUNT_NOT_IN_TEXT: 'This amount does not appear in the chat. Check it before approving.',
+    EXTRACTION_INVALID: 'The message could not be read automatically.',
+    INVOICE_NOT_APPLIED: 'This was booked, but could not be applied to the open invoice. Apply it from the ledger.',
 };
 
 const Field: React.FC<{ label: string; ai: boolean; children: React.ReactNode }> = ({ label, ai, children }) => (
@@ -36,6 +38,7 @@ const inputCls = 'w-full rounded-xl border border-gray-200 bg-white px-3 py-2 te
 export const CaptureReviewCard: React.FC<Props> = ({ id, canReview, onClose, onChanged, onNext, onPrev }) => {
     const [d, setD] = useState<CaptureDetail | null>(null);
     const [form, setForm] = useState<Form | null>(null);
+    const [items, setItems] = useState<any[]>([]);
     const [touched, setTouched] = useState<Set<string>>(new Set());
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -52,6 +55,7 @@ export const CaptureReviewCard: React.FC<Props> = ({ id, canReview, onClose, onC
                 amount: c.zmw_amount != null ? String(c.zmw_amount) : '', occurred_on: c.occurred_on || '', direction: c.direction || 'OUT',
                 wallet_id: c.suggested_wallet_id || '', account_id: c.suggested_account_id || '', description: c.evidence_summary || c.counterparty_name || '',
             });
+            setItems(c.line_items || []);
             setTouched(new Set());
             setZoom(1);
         } catch (e: any) { setError(e?.message || 'Could not load this capture'); }
@@ -63,6 +67,10 @@ export const CaptureReviewCard: React.FC<Props> = ({ id, canReview, onClose, onC
     const editable = canReview && open;
     const isMomo = !!c?.momo_capture_id;
     const set = (k: keyof Form, v: string) => { setForm(f => (f ? { ...f, [k]: v } : f)); setTouched(t => new Set(t).add(k)); };
+    const editItem = (i: number, k: string, v: string) => {
+        setItems(all => all.map((li, n) => (n === i ? { ...li, [k]: v } : li)));
+        setTouched(t => new Set(t).add('line_items'));
+    };
     const ai = (k: keyof Form, filled: boolean) => filled && !touched.has(k) && !c?.deterministic;
 
     const act = async (fn: () => Promise<unknown>, advance = true) => {
@@ -74,6 +82,7 @@ export const CaptureReviewCard: React.FC<Props> = ({ id, canReview, onClose, onC
     const approve = () => form && act(() => captureApi.approve(id, {
         amount: Number(form.amount), occurred_on: form.occurred_on, direction: form.direction, description: form.description,
         account_id: form.account_id || null, ...(isMomo ? {} : { wallet_id: form.wallet_id || null }),
+        ...(touched.has('line_items') ? { line_items: items } : {}),
     }));
 
     useEffect(() => {
@@ -135,9 +144,25 @@ export const CaptureReviewCard: React.FC<Props> = ({ id, canReview, onClose, onC
                                     {m.raw_text}
                                 </div>
                             ))}
-                            {c.line_items?.length > 0 && (
-                                <div className="rounded-2xl border border-gray-100 p-3 text-xs text-gray-600 space-y-1">
-                                    {c.line_items.map((li: any, i: number) => (
+                            {(d.chatMessages ?? []).length > 0 && (
+                                <div className="space-y-1.5 rounded-2xl bg-gray-50 p-3 max-h-64 overflow-y-auto">
+                                    {d.chatMessages.map(m => (
+                                        <div key={m.id} className={`max-w-[85%] w-fit rounded-xl px-3 py-1.5 text-sm ${m.direction === 'OUT' ? 'ml-auto bg-[#CFE4FF]' : 'bg-white border border-gray-100'}`}>
+                                            {m.body || `[${m.message_type}]`}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            {items.length > 0 && (
+                                <div className="rounded-2xl border border-gray-100 p-3 text-xs text-gray-600 space-y-1.5">
+                                    {items.map((li: any, i: number) => editable ? (
+                                        <div key={i} className="flex items-center gap-2">
+                                            <input className="w-12 rounded-lg border border-gray-200 px-2 py-1" inputMode="decimal" aria-label="Quantity" value={li.qty ?? ''} onChange={e => editItem(i, 'qty', e.target.value)} />
+                                            <input className="flex-1 min-w-0 rounded-lg border border-gray-200 px-2 py-1" aria-label="Item" value={li.name ?? ''} onChange={e => editItem(i, 'name', e.target.value)} />
+                                            <input className="w-20 rounded-lg border border-gray-200 px-2 py-1 text-right" inputMode="decimal" aria-label="Total" value={li.total ?? ''} onChange={e => editItem(i, 'total', e.target.value)} />
+                                            <button onClick={() => { setItems(all => all.filter((_, n) => n !== i)); setTouched(t => new Set(t).add('line_items')); }} className="p-1 text-gray-400 hover:text-red-600" aria-label="Remove item"><X className="h-3.5 w-3.5" /></button>
+                                        </div>
+                                    ) : (
                                         <div key={i} className="flex justify-between gap-2"><span>{li.qty ? `${li.qty} × ` : ''}{li.name}</span><span>{li.total != null ? kwacha(li.total) : ''}</span></div>
                                     ))}
                                 </div>

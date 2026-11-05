@@ -159,6 +159,14 @@ export async function auditOrganization(organizationId: string, opts: { sample?:
 
     if (staleContra.length) findings.push({ code: 'CONTRA_STALE', severity: 'ERROR', fixable: true, count: staleContra.length, amount: r2(staleContra.reduce((t, e) => t + Math.abs(Number(e.debit || 0) - Number(e.credit || 0)), 0)), message: `${staleContra.length} transactions were categorised after they were posted, so the ledger still shows them as uncategorised (Suspense).`, sample: staleContra.slice(0, sampleN).map(e => `${e.date} ${String(e.description || '').slice(0, 50)}`) });
 
+    // 5b. transaction capture: one capture per ledger entry, and money matched to Lenco is never also booked.
+    // No capture tables yet (or a failed read) simply yields no finding.
+    const { data: caps } = await supabase.from('transaction_captures').select('id, cashbook_entry_id, matched_cashbook_entry_id')
+        .eq('organization_id', organizationId).neq('status', 'DISMISSED').neq('status', 'FAILED');
+    const booked = new Set((caps || []).map((c: any) => c.cashbook_entry_id).filter(Boolean));
+    const doubled = (caps || []).filter((c: any) => c.matched_cashbook_entry_id && (c.cashbook_entry_id || booked.has(c.matched_cashbook_entry_id)));
+    if (doubled.length) findings.push({ code: 'CAPTURE_DOUBLE_BOOKED', severity: 'ERROR', count: doubled.length, message: `${doubled.length} captured transactions matched to a wallet entry also have their own ledger entry.`, sample: doubled.slice(0, sampleN).map((c: any) => String(c.id)) });
+
     // GL balances per account (all journals)
     const bal = new Map<string, number>(); // debit - credit
     for (const j of journals) for (const l of (j as any).journal_lines) bal.set(l.account_id, (bal.get(l.account_id) || 0) + Number(l.debit || 0) - Number(l.credit || 0));

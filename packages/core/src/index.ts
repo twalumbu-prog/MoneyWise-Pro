@@ -140,6 +140,8 @@ export { rewardsService } from './services/rewards.service';
 export { payLinkService } from './services/payLink.service';
 export type { PayTarget, PayResult } from './services/payLink.service';
 export type { RewardCard, RewardsOverview, RewardDetail, RewardPointEntry, RewardAchievement, RewardInvite, RewardVoucher, RewardProgramSettings, RewardOption, RewardItem, RewardItemInput, RewardType, PurchaseClaim, PurchasePreview } from './services/rewards.service';
+export { captureService } from './services/capture.service';
+export type { CaptureRow, CaptureDetail, CaptureSettings, CaptureStatus } from './services/capture.service';
 export { momoCaptureService } from './services/momoCapture.service';
 export type { MomoCapture, MomoCaptureSettings, MomoCaptureSource, MomoCaptureStatus } from './services/momoCapture.service';
 export type {

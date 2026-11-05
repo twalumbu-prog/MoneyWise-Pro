@@ -1,5 +1,5 @@
 import { supabase } from '../../lib/supabase';
-import { classifyMessage } from '../messageIntent.service';
+import { processMessageJob } from './capture.chat';
 import { getCaptureSettings } from './capture.settings';
 import { processAttachmentJob, rematchPending } from './capture.service';
 
@@ -60,7 +60,7 @@ export async function drainCaptureJobs(budgetMs: number): Promise<DrainResult> {
             if (job.kind === 'ATTACHMENT') {
                 await processAttachmentJob(job);
             } else {
-                await classifyMessage(job.message_id, job.organization_id);
+                await processMessageJob(job);
             }
 
             const { data: ok, error } = await supabase.rpc(
