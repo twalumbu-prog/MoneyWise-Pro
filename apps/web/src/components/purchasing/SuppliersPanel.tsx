@@ -5,6 +5,8 @@ import { apiJson, formatKwacha } from 'core';
 import { Dialog, ErrorNote, PrimaryButton, TonalButton, fieldClass, labelClass } from '../ui/Dialog';
 import { Upgrade, useAccountingAccess, downloadPdf } from '../accounting/AccountingParts';
 import BankSelect from '../BankSelect';
+import { CreditNotes } from '../accounting/CreditNotes';
+import { PurchaseOrders } from './PurchaseOrders';
 import { lencoService } from '../../services/lenco.service';
 
 const money = (n: number) => formatKwacha(n);
@@ -190,7 +192,7 @@ const Row: React.FC<{ onClick?: () => void; children: React.ReactNode }> = ({ on
 export const SuppliersPanel: React.FC = () => {
     const access = useAccountingAccess();
     const qc = useQueryClient();
-    const [view, setView] = useState<'suppliers' | 'bills' | 'owed'>('suppliers');
+    const [view, setView] = useState<'suppliers' | 'orders' | 'bills' | 'owed' | 'credits'>('suppliers');
     const [form, setForm] = useState<Partial<Supplier> | null | false>(false);
     const [billFor, setBillFor] = useState<string | null | false>(false);
     const [paying, setPaying] = useState<Bill | null>(null);
@@ -232,7 +234,7 @@ export const SuppliersPanel: React.FC = () => {
         <div className="flex flex-col gap-3 overflow-y-auto">
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex h-8 items-center gap-1 rounded-[10px] bg-slate-100 p-1 md:bg-[#F8FAFD]">
-                    {([['suppliers', 'Suppliers'], ['bills', 'Bills'], ['owed', 'What we owe']] as const).map(([id, label]) => (
+                    {([['suppliers', 'Suppliers'], ['orders', 'Purchase orders'], ['bills', 'Bills'], ['owed', 'What we owe'], ['credits', 'Credit notes']] as const).map(([id, label]) => (
                         <button key={id} onClick={() => setView(id)} className={`h-full rounded-lg px-4 text-[11px] font-['DM_Sans'] ${view === id ? 'bg-white font-bold text-gray-900 shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)]' : 'text-gray-900 hover:bg-white/50'}`}>{label}</button>
                     ))}
                 </div>
@@ -256,6 +258,8 @@ export const SuppliersPanel: React.FC = () => {
                     ))}
                 </div>
             )}
+            {view === 'orders' && <PurchaseOrders />}
+            {view === 'credits' && <CreditNotes direction="SUPPLIER" />}
             {view === 'bills' && (
                 <div className="overflow-hidden rounded-xl outline outline-1 outline-offset-[-1px] outline-violet-100">
                     {bills.isLoading && <p className="p-5 text-sm text-gray-500">Loading…</p>}

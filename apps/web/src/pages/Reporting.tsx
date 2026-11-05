@@ -63,7 +63,7 @@ export const Reporting: React.FC = () => {
     
     const queryClient = useQueryClient();
     const [reportView, setReportView] = useState<'PROFIT_LOSS' | 'NET_WORTH'>('PROFIT_LOSS');
-    const [stmtTab, setStmtTab] = useState<'tb' | 'bs' | 'gl' | 'cf' | 'jn' | 'ar' | 'pf' | 'vat' | null>(null);
+    const [stmtTab, setStmtTab] = useState<'tb' | 'bs' | 'gl' | 'cf' | 'jn' | 'ar' | 'pf' | null>(null);
     const showStatements = stmtTab !== null;
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['INCOME', 'EXPENSE', 'ASSET', 'LIABILITY', 'EQUITY']));
 
@@ -839,7 +839,7 @@ export const Reporting: React.FC = () => {
     );
 
     const pillValue: string = stmtTab ?? reportView;
-    const onPill = (v: string) => { if (v === 'tb' || v === 'bs' || v === 'gl' || v === 'cf' || v === 'jn' || v === 'ar' || v === 'pf' || v === 'vat') setStmtTab(v); else { setStmtTab(null); setReportView(v as 'NET_WORTH' | 'PROFIT_LOSS'); } };
+    const onPill = (v: string) => { if (v === 'tb' || v === 'bs' || v === 'gl' || v === 'cf' || v === 'jn' || v === 'ar' || v === 'pf') setStmtTab(v); else { setStmtTab(null); setReportView(v as 'NET_WORTH' | 'PROFIT_LOSS'); } };
     const pills = (
         <div className="h-8 max-w-[calc(100vw-22rem)] overflow-x-auto p-1 bg-slate-100 md:bg-[#F8FAFD] rounded-[10px] flex justify-start items-center gap-1">
             <TabPillGroup value={pillValue} onChange={onPill} trackClassName="flex items-center gap-1" indicatorClassName="bg-white rounded-lg shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)]"
@@ -853,7 +853,6 @@ export const Reporting: React.FC = () => {
                     { value: 'ar', buttonClassName: 'px-3.5 h-6 rounded-lg flex justify-center items-center whitespace-nowrap', label: (<span className={`text-center text-[10px] font-['DM_Sans'] leading-5 ${pillValue === 'ar' ? 'text-gray-900 font-bold' : 'text-gray-600 font-normal'}`}>Receivables</span>) },
                     { value: 'jn', buttonClassName: 'px-3.5 h-6 rounded-lg flex justify-center items-center whitespace-nowrap', label: (<span className={`text-center text-[10px] font-['DM_Sans'] leading-5 ${pillValue === 'jn' ? 'text-gray-900 font-bold' : 'text-gray-600 font-normal'}`}>Journals</span>) },
                     { value: 'pf', buttonClassName: 'px-3.5 h-6 rounded-lg flex justify-center items-center whitespace-nowrap', label: (<span className={`text-center text-[10px] font-['DM_Sans'] leading-5 ${pillValue === 'pf' ? 'text-gray-900 font-bold' : 'text-gray-600 font-normal'}`}>Budget &amp; Compare</span>) },
-                    { value: 'vat', buttonClassName: 'px-3.5 h-6 rounded-lg flex justify-center items-center whitespace-nowrap', label: (<span className={`text-center text-[10px] font-['DM_Sans'] leading-5 ${pillValue === 'vat' ? 'text-gray-900 font-bold' : 'text-gray-600 font-normal'}`}>VAT</span>) },
                 ]} />
         </div>
     );

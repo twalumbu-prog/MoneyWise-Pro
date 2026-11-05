@@ -71,7 +71,7 @@ import pool from './db';
 // each cold Vercel instance otherwise opened a fresh direct connection and reran
 // ~15 sequential DDL statements just to find out they were all no-ops, which is
 // what was exhausting Postgres's connection limit under concurrent traffic.
-const MIGRATION_VERSION = 26;
+const MIGRATION_VERSION = 28;
 
 const runMigration = async () => {
     const directUrl = process.env.DIRECT_DATABASE_URL;
@@ -1356,6 +1356,110 @@ GRANT ALL ON public.statutory_payments TO service_role;
 ALTER TABLE public.journal_entries DROP CONSTRAINT IF EXISTS journal_entries_source_type_check;
 ALTER TABLE public.journal_entries ADD CONSTRAINT journal_entries_source_type_check
     CHECK (source_type = ANY (ARRAY['CASHBOOK','LINE_ITEMS','OPENING','MANUAL','RECLASS','MASTERFEES','INVOICE','IMPORT','PURCHASE_BILL','BILL_PAYMENT','STOCK_ADJUSTMENT','STOCK_SALE','PAYROLL_RUN','STATUTORY_PAYMENT']));
+
+
+-- Credit notes: a customer credit note takes money off what a customer owes (a return, a discount, a mistake), and a supplier credit
+-- note takes money off what you owe a supplier. Either can be applied to an invoice or bill, or kept as credit.
+-- Keep in step with the inline migration in apps/api/src/index.ts.
+
+CREATE TABLE IF NOT EXISTS public.credit_notes (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL,
+    direction      TEXT NOT NULL CHECK (direction IN ('CUSTOMER','SUPPLIER')),
+    note_number    TEXT NOT NULL,
+    customer_id    UUID,
+    supplier_id    UUID,
+    party_name     TEXT NOT NULL,
+    invoice_id     UUID,                              -- the invoice a customer credit note is against
+    bill_id        UUID,                              -- the bill a supplier credit note is against
+    issue_date     DATE NOT NULL,
+    reason         TEXT,
+    items          JSONB NOT NULL DEFAULT '[]'::jsonb,
+    net            NUMERIC(14,2) NOT NULL,
+    vat_amount     NUMERIC(14,2) NOT NULL DEFAULT 0,
+    total          NUMERIC(14,2) NOT NULL CHECK (total > 0),
+    amount_applied NUMERIC(14,2) NOT NULL DEFAULT 0,
+    status         TEXT NOT NULL DEFAULT 'ISSUED' CHECK (status IN ('ISSUED','APPLIED','VOID')),
+    created_by     UUID,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (organization_id, direction, note_number)
+);
+CREATE INDEX IF NOT EXISTS idx_credit_notes_org ON public.credit_notes (organization_id, direction, issue_date DESC);
+ALTER TABLE public.credit_notes ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.credit_notes TO service_role;
+
+-- A credit applied to an invoice is one more row in invoice_payments (the invoice's paid amount is the sum of that table),
+-- but it has no cashbook entry behind it.
+ALTER TABLE public.invoice_payments ALTER COLUMN cashbook_entry_id DROP NOT NULL;
+ALTER TABLE public.invoice_payments ADD COLUMN IF NOT EXISTS credit_note_id UUID REFERENCES public.credit_notes(id) ON DELETE CASCADE;
+ALTER TABLE public.bill_payments ADD COLUMN IF NOT EXISTS credit_note_id UUID REFERENCES public.credit_notes(id) ON DELETE CASCADE;
+
+ALTER TABLE public.journal_entries DROP CONSTRAINT IF EXISTS journal_entries_source_type_check;
+ALTER TABLE public.journal_entries ADD CONSTRAINT journal_entries_source_type_check
+    CHECK (source_type = ANY (ARRAY['CASHBOOK','LINE_ITEMS','OPENING','MANUAL','RECLASS','MASTERFEES','INVOICE','IMPORT','PURCHASE_BILL','BILL_PAYMENT','STOCK_ADJUSTMENT','STOCK_SALE','PAYROLL_RUN','STATUTORY_PAYMENT','CREDIT_NOTE']));
+
+
+-- Quotes (offers to customers that can become invoices) and purchase orders (orders to suppliers that become bills when the goods arrive).
+-- Neither touches the books until they turn into an invoice or a bill. Keep in step with the inline migration in apps/api/src/index.ts.
+
+CREATE TABLE IF NOT EXISTS public.quotes (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL,
+    quote_number    TEXT NOT NULL,
+    customer_id     UUID,
+    customer_name   TEXT NOT NULL,
+    customer_phone  TEXT,
+    customer_email  TEXT,
+    issue_date      DATE NOT NULL,
+    valid_until     DATE NOT NULL,
+    items           JSONB NOT NULL DEFAULT '[]'::jsonb,   -- in the same shape an invoice's lines are created from
+    total           NUMERIC(14,2) NOT NULL CHECK (total > 0),
+    status          TEXT NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN','ACCEPTED','DECLINED','INVOICED','CANCELLED')),
+    invoice_id      UUID,
+    notes           TEXT,
+    created_by      UUID,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (organization_id, quote_number)
+);
+CREATE INDEX IF NOT EXISTS idx_quotes_org ON public.quotes (organization_id, issue_date DESC);
+
+CREATE TABLE IF NOT EXISTS public.purchase_orders (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL,
+    supplier_id     UUID NOT NULL REFERENCES public.suppliers(id),
+    po_number       TEXT NOT NULL,
+    order_date      DATE NOT NULL,
+    expected_date   DATE,
+    status          TEXT NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN','PART_RECEIVED','RECEIVED','CANCELLED')),
+    notes           TEXT,
+    created_by      UUID,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (organization_id, po_number)
+);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_org ON public.purchase_orders (organization_id, status);
+
+CREATE TABLE IF NOT EXISTS public.purchase_order_lines (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    po_id        UUID NOT NULL REFERENCES public.purchase_orders(id) ON DELETE CASCADE,
+    product_id   UUID,
+    variant_id   TEXT,
+    account_id   UUID,
+    description  TEXT NOT NULL,
+    quantity     INTEGER NOT NULL CHECK (quantity > 0),
+    unit_cost    NUMERIC(14,2) NOT NULL CHECK (unit_cost >= 0),
+    tax_code     TEXT,
+    received_qty INTEGER NOT NULL DEFAULT 0 CHECK (received_qty >= 0)
+);
+CREATE INDEX IF NOT EXISTS idx_purchase_order_lines_po ON public.purchase_order_lines (po_id);
+ALTER TABLE public.purchase_bills ADD COLUMN IF NOT EXISTS purchase_order_id UUID;
+
+ALTER TABLE public.quotes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.purchase_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.purchase_order_lines ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.quotes, public.purchase_orders, public.purchase_order_lines TO service_role;
 
 
         `);

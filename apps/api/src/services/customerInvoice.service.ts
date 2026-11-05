@@ -65,7 +65,7 @@ export async function getReceivableAccountId(orgId: string): Promise<string> {
     });
 }
 
-async function getDefaultRevenueAccountId(orgId: string): Promise<string> {
+export async function getDefaultRevenueAccountId(orgId: string): Promise<string> {
     return findOrCreateAccount(orgId, {
         code: REVENUE_CODE, name: 'Sales Revenue', type: 'INCOME', subtype: 'Sales',
         description: 'Revenue from credit sales that were not assigned to a specific income account.',
@@ -375,7 +375,7 @@ export async function allocatePayment(orgId: string, userId: string | null, entr
 
     // What the other payments have already settled (this entry's own earlier allocation is being replaced).
     const { data: others } = wanted.length
-        ? await supabase.from('invoice_payments').select('invoice_id, amount').in('invoice_id', wanted.map(a => a.invoice_id)).neq('cashbook_entry_id', entryId)
+        ? await supabase.from('invoice_payments').select('invoice_id, amount').in('invoice_id', wanted.map(a => a.invoice_id)).or(`cashbook_entry_id.is.null,cashbook_entry_id.neq.${entryId}`)
         : { data: [] as any[] };
     const paidElsewhere = new Map<string, number>();
     (others || []).forEach((p: any) => paidElsewhere.set(p.invoice_id, (paidElsewhere.get(p.invoice_id) || 0) + Number(p.amount)));

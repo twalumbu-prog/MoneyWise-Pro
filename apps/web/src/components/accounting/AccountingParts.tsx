@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, Download, Lock, Upload } from 'lucide-react';
 import { apiFetch, apiJson, formatKwacha } from 'core';
+import { CreditNotes } from './CreditNotes';
+import { Quotes } from './Quotes';
 import { Dialog, ErrorNote, PrimaryButton, TonalButton, fieldClass, labelClass } from '../ui/Dialog';
 
 const yearStart = () => `${new Date().getFullYear()}-01-01`;
@@ -246,25 +248,33 @@ export function ImportTool() {
     );
 }
 
-/** VAT settings, shown in Settings. Enterprise plan; other plans see the upgrade card. */
+/** VAT: settings and the return, shown in Settings. Enterprise plan; other plans see the upgrade card. */
 export const VatSettingsPanel: React.FC = () => {
     const access = useAccountingAccess();
     const qc = useQueryClient();
-    const navigate = useNavigate();
     const enabled = !!access.data?.enabled;
     const settings = useReport<VatSettings>('/accounting/vat/settings', enabled);
+    const now = new Date();
+    const [from, setFrom] = useState(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).toISOString().slice(0, 10));
+    const [to, setTo] = useState(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0)).toISOString().slice(0, 10));
     if (access.isLoading) return <p className="text-sm text-gray-500">Loading…</p>;
     if (!enabled) return <Upgrade />;
     if (settings.isLoading) return <p className="text-sm text-gray-500">Loading…</p>;
     if (settings.error) return <ErrorNote text={(settings.error as any)?.message} />;
     return (
-        <div className="flex max-w-3xl flex-col gap-4">
+        <div className="flex max-w-4xl flex-col gap-5">
             <div>
                 <h2 className="font-['DM_Sans'] text-lg font-bold text-gray-900">VAT</h2>
-                <p className="mt-0.5 text-sm text-gray-600">Tell MoneyWise whether this business charges VAT, and at what rate. Invoices and supplier bills then carry VAT, and your return builds itself.</p>
+                <p className="mt-0.5 text-sm text-gray-600">Whether this business charges VAT, the rate, and the return for a period. Invoices and supplier bills then carry VAT.</p>
             </div>
             <VatSettingsForm key={JSON.stringify(settings.data)} initial={settings.data!} onSaved={() => qc.invalidateQueries({ queryKey: ['accounting'] })} />
-            {settings.data?.registered && <button onClick={() => navigate('/reporting')} className="w-fit text-sm font-semibold text-[#0059D8]">Open the VAT return in Reports (VAT tab)</button>}
+            {settings.data?.registered && (<>
+                <div className="flex flex-wrap items-end gap-2">
+                    <div><label className={labelClass}>Return period from</label><input type="date" className="h-9 rounded-[10px] bg-slate-100 px-3 font-['DM_Sans'] text-[11px] outline-none" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
+                    <div><label className={labelClass}>to</label><input type="date" className="h-9 rounded-[10px] bg-slate-100 px-3 font-['DM_Sans'] text-[11px] outline-none" value={to} onChange={(e) => setTo(e.target.value)} /></div>
+                </div>
+                <Vat from={from} to={to} />
+            </>)}
         </div>
     );
 };
@@ -317,6 +327,8 @@ function Receivables() {
                     <p className="border-t border-violet-100 px-6 py-2 text-[11px] text-gray-500">An invoice counts as due on its follow-up date, or 30 days after it was issued.</p>
                 </div>
             )}
+            <Quotes />
+            <CreditNotes direction="CUSTOMER" />
         </Stack>
     );
 }

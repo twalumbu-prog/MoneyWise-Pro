@@ -75,7 +75,7 @@ function groupsToRows(groups: { name: string; total: number; lines: { name: stri
     return groups.flatMap((g) => [{ cells: [g.name, money(g.total)], bold: true } as Row, ...g.lines.map((l) => ({ cells: [nameOf(l), money(l.amount)], indent: true } as Row))]);
 }
 
-export async function buildReportPdf(orgId: string, report: string, q: { from: string | null; to: string | null; accountId?: string; against?: string; year?: string; month?: string; agency?: string }): Promise<{ file: string; pdf: Buffer }> {
+export async function buildReportPdf(orgId: string, report: string, q: { from: string | null; to: string | null; accountId?: string; id?: string; against?: string; year?: string; month?: string; agency?: string }): Promise<{ file: string; pdf: Buffer }> {
     const { data: org } = await supabase.from('organizations').select('name').eq('id', orgId).maybeSingle();
     const orgName = org?.name ?? 'MoneyWise';
     const to = q.to ?? new Date().toISOString().slice(0, 10);
@@ -111,6 +111,20 @@ export async function buildReportPdf(orgId: string, report: string, q: { from: s
         if (!q.accountId) throw new Error('Choose an account.');
         const d = await acc.generalLedger(orgId, q.accountId, from, to);
         doc = { title: `Account ledger: ${d.account.name}`, subtitle: `${from} to ${to}`, blocks: [{ columns: [col('Date', 1.5), col('Description', 5), col('Debit', 1.6, 'right'), col('Credit', 1.6, 'right'), col('Balance', 1.7, 'right')], rows: [{ cells: ['', 'Opening balance', '', '', money(d.opening)], bold: true }, ...d.lines.map((l) => ({ cells: [l.date, String(l.description ?? ''), l.debit ? money(l.debit) : '', l.credit ? money(l.credit) : '', money(l.balance)] })), { cells: ['', 'Closing balance', '', '', money(d.closing)], bold: true, shade: true }] }], footnote: d.truncated ? 'Only the first 3,000 lines are shown.' : undefined };
+    } else if (report === 'quote') {
+        const { data: qt } = await supabase.from('quotes').select('*').eq('organization_id', orgId).eq('id', String(q.id ?? '')).maybeSingle();
+        if (!qt) throw new Error('Quote not found.');
+        const lines = (qt.items as any[]).map((i) => ({ cells: [String(i.name), String(i.quantity), money(Number(i.price)), money(Number(i.price) * Number(i.quantity))] }));
+        doc = { title: `Quote ${qt.quote_number}`, subtitle: `For ${qt.customer_name}${qt.customer_phone ? ` · ${qt.customer_phone}` : ''} · issued ${qt.issue_date} · valid until ${qt.valid_until}`, blocks: [{ columns: [col('Item', 5), col('Qty', 1, 'right'), col('Unit price', 1.6, 'right'), col('Amount', 1.8, 'right')], rows: [...lines, { cells: ['Total', '', '', money(Number(qt.total))], bold: true, shade: true }] }], footnote: qt.notes ?? undefined };
+        return { file: `${qt.quote_number}.pdf`, pdf: await render(orgName, doc) };
+    } else if (report === 'po') {
+        const { data: po } = await supabase.from('purchase_orders').select('*, suppliers(name, contact_person, phone, email, address), purchase_order_lines(*)').eq('organization_id', orgId).eq('id', String(q.id ?? '')).maybeSingle();
+        if (!po) throw new Error('Order not found.');
+        const ls = (po.purchase_order_lines ?? []) as any[];
+        const total = ls.reduce((s, l) => s + l.quantity * Number(l.unit_cost), 0);
+        const sup = (po as any).suppliers ?? {};
+        doc = { title: `Purchase order ${po.po_number}`, subtitle: `To ${sup.name ?? 'supplier'}${sup.phone ? ` · ${sup.phone}` : ''} · ordered ${po.order_date}${po.expected_date ? ` · expected ${po.expected_date}` : ''}`, blocks: [{ columns: [col('Item', 5), col('Qty', 1, 'right'), col('Unit cost', 1.6, 'right'), col('Amount', 1.8, 'right')], rows: [...ls.map((l) => ({ cells: [l.description, String(l.quantity), money(Number(l.unit_cost)), money(l.quantity * Number(l.unit_cost))] })), { cells: ['Total (before VAT)', '', '', money(total)], bold: true, shade: true }] }], footnote: po.notes ?? undefined };
+        return { file: `${po.po_number}.pdf`, pdf: await render(orgName, doc) };
     } else if (report === 'statutory') {
         const year = Number(q.year), month = Number(q.month);
         const d = await payrollAcct.statutory(orgId, year, month);

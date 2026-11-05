@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { assertEnterprise } from '../services/entitlements.service';
 import * as c from '../controllers/purchasing.controller';
+import * as qoc from '../controllers/quotesOrders.controller';
 
 const router = Router();
 router.use(requireAuth);
@@ -17,6 +18,10 @@ router.get('/suppliers', read, c.suppliers);
 router.post('/suppliers', write, c.createSupplier);
 router.get('/suppliers/:id', read, c.supplier);
 router.put('/suppliers/:id', write, c.updateSupplier);
+router.get('/orders', read, qoc.orders);
+router.post('/orders', write, qoc.createOrder);
+router.post('/orders/:id/receive', write, qoc.receiveOrder);
+router.post('/orders/:id/cancel', write, qoc.cancelOrder);
 router.get('/bills', read, c.bills);
 router.post('/bills', write, c.createBill);
 router.post('/bills/:id/pay', write, c.payBill);
