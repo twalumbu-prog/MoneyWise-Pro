@@ -11,8 +11,9 @@ import { encryptToken } from '../lib/tokenCrypto';
  *   META_GRAPH_VERSION                  optional, default v21.0
  *   MESSAGING_TOKEN_KEY                 32-byte key for token encryption at rest
  *   META_WA_CONFIG_ID                   Embedded Signup configuration id (WhatsApp)
+ *   META_LOGIN_CONFIG_ID                Facebook Login for Business configuration id (Pages, Instagram)
  *
- * Phase 1 is read-only: messages are ingested and classified; nothing is sent back.
+ * Nothing is sent back unless a person taps Send on an assisted reply.
  */
 export type MessagingPlatform = 'WHATSAPP' | 'FACEBOOK' | 'INSTAGRAM';
 
@@ -72,10 +73,14 @@ const friendlyGraphError = (code: number | null) => {
     return 'Meta could not finish this connection. Please try again.';
 };
 
-async function graph(path: string, opts: { method?: string; token?: string; query?: Record<string, string> } = {}): Promise<any> {
+async function graph(path: string, opts: { method?: string; token?: string; query?: Record<string, string>; body?: unknown } = {}): Promise<any> {
     const url = new URL(`https://graph.facebook.com/${graphVersion()}/${path}`);
     for (const [k, v] of Object.entries(opts.query ?? {})) url.searchParams.set(k, v);
-    const resp = await fetch(url, { method: opts.method ?? 'GET', headers: opts.token ? { Authorization: `Bearer ${opts.token}` } : undefined });
+    const resp = await fetch(url, {
+        method: opts.method ?? 'GET',
+        headers: { ...(opts.token ? { Authorization: `Bearer ${opts.token}` } : {}), ...(opts.body ? { 'Content-Type': 'application/json' } : {}) },
+        body: opts.body ? JSON.stringify(opts.body) : undefined,
+    });
     const body: any = await resp.json().catch(() => ({}));
     if (!resp.ok || body?.error) {
         const code = typeof body?.error?.code === 'number' ? body.error.code : null;
@@ -102,6 +107,44 @@ export async function connectWhatsApp(p: { code: string; wabaId: string; phoneNu
         accessToken, displayName: number.verified_name as string | undefined, displayPhone: number.display_phone_number as string | undefined,
         expiresAt: exchanged.expires_in ? new Date(Date.now() + Number(exchanged.expires_in) * 1000) : null,
     };
+}
+
+export interface ConnectedPage { id: string; name: string; token: string; instagram: { id: string; username: string | null } | null }
+
+/**
+ * Facebook Login for Business: the person ticks Pages in Meta's dialog, and those Pages come back here. A long-lived
+ * user token yields Page tokens with no expiry, which also carry a linked Instagram account's messages.
+ */
+export async function connectPages(code: string): Promise<ConnectedPage[]> {
+    const client = { client_id: process.env.META_APP_ID as string, client_secret: process.env.META_APP_SECRET as string };
+    const shortLived = await graph('oauth/access_token', { query: { ...client, code } });
+    if (!shortLived.access_token) throw new MetaGraphError('No access token returned', null, friendlyGraphError(null));
+    const longLived = await graph('oauth/access_token', { query: { ...client, grant_type: 'fb_exchange_token', fb_exchange_token: shortLived.access_token } });
+    const accounts = await graph('me/accounts', { token: longLived.access_token, query: { fields: 'id,name,access_token,instagram_business_account{id,username}' } });
+    return (accounts.data || []).filter((a: any) => a.access_token).map((a: any) => ({
+        id: String(a.id), name: a.name, token: a.access_token,
+        instagram: a.instagram_business_account ? { id: String(a.instagram_business_account.id), username: a.instagram_business_account.username ?? null } : null,
+    }));
+}
+
+export async function subscribePage(pageId: string, token: string): Promise<void> {
+    await graph(`${encodeURIComponent(pageId)}/subscribed_apps`, { method: 'POST', token, query: { subscribed_fields: 'messages' } });
+}
+
+/** Sends one text message and returns Meta's message id. Only capture.replies calls this, after a person taps Send. */
+export async function sendMessage(conn: { platform: string; external_id: string; parent_external_id?: string | null }, token: string, contactId: string, text: string): Promise<string> {
+    if (conn.platform === 'WHATSAPP') {
+        const r = await graph(`${encodeURIComponent(conn.external_id)}/messages`, {
+            method: 'POST', token, body: { messaging_product: 'whatsapp', recipient_type: 'individual', to: contactId, type: 'text', text: { body: text } },
+        });
+        return String(r.messages?.[0]?.id);
+    }
+    // An Instagram account replies through the Page it's linked to.
+    const pageId = conn.platform === 'INSTAGRAM' ? conn.parent_external_id : conn.external_id;
+    const r = await graph(`${encodeURIComponent(String(pageId))}/messages`, {
+        method: 'POST', token, body: { recipient: { id: contactId }, messaging_type: 'RESPONSE', message: { text } },
+    });
+    return String(r.message_id);
 }
 
 export async function unsubscribeApp(accountId: string, token: string): Promise<void> {

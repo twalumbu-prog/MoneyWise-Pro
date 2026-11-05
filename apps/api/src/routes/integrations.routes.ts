@@ -40,6 +40,8 @@ import {
     receiveMetaWebhook,
 } from '../controllers/meta.controller';
 
+import { receiveInboundEmail } from '../services/capture/capture.email';
+
 const router = Router();
 const META_ROLES = ['OWNER', 'ADMIN', 'ACCOUNTANT'];
 
@@ -90,6 +92,7 @@ router.get('/masterfees/reconcile', requireAuth, getMasterFeesReconciliation);
 router.get('/meta/webhook', verifyMetaWebhook);
 router.post('/meta/webhook', receiveMetaWebhook);
 router.post('/meta/data-deletion', metaDataDeletion);
+router.post('/email/inbound', receiveInboundEmail);   // signed by Resend; no session
 router.get('/meta/data-deletion/:code', metaDataDeletionStatus);
 router.get('/meta/status', requireAuth, getMetaStatus);
 router.get('/meta/connect/:platform', requireAuth, requireRole(META_ROLES), getMetaConnectUrl);

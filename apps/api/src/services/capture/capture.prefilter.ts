@@ -18,3 +18,15 @@ export function shouldExtract(m: { type?: string | null; body?: string | null; h
     const body = String(m.body || '');
     return MONEY.some(r => r.test(body)) || PAYMENT_WORDS.test(body);
 }
+
+const NEWSLETTER_SENDER = /(?:^|[<\s"])(?:newsletter|newsletters|news|marketing|promo|promotions|mailer|campaign)[._-]?[a-z0-9]*@/i;
+
+/** Mailing lists are dropped unless they carry a file or a real amount. Anything else needs money or a payment word. */
+export function shouldExtractEmail(e: { from?: string | null; subject?: string | null; text?: string | null; headers?: Record<string, string> | null; hasAttachment?: boolean }): boolean {
+    const body = `${e.subject || ''}\n${e.text || ''}`;
+    const hasMoney = MONEY.some(r => r.test(body));
+    const headers = Object.keys(e.headers || {}).map(h => h.toLowerCase());
+    const isList = NEWSLETTER_SENDER.test(e.from || '') || headers.includes('list-unsubscribe');
+    if (isList) return !!e.hasAttachment && hasMoney;
+    return !!e.hasAttachment || hasMoney || PAYMENT_WORDS.test(body);
+}

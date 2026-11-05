@@ -28,10 +28,11 @@ export interface CaptureRow {
 }
 
 export interface CaptureDetail {
-    capture: CaptureRow & { conversation_id: string | null; evidence_summary: string | null; line_items: any[]; match_candidates: any[]; matched_cashbook_entry_id: string | null; reasoning: string | null };
+    capture: CaptureRow & { conversation_id: string | null; suggested_crm_contact_id: string | null; evidence_summary: string | null; line_items: any[]; match_candidates: any[]; matched_cashbook_entry_id: string | null; reasoning: string | null };
     attachments: { id: string; mime: string; url: string | null }[];
     momoMessages: { id: string; raw_text: string; provider: string; occurred_at: string }[];
     chatMessages: { id: string; direction: 'IN' | 'OUT'; body: string | null; message_type: string; sent_at: string; contact_name: string | null }[];
+    emails: { id: string; from: string | null; subject: string | null; snippet: string }[];
     entries: { id: string; date: string; description: string; debit: number; credit: number; transaction_at: string | null; created_at: string }[];
     wallets: { id: string; name: string; provider_type: string }[];
     categories: { id: string; name: string; code: string; emoji: string | null }[];
@@ -41,9 +42,16 @@ export interface CaptureDetail {
 export interface CaptureConversation {
     messages: { id: string; direction: 'IN' | 'OUT'; body: string | null; message_type: string; sent_at: string }[];
     captures: { id: string; status: CaptureStatus; intent: string | null; zmw_amount: number | null }[];
+    repliesEnabled: boolean;
+    replyWindowEndsAt: string | null;
 }
 
-export interface CaptureSettings { enabled: boolean; autoPostEnabled: boolean; autoPostLimit: number; dailyAiBudget: number; planEligible: boolean }
+export interface CustomerCapture {
+    id: string; status: CaptureStatus; intent: string | null; zmw_amount: number | null; occurred_on: string | null;
+    evidence_summary: string | null; conversation_id: string | null; created_at: string;
+}
+
+export interface CaptureSettings { enabled: boolean; autoPostEnabled: boolean; autoPostLimit: number; dailyAiBudget: number; repliesEnabled: boolean; planEligible: boolean }
 
 const post = <T,>(path: string, body: unknown = {}) => apiJson<T>(path, { method: 'POST', body: JSON.stringify(body) });
 
@@ -52,6 +60,12 @@ export const captureService = {
     count: () => apiJson<{ needsReview: number }>('/captures/count'),
     detail: (id: string) => apiJson<CaptureDetail>(`/captures/${id}`),
     conversation: (id: string) => apiJson<CaptureConversation>(`/captures/${id}/conversation`),
+    byCustomer: (customerId: string) => apiJson<{ captures: CustomerCapture[] }>(`/captures/by-customer/${customerId}`),
+    emailStatus: () => apiJson<{ address: string; lastReceivedAt: string | null; gmailConfirmation: string | null }>('/captures/email'),
+    sendTestEmail: () => post<{ sent: boolean }>('/captures/email/test'),
+    createContact: (id: string) => post<{ customerId: string; created: boolean }>(`/captures/${id}/contact`),
+    draftReply: (id: string) => post<{ text: string }>(`/captures/${id}/reply-draft`),
+    sendReply: (id: string, text: string) => post<{ sent: boolean; sentAt: string }>(`/captures/${id}/reply`, { text }),
     byEntry: (entryId: string) => apiJson<{ capture: { id: string; source: string; status: string } | null }>(`/captures/by-entry/${entryId}`),
     upload: (fileBase64: string, mime: string) => post<{ attachmentId: string; duplicate: boolean }>('/captures/upload', { fileBase64, mime }),
     approve: (id: string, edits: Record<string, unknown> = {}) => post(`/captures/${id}/approve`, { edits }),

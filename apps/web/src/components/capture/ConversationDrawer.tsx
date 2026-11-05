@@ -1,17 +1,27 @@
 import React, { useEffect, useState } from 'react';
-import { X } from 'lucide-react';
+import { Send, Sparkles, X } from 'lucide-react';
 import { captureApi, kwacha, type CaptureConversation } from './captureApi';
 
 const LABEL: Record<string, string> = { NEEDS_REVIEW: 'To review', APPROVED: 'Booked', AUTO_POSTED: 'Auto', MERGED: 'Matched', DISMISSED: 'Dismissed', NEW: 'Pending order' };
 
-/** The whole thread behind a capture, plus every capture from it. Read-only for now; replies arrive in Phase 2. */
-export const ConversationDrawer: React.FC<{ captureId: string; onClose: () => void }> = ({ captureId, onClose }) => {
+/** The whole thread behind a capture, plus every capture from it. A reply only goes out when a person taps Send. */
+export const ConversationDrawer: React.FC<{ captureId: string; canReply?: boolean; onClose: () => void }> = ({ captureId, canReply, onClose }) => {
     const [c, setC] = useState<CaptureConversation | null>(null);
     const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        captureApi.conversation(captureId).then(setC).catch((e: any) => setError(e?.message || 'Could not load the conversation'));
-    }, [captureId]);
+    const [reply, setReply] = useState('');
+    const [busy, setBusy] = useState(false);
+
+    const load = () => captureApi.conversation(captureId).then(setC).catch((e: any) => setError(e?.message || 'Could not load the conversation'));
+    useEffect(() => { load(); }, [captureId]);
+
+    const windowOpen = !!c?.replyWindowEndsAt && new Date(c.replyWindowEndsAt) > new Date();
+    const run = async (fn: () => Promise<void>) => {
+        setBusy(true); setError(null);
+        try { await fn(); } catch (e: any) { setError(e?.message || 'That did not work'); } finally { setBusy(false); }
+    };
+    const draft = () => run(async () => setReply((await captureApi.draftReply(captureId)).text));
+    const send = () => run(async () => { await captureApi.sendReply(captureId, reply); setReply(''); await load(); });
 
     return (
         <div className="fixed inset-0 z-[60] flex justify-end bg-black/40" onClick={onClose}>
@@ -42,6 +52,19 @@ export const ConversationDrawer: React.FC<{ captureId: string; onClose: () => vo
                                 </div>
                             ))}
                         </div>
+                        {canReply && c.repliesEnabled && (
+                            <div className="space-y-2 border-t border-gray-100 pt-3">
+                                {windowOpen ? (<>
+                                    <p className="text-[11px] text-gray-500">You can reply until {new Date(c.replyWindowEndsAt as string).toLocaleString('en-ZM', { dateStyle: 'short', timeStyle: 'short' })}.</p>
+                                    <textarea rows={3} maxLength={2000} value={reply} onChange={e => setReply(e.target.value)} aria-label="Reply"
+                                        className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#006AFF]/30" />
+                                    <div className="flex justify-end gap-2">
+                                        <button disabled={busy} onClick={draft} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-gray-100 text-gray-700 disabled:opacity-40"><Sparkles className="h-3.5 w-3.5" /> Draft</button>
+                                        <button disabled={busy || !reply.trim()} onClick={send} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-[#006AFF] text-white disabled:opacity-40"><Send className="h-3.5 w-3.5" /> Send</button>
+                                    </div>
+                                </>) : <p className="text-xs text-gray-500">The 24-hour reply window has closed. You can reply after the customer messages again.</p>}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

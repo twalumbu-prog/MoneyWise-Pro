@@ -4,7 +4,7 @@ import { apiJson } from 'core';
 interface ConnectConfig { appId: string; configId: string; graphVersion: string; state: string }
 type Step = 'idle' | 'authorise' | 'finishing' | 'done';
 
-const STEP_TEXT: Record<Step, string> = { idle: '', authorise: 'Step 1 of 3: authorise in the Meta window', finishing: 'Step 2 of 3: saving your number', done: 'Step 3 of 3: connected' };
+const STEP_TEXT: Record<Step, string> = { idle: '', authorise: 'Step 1 of 3: authorise in the Meta window', finishing: 'Step 2 of 3: saving your accounts', done: 'Step 3 of 3: connected' };
 
 /** The Facebook SDK loads only when someone clicks Connect, so it costs other pages nothing. */
 const loadSdk = (appId: string, version: string) => new Promise<any>((resolve, reject) => {
@@ -36,7 +36,7 @@ const listenForSession = () => {
     return { get: () => session, stop: () => window.removeEventListener('message', onMessage) };
 };
 
-export const ConnectMetaButton: React.FC<{ label: string; disabled?: boolean; onConnected: () => void; onError: (message: string) => void }> = ({ label, disabled, onConnected, onError }) => {
+export const ConnectMetaButton: React.FC<{ platform: 'WHATSAPP' | 'FACEBOOK'; label: string; disabled?: boolean; onConnected: () => void; onError: (message: string) => void }> = ({ platform, label, disabled, onConnected, onError }) => {
     const [step, setStep] = useState<Step>('idle');
     const running = useRef(false);
 
@@ -46,23 +46,28 @@ export const ConnectMetaButton: React.FC<{ label: string; disabled?: boolean; on
         setStep('authorise');
         const session = listenForSession();
         try {
-            const cfg = await apiJson<ConnectConfig>('/integrations/meta/connect/WHATSAPP');
+            const cfg = await apiJson<ConnectConfig>(`/integrations/meta/connect/${platform}`);
             const FB = await loadSdk(cfg.appId, cfg.graphVersion);
             const code = await new Promise<string>((resolve, reject) => {
                 FB.login((r: any) => (r?.authResponse?.code ? resolve(r.authResponse.code) : reject(new Error('Sign-up was closed before it finished. Nothing was connected.'))), {
-                    config_id: cfg.configId, response_type: 'code', override_default_response_type: true, extras: { setup: {}, sessionInfoVersion: '3' },
+                    config_id: cfg.configId, response_type: 'code', override_default_response_type: true,
+                    ...(platform === 'WHATSAPP' ? { extras: { setup: {}, sessionInfoVersion: '3' } } : {}),
                 });
             });
-            for (let i = 0; i < 20 && !session.get().phoneNumberId && !session.get().cancelled; i++) await new Promise(r => setTimeout(r, 250));
-            const { wabaId, phoneNumberId } = session.get();
-            if (!wabaId || !phoneNumberId) throw new Error('No WhatsApp number was chosen. Nothing was connected.');
+            let extra = {};
+            if (platform === 'WHATSAPP') {
+                for (let i = 0; i < 20 && !session.get().phoneNumberId && !session.get().cancelled; i++) await new Promise(r => setTimeout(r, 250));
+                const { wabaId, phoneNumberId } = session.get();
+                if (!wabaId || !phoneNumberId) throw new Error('No WhatsApp number was chosen. Nothing was connected.');
+                extra = { wabaId, phoneNumberId };
+            }
 
             setStep('finishing');
-            await apiJson('/integrations/meta/callback', { method: 'POST', body: JSON.stringify({ code, state: cfg.state, wabaId, phoneNumberId }) });
+            await apiJson('/integrations/meta/callback', { method: 'POST', body: JSON.stringify({ platform, code, state: cfg.state, ...extra }) });
             setStep('done');
             onConnected();
         } catch (e: any) {
-            onError(e?.message || 'Could not connect WhatsApp');
+            onError(e?.message || 'Could not connect');
         } finally {
             session.stop();
             running.current = false;

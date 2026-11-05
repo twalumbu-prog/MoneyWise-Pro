@@ -17,11 +17,11 @@ import {
 } from '../manualEntry.service';
 import { ledgerService } from '../ledger.service';
 import { cashbookService } from '../cashbook.service';
-import { releaseAllocationsIfNotReceivable, listOpenInvoices, allocatePayment } from '../customerInvoice.service';
+import { releaseAllocationsIfNotReceivable, listOpenInvoices, allocatePayment, ensureCustomer } from '../customerInvoice.service';
 import { getCaptureSettings, type CaptureSettings } from './capture.settings';
 import { mirrorMomoCapture } from './capture.momoMirror';
 import {
-    scoreCandidates, decideMerge, decideAutoPost, captureDedupeKey, looksLikeInjection, paymentMethodFrom, draftDiff, lusakaDate,
+    scoreCandidates, decideMerge, decideAutoPost, captureDedupeKey, looksLikeInjection, paymentMethodFrom, draftDiff, lusakaDate, replyWindowEndsAt,
     LENCO_WINDOW_MIN, LENCO_WINDOW_DATE_ONLY_MIN, MOMO_WINDOW_MIN, UNDO_WINDOW_DAYS, type ScoredCandidate,
 } from './capture.logic';
 
@@ -184,16 +184,19 @@ export async function processAttachmentJob(job: { attachment_id: string; organiz
     const { data: msg } = att.source_table === 'messaging_messages' && att.source_id
         ? await supabase.from('messaging_messages').select('id, platform, contact_phone, contact_name, conversation_id, sent_at').eq('id', att.source_id).eq('organization_id', orgId).maybeSingle()
         : { data: null as any };
+    const { data: mail } = att.source_table === 'inbound_emails' && att.source_id
+        ? await supabase.from('inbound_emails').select('id, received_at, from_address').eq('id', att.source_id).eq('organization_id', orgId).maybeSingle()
+        : { data: null as any };
     if (msg) Object.assign(draft, {
         direction: 'IN', intent: draft.amount ? 'PAYMENT_PROOF' : null, counterparty_phone: msg.contact_phone ?? null,
         counterparty_name: msg.contact_name ?? draft.counterparty_name ?? null, conversation_id: msg.conversation_id ?? null,
     });
 
-    const occurredAt = at ?? msg?.sent_at ?? att.created_at;
+    const occurredAt = at ?? msg?.sent_at ?? mail?.received_at ?? att.created_at;
     const { data: inserted, error } = await supabase.from('transaction_captures').insert({
-        ...draft, organization_id: orgId, source: msg?.platform ?? 'RECEIPT_UPLOAD', source_ids: msg ? [att.id, msg.id] : [att.id], created_by: att.uploaded_by,
+        ...draft, organization_id: orgId, source: msg?.platform ?? (mail ? 'EMAIL' : 'RECEIPT_UPLOAD'), source_ids: [att.id, ...(msg ? [msg.id] : []), ...(mail ? [mail.id] : [])], created_by: att.uploaded_by,
         occurred_at: occurredAt, occurred_on: lusakaDate(occurredAt), claim_state: 'CLAIMED', ai_calls: aiCalls, flags, status: 'NEW',
-        reasoning: hasTime ? null : 'Receipt has no time; matched on the whole day',
+        reasoning: hasTime && !mail ? null : 'Receipt has no time; matched on the whole day',
     }).select('*').single();
 
     if (error?.code === '23505') {
@@ -206,7 +209,7 @@ export async function processAttachmentJob(job: { attachment_id: string; organiz
     }
     if (error || !inserted) throw new Error(`Could not save capture: ${error?.message}`);
 
-    await matchAndRoute(inserted, settings, { windowMin: hasTime || parsed ? LENCO_WINDOW_MIN : LENCO_WINDOW_DATE_ONLY_MIN, categorise: true });
+    await matchAndRoute(inserted, settings, { windowMin: (hasTime || parsed) && !mail ? LENCO_WINDOW_MIN : LENCO_WINDOW_DATE_ONLY_MIN, categorise: true });
     return { captureId: inserted.id };
 }
 
@@ -699,6 +702,27 @@ export async function count(orgId: string) {
     return { needsReview: n ?? 0 };
 }
 
+export async function byCustomer(orgId: string, customerId: string) {
+    const { data, error } = await supabase.from('transaction_captures')
+        .select('id, status, intent, zmw_amount, occurred_on, evidence_summary, conversation_id, created_at')
+        .eq('organization_id', orgId).eq('suggested_crm_contact_id', customerId).neq('status', 'DISMISSED')
+        .order('created_at', { ascending: false }).limit(50);
+    if (error) throw new CaptureError(error.message, 500);
+    return { captures: data || [] };
+}
+
+/** One-tap CRM contact from what the capture already knows. Matches an existing customer before creating one. */
+export async function createContact(orgId: string, userId: string, id: string) {
+    const cap = await loadCapture(orgId, id);
+    if (cap.suggested_crm_contact_id) return { customerId: cap.suggested_crm_contact_id, created: false };
+    const name = String(cap.counterparty_name || cap.counterparty_phone || '').trim();
+    if (!name) throw new CaptureError('This capture has no name or number to save');
+    const customer = await ensureCustomer(orgId, { name, phone: cap.counterparty_phone });
+    await supabase.from('transaction_captures').update({ suggested_crm_contact_id: customer.id, updated_at: now() }).eq('id', id).eq('organization_id', orgId);
+    await audit(orgId, userId, id, 'CAPTURE_CONTACT_LINKED', { customer_id: customer.id, created: customer.created });
+    return { customerId: customer.id, created: customer.created };
+}
+
 /** The capture behind a ledger entry, booked by it or matched to it. */
 export async function byEntry(orgId: string, entryId: string) {
     const { data } = await supabase.from('transaction_captures').select('id, source, status')
@@ -709,14 +733,16 @@ export async function byEntry(orgId: string, entryId: string) {
 /** The full thread behind a capture, and every capture that came from it. */
 export async function conversation(orgId: string, id: string) {
     const cap = await loadCapture(orgId, id);
-    if (!cap.conversation_id) return { messages: [], captures: [] };
+    if (!cap.conversation_id) return { messages: [], captures: [], repliesEnabled: false, replyWindowEndsAt: null };
     const [{ data: messages }, { data: captures }] = await Promise.all([
         supabase.from('messaging_messages').select('id, direction, body, message_type, sent_at').eq('organization_id', orgId)
             .eq('conversation_id', cap.conversation_id).order('sent_at', { ascending: true }).limit(200),
         supabase.from('transaction_captures').select('id, status, intent, zmw_amount').eq('organization_id', orgId)
             .eq('conversation_id', cap.conversation_id).order('created_at', { ascending: true }),
     ]);
-    return { messages: messages || [], captures: captures || [] };
+    const lastInbound = [...(messages || [])].reverse().find((m: any) => m.direction === 'IN');
+    const settings = await getCaptureSettings(orgId);
+    return { messages: messages || [], captures: captures || [], repliesEnabled: settings.repliesEnabled, replyWindowEndsAt: replyWindowEndsAt(lastInbound?.sent_at) };
 }
 
 export async function detail(orgId: string, id: string) {
@@ -734,6 +760,9 @@ export async function detail(orgId: string, id: string) {
         ? await supabase.from('messaging_messages').select('id, direction, body, message_type, sent_at, contact_name')
             .eq('organization_id', orgId).eq('conversation_id', cap.conversation_id).order('sent_at', { ascending: true }).limit(30)
         : { data: [] as any[] };
+    const { data: emailRows } = ids.length
+        ? await supabase.from('inbound_emails').select('id, from_address, subject, text').eq('organization_id', orgId).in('id', ids)
+        : { data: [] as any[] };
     const candIds = (cap.match_candidates || []).filter((c: any) => c.kind === 'LENCO_ENTRY').map((c: any) => c.id);
     if (cap.matched_cashbook_entry_id) candIds.push(cap.matched_cashbook_entry_id);
     const { data: entries } = candIds.length
@@ -745,6 +774,7 @@ export async function detail(orgId: string, id: string) {
         attachments,
         momoMessages: momoRows || [],
         chatMessages: chatRows || [],
+        emails: (emailRows || []).map((e: any) => ({ id: e.id, from: e.from_address, subject: e.subject, snippet: String(e.text || '').slice(0, 1500) })),
         entries: entries || [],
         wallets,
         categories: (categories || []).map((a: any) => ({ id: a.id, name: a.name, code: a.code, emoji: a.emoji ?? null })),

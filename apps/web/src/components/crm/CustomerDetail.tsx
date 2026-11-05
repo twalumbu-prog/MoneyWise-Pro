@@ -1,3 +1,4 @@
+import { CustomerCapturesPanel } from './CustomerCapturesPanel';
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { crmService, Customer, CustomerTransaction, CustomerLoyalty } from '../../services/crm.service';
@@ -12,7 +13,7 @@ interface Props {
     initialTab?: DetailTab;
 }
 
-type DetailTab = 'history' | 'loyalty' | 'profile';
+type DetailTab = 'history' | 'captured' | 'loyalty' | 'profile';
 
 const fmt = (n: number) => n.toLocaleString('en-ZM', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtDate = (s: string) => {
@@ -91,6 +92,7 @@ export const CustomerDetail: React.FC<Props> = ({ customerId, onBack, onUpdated,
 
     const tabs: { value: DetailTab; label: string }[] = [
         { value: 'history', label: 'Transaction History' },
+        { value: 'captured', label: 'Captured' },
         { value: 'loyalty', label: 'Loyalty' },
         { value: 'profile', label: 'Profile' },
     ];
@@ -230,6 +232,8 @@ export const CustomerDetail: React.FC<Props> = ({ customerId, onBack, onUpdated,
                             </div>
                         </>
                     )}
+
+                    {activeTab === 'captured' && <CustomerCapturesPanel customerId={customerId} />}
 
                     {activeTab === 'loyalty' && <CustomerLoyaltyPanel customerId={customerId} />}
 

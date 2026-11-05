@@ -35,23 +35,27 @@ export async function storeMessageMedia(msg: any): Promise<{ attachmentId: strin
 
     const file = await fetch(url, isGraphId ? { headers } : undefined);
     if (!file.ok) throw new Error(`Could not download media (${file.status})`);
-    const mime = String(msg.media_mime || file.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
-    if (!MIME_EXT[mime]) return null;   // voice notes, video and the like are not evidence we can read
-    const buf = Buffer.from(await file.arrayBuffer());
-    if (buf.length === 0 || buf.length > MAX_BYTES) return null;
+    const mime = String(msg.media_mime || file.headers.get('content-type') || '');
+    return saveEvidenceFile({ orgId, buf: Buffer.from(await file.arrayBuffer()), mime, sourceTable: 'messaging_messages', sourceId: msg.id });
+}
 
-    const sha256 = crypto.createHash('sha256').update(buf).digest('hex');
-    const { data: dup } = await supabase.from('capture_attachments').select('id').eq('organization_id', orgId).eq('sha256', sha256).maybeSingle();
+/** Stores a file once per org and queues it for OCR. Returns null for types we can't read (voice notes, video). */
+export async function saveEvidenceFile(f: { orgId: string; buf: Buffer; mime: string; sourceTable: 'messaging_messages' | 'inbound_emails'; sourceId: string }): Promise<{ attachmentId: string } | null> {
+    const mime = f.mime.split(';')[0].trim().toLowerCase();
+    if (!MIME_EXT[mime] || f.buf.length === 0 || f.buf.length > MAX_BYTES) return null;
+
+    const sha256 = crypto.createHash('sha256').update(f.buf).digest('hex');
+    const { data: dup } = await supabase.from('capture_attachments').select('id').eq('organization_id', f.orgId).eq('sha256', sha256).maybeSingle();
     if (dup) return { attachmentId: dup.id };
 
-    const path = `${orgId}/${lusakaDate(new Date().toISOString()).slice(0, 7)}/${sha256}.${MIME_EXT[mime]}`;
-    const { error: upErr } = await supabase.storage.from(CAPTURE_BUCKET).upload(path, buf, { contentType: mime, upsert: false });
-    if (upErr && !/exists/i.test(upErr.message)) throw new Error(`Could not store media: ${upErr.message}`);
+    const path = `${f.orgId}/${lusakaDate(new Date().toISOString()).slice(0, 7)}/${sha256}.${MIME_EXT[mime]}`;
+    const { error: upErr } = await supabase.storage.from(CAPTURE_BUCKET).upload(path, f.buf, { contentType: mime, upsert: false });
+    if (upErr && !/exists/i.test(upErr.message)) throw new Error(`Could not store file: ${upErr.message}`);
     const { data: att, error } = await supabase.from('capture_attachments').insert({
-        organization_id: orgId, source_table: 'messaging_messages', source_id: msg.id, storage_path: path, mime, size_bytes: buf.length, sha256,
+        organization_id: f.orgId, source_table: f.sourceTable, source_id: f.sourceId, storage_path: path, mime, size_bytes: f.buf.length, sha256,
     }).select('id').single();
-    if (error || !att) throw new Error(`Could not save media: ${error?.message}`);
-    const { error: jobErr } = await supabase.from('capture_jobs').insert({ kind: 'ATTACHMENT', attachment_id: att.id, organization_id: orgId });
-    if (jobErr) throw new Error(`Could not queue media: ${jobErr.message}`);
+    if (error || !att) throw new Error(`Could not save file: ${error?.message}`);
+    const { error: jobErr } = await supabase.from('capture_jobs').insert({ kind: 'ATTACHMENT', attachment_id: att.id, organization_id: f.orgId });
+    if (jobErr) throw new Error(`Could not queue file: ${jobErr.message}`);
     return { attachmentId: att.id };
 }

@@ -2,9 +2,9 @@ import { supabase } from '../../lib/supabase';
 import { getEntitlements } from '../entitlements.service';
 import { capturePlanEligible } from './capture.logic';
 
-export interface CaptureSettings { enabled: boolean; autoPostEnabled: boolean; autoPostLimit: number; dailyAiBudget: number }
+export interface CaptureSettings { enabled: boolean; autoPostEnabled: boolean; autoPostLimit: number; dailyAiBudget: number; repliesEnabled: boolean }
 
-const DEFAULTS: CaptureSettings = { enabled: false, autoPostEnabled: false, autoPostLimit: 2000, dailyAiBudget: 500 };
+const DEFAULTS: CaptureSettings = { enabled: false, autoPostEnabled: false, autoPostLimit: 2000, dailyAiBudget: 500, repliesEnabled: false };
 
 /** Premium and active. A failed lookup means not eligible. */
 export async function isCapturePlanEligible(orgId: string): Promise<boolean> {
@@ -27,6 +27,7 @@ export async function getCaptureSettings(orgId: string): Promise<CaptureSettings
         autoPostEnabled: !!data.auto_post_enabled,
         autoPostLimit: Number(data.auto_post_limit ?? 2000),
         dailyAiBudget: Number(data.daily_ai_budget ?? 500),
+        repliesEnabled: !!data.replies_enabled,
     };
 }
 
@@ -34,6 +35,7 @@ export async function updateCaptureSettings(orgId: string, userId: string, patch
     const row: Record<string, any> = { organization_id: orgId, updated_by: userId, updated_at: new Date().toISOString() };
     if (typeof patch.enabled === 'boolean') row.enabled = patch.enabled;
     if (typeof patch.autoPostEnabled === 'boolean') row.auto_post_enabled = patch.autoPostEnabled;
+    if (typeof patch.repliesEnabled === 'boolean') row.replies_enabled = patch.repliesEnabled;
     const limit = Number(patch.autoPostLimit);
     if (patch.autoPostLimit !== undefined && Number.isFinite(limit) && limit >= 0 && limit <= 1_000_000) row.auto_post_limit = Math.round(limit * 100) / 100;
     const { error } = await supabase.from('capture_settings').upsert(row, { onConflict: 'organization_id' });

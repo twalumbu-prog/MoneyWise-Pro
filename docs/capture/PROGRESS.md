@@ -58,4 +58,14 @@
 - Privacy and terms wording is a draft for legal review. It names OpenRouter and Gemini; the spec's "no training on inputs" is not claimed because the model settings haven't been confirmed.
 - Per-channel capture and auto-post toggles are not built; settings stay per org.
 
-**Still open in Phase 1:** tests that need a database or Meta (I6, I8, S3, S5, load tests), the 200-item golden set, the 500-line pre-filter set, the full S4 corpus, and the gate. **Next:** Phase 2.
+**Added 2026-11-05, Phase 2 (uncommitted, untested against a database, Meta or Resend)**
+
+- Facebook and Instagram connect, Messenger and Instagram capture through the same pipeline, email forwarding through Resend, assisted replies, and captures on the CRM customer page.
+- New migration: `20261105170000_capture_email_and_replies.sql`. New env vars: `RESEND_WEBHOOK_SECRET`, `META_LOGIN_CONFIG_ID`, optional `RESEND_INBOUND_DOMAIN` (default `naunal.resend.app`).
+- Resend, checked against its docs on 2026-11-05: the `email.received` webhook carries metadata only, so the worker fetches the body and attachments; any address at the subdomain is received, so each org gets its own alias; signatures use Svix headers on the raw body; attachment links last 1 hour. Their docs don't state an idempotency key, so dedupe is on Message-ID per org.
+- To do in Resend: create a webhook for `email.received` pointing at `/integrations/email/inbound`. Confirm that `received_for` holds the forwarding address in a real forwarded email.
+- Instagram uses the linked Page's token, so the spec's 60-day Instagram token doesn't apply on this route. Check the token exchange against a real Meta app, including whether it needs `redirect_uri`.
+- Setup steps are text; the spec's screenshots are not added. Replies and the conversation drawer are web only.
+- If the same file arrives twice, the second copy adds no evidence link to its email or chat.
+
+**Still open in Phase 1:** tests that need a database or Meta (I6, I8, S3, S5, load tests), the 200-item golden set, the 500-line pre-filter set, the full S4 corpus, and the gate. **Still open in Phase 2:** live tests and the gate. **Next:** Phase 3 (Gmail direct, general availability).

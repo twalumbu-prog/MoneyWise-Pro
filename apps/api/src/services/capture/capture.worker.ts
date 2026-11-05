@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { processMessageJob } from './capture.chat';
+import { processEmailJob } from './capture.email';
 import { getCaptureSettings } from './capture.settings';
 import { processAttachmentJob, rematchPending } from './capture.service';
 
@@ -59,6 +60,8 @@ export async function drainCaptureJobs(budgetMs: number): Promise<DrainResult> {
 
             if (job.kind === 'ATTACHMENT') {
                 await processAttachmentJob(job);
+            } else if (job.kind === 'EMAIL') {
+                await processEmailJob(job);
             } else {
                 await processMessageJob(job);
             }

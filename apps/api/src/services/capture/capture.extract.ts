@@ -89,3 +89,12 @@ export async function extractFromChat(c: {
         { system: SYSTEM, jsonObject: true, timeoutMs: 15_000 },
     );
 }
+
+const EMAIL_SYSTEM = SYSTEM
+    .replace('You read a chat between a small business in Zambia and one contact', 'You read an email forwarded by a small business in Zambia')
+    + '\nA receipt or invoice the business must pay is a PURCHASE with direction OUT. A sender confirming money paid to the business is PAYMENT_PROOF with direction IN.';
+
+export async function extractFromEmail(e: { from: string | null; subject: string | null; text: string }): Promise<string> {
+    const body = `From: ${e.from || 'unknown'}\nSubject: ${e.subject || ''}\n\n${e.text.slice(0, 4000)}`.replace(/<\/?chat>/gi, '');
+    return openRouterComplete(`Business currency: ZMW\n<chat>\n${body}\n</chat>`, { system: EMAIL_SYSTEM, jsonObject: true, timeoutMs: 15_000 });
+}

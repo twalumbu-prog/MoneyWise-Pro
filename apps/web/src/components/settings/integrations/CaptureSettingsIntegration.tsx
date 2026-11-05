@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { captureApi, type CaptureSettings } from '../../capture/captureApi';
+import { EmailCaptureSetup } from './EmailCaptureSetup';
 
 const Toggle: React.FC<{ on: boolean; disabled?: boolean; onChange: (v: boolean) => void; label: string }> = ({ on, disabled, onChange, label }) => (
     <button role="switch" aria-checked={on} aria-label={label} disabled={disabled} onClick={() => onChange(!on)}
@@ -65,6 +66,14 @@ export const CaptureSettingsIntegration: React.FC<{ onBack: () => void; canEdit:
                                 onChange={e => setLimit(e.target.value)} onBlur={() => Number(limit) >= 0 && Number(limit) !== s.autoPostLimit && save({ autoPostLimit: Number(limit) })} />
                         </label>
                     </div>
+                    <div className="flex items-center justify-between gap-4 p-5 bg-white border border-gray-200 rounded-2xl">
+                        <div>
+                            <div className="font-bold text-gray-900">Assisted replies</div>
+                            <div className="text-sm text-gray-500">Draft replies to customers from a conversation. Nothing is sent until someone taps Send.</div>
+                        </div>
+                        <Toggle label="Assisted replies" on={s.repliesEnabled} disabled={!canEdit || busy || !s.enabled} onChange={v => save({ repliesEnabled: v })} />
+                    </div>
+                    {s.enabled && <EmailCaptureSetup />}
                 </div>
             )}
         </div>

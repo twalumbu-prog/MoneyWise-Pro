@@ -58,6 +58,21 @@ export function decideMerge(scored: ScoredCandidate[], extractionConfidence: num
 /** Capture is a Premium feature, and only while the subscription is active (past_due and cancelled lose access). */
 export const capturePlanEligible = (e: { planId: string; status: string }) => e.planId === 'premium' && e.status === 'active';
 
+/** The local part of the first address at our receiving domain, from fields that may be strings, arrays or "Name <a@b>". */
+export function recipientAlias(fields: unknown[], domain: string): string | null {
+    const suffix = `@${domain.toLowerCase()}`;
+    for (const raw of fields.flat(2)) {
+        if (typeof raw !== 'string') continue;
+        const address = (raw.match(/<([^>]+)>/)?.[1] ?? raw).trim().toLowerCase();
+        if (address.endsWith(suffix) && address.length > suffix.length) return address.slice(0, -suffix.length);
+    }
+    return null;
+}
+
+/** Free-form replies are allowed for 24 hours after the customer's last message. */
+export const replyWindowEndsAt = (lastInboundAt: string | null | undefined): string | null =>
+    lastInboundAt ? new Date(new Date(lastInboundAt).getTime() + 24 * 3600_000).toISOString() : null;
+
 export interface AutoPostInput {
     captureEnabled: boolean;
     autoPostEnabled: boolean;

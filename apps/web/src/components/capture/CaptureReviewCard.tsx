@@ -146,6 +146,13 @@ export const CaptureReviewCard: React.FC<Props> = ({ id, canReview, onClose, onC
                                     {m.raw_text}
                                 </div>
                             ))}
+                            {(d.emails ?? []).map(e => (
+                                <div key={e.id} className="p-4 rounded-2xl bg-gray-50 text-sm text-brand-navy space-y-1">
+                                    <div className="font-semibold">{e.subject || 'Email'}</div>
+                                    <div className="text-[11px] text-gray-500">{e.from}</div>
+                                    <div className="text-xs text-gray-600 whitespace-pre-wrap max-h-48 overflow-y-auto">{e.snippet}</div>
+                                </div>
+                            ))}
                             {(d.chatMessages ?? []).length > 0 && (
                                 <div className="space-y-1.5 rounded-2xl bg-gray-50 p-3 max-h-64 overflow-y-auto">
                                     {d.chatMessages.map(m => (
@@ -213,6 +220,11 @@ export const CaptureReviewCard: React.FC<Props> = ({ id, canReview, onClose, onC
                                 <input className={inputCls} value={form.description} disabled={!editable} onChange={e => set('description', e.target.value)} />
                             </Field>
 
+                            {canReview && !c.suggested_crm_contact_id && !!c.counterparty_name && (
+                                <button disabled={busy} onClick={() => act(() => captureApi.createContact(id), false)} className="text-xs font-semibold text-[#006AFF] disabled:opacity-40">
+                                    Add {c.counterparty_name} to customers
+                                </button>
+                            )}
                             {matched && (
                                 <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900">
                                     Matches wallet {Number(matched.debit) > 0 ? 'inflow' : 'payment'} {kwacha(Number(matched.debit) || Number(matched.credit))} on {matched.date}. No new entry is created.
@@ -251,7 +263,7 @@ export const CaptureReviewCard: React.FC<Props> = ({ id, canReview, onClose, onC
                     </div>
                 )}
             </div>
-            {threadOpen && <ConversationDrawer captureId={id} onClose={() => setThreadOpen(false)} />}
+            {threadOpen && <ConversationDrawer captureId={id} canReply={canReview} onClose={() => setThreadOpen(false)} />}
         </div>
     );
 };

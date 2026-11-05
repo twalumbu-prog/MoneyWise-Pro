@@ -70,6 +70,19 @@ export async function purgeOldEvidence(budgetMs: number) {
 
     from = 0;
     while (Date.now() < deadline) {
+        const { data: mails, error } = await supabase.from('inbound_emails').select('id')
+            .lt('received_at', cutoff).not('text', 'is', null).order('received_at').range(from, from + BATCH - 1);
+        if (error) throw new Error(`Could not load emails: ${error.message}`);
+        if (!mails?.length) break;
+        const ids = mails.map((m: any) => m.id);
+        const kept = await keptBy(ids);
+        const purge = ids.filter((id: string) => !kept.has(id));
+        if (purge.length) await supabase.from('inbound_emails').update({ text: null }).in('id', purge);
+        from += ids.length - purge.length;
+    }
+
+    from = 0;
+    while (Date.now() < deadline) {
         const { data: atts, error } = await supabase.from('capture_attachments').select('id, storage_path')
             .lt('created_at', cutoff).order('created_at').range(from, from + BATCH - 1);
         if (error) throw new Error(`Could not load files: ${error.message}`);

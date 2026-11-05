@@ -4,7 +4,8 @@
  */
 import assert from 'assert';
 import crypto from 'crypto';
-import { shouldExtract } from '../services/capture/capture.prefilter';
+import { shouldExtract, shouldExtractEmail } from '../services/capture/capture.prefilter';
+import { recipientAlias, replyWindowEndsAt } from '../services/capture/capture.logic';
 import { parseExtraction, amountAppearsInText, matchProducts } from '../services/capture/capture.extract';
 import { parseWebhook, verifySignature, signConnectState, verifyConnectState, parseSignedRequest } from '../services/meta.service';
 import { encryptToken, decryptToken } from '../lib/tokenCrypto';
@@ -25,6 +26,28 @@ test('drops stickers and reactions; keeps any attachment', () => {
     assert.ok(!shouldExtract({ type: 'sticker', body: null }));
     assert.ok(!shouldExtract({ type: 'reaction', body: 'K450' }));
     assert.ok(shouldExtract({ type: 'image', body: null, hasMedia: true }));
+});
+
+console.log('Email rules');
+test('alias is read from any recipient shape, only at our domain', () => {
+    const d = 'naunal.resend.app';
+    assert.strictEqual(recipientAlias([['Acme-7F3K@naunal.resend.app']], d), 'acme-7f3k');
+    assert.strictEqual(recipientAlias(['Acme <acme-7f3k@naunal.resend.app>'], d), 'acme-7f3k');
+    assert.strictEqual(recipientAlias([undefined, ['me@gmail.com', 'acme-7f3k@naunal.resend.app']], d), 'acme-7f3k');
+    assert.strictEqual(recipientAlias([['acme@evil-naunal.resend.app.com', 'x@other.com']], d), null);
+    assert.strictEqual(recipientAlias([['@naunal.resend.app']], d), null);
+});
+test('receipts pass and newsletters drop', () => {
+    assert.ok(shouldExtractEmail({ from: 'shop@acme.com', subject: 'Your receipt', text: 'Total K450' }));
+    assert.ok(shouldExtractEmail({ from: 'shop@acme.com', subject: 'Invoice', text: 'attached', hasAttachment: true }));
+    assert.ok(!shouldExtractEmail({ from: 'newsletter@acme.com', subject: 'Big sale', text: 'Save K50 today' }));
+    assert.ok(!shouldExtractEmail({ from: 'shop@acme.com', subject: 'News', text: 'hello', headers: { 'List-Unsubscribe': '<x>' } }));
+    assert.ok(!shouldExtractEmail({ from: 'friend@gmail.com', subject: 'Lunch?', text: 'see you' }));
+    assert.ok(shouldExtractEmail({ from: 'news@acme.com', subject: 'Receipt K450', text: '', hasAttachment: true }));
+});
+test('reply window is 24 hours from the last customer message', () => {
+    assert.strictEqual(replyWindowEndsAt('2026-11-05T10:00:00.000Z'), '2026-11-06T10:00:00.000Z');
+    assert.strictEqual(replyWindowEndsAt(null), null);
 });
 
 console.log('Extraction validation');

@@ -81,15 +81,16 @@ export const MetaMessagingIntegration: React.FC<{ onBack: () => void }> = ({ onB
                                     <div className="font-bold text-gray-900">{p.label}</div>
                                     <div className="text-sm text-gray-500">{p.blurb}</div>
                                 </div>
-                                {p.key === 'WHATSAPP' ? (
+                                {p.key === 'INSTAGRAM' ? (
+                                    <span className="text-xs font-semibold text-gray-400">Connects with Facebook</span>
+                                ) : (
                                     <ConnectMetaButton
+                                        platform={p.key}
                                         label={conns.some(c => c.needs_reconnect) ? 'Reconnect' : conns.length ? 'Add another' : 'Connect'}
                                         disabled={!configured}
                                         onConnected={() => { setError(null); load(); }}
                                         onError={setError}
                                     />
-                                ) : (
-                                    <span className="text-xs font-semibold text-gray-400">Coming soon</span>
                                 )}
                             </div>
                             {conns.map(c => (

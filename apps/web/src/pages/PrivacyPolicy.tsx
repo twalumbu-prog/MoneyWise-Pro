@@ -136,10 +136,10 @@ export const PrivacyPolicy = () => {
                     <section className="mb-8">
                         <h2 className="text-xl font-bold text-brand-navy mb-3">2A. Transaction Capture</h2>
                         <p className="text-gray-700 leading-relaxed mb-3">
-                            When a business turns on transaction capture, MoneyWise processes the receipts it uploads, its mobile money messages, and messages customers send to the WhatsApp Business number it connects. This can include names, phone numbers, message text, images and documents.
+                            When a business turns on transaction capture, MoneyWise processes the receipts it uploads, its mobile money messages, the emails it forwards to us, and messages customers send to the WhatsApp Business number, Facebook Page or Instagram account it connects. This can include names, phone numbers, email addresses, message text, images and documents.
                         </p>
                         <p className="text-gray-700 leading-relaxed mb-3">
-                            Message text and files are sent to our AI providers (OpenRouter and Google Gemini) to draft a transaction for the business to review. The AI cannot move money, and we do not sell this data.
+                            Message text and files are sent to our AI providers (OpenRouter and Google Gemini) to draft a transaction for the business to review. The AI cannot move money, and we do not sell this data. If a business turns on assisted replies, the AI can draft a message, and it is only sent when a person at that business chooses to send it.
                         </p>
                         <p className="text-gray-700 leading-relaxed">
                             Messages and files that do not become a transaction are deleted after 90 days. Evidence for a recorded transaction is kept for as long as that ledger entry. A person can ask Meta to send us a deletion request, and we then delete their messages and files and remove their details from drafts. The business's own accounting records are kept.

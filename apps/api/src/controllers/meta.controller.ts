@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { decryptToken } from '../lib/tokenCrypto';
 import {
     isMetaConfigured, verifySignature, parseWebhook, ingestMessages, graphVersion, saveConnection,
-    signConnectState, verifyConnectState, connectWhatsApp, unsubscribeApp, parseSignedRequest, MetaGraphError,
+    signConnectState, verifyConnectState, connectWhatsApp, connectPages, subscribePage, unsubscribeApp, parseSignedRequest, MetaGraphError,
 } from '../services/meta.service';
 import { deleteMetaUserData, deletionStatus } from '../services/meta.deletion';
 import { isCapturePlanEligible } from '../services/capture/capture.settings';
@@ -32,53 +32,91 @@ export const getMetaStatus = async (req: Request, res: Response) => {
     res.json({ configured: isMetaConfigured(), connections });
 };
 
-/** GET /integrations/meta/connect/:platform — what the Connect button needs to open Meta's sign-up. Facebook and Instagram arrive in Phase 2. */
+/** GET /integrations/meta/connect/:platform — what the Connect button needs to open Meta's sign-up. */
 export const getMetaConnectUrl = async (req: Request, res: Response) => {
     const user = (req as any).user;
-    if (!isMetaConfigured() || !process.env.META_WA_CONFIG_ID) return res.status(503).json({ error: 'Meta integration is not configured yet', configured: false });
+    const platform = String(req.params.platform || '').toUpperCase();
+    if (!['WHATSAPP', 'FACEBOOK', 'INSTAGRAM'].includes(platform)) return res.status(400).json({ error: 'Unknown platform' });
+    const configId = platform === 'WHATSAPP' ? process.env.META_WA_CONFIG_ID : process.env.META_LOGIN_CONFIG_ID;
+    if (!isMetaConfigured() || !configId) return res.status(503).json({ error: 'Meta integration is not configured yet', configured: false });
     if (!(await isCapturePlanEligible(user.organization_id))) return res.status(402).json({ error: PLAN_MESSAGE, code: 'PLAN_LIMIT' });
-    if (String(req.params.platform || '').toUpperCase() !== 'WHATSAPP') return res.status(501).json({ error: 'Facebook and Instagram are coming soon' });
-    res.json({
-        appId: process.env.META_APP_ID, configId: process.env.META_WA_CONFIG_ID, graphVersion: graphVersion(),
-        state: signConnectState({ organizationId: user.organization_id, userId: user.id }),
-    });
+    res.json({ appId: process.env.META_APP_ID, configId, graphVersion: graphVersion(), state: signConnectState({ organizationId: user.organization_id, userId: user.id }) });
 };
 
-/**
- * POST /integrations/meta/callback — finishes WhatsApp sign-up. The org comes from the session and must match the
- * signed state. Every check and Meta call runs before saveConnection, so a failure leaves no half-saved row.
- */
+/** True when any of these accounts is live under a different business. */
+async function takenElsewhere(platform: string, externalIds: string[], organizationId: string): Promise<boolean> {
+    const { data } = await supabase.from('messaging_connections').select('organization_id, status').eq('platform', platform).in('external_id', externalIds);
+    return (data || []).some((r: any) => r.organization_id !== organizationId && r.status !== 'DISCONNECTED');
+}
+
+const TAKEN = (what: string) => `This ${what} is connected to another MoneyWise business. Ask them to disconnect it, or contact MoneyWise support.`;
+
+async function finishWhatsApp(user: any, body: any, res: Response) {
+    const { code, wabaId, phoneNumberId } = body;
+    if (typeof wabaId !== 'string' || typeof phoneNumberId !== 'string') {
+        return res.status(400).json({ error: 'Sign-up did not finish. Pick your WhatsApp number, then try again.' });
+    }
+    if (await takenElsewhere('WHATSAPP', [phoneNumberId], user.organization_id)) return res.status(409).json({ error: TAKEN('WhatsApp number') });
+
+    const c = await connectWhatsApp({ code, wabaId, phoneNumberId });
+    const { data, error } = await saveConnection({
+        organizationId: user.organization_id, userId: user.id, platform: 'WHATSAPP', externalId: phoneNumberId, parentExternalId: wabaId,
+        displayName: c.displayName, displayPhone: c.displayPhone, accessToken: c.accessToken, expiresAt: c.expiresAt,
+    });
+    if (error || !data) throw new Error('Could not save the connection');
+    await audit(user.organization_id, user.id, data.id, 'MESSAGING_CONNECTED', { platform: 'WHATSAPP', display_phone: c.displayPhone });
+    res.json({ success: true, connected: [{ platform: 'WHATSAPP', name: c.displayName ?? c.displayPhone }] });
+}
+
+async function finishPages(user: any, body: any, res: Response) {
+    const pages = await connectPages(body.code);
+    if (pages.length === 0) return res.status(400).json({ error: 'No Pages were shared. Pick a Facebook Page you manage, then try again.' });
+    if (body.platform === 'INSTAGRAM' && !pages.some(p => p.instagram)) {
+        return res.status(400).json({ error: 'This Instagram account is personal or not linked to your Page. Switch it to Business in the Instagram app, link it to your Page, then try again.' });
+    }
+    const igIds = pages.flatMap(p => (p.instagram ? [p.instagram.id] : []));
+    if (await takenElsewhere('FACEBOOK', pages.map(p => p.id), user.organization_id)) return res.status(409).json({ error: TAKEN('Page') });
+    if (igIds.length && await takenElsewhere('INSTAGRAM', igIds, user.organization_id)) return res.status(409).json({ error: TAKEN('Instagram account') });
+
+    // Every Meta call runs first, so a refusal part-way leaves nothing saved.
+    for (const p of pages) await subscribePage(p.id, p.token);
+
+    const connected: { platform: string; name: string | null }[] = [];
+    for (const p of pages) {
+        const fb = await saveConnection({ organizationId: user.organization_id, userId: user.id, platform: 'FACEBOOK', externalId: p.id, displayName: p.name, accessToken: p.token });
+        if (fb.error || !fb.data) throw new Error('Could not save the connection');
+        await audit(user.organization_id, user.id, fb.data.id, 'MESSAGING_CONNECTED', { platform: 'FACEBOOK', name: p.name });
+        connected.push({ platform: 'FACEBOOK', name: p.name });
+        if (p.instagram) {
+            const ig = await saveConnection({
+                organizationId: user.organization_id, userId: user.id, platform: 'INSTAGRAM', externalId: p.instagram.id, parentExternalId: p.id,
+                displayName: p.instagram.username ?? undefined, accessToken: p.token,
+            });
+            if (ig.error || !ig.data) throw new Error('Could not save the connection');
+            await audit(user.organization_id, user.id, ig.data.id, 'MESSAGING_CONNECTED', { platform: 'INSTAGRAM', name: p.instagram.username });
+            connected.push({ platform: 'INSTAGRAM', name: p.instagram.username });
+        }
+    }
+    res.json({ success: true, connected });
+}
+
+/** POST /integrations/meta/callback — finishes sign-up. The org comes from the session and must match the signed state. */
 export const metaOAuthCallback = async (req: Request, res: Response) => {
     const user = (req as any).user;
-    const { code, state, wabaId, phoneNumberId } = req.body ?? {};
-    const signed = verifyConnectState(state);
+    const body = req.body ?? {};
+    const signed = verifyConnectState(body.state);
     if (!signed || signed.organizationId !== user.organization_id || signed.userId !== user.id) {
         return res.status(400).json({ error: 'This connection attempt expired. Please try again.' });
     }
-    if (typeof code !== 'string' || typeof wabaId !== 'string' || typeof phoneNumberId !== 'string') {
-        return res.status(400).json({ error: 'Sign-up did not finish. Pick your WhatsApp number, then try again.' });
-    }
+    if (typeof body.code !== 'string') return res.status(400).json({ error: 'Sign-up did not finish. Please try again.' });
     if (!(await isCapturePlanEligible(user.organization_id))) return res.status(402).json({ error: PLAN_MESSAGE, code: 'PLAN_LIMIT' });
 
-    const { data: taken } = await supabase.from('messaging_connections').select('organization_id, status')
-        .eq('platform', 'WHATSAPP').eq('external_id', phoneNumberId).maybeSingle();
-    if (taken && taken.organization_id !== user.organization_id && taken.status !== 'DISCONNECTED') {
-        return res.status(409).json({ error: 'This WhatsApp number is connected to another MoneyWise business. Ask them to disconnect it, or contact MoneyWise support.' });
-    }
-
     try {
-        const c = await connectWhatsApp({ code, wabaId, phoneNumberId });
-        const { data, error } = await saveConnection({
-            organizationId: user.organization_id, userId: user.id, platform: 'WHATSAPP', externalId: phoneNumberId, parentExternalId: wabaId,
-            displayName: c.displayName, displayPhone: c.displayPhone, accessToken: c.accessToken, expiresAt: c.expiresAt,
-        });
-        if (error || !data) throw new Error('Could not save the connection');
-        await audit(user.organization_id, user.id, data.id, 'MESSAGING_CONNECTED', { platform: 'WHATSAPP', display_phone: c.displayPhone });
-        res.json({ success: true, id: data.id, displayName: c.displayName, displayPhone: c.displayPhone });
+        return await (body.platform === 'FACEBOOK' || body.platform === 'INSTAGRAM' ? finishPages(user, body, res) : finishWhatsApp(user, body, res));
     } catch (e: any) {
         console.error('[Meta] connect failed:', e?.message);
         if (e instanceof MetaGraphError) return res.status(400).json({ error: e.friendly });
-        res.status(500).json({ error: 'Could not finish connecting WhatsApp. Please try again.' });
+        res.status(500).json({ error: 'Could not finish connecting. Please try again.' });
     }
 };
 
@@ -90,9 +128,14 @@ export const disconnectMeta = async (req: Request, res: Response) => {
     if (!conn) return res.status(404).json({ error: 'Connection not found' });
 
     // Ingestion ignores DISCONNECTED rows, so messages stop even if Meta can't be reached right now.
-    let revoked = false;
-    if (conn.access_token_enc) {
-        try { await unsubscribeApp(conn.parent_external_id || conn.external_id, decryptToken(conn.access_token_enc)); revoked = true; }
+    // A WhatsApp account or Page can feed several connections, so only unsubscribe when this is the last one on it.
+    const accountId = conn.parent_external_id || conn.external_id;
+    const { data: siblings } = await supabase.from('messaging_connections').select('id')
+        .eq('organization_id', user.organization_id).neq('id', conn.id).neq('status', 'DISCONNECTED')
+        .or(`external_id.eq.${accountId},parent_external_id.eq.${accountId}`);
+    let revoked = !!siblings?.length;
+    if (conn.access_token_enc && !revoked) {
+        try { await unsubscribeApp(accountId, decryptToken(conn.access_token_enc)); revoked = true; }
         catch (e: any) { console.error('[Meta] revoke failed:', e?.message); }
     }
     const { error } = await supabase.from('messaging_connections')
