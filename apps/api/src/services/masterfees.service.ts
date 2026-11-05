@@ -189,6 +189,12 @@ export interface MasterFeesConfig {
         enabled: boolean;
         /** Only items dated on/after this day are auto-posted (history is reconciled separately). YYYY-MM-DD */
         from: string;
+        /** Optional. Invoices dated from this day up to `from` are LINKED to the QuickBooks invoice that already exists (never created, no payment is posted for
+         *  them). Lets the Term 1 invoices that were imported from QuickBooks be tied to their QuickBooks invoices. YYYY-MM-DD */
+        linkFrom?: string;
+        /** Optional. Invoices dated on/after this day may be CREATED in QuickBooks when none exists (default: `from`). Term 3 onward is invoiced only in Master Fees /
+         *  MoneyWise, so this is where creation should start; earlier invoices came from QuickBooks and are link-only. YYYY-MM-DD */
+        createFrom?: string;
         /** Decide and log, but write nothing to QuickBooks or the database. */
         dryRun?: boolean;
         /** Max QuickBooks writes per cron tick. Default 8. */
