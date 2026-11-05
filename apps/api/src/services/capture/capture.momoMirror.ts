@@ -6,7 +6,7 @@
 import { supabase } from '../../lib/supabase';
 import { describe, type ParsedMomoMessage } from '../momoCapture/parser';
 import { getCaptureSettings } from './capture.settings';
-import { captureDedupeKey, mirrorStatus, lusakaDate } from './capture.logic';
+import { captureDedupeKey, channelRules, mirrorStatus, lusakaDate } from './capture.logic';
 
 /**
  * The ledger entry a queue capture already booked for this MoMo confirmation, if any. Any failure (including the
@@ -26,7 +26,8 @@ export async function findBookedCaptureEntry(orgId: string, momoDedupeKey: strin
 export async function mirrorMomoCapture(row: any, opts: { autoPosted?: boolean } = {}): Promise<void> {
     try {
         if (!row?.id || !row.organization_id) return;
-        if (!(await getCaptureSettings(row.organization_id)).enabled) return;
+        const settings = await getCaptureSettings(row.organization_id);
+        if (!settings.enabled || !channelRules(settings, 'MOMO_SMS').capture) return;
 
         const orgId = row.organization_id as string;
         const dedupe = captureDedupeKey({ momoRowKey: row.dedupe_key });

@@ -10,6 +10,11 @@ const Toggle: React.FC<{ on: boolean; disabled?: boolean; onChange: (v: boolean)
     </button>
 );
 
+const CHANNELS = [
+    { key: 'WHATSAPP', label: 'WhatsApp' }, { key: 'FACEBOOK', label: 'Facebook' }, { key: 'INSTAGRAM', label: 'Instagram' },
+    { key: 'EMAIL', label: 'Email' }, { key: 'RECEIPT_UPLOAD', label: 'Receipt uploads' }, { key: 'MOMO_SMS', label: 'Mobile money' },
+];
+
 export const CaptureSettingsIntegration: React.FC<{ onBack: () => void; canEdit: boolean }> = ({ onBack, canEdit }) => {
     const [s, setS] = useState<CaptureSettings | null>(null);
     const [limit, setLimit] = useState('');
@@ -73,6 +78,26 @@ export const CaptureSettingsIntegration: React.FC<{ onBack: () => void; canEdit:
                         </div>
                         <Toggle label="Assisted replies" on={s.repliesEnabled} disabled={!canEdit || busy || !s.enabled} onChange={v => save({ repliesEnabled: v })} />
                     </div>
+                    {s.enabled && (
+                        <div className="p-5 bg-white border border-gray-200 rounded-2xl space-y-3">
+                            <div className="font-bold text-gray-900">Channels</div>
+                            {CHANNELS.map(ch => {
+                                const rule = s.channels?.[ch.key] ?? {};
+                                const set = (patch: Record<string, unknown>) => save({ channels: { ...s.channels, [ch.key]: { ...rule, ...patch } } });
+                                return (
+                                    <div key={ch.key} className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+                                        <span className="flex-1 min-w-[140px] text-gray-800">{ch.label}</span>
+                                        <span className="flex items-center gap-2 text-xs text-gray-500">Capture <Toggle label={`${ch.label} capture`} on={rule.capture !== false} disabled={!canEdit || busy} onChange={v => set({ capture: v })} /></span>
+                                        <span className="flex items-center gap-2 text-xs text-gray-500">Auto <Toggle label={`${ch.label} auto-post`} on={rule.autoPost !== false && s.autoPostEnabled} disabled={!canEdit || busy || !s.autoPostEnabled} onChange={v => set({ autoPost: v })} /></span>
+                                        <input aria-label={`${ch.label} auto-post limit`} className="w-24 rounded-lg border border-gray-200 px-2 py-1 text-right text-xs" inputMode="decimal" placeholder={String(s.autoPostLimit)}
+                                            defaultValue={rule.autoPostLimit ?? ''} disabled={!canEdit || busy || !s.autoPostEnabled}
+                                            onBlur={e => { const v = e.target.value.trim(); if (v !== String(rule.autoPostLimit ?? '')) set({ autoPostLimit: v === '' ? null : Number(v) }); }} />
+                                    </div>
+                                );
+                            })}
+                            <p className="text-xs text-gray-500">Mobile money capture is set up in the MoneyWise phone app. A channel limit can only be lower than the limit above.</p>
+                        </div>
+                    )}
                     {s.enabled && <EmailCaptureSetup />}
                 </div>
             )}

@@ -3,7 +3,7 @@
  */
 import assert from 'assert';
 import {
-    scoreCandidates, decideMerge, decideAutoPost, capturePlanEligible, captureDedupeKey, looksLikeInjection, mirrorStatus, draftDiff, paymentMethodFrom,
+    scoreCandidates, decideMerge, decideAutoPost, capturePlanEligible, channelRules, captureDedupeKey, looksLikeInjection, mirrorStatus, draftDiff, paymentMethodFrom,
     LENCO_WINDOW_MIN, type AutoPostInput,
 } from '../services/capture/capture.logic';
 import { parseMomoMessage, dedupeKey } from '../services/momoCapture/parser';
@@ -108,6 +108,17 @@ test('flags, matches and incomplete drafts block auto-post', () => {
     assert.strictEqual(decideAutoPost({ ...base, hasAccount: false }).autoPost, false);
     assert.strictEqual(decideAutoPost({ ...base, amount: null }).autoPost, false);
     assert.strictEqual(decideAutoPost(base).autoPost, true);
+});
+
+console.log('Channel rules');
+test('a channel can only narrow the org settings', () => {
+    const org = { autoPostEnabled: true, autoPostLimit: 2000 };
+    assert.deepStrictEqual(channelRules(org, 'EMAIL'), { capture: true, autoPost: true, autoPostLimit: 2000 });
+    assert.strictEqual(channelRules({ ...org, channels: { EMAIL: { capture: false } } }, 'EMAIL').capture, false);
+    assert.strictEqual(channelRules({ ...org, channels: { EMAIL: { autoPost: false } } }, 'EMAIL').autoPost, false);
+    assert.strictEqual(channelRules({ ...org, autoPostEnabled: false, channels: { EMAIL: { autoPost: true } } }, 'EMAIL').autoPost, false);
+    assert.strictEqual(channelRules({ ...org, channels: { EMAIL: { autoPostLimit: 500 } } }, 'EMAIL').autoPostLimit, 500);
+    assert.strictEqual(channelRules({ ...org, channels: { EMAIL: { autoPostLimit: 9000 } } }, 'EMAIL').autoPostLimit, 2000);
 });
 
 console.log('Plan eligibility');

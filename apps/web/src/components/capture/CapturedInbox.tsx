@@ -155,7 +155,7 @@ export const CapturedInbox: React.FC<Props> = ({ canReview, onCountChange }) => 
                                     {canReview && (
                                         <input type="checkbox" className="h-4 w-4 accent-[#006AFF]" disabled={c.status !== 'NEEDS_REVIEW'} checked={selected.has(c.id)}
                                             onClick={e => e.stopPropagation()}
-                                            onChange={() => setSelected(s => { const n = new Set(s); n.has(c.id) ? n.delete(c.id) : n.add(c.id); return n; })} />
+                                            onChange={() => setSelected(s => { const n = new Set(s); if (!n.delete(c.id)) n.add(c.id); return n; })} />
                                     )}
                                     <div className="h-9 w-9 rounded-xl bg-[#F0F7FF] text-[#006AFF] flex items-center justify-center shrink-0">{SOURCE_ICON[c.source]}</div>
                                     <div className="flex-1 min-w-0">

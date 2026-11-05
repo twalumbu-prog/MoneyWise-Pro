@@ -2,7 +2,7 @@ import { supabase } from '../../lib/supabase';
 import { processMessageJob } from './capture.chat';
 import { processEmailJob } from './capture.email';
 import { getCaptureSettings } from './capture.settings';
-import { processAttachmentJob, rematchPending } from './capture.service';
+import { flagLateLencoDuplicates, processAttachmentJob, rematchPending } from './capture.service';
 
 export interface DrainResult {
     claimed: number;
@@ -92,7 +92,7 @@ export async function drainCaptureJobs(budgetMs: number): Promise<DrainResult> {
     }
 
     if (Date.now() < deadline - 2000) {
-        try { r.rematched = await rematchPending(deadline); }
+        try { r.rematched = await rematchPending(deadline); await flagLateLencoDuplicates(deadline); }
         catch (e: any) { r.errors.push(`rematch: ${e?.message}`); }
     }
     return r;

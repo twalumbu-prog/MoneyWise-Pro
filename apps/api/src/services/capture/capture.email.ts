@@ -12,7 +12,7 @@ import { saveEvidenceFile } from './capture.media';
 import { CaptureError, matchAndRoute, reserveAiCall } from './capture.service';
 import { shouldExtractEmail } from './capture.prefilter';
 import { extractFromEmail, parseExtraction, amountAppearsInText, type Extraction } from './capture.extract';
-import { looksLikeInjection, lusakaDate, recipientAlias, LENCO_WINDOW_DATE_ONLY_MIN } from './capture.logic';
+import { channelRules, looksLikeInjection, lusakaDate, recipientAlias, LENCO_WINDOW_DATE_ONLY_MIN } from './capture.logic';
 
 const MAX_TEXT = 20_000;
 const MAX_ATTACHMENTS = 5;
@@ -82,7 +82,8 @@ async function storeInboundEmail(d: any) {
     const { data: row } = await supabase.from('capture_settings').select('organization_id').eq('email_alias', alias).maybeSingle();
     if (!row) return;
     const orgId = row.organization_id as string;
-    if (!(await getCaptureSettings(orgId)).enabled) return;
+    const settings = await getCaptureSettings(orgId);
+    if (!settings.enabled || !channelRules(settings, 'EMAIL').capture) return;
 
     const now = new Date().toISOString();
     await supabase.from('capture_settings').update({ email_last_received_at: now }).eq('organization_id', orgId);

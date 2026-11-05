@@ -68,4 +68,16 @@
 - Setup steps are text; the spec's screenshots are not added. Replies and the conversation drawer are web only.
 - If the same file arrives twice, the second copy adds no evidence link to its email or chat.
 
+**Added 2026-11-05, final code batch (uncommitted, untested against a database)**
+
+- Security: `updateEntryAccount` and `narrateEntry` now check the organisation of the entry and the account.
+- Per-channel capture, auto-post and limit (migration `20261105180000_capture_channels.sql`); a channel can only narrow the org's settings.
+- "Merge with another capture" on web; line items and replies on mobile.
+- `messageIntent.service.ts` removed. The legacy `messaging_messages` columns stay (D1) and nothing writes to them now; dropping them is a separate, deliberate migration.
+- Spec change: the L2 case (booked, then seen in Lenco) sits in a different wallet from the Lenco row, so Ledger Guardian can't see it. The worker flags `POSSIBLE_LENCO_DUPLICATE` and the integrity audit reports it. A person undoes it; nothing is voided automatically.
+- `npm run test:capture-flow` (I2-I6, I8, L1-L3, S1-S3) and `apps/api/loadtest/webhook.js` (P1-P3) are written but have never run. The flow test refuses the production project.
+- The admin Logs tab reads Vercel logs, so worker `console.error` lines already appear there.
+- ESLint installed and running. New code is clean apart from `no-explicit-any`, which the repo uses throughout (about 3,365 errors in `apps/api` alone), so `npm run lint` won't pass until that rule is decided.
+- Not done: share-sheet upload (needs a native dependency and a new store build), email setup screenshots, I9 (needs QuickBooks), S5 (needs real logs).
+
 **Still open in Phase 1:** tests that need a database or Meta (I6, I8, S3, S5, load tests), the 200-item golden set, the 500-line pre-filter set, the full S4 corpus, and the gate. **Still open in Phase 2:** live tests and the gate. **Next:** Phase 3 (Gmail direct, general availability).

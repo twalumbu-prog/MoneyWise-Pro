@@ -1,6 +1,6 @@
 /**
  * One inbound chat message through the pipeline: pre-filter → conversation → extraction → match → queue.
- * Replaces classifyMessage in the worker. A customer's words are always CLAIMED; only matching can corroborate them.
+ * A customer's words are always CLAIMED; only matching can corroborate them.
  */
 import { supabase } from '../../lib/supabase';
 import { getCaptureSettings } from './capture.settings';
@@ -8,7 +8,7 @@ import { matchAndRoute, reserveAiCall } from './capture.service';
 import { shouldExtract } from './capture.prefilter';
 import { storeMessageMedia } from './capture.media';
 import { extractFromChat, parseExtraction, amountAppearsInText, matchProducts, type Extraction } from './capture.extract';
-import { looksLikeInjection, lusakaDate, LENCO_WINDOW_MIN } from './capture.logic';
+import { channelRules, looksLikeInjection, lusakaDate, LENCO_WINDOW_MIN } from './capture.logic';
 
 const CONVERSATION_WINDOW_MS = 6 * 3600_000;
 const CONTEXT_MESSAGES = 10;
@@ -50,6 +50,8 @@ export async function processMessageJob(job: { message_id: string; organization_
     const { data: msg, error } = await supabase.from('messaging_messages').select('*').eq('id', job.message_id).eq('organization_id', orgId).maybeSingle();
     if (error) throw new Error(`Message lookup failed: ${error.message}`);
     if (!msg || msg.direction !== 'IN') return { skipped: 'not_inbound' };
+    const settings = await getCaptureSettings(orgId);
+    if (!channelRules(settings, msg.platform).capture) return { skipped: 'channel_off' };
     if (!shouldExtract({ type: msg.message_type, body: msg.body, hasMedia: !!msg.media_ref })) return { skipped: 'prefilter' };
 
     const { data: already } = await supabase.from('transaction_captures').select('id').eq('organization_id', orgId).contains('source_ids', [msg.id]).limit(1).maybeSingle();
@@ -59,7 +61,6 @@ export async function processMessageJob(job: { message_id: string; organization_
     // Media goes through the same OCR job as an uploaded receipt.
     if (msg.media_ref) return { media: await storeMessageMedia({ ...msg, conversation_id: conversationId }) };
 
-    const settings = await getCaptureSettings(orgId);
     const { data: recent } = await supabase.from('messaging_messages').select('direction, body, sent_at')
         .eq('organization_id', orgId).eq('connection_id', msg.connection_id).eq('contact_id', msg.contact_id).lte('sent_at', msg.sent_at)
         .order('sent_at', { ascending: false }).limit(CONTEXT_MESSAGES);

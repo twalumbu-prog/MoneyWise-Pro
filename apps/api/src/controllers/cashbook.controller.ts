@@ -742,6 +742,11 @@ export const postEntryToQuickBooks = async (req: any, res: any): Promise<any> =>
 /**
  * Update the account_id for a cashbook entry
  */
+const accountBelongsToOrg = async (accountId: string, organizationId: string): Promise<boolean> => {
+    const { data } = await supabase.from('accounts').select('id').eq('id', accountId).eq('organization_id', organizationId).maybeSingle();
+    return !!data;
+};
+
 export const updateEntryAccount = async (req: any, res: any): Promise<any> => {
     try {
         const { entryId } = req.params;
@@ -751,17 +756,24 @@ export const updateEntryAccount = async (req: any, res: any): Promise<any> => {
             return res.status(400).json({ error: 'entryId and accountId are required' });
         }
 
+        const organizationId = req.user?.organization_id;
+        if (!(await accountBelongsToOrg(accountId, organizationId))) {
+            return res.status(404).json({ error: 'Account not found' });
+        }
+
         console.log(`[Ledger] Updating account for Entry ${entryId} to ${accountId}...`);
         const { data, error } = await supabase
             .from('cashbook_entries')
             .update({ account_id: accountId })
             .eq('id', entryId)
+            .eq('organization_id', organizationId)
             .select();
 
         if (error) {
             console.error('[Ledger] ❌ Error updating entry account:', error);
             throw error;
         }
+        if (!data?.length) return res.status(404).json({ error: 'Entry not found' });
 
         console.log(`[Ledger] ✅ Successfully updated entry account. Data:`, data);
 
@@ -806,16 +818,23 @@ export const narrateEntry = async (req: any, res: any): Promise<any> => {
             updateData.status = 'UNACCOUNTED';
         }
 
+        const organizationId = req.user?.organization_id;
+        if (accountId && !(await accountBelongsToOrg(accountId, organizationId))) {
+            return res.status(404).json({ error: 'Account not found' });
+        }
+
         const { data, error } = await supabase
             .from('cashbook_entries')
             .update(updateData)
             .eq('id', entryId)
+            .eq('organization_id', organizationId)
             .select();
 
         if (error) {
             console.error('[Ledger] ❌ Error accounting entry:', error);
             throw error;
         }
+        if (!data?.length) return res.status(404).json({ error: 'Entry not found' });
 
         if (data?.[0]?.organization_id) {
             await releaseAllocationsIfNotReceivable(data[0].organization_id, entryId, accountId || null)

@@ -21,7 +21,7 @@ import { releaseAllocationsIfNotReceivable, listOpenInvoices, allocatePayment, e
 import { getCaptureSettings, type CaptureSettings } from './capture.settings';
 import { mirrorMomoCapture } from './capture.momoMirror';
 import {
-    scoreCandidates, decideMerge, decideAutoPost, captureDedupeKey, looksLikeInjection, paymentMethodFrom, draftDiff, lusakaDate, replyWindowEndsAt,
+    scoreCandidates, decideMerge, decideAutoPost, channelRules, captureDedupeKey, looksLikeInjection, paymentMethodFrom, draftDiff, lusakaDate, replyWindowEndsAt,
     LENCO_WINDOW_MIN, LENCO_WINDOW_DATE_ONLY_MIN, MOMO_WINDOW_MIN, UNDO_WINDOW_DAYS, type ScoredCandidate,
 } from './capture.logic';
 
@@ -77,7 +77,7 @@ export async function reserveAiCall(orgId: string, budget: number): Promise<bool
 // ───────────────────────────────────────────── upload ─────────────────────────────────────────────
 
 export async function createFromUpload(orgId: string, userId: string, body: { fileBase64?: unknown; mime?: unknown }) {
-    await requireEnabled(orgId);
+    if (!channelRules(await requireEnabled(orgId), 'RECEIPT_UPLOAD').capture) throw new CaptureError('Receipt capture is turned off for this business', 403);
     const mime = typeof body.mime === 'string' ? body.mime.toLowerCase() : '';
     if (!MIME_EXT[mime]) throw new CaptureError('Upload a photo (JPG, PNG, WebP) or a PDF');
     const b64 = typeof body.fileBase64 === 'string' ? body.fileBase64.replace(/^data:[^;]+;base64,/, '') : '';
@@ -324,8 +324,9 @@ export async function matchAndRoute(cap: any, settings: CaptureSettings, opts: {
 
     if (opts.categorise && cap.status === 'NEW') {
         Object.assign(update, await draftBooking(cap, settings));
+        const rules = channelRules(settings, cap.source);
         const auto = decideAutoPost({
-            captureEnabled: settings.enabled, autoPostEnabled: settings.autoPostEnabled, autoPostLimit: settings.autoPostLimit,
+            captureEnabled: settings.enabled, autoPostEnabled: rules.autoPost, autoPostLimit: rules.autoPostLimit,
             amount: cap.zmw_amount, confidence: cap.confidence, deterministic: !!cap.deterministic, claimState: cap.claim_state,
             matchType: invoiceId ? 'INVOICE' : suggestions.length ? 'SUGGESTED' : 'NONE', hasWallet: !!update.suggested_wallet_id, hasAccount: !!update.suggested_account_id,
             flags: cap.flags || [],
@@ -393,6 +394,28 @@ export async function rematchPending(deadline: number, limit = 25): Promise<numb
         }
         await matchAndRoute(cap, s, { windowMin: cap.reasoning?.startsWith('Receipt has no time') ? LENCO_WINDOW_DATE_ONLY_MIN : LENCO_WINDOW_MIN, categorise: false });
         n++;
+    }
+    return n;
+}
+
+/**
+ * Money booked by hand-approved capture that then arrives through Lenco would count twice, and it sits in a different
+ * wallet from the Lenco row, so Ledger Guardian can't see it. Flag it for a person; undo is the fix. Never auto-voids.
+ */
+export async function flagLateLencoDuplicates(deadline: number, limit = 25): Promise<number> {
+    const { data } = await supabase.from('transaction_captures').select('*')
+        .in('status', ['APPROVED', 'AUTO_POSTED']).is('momo_capture_id', null).not('zmw_amount', 'is', null)
+        .gte('posted_at', new Date(Date.now() - 3 * 86400_000).toISOString())
+        .order('last_matched_at', { ascending: true, nullsFirst: true }).limit(limit);
+    let n = 0;
+    for (const cap of data || []) {
+        if (Date.now() > deadline) break;
+        const flagged = (cap.flags || []).includes('POSSIBLE_LENCO_DUPLICATE');
+        const found = !flagged && (await lencoCandidates(cap, LENCO_WINDOW_DATE_ONLY_MIN)).length > 0;
+        await supabase.from('transaction_captures').update({
+            last_matched_at: now(), ...(found ? { flags: [...(cap.flags || []), 'POSSIBLE_LENCO_DUPLICATE'] } : {}),
+        }).eq('id', cap.id).eq('organization_id', cap.organization_id);
+        if (found) { n++; await audit(cap.organization_id, null, cap.id, 'CAPTURE_POSSIBLE_DUPLICATE', { amount: cap.zmw_amount }); }
     }
     return n;
 }

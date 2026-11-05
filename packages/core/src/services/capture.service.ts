@@ -51,7 +51,11 @@ export interface CustomerCapture {
     evidence_summary: string | null; conversation_id: string | null; created_at: string;
 }
 
-export interface CaptureSettings { enabled: boolean; autoPostEnabled: boolean; autoPostLimit: number; dailyAiBudget: number; repliesEnabled: boolean; planEligible: boolean }
+export interface CaptureChannelRule { capture?: boolean; autoPost?: boolean; autoPostLimit?: number }
+export interface CaptureSettings {
+    enabled: boolean; autoPostEnabled: boolean; autoPostLimit: number; dailyAiBudget: number; repliesEnabled: boolean; planEligible: boolean;
+    channels: Record<string, CaptureChannelRule>;
+}
 
 const post = <T,>(path: string, body: unknown = {}) => apiJson<T>(path, { method: 'POST', body: JSON.stringify(body) });
 

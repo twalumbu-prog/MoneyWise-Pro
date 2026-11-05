@@ -1,10 +1,10 @@
 import { supabase } from '../../lib/supabase';
 import { getEntitlements } from '../entitlements.service';
-import { capturePlanEligible } from './capture.logic';
+import { capturePlanEligible, CAPTURE_CHANNELS, type ChannelRule } from './capture.logic';
 
-export interface CaptureSettings { enabled: boolean; autoPostEnabled: boolean; autoPostLimit: number; dailyAiBudget: number; repliesEnabled: boolean }
+export interface CaptureSettings { enabled: boolean; autoPostEnabled: boolean; autoPostLimit: number; dailyAiBudget: number; repliesEnabled: boolean; channels: Record<string, ChannelRule> }
 
-const DEFAULTS: CaptureSettings = { enabled: false, autoPostEnabled: false, autoPostLimit: 2000, dailyAiBudget: 500, repliesEnabled: false };
+const DEFAULTS: CaptureSettings = { enabled: false, autoPostEnabled: false, autoPostLimit: 2000, dailyAiBudget: 500, repliesEnabled: false, channels: {} };
 
 /** Premium and active. A failed lookup means not eligible. */
 export async function isCapturePlanEligible(orgId: string): Promise<boolean> {
@@ -28,6 +28,7 @@ export async function getCaptureSettings(orgId: string): Promise<CaptureSettings
         autoPostLimit: Number(data.auto_post_limit ?? 2000),
         dailyAiBudget: Number(data.daily_ai_budget ?? 500),
         repliesEnabled: !!data.replies_enabled,
+        channels: data.channels ?? {},
     };
 }
 
@@ -36,6 +37,20 @@ export async function updateCaptureSettings(orgId: string, userId: string, patch
     if (typeof patch.enabled === 'boolean') row.enabled = patch.enabled;
     if (typeof patch.autoPostEnabled === 'boolean') row.auto_post_enabled = patch.autoPostEnabled;
     if (typeof patch.repliesEnabled === 'boolean') row.replies_enabled = patch.repliesEnabled;
+    if (patch.channels && typeof patch.channels === 'object') {
+        const channels: Record<string, ChannelRule> = {};
+        for (const name of CAPTURE_CHANNELS) {
+            const r = (patch.channels as any)[name];
+            if (!r || typeof r !== 'object') continue;
+            const channelLimit = Number(r.autoPostLimit);
+            channels[name] = {
+                ...(typeof r.capture === 'boolean' ? { capture: r.capture } : {}),
+                ...(typeof r.autoPost === 'boolean' ? { autoPost: r.autoPost } : {}),
+                ...(r.autoPostLimit != null && Number.isFinite(channelLimit) && channelLimit >= 0 ? { autoPostLimit: channelLimit } : {}),
+            };
+        }
+        row.channels = channels;
+    }
     const limit = Number(patch.autoPostLimit);
     if (patch.autoPostLimit !== undefined && Number.isFinite(limit) && limit >= 0 && limit <= 1_000_000) row.auto_post_limit = Math.round(limit * 100) / 100;
     const { error } = await supabase.from('capture_settings').upsert(row, { onConflict: 'organization_id' });

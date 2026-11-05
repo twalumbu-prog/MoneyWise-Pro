@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { X, Sparkles, Check, Ban, RotateCcw, Link2, FileText, Smartphone, ZoomIn, ZoomOut, AlertTriangle } from 'lucide-react';
-import { captureApi, kwacha, type CaptureDetail } from './captureApi';
+import { captureApi, kwacha, type CaptureDetail, type CaptureRow } from './captureApi';
 import { ConversationDrawer } from './ConversationDrawer';
 
 interface Props {
@@ -21,6 +21,7 @@ const FLAG_TEXT: Record<string, string> = {
     AI_BUDGET_EXCEEDED: "Today's reading limit was reached, so nothing was filled in.",
     AI_UNAVAILABLE: 'The receipt could not be read automatically.',
     MATCH_CONFLICT: 'The matching wallet entry is already linked to another capture.',
+    POSSIBLE_LENCO_DUPLICATE: 'This same amount has since arrived in your MoneyWise wallet. If it is the same money, undo this entry.',
     AMOUNT_NOT_IN_TEXT: 'This amount does not appear in the chat. Check it before approving.',
     EXTRACTION_INVALID: 'The message could not be read automatically.',
     INVOICE_NOT_APPLIED: 'This was booked, but could not be applied to the open invoice. Apply it from the ledger.',
@@ -45,6 +46,7 @@ export const CaptureReviewCard: React.FC<Props> = ({ id, canReview, onClose, onC
     const [error, setError] = useState<string | null>(null);
     const [zoom, setZoom] = useState(1);
     const [threadOpen, setThreadOpen] = useState(false);
+    const [others, setOthers] = useState<CaptureRow[] | null>(null);
     const amountRef = useRef<HTMLInputElement>(null);
 
     const load = async () => {
@@ -243,6 +245,22 @@ export const CaptureReviewCard: React.FC<Props> = ({ id, canReview, onClose, onC
                                 </div>
                             )}
 
+                            {editable && !others && (
+                                <button onClick={() => captureApi.list('NEEDS_REVIEW').then(r => setOthers(r.items.filter(o => o.id !== id))).catch((e: any) => setError(e?.message || 'Could not load captures'))}
+                                    className="text-xs font-semibold text-[#006AFF]">Merge with another capture</button>
+                            )}
+                            {editable && others && (
+                                <div className="space-y-1.5">
+                                    {others.length === 0 && <p className="text-xs text-gray-500">No other captures are waiting for review.</p>}
+                                    {others.map(o => (
+                                        <button key={o.id} disabled={busy} onClick={() => act(() => captureApi.merge(id, { captureId: o.id }))}
+                                            className="w-full flex items-center justify-between gap-2 p-2.5 rounded-xl border border-gray-200 hover:border-[#006AFF] text-left text-xs">
+                                            <span className="truncate">{o.counterparty_name || 'Capture'}{o.occurred_on ? ` · ${o.occurred_on}` : ''}</span>
+                                            <span className="font-semibold shrink-0">{kwacha(o.zmw_amount)}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                             <div className="flex flex-wrap gap-2 pt-2">
                                 {editable && (<>
                                     <button disabled={busy} onClick={approve} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold bg-[#006AFF] text-white disabled:opacity-40">

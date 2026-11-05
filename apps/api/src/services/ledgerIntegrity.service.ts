@@ -161,11 +161,14 @@ export async function auditOrganization(organizationId: string, opts: { sample?:
 
     // 5b. transaction capture: one capture per ledger entry, and money matched to Lenco is never also booked.
     // No capture tables yet (or a failed read) simply yields no finding.
-    const { data: caps } = await supabase.from('transaction_captures').select('id, cashbook_entry_id, matched_cashbook_entry_id')
+    const { data: caps } = await supabase.from('transaction_captures').select('id, cashbook_entry_id, matched_cashbook_entry_id, flags')
         .eq('organization_id', organizationId).neq('status', 'DISMISSED').neq('status', 'FAILED');
     const booked = new Set((caps || []).map((c: any) => c.cashbook_entry_id).filter(Boolean));
     const doubled = (caps || []).filter((c: any) => c.matched_cashbook_entry_id && (c.cashbook_entry_id || booked.has(c.matched_cashbook_entry_id)));
     if (doubled.length) findings.push({ code: 'CAPTURE_DOUBLE_BOOKED', severity: 'ERROR', count: doubled.length, message: `${doubled.length} captured transactions matched to a wallet entry also have their own ledger entry.`, sample: doubled.slice(0, sampleN).map((c: any) => String(c.id)) });
+
+    const lateDuplicates = (caps || []).filter((c: any) => (c.flags || []).includes('POSSIBLE_LENCO_DUPLICATE'));
+    if (lateDuplicates.length) findings.push({ code: 'CAPTURE_POSSIBLE_LENCO_DUPLICATE', severity: 'ERROR', count: lateDuplicates.length, message: `${lateDuplicates.length} captured transactions may also have arrived through a Lenco wallet.`, sample: lateDuplicates.slice(0, sampleN).map((c: any) => String(c.id)) });
 
     // GL balances per account (all journals)
     const bal = new Map<string, number>(); // debit - credit

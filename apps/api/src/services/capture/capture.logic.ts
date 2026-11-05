@@ -73,6 +73,19 @@ export function recipientAlias(fields: unknown[], domain: string): string | null
 export const replyWindowEndsAt = (lastInboundAt: string | null | undefined): string | null =>
     lastInboundAt ? new Date(new Date(lastInboundAt).getTime() + 24 * 3600_000).toISOString() : null;
 
+export const CAPTURE_CHANNELS = ['WHATSAPP', 'FACEBOOK', 'INSTAGRAM', 'EMAIL', 'RECEIPT_UPLOAD', 'MOMO_SMS'] as const;
+export interface ChannelRule { capture?: boolean; autoPost?: boolean; autoPostLimit?: number }
+
+/** A channel can only narrow the org's settings, never widen them. */
+export function channelRules(s: { autoPostEnabled: boolean; autoPostLimit: number; channels?: Record<string, ChannelRule> }, source: string) {
+    const rule = s.channels?.[source] ?? {};
+    return {
+        capture: rule.capture !== false,
+        autoPost: s.autoPostEnabled && rule.autoPost !== false,
+        autoPostLimit: Math.min(s.autoPostLimit, rule.autoPostLimit ?? s.autoPostLimit),
+    };
+}
+
 export interface AutoPostInput {
     captureEnabled: boolean;
     autoPostEnabled: boolean;
