@@ -2,7 +2,7 @@ import { supabase } from '../lib/supabase';
 import { emailService } from '../services/email.service';
 import { healMissingPlatformFeesWithinBudget } from '../services/reconciliation.service';
 import { autoCompleteRequisition, sendAutoCategorizationReminder } from './requisition.controller';
-import { classifyMessage } from '../services/messageIntent.service';
+import { drainCaptureJobs } from '../services/capture/capture.worker';
 
 /**
  * Handlers for the internal scheduler (public.internal_cron_call -> these routes). All secret-gated with
@@ -167,119 +167,16 @@ export const getCronHealth = async (_req: any, res: any) => {
     }
 };
 
-// Meta messaging capture worker.
-// Processes queued inbound messages without blocking the webhook request.
+// Transaction capture worker (Meta messages, uploaded receipts, re-matching). Logic lives in capture.worker.
 const CAPTURE_WORKER_BUDGET_MS = 15_000;
 
 export const captureWorker = async (req: any, res: any) => {
-    if (!isCronCall(req)) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    const deadline = Date.now() + CAPTURE_WORKER_BUDGET_MS;
-
-    const results = {
-        claimed: 0,
-        completed: 0,
-        retried: 0,
-        failed: 0,
-        errors: [] as string[]
-    };
-
+    if (!isCronCall(req)) return res.status(401).json({ error: 'Unauthorized' });
     try {
-        while (Date.now() < deadline) {
-            // Claim only one job at a time to avoid leaving
-            // unprocessed jobs locked when the time budget expires.
-            const { data: jobs, error: claimError } = await supabase.rpc(
-                'claim_capture_jobs',
-                { p_limit: 1 }
-            );
-
-            if (claimError) {
-                throw new Error(`Could not claim capture job: ${claimError.message}`);
-            }
-
-            if (!jobs || jobs.length === 0) {
-                break;
-            }
-
-            const job = jobs[0];
-            results.claimed++;
-
-            try {
-                // AI classification and cashbook inflow matching.
-                // This does not create or post a ledger entry.
-                await classifyMessage(
-                    job.message_id,
-                    job.organization_id
-                );
-
-                const { data: completed, error: completeError } = await supabase.rpc(
-                    'complete_capture_job',
-                    { p_job_id: job.job_id }
-                );
-
-                if (completeError) {
-                    throw new Error(`Could not complete job: ${completeError.message}`);
-                }
-
-                if (completed !== true) {
-                    throw new Error('Job was not in PROCESSING state when completion was attempted');
-                }
-
-                results.completed++;
-
-            } catch (processingError: any) {
-                const message = processingError?.message || 'Unknown processing error';
-
-                console.error(
-                    `[CaptureWorker] Job ${job.job_id}, attempt ${job.attempts}:`,
-                    message
-                );
-
-                const { data: failureStatus, error: failError } = await supabase.rpc(
-                    'fail_capture_job',
-                    {
-                        p_job_id: job.job_id,
-                        p_error: message
-                    }
-                );
-
-                if (failError) {
-                    throw new Error(
-                        `Could not record job failure for ${job.job_id}: ${failError.message}`
-                    );
-                }
-
-                if (failureStatus === 'RETRY') {
-                    results.retried++;
-                } else if (failureStatus === 'FAILED') {
-                    results.failed++;
-                    console.error(
-                        `[CaptureWorker] Job ${job.job_id} permanently failed after ${job.attempts} attempts`
-                    );
-                } else {
-                    results.errors.push(
-                        `Job ${job.job_id}: unexpected failure status ${failureStatus}`
-                    );
-                }
-            }
-        }
-
-        return res.json({
-            success: true,
-            budget_ms: CAPTURE_WORKER_BUDGET_MS,
-            ...results,
-            budget_exhausted: Date.now() >= deadline
-        });
-
+        const r = await drainCaptureJobs(CAPTURE_WORKER_BUDGET_MS);
+        return res.json({ success: true, budget_ms: CAPTURE_WORKER_BUDGET_MS, ...r });
     } catch (e: any) {
         console.error('[CaptureWorker] Worker execution failed:', e?.message);
-
-        return res.status(500).json({
-            success: false,
-            error: e?.message,
-            ...results
-        });
+        return res.status(500).json({ success: false, error: e?.message });
     }
 };

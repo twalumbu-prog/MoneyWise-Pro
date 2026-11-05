@@ -50,6 +50,7 @@ import developerRoutes from './routes/developer.routes';
 import publicApiRoutes from './routes/publicApi.routes';
 import oauthRoutes from './routes/oauth.routes';
 import momoCaptureRoutes from './routes/momoCapture.routes';
+import capturesRoutes from './routes/captures.routes';
 import { broadcastAfterWrite } from './lib/realtimeBroadcast';
 
 dotenv.config();
@@ -609,6 +610,9 @@ app.use(cors({
 // so requests here never reach the global parser.
 app.use('/webhooks', express.raw({ type: '*/*', limit: '5mb' }), webhooksRoutes);
 
+// Receipt uploads arrive as base64 JSON (≤10 MB file); parsed here so the global 100 kb limit still applies everywhere else.
+app.use('/captures/upload', express.json({ limit: '15mb' }));
+
 app.use(express.json({
     verify: (req: any, res, buf) => {
         req.rawBody = buf;
@@ -655,6 +659,7 @@ app.use('/developer', developerRoutes);
 app.use('/v1', publicApiRoutes);
 app.use('/oauth', oauthRoutes);
 app.use('/momo-capture', momoCaptureRoutes);
+app.use('/captures', capturesRoutes);
 // NOTE: /developer and /v1 (API-key feature) are unhooked until developer.routes.ts,
 // publicApi.routes.ts and the api_keys migration are committed — index.ts imported files
 // that only existed locally, which broke every API deploy from 125c6dd on.

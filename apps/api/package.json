@@ -11,7 +11,8 @@
         "audit:ledger": "tsc && node dist/scripts/ledger_audit.js --all",
         "test:ai": "tsc && node dist/scripts/sanity_ai.js",
         "oauth:create-client": "ts-node --transpile-only src/scripts/create_oauth_client.ts",
-        "test:momo": "tsc && node dist/scripts/test_momo_parser.js"
+        "test:momo": "tsc && node dist/scripts/test_momo_parser.js",
+        "test:capture": "tsc && node dist/scripts/test_capture_logic.js"
     },
     "dependencies": {
         "@google/generative-ai": "^0.24.1",

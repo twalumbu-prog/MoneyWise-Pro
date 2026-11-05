@@ -74,6 +74,8 @@ export interface ManualEntryInput {
     externalWalletId: string; accountId?: string | null;
     /** false = book it uncategorised rather than asking the AI (the Assistant always passes the category it showed). */
     autoCategorize?: boolean;
+    /** Caller-supplied idempotency reference (transaction capture); defaults to a fresh MANUAL-… reference. */
+    externalReference?: string;
 }
 
 export async function recordManualEntry(p: ManualEntryInput) {
@@ -101,7 +103,7 @@ export async function recordManualEntry(p: ManualEntryInput) {
         if (s) { chosen = s.account; source = 'AI'; reasoning = s.reasoning; confidence = s.confidence; }
     }
 
-    const reference = `MANUAL-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const reference = p.externalReference || `MANUAL-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const entry = await cashbookService.createEntry(p.orgId, {
         entry_type: p.direction === 'IN' ? 'INFLOW' : 'EXPENSE',
         description: details,

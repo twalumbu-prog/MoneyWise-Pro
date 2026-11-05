@@ -14,6 +14,7 @@ import crypto from 'crypto';
 import { supabase } from '../../lib/supabase';
 import { recordManualEntry, ensureCashWallet, listExternalWallets, ManualEntryError } from '../manualEntry.service';
 import { parseMomoMessage, dedupeKey, describe, type MomoProvider, type ParsedMomoMessage } from './parser';
+import { mirrorMomoCapture } from '../capture/capture.momoMirror';
 
 export class MomoCaptureError extends Error {
     constructor(message: string, public httpStatus = 400) { super(message); }
@@ -134,10 +135,11 @@ export async function ingest(input: IngestInput) {
     if (!twin) {
         const settings = await settingsRow(input.userId, input.orgId);
         if (settings.auto_post) {
-            try { return { accepted: true as const, capture: await post(input.userId, input.orgId, row.id) }; }
+            try { return { accepted: true as const, capture: await post(input.userId, input.orgId, row.id, {}, { autoPosted: true }) }; }
             catch (e: any) { console.error('[MoMo capture] auto-post failed, left for review:', e.message); }
         }
     }
+    await mirrorMomoCapture(row);
     return { accepted: true as const, capture: row };
 }
 
@@ -169,7 +171,7 @@ async function walletFor(orgId: string, provider: MomoProvider, destination: str
  * Books a capture. The PENDING → POSTED flip happens first and conditionally, so two taps (or a tap racing auto-post)
  * can't book it twice; a failed booking puts it back to PENDING.
  */
-export async function post(userId: string, orgId: string, id: string, overrides: { direction?: unknown; amount?: unknown; accountId?: unknown; description?: unknown } = {}) {
+export async function post(userId: string, orgId: string, id: string, overrides: { direction?: unknown; amount?: unknown; accountId?: unknown; description?: unknown } = {}, mirror: { autoPosted?: boolean } = {}) {
     const { data: claimed } = await supabase.from('momo_captures').update({ status: 'POSTED', updated_at: new Date().toISOString() })
         .eq('id', id).eq('user_id', userId).eq('organization_id', orgId).in('status', ['PENDING', 'MATCHED']).select('*').maybeSingle();
     if (!claimed) throw new MomoCaptureError('This message was already handled or no longer exists', 409);
@@ -192,6 +194,7 @@ export async function post(userId: string, orgId: string, id: string, overrides:
         }
         const { data: done } = await supabase.from('momo_captures')
             .update({ cashbook_entry_id: entry.entryId, updated_at: new Date().toISOString() }).eq('id', id).select('*').single();
+        await mirrorMomoCapture(done, mirror);
         return { ...done, entry };
     } catch (e: any) {
         await supabase.from('momo_captures').update({ status: claimed.status, updated_at: new Date().toISOString() }).eq('id', id);
@@ -204,5 +207,6 @@ export async function dismiss(userId: string, orgId: string, id: string) {
     const { data } = await supabase.from('momo_captures').update({ status: 'DISMISSED', updated_at: new Date().toISOString() })
         .eq('id', id).eq('user_id', userId).eq('organization_id', orgId).in('status', ['PENDING', 'MATCHED']).select('*').maybeSingle();
     if (!data) throw new MomoCaptureError('This message was already handled or no longer exists', 409);
+    await mirrorMomoCapture(data);
     return data;
 }

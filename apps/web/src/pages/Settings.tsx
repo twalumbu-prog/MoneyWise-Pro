@@ -4,6 +4,8 @@ import { QuickBooksIntegration } from '../components/settings/integrations/Quick
 import { LencoIntegration } from '../components/settings/integrations/LencoIntegration';
 import { MetaMessagingIntegration } from '../components/settings/integrations/MetaMessagingIntegration';
 import { MasterfeesIntegration } from '../components/settings/integrations/MasterfeesIntegration';
+import { CaptureSettingsIntegration } from '../components/settings/integrations/CaptureSettingsIntegration';
+import { useAuth } from '../context/AuthContext';
 import { DeveloperAPI } from '../components/settings/DeveloperAPI';
 import { InvestorPayouts } from '../components/settings/InvestorPayouts';
 import { useQuery } from '@tanstack/react-query';
@@ -18,7 +20,8 @@ import {
     CreditCard,
     Code2,
     Landmark,
-    MessageCircle
+    MessageCircle,
+    ScanLine
 } from 'lucide-react';
 import { GeneralSettings } from '../components/settings/GeneralSettings';
 import { UserManagement } from '../components/settings/UserManagement';
@@ -39,7 +42,8 @@ export const Settings: React.FC = () => {
         staleTime: 5 * 60_000,
     });
 
-    const [activeIntegration, setActiveIntegration] = useState<'quickbooks' | 'lenco' | 'masterfees' | 'meta' | null>(null);
+    const [activeIntegration, setActiveIntegration] = useState<'quickbooks' | 'lenco' | 'masterfees' | 'meta' | 'capture' | null>(null);
+    const { userRole } = useAuth();
     const [integrationError, setIntegrationError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -190,6 +194,17 @@ export const Settings: React.FC = () => {
                                                             <h4 className="text-base font-bold text-gray-900 mb-1">WhatsApp, Facebook &amp; Instagram</h4>
                                                             <p className="text-sm text-gray-500">Spot orders and payments in customer messages</p>
                                                         </button>
+                                                        {/* Transaction capture Card */}
+                                                        <button
+                                                            onClick={() => setActiveIntegration('capture')}
+                                                            className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-navy/30 transition-all text-left group"
+                                                        >
+                                                            <div className="h-12 w-12 bg-[#006AFF] rounded-xl flex items-center justify-center text-white mb-4 group-hover:scale-105 transition-transform shadow-sm">
+                                                                <ScanLine className="h-6 w-6" />
+                                                            </div>
+                                                            <h4 className="text-base font-bold text-gray-900 mb-1">Transaction capture</h4>
+                                                            <p className="text-sm text-gray-500">Receipts and mobile money messages become entries you approve</p>
+                                                        </button>
                                                     </div>
                                                 </>
                                             ) : activeIntegration === 'quickbooks' ? (
@@ -197,6 +212,8 @@ export const Settings: React.FC = () => {
                                                     onBack={() => setActiveIntegration(null)}
                                                     initialError={integrationError}
                                                 />
+                                            ) : activeIntegration === 'capture' ? (
+                                                <CaptureSettingsIntegration onBack={() => setActiveIntegration(null)} canEdit={userRole === 'ADMIN' || userRole === 'OWNER'} />
                                             ) : activeIntegration === 'meta' ? (
                                                 <MetaMessagingIntegration onBack={() => setActiveIntegration(null)} />
                                             ) : activeIntegration === 'masterfees' ? (
