@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import * as vatSvc from './vat.service';
 
 /**
  * Suppliers, purchase bills and stock movements, posted to the double-entry ledger. Enterprise plan; the route enforces that.
@@ -97,7 +98,7 @@ export async function supplierDetail(orgId: string, id: string) {
 
 // ---------- bills ----------
 
-interface LineIn { productId?: string; variantId?: string; accountId?: string; description?: string; quantity?: number; unitCost?: number }
+interface LineIn { productId?: string; variantId?: string; taxCode?: string; accountId?: string; description?: string; quantity?: number; unitCost?: number }
 
 const variantsOf = (p: any): any[] => (Array.isArray(p?.variants) ? p.variants : []);
 const totalStock = (p: any) => (variantsOf(p).length ? variantsOf(p).reduce((s, v) => s + (Number(v.stock) || 0), 0) : Math.max(0, Number(p?.stock_quantity) || 0));
@@ -131,7 +132,7 @@ export async function createBill(orgId: string, userId: string, body: any) {
     const { data: accts } = accountIds.length ? await supabase.from('accounts').select('id, type').eq('organization_id', orgId).in('id', accountIds) : { data: [] as any[] };
     const aById = new Map<string, any>((accts ?? []).map((a: any) => [a.id, a]));
 
-    const lines = raw.map((l, i) => {
+    const lines: any[] = raw.map((l, i) => {
         const quantity = Math.floor(Number(l.quantity));
         const unitCost = r2(Number(l.unitCost));
         if (!(quantity > 0)) throw new PurchasingError(`Line ${i + 1}: enter a quantity of at least 1.`);
@@ -154,25 +155,43 @@ export async function createBill(orgId: string, userId: string, body: any) {
         if (!String(l.description ?? '').trim()) throw new PurchasingError(`Line ${i + 1}: describe what this is.`);
         return { productId: null as string | null, variantId: null as string | null, accountId: l.accountId!, description: String(l.description).slice(0, 200), quantity, unitCost, lineTotal: r2(quantity * unitCost) };
     });
-    const total = r2(lines.reduce((s, l) => s + l.lineTotal, 0));
+    // VAT: for a registered business each line is standard, zero-rated or exempt. The cost of stock and expenses is the amount without VAT;
+    // the VAT is held in VAT recoverable. "Amounts include VAT" says the prices typed in already have it.
+    const vs = await vatSvc.getSettings(orgId);
+    const inclusive = !!body.pricesIncludeVat;
+    let vatTotal = 0;
+    lines.forEach((l: any, i: number) => {
+        if (!vs.registered) { l.vat = 0; l.taxCode = null; return; }
+        const code = vatSvc.isTaxCode(raw[i].taxCode) ? raw[i].taxCode : 'STANDARD';
+        const s = vatSvc.split(l.quantity * l.unitCost, code, vs.rate, inclusive);
+        l.taxCode = code; l.vat = s.vat; l.lineTotal = s.net; l.unitCost = r2(s.net / l.quantity); vatTotal = r2(vatTotal + s.vat);
+    });
+    const total = r2(lines.reduce((s, l) => s + l.lineTotal, 0) + vatTotal);
     if (!(total > 0)) throw new PurchasingError('The bill total must be more than zero.');
     const billNumber = text(body.billNumber, 60);
 
     const { data: bill, error } = await supabase.from('purchase_bills').insert({
-        organization_id: orgId, supplier_id: supplier.id, bill_number: billNumber, bill_date: billDate, due_date: dueDate, total, notes: text(body.notes, 1000), created_by: userId,
+        organization_id: orgId, supplier_id: supplier.id, bill_number: billNumber, bill_date: billDate, due_date: dueDate, total, ...(vatTotal > 0 ? { vat_amount: vatTotal } : {}), notes: text(body.notes, 1000), created_by: userId,
     }).select('*').single();
     if (error || !bill) throw new PurchasingError(/uq_purchase_bills_number|duplicate/i.test(error?.message ?? '') ? 'That supplier already has a bill with this number.' : (error?.message ?? 'Could not save the bill.'), /duplicate|uq_/i.test(error?.message ?? '') ? 409 : 500);
 
     try {
-        const { error: le } = await supabase.from('purchase_bill_lines').insert(lines.map((l) => ({ bill_id: bill.id, product_id: l.productId, variant_id: l.variantId, account_id: l.accountId, description: l.description, quantity: l.quantity, unit_cost: l.unitCost, line_total: l.lineTotal })));
+        const { error: le } = await supabase.from('purchase_bill_lines').insert(lines.map((l) => ({ bill_id: bill.id, product_id: l.productId, variant_id: l.variantId, ...(vs.registered ? { tax_code: l.taxCode, vat_amount: l.vat } : {}), account_id: l.accountId, description: l.description, quantity: l.quantity, unit_cost: l.unitCost, line_total: l.lineTotal })));
         if (le) throw new PurchasingError(le.message, 500);
 
         const inv = await inventoryAcct(orgId), ap = await payablesAcct(orgId);
         const debits = new Map<string, number>();
         for (const l of lines) { const acct = l.productId ? inv : l.accountId!; debits.set(acct, r2((debits.get(acct) ?? 0) + l.lineTotal)); }
         await postJournal(orgId, userId, billDate, `Bill ${billNumber ?? bill.id.slice(0, 8)}`, `BILL-${billNumber ?? bill.id.slice(0, 8)}`, 'PURCHASE_BILL', bill.id, [
-            ...[...debits].map(([accountId, debit]) => ({ accountId, debit, credit: 0 })), { accountId: ap, debit: 0, credit: total, memo: 'Owed to supplier' },
+            ...[...debits].map(([accountId, debit]) => ({ accountId, debit, credit: 0 })),
+            ...(vatTotal > 0 ? [{ accountId: await vatSvc.vatInputAccount(orgId), debit: vatTotal, credit: 0, memo: 'VAT recoverable' }] : []),
+            { accountId: ap, debit: 0, credit: total, memo: 'Owed to supplier' },
         ]);
+        if (vs.registered) {
+            const by = new Map<string, { net: number; vat: number }>();
+            for (const l of lines) { const x = by.get(l.taxCode) ?? { net: 0, vat: 0 }; x.net = r2(x.net + l.lineTotal); x.vat = r2(x.vat + l.vat); by.set(l.taxCode, x); }
+            await vatSvc.recordTransactions(orgId, [...by].map(([code, v]) => ({ direction: 'INPUT' as const, code: code as vatSvc.TaxCode, date: billDate, net: v.net, vat: v.vat, sourceType: 'PURCHASE_BILL', sourceId: bill.id, counterparty: null, reference: billNumber })));
+        }
 
         // Stock in: the count goes up and the average cost moves with it.
         for (const l of lines.filter((x) => x.productId)) {
@@ -188,6 +207,7 @@ export async function createBill(orgId: string, userId: string, body: any) {
         }
     } catch (e) {
         await unpost(orgId, 'PURCHASE_BILL', bill.id);
+        await vatSvc.removeTransactions(orgId, 'PURCHASE_BILL', bill.id);
         await supabase.from('purchase_bills').delete().eq('id', bill.id);
         throw e;
     }
@@ -238,6 +258,7 @@ export async function voidBill(orgId: string, userId: string, billId: string) {
         await supabase.from('stock_movements').insert({ organization_id: orgId, product_id: l.product_id, variant_id: l.variant_id ?? null, quantity_change: -l.quantity, unit_cost: l.unit_cost, reason: 'VOID', ref_type: 'PURCHASE_BILL', ref_id: bill.id, balance_after: stockOf(p, l.variant_id), created_by: userId });
     }
     await unpost(orgId, 'PURCHASE_BILL', bill.id);
+    await vatSvc.removeTransactions(orgId, 'PURCHASE_BILL', bill.id);
     await supabase.from('purchase_bills').update({ status: 'VOID', updated_at: new Date().toISOString() }).eq('id', billId);
     return { ...bill, status: 'VOID' };
 }

@@ -4,6 +4,8 @@ import * as acc from './accounting.service';
 import * as controls from './accountingControls.service';
 import * as reports from './accountingReports.service';
 import * as purchasing from './purchasing.service';
+import * as vatSvc from './vat.service';
+import * as payrollAcct from './payrollAccounting.service';
 
 /**
  * Any statement as a PDF, built on the server from the same figures the screens show, so the two always agree.
@@ -73,7 +75,7 @@ function groupsToRows(groups: { name: string; total: number; lines: { name: stri
     return groups.flatMap((g) => [{ cells: [g.name, money(g.total)], bold: true } as Row, ...g.lines.map((l) => ({ cells: [nameOf(l), money(l.amount)], indent: true } as Row))]);
 }
 
-export async function buildReportPdf(orgId: string, report: string, q: { from: string | null; to: string | null; accountId?: string; against?: string }): Promise<{ file: string; pdf: Buffer }> {
+export async function buildReportPdf(orgId: string, report: string, q: { from: string | null; to: string | null; accountId?: string; against?: string; year?: string; month?: string; agency?: string }): Promise<{ file: string; pdf: Buffer }> {
     const { data: org } = await supabase.from('organizations').select('name').eq('id', orgId).maybeSingle();
     const orgName = org?.name ?? 'MoneyWise';
     const to = q.to ?? new Date().toISOString().slice(0, 10);
@@ -109,6 +111,36 @@ export async function buildReportPdf(orgId: string, report: string, q: { from: s
         if (!q.accountId) throw new Error('Choose an account.');
         const d = await acc.generalLedger(orgId, q.accountId, from, to);
         doc = { title: `Account ledger: ${d.account.name}`, subtitle: `${from} to ${to}`, blocks: [{ columns: [col('Date', 1.5), col('Description', 5), col('Debit', 1.6, 'right'), col('Credit', 1.6, 'right'), col('Balance', 1.7, 'right')], rows: [{ cells: ['', 'Opening balance', '', '', money(d.opening)], bold: true }, ...d.lines.map((l) => ({ cells: [l.date, String(l.description ?? ''), l.debit ? money(l.debit) : '', l.credit ? money(l.credit) : '', money(l.balance)] })), { cells: ['', 'Closing balance', '', '', money(d.closing)], bold: true, shade: true }] }], footnote: d.truncated ? 'Only the first 3,000 lines are shown.' : undefined };
+    } else if (report === 'statutory') {
+        const year = Number(q.year), month = Number(q.month);
+        const d = await payrollAcct.statutory(orgId, year, month);
+        const agency = String(q.agency ?? 'PAYE').toUpperCase();
+        const label = `${year}-${String(month).padStart(2, '0')}`;
+        if (agency === 'PAYE') {
+            doc = { title: 'PAYE schedule', subtitle: `Pay month ${label} · pay by ${d.due}`, blocks: [{ columns: [col('Employee', 3), col('TPIN', 1.6), col('Gross pay', 1.5, 'right'), col('PAYE', 1.5, 'right')], rows: [...d.employees.map((e) => ({ cells: [e.name, e.tpin ?? '', money(e.gross), money(e.paye)] })), { cells: ['Total', '', money(d.totals.gross), money(d.totals.paye)], bold: true, shade: true }] }] };
+        } else if (agency === 'NAPSA') {
+            doc = { title: 'NAPSA contribution schedule', subtitle: `Pay month ${label} · pay by ${d.due}`, blocks: [{ columns: [col('Employee', 3), col('NAPSA no.', 1.6), col('Gross pay', 1.4, 'right'), col('Employee', 1.3, 'right'), col('Employer', 1.3, 'right'), col('Total', 1.3, 'right')], rows: [...d.employees.map((e) => ({ cells: [e.name, e.napsaNumber ?? '', money(e.gross), money(e.napsaEe), money(e.napsaEr), money(e.napsaEe + e.napsaEr)] })), { cells: ['Total', '', money(d.totals.gross), money(d.totals.napsaEmployee), money(d.totals.napsaEmployer), money(d.totals.napsaEmployee + d.totals.napsaEmployer)], bold: true, shade: true }] }] };
+        } else {
+            doc = { title: 'NHIMA contribution schedule', subtitle: `Pay month ${label} · pay by ${d.due}`, blocks: [{ columns: [col('Employee', 3), col('NHIMA no.', 1.6), col('Gross pay', 1.4, 'right'), col('Employee', 1.3, 'right'), col('Employer', 1.3, 'right'), col('Total', 1.3, 'right')], rows: [...d.employees.map((e) => ({ cells: [e.name, e.nhimaNumber ?? '', money(e.gross), money(e.nhimaEe), money(e.nhimaEr), money(e.nhimaEe + e.nhimaEr)] })), { cells: ['Total', '', money(d.totals.gross), money(d.totals.nhimaEmployee), money(d.totals.nhimaEmployer), money(d.totals.nhimaEmployee + d.totals.nhimaEmployer)], bold: true, shade: true }] }] };
+        }
+        return { file: `${agency.toLowerCase()}-${label}.pdf`, pdf: await render(orgName, doc) };
+    } else if (report === 'vat') {
+        const d = await vatSvc.vatReturn(orgId, from, to);
+        const two = [col('', 4), { ...AMT, label: 'Amount' }];
+        const cols3 = [col('', 4), col('Value', 1.6, 'right'), col('VAT', 1.6, 'right')];
+        doc = { title: 'VAT return', subtitle: `${from} to ${to}${d.settings.tpin ? ` · TPIN ${d.settings.tpin}` : ''} · due by ${d.dueBy}`, blocks: [
+            { heading: 'Sales (output VAT)', columns: cols3, rows: [
+                { cells: ['Standard-rated sales', money(d.sales.standardNet), money(d.sales.standardVat)] },
+                { cells: ['Zero-rated sales', money(d.sales.zeroNet), money(0)] },
+                { cells: ['Exempt sales', money(d.sales.exemptNet), money(0)] },
+                { cells: ['Output VAT', '', money(d.outputVat)], bold: true, shade: true }] },
+            { heading: 'Purchases (input VAT)', columns: cols3, rows: [
+                { cells: ['Standard-rated purchases', money(d.purchases.standardNet), money(d.purchases.standardVat)] },
+                { cells: ['Zero-rated purchases', money(d.purchases.zeroNet), money(0)] },
+                { cells: ['Exempt purchases', money(d.purchases.exemptNet), money(0)] },
+                { cells: ['Input VAT recoverable', '', money(d.inputVat)], bold: true, shade: true }] },
+            { columns: two, rows: [{ cells: [d.position === 'PAYABLE' ? 'VAT payable to ZRA' : 'VAT refundable from ZRA', money(Math.abs(d.netVat))], bold: true, shade: true }] },
+        ], footnote: d.ledger.agrees ? 'The VAT records agree with the VAT accounts in the books.' : 'The VAT records do not match the VAT accounts in the books for this period. Check for VAT posted by hand.' };
     } else if (report === 'budget') {
         const d = await reports.budgetVsActual(orgId, from, to);
         const cols = [col('', 4), col('Budget', 1.5, 'right'), col('Actual', 1.5, 'right'), col('Variance', 1.5, 'right')];

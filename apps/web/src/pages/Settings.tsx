@@ -28,7 +28,7 @@ import { ChartOfAccounts } from '../components/settings/ChartOfAccounts';
 import { MyProfileSettings } from '../components/settings/MyProfileSettings';
 import { SubscriptionBilling } from '../components/settings/SubscriptionBilling';
 import { Layout } from '../components/Layout';
-import { ImportPanel } from '../components/accounting/AccountingParts';
+import { ImportPanel, VatSettingsPanel } from '../components/accounting/AccountingParts';
 
 export const Settings: React.FC = () => {
     const [searchParams, setSearchParams] = useSearchParams();
@@ -104,6 +104,7 @@ export const Settings: React.FC = () => {
                                         { id: 'profile', label: 'My Profile', icon: <User className="w-2.5 h-2.5" /> },
                                         { id: 'users', label: 'Team Members', icon: <Users className="w-2.5 h-2.5" /> },
                                         { id: 'coa', label: 'Chart of Accounts', icon: <FileText className="w-2.5 h-2.5" /> },
+                                        { id: 'vat', label: 'VAT', icon: <FileText className="w-2.5 h-2.5" /> },
                                         { id: 'import', label: 'Import Data', icon: <FileText className="w-2.5 h-2.5" /> },
                                         { id: 'integrations', label: 'Integrations', icon: <Share2 className="w-2.5 h-2.5" /> },
                                         { id: 'billing', label: 'Subscription & Billing', icon: <CreditCard className="w-2.5 h-2.5" /> },
@@ -142,6 +143,7 @@ export const Settings: React.FC = () => {
                                     {/* Chart of Accounts Tab */}
                                     {activeTab === 'coa' && <ChartOfAccounts />}
 
+                                    {activeTab === 'vat' && <VatSettingsPanel />}
                                     {activeTab === 'import' && <ImportPanel />}
 
                                     {/* Integrations Tab */}

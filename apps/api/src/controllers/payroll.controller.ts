@@ -3,6 +3,7 @@ import { RECOVERABLE_STATUSES, loanTermExpired, totalOwed } from '../lib/loanMat
 import { getPreferences, getPersonalOrgForUser } from '../services/userPreferences.service';
 import { accountsOf, getAllPaymentInfo } from '../services/paymentInfo.service';
 import { Request, Response } from 'express';
+import * as payrollAcct from '../services/payrollAccounting.service';
 import { supabase } from '../lib/supabase';
 import { matchStaffMember } from '../lib/staffUserMatching';
 
@@ -667,6 +668,10 @@ export const approvePayrollRun = async (req: Request, res: Response) => {
                 };
             });
 
+            // With payroll accruals on, paying staff clears Salaries payable instead of booking the salary a second time.
+            const netPayAccount = await payrollAcct.netPayAccountFor(orgId);
+            if (netPayAccount) lineItems.forEach((li: any) => { li.account_id = netPayAccount; });
+
             // For electronic (Lenco) runs, verify accounts if org has a secret key
             if (electronic && orgData?.lenco_secret_key && !orgData?.payment_test_mode) {
                 // Verification is handled downstream by the disbursement processor — leave is_valid as false until then
@@ -700,6 +705,9 @@ export const approvePayrollRun = async (req: Request, res: Response) => {
             .select()
             .single();
         if (updateErr) throw updateErr;
+
+        // Books: gross pay, employer contributions and what is owed to ZRA, NAPSA and NHIMA (only when accruals are on; never blocks approval).
+        await payrollAcct.onRunApproved(orgId, userId, id);
 
         res.json({
             run: updatedRun,

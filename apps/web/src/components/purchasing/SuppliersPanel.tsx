@@ -74,12 +74,14 @@ function SupplierForm({ supplier, onClose, onSaved }: { supplier: Partial<Suppli
     );
 }
 
-interface LineForm { kind: 'product' | 'expense'; productId: string; variantId: string; accountId: string; description: string; quantity: string; unitCost: string }
-const emptyLine = (): LineForm => ({ kind: 'product', productId: '', variantId: '', accountId: '', description: '', quantity: '1', unitCost: '' });
+interface LineForm { kind: 'product' | 'expense'; productId: string; variantId: string; taxCode: string; accountId: string; description: string; quantity: string; unitCost: string }
+const emptyLine = (): LineForm => ({ kind: 'product', productId: '', variantId: '', taxCode: 'STANDARD', accountId: '', description: '', quantity: '1', unitCost: '' });
 
 function BillForm({ suppliers, supplierId, onClose, onSaved }: { suppliers: Supplier[]; supplierId?: string; onClose: () => void; onSaved: () => void }) {
     const products = useQuery<any[]>({ queryKey: ['purchasing', 'products'], queryFn: () => apiJson<any[]>('/organizations/products'), retry: false });
     const accounts = useData<{ accounts: Acct[] }>('accounts', '/accounting/accounts');
+    const vatSet = useData<{ registered: boolean; rate: number }>('vat', '/accounting/vat/settings');
+    const [inclVat, setInclVat] = useState(false);
     const [sid, setSid] = useState(supplierId ?? ''); const [number, setNumber] = useState(''); const [billDate, setBillDate] = useState(today()); const [dueDate, setDueDate] = useState(''); const [notes, setNotes] = useState('');
     const [lines, setLines] = useState<LineForm[]>([emptyLine()]);
     const [busy, setBusy] = useState(false); const [err, setErr] = useState<string | null>(null);
@@ -91,8 +93,8 @@ function BillForm({ suppliers, supplierId, onClose, onSaved }: { suppliers: Supp
         setBusy(true); setErr(null);
         try {
             await apiJson('/purchasing/bills', { method: 'POST', body: JSON.stringify({
-                supplierId: sid, billNumber: number, billDate, dueDate: dueDate || undefined, notes,
-                lines: lines.map((l) => ({ productId: l.kind === 'product' ? l.productId : undefined, variantId: l.kind === 'product' && l.variantId ? l.variantId : undefined, accountId: l.kind === 'expense' ? l.accountId : undefined, description: l.description, quantity: Number(l.quantity), unitCost: Number(l.unitCost) })),
+                supplierId: sid, billNumber: number, billDate, dueDate: dueDate || undefined, notes, pricesIncludeVat: inclVat,
+                lines: lines.map((l) => ({ productId: l.kind === 'product' ? l.productId : undefined, variantId: l.kind === 'product' && l.variantId ? l.variantId : undefined, taxCode: l.taxCode, accountId: l.kind === 'expense' ? l.accountId : undefined, description: l.description, quantity: Number(l.quantity), unitCost: Number(l.unitCost) })),
             }) });
             onSaved(); onClose();
         } catch (e: any) { setErr(e?.message || 'Could not save the bill.'); } finally { setBusy(false); }
@@ -124,6 +126,11 @@ function BillForm({ suppliers, supplierId, onClose, onSaved }: { suppliers: Supp
                             </select>
                         )}
                         {l.kind === 'expense' && <input className="h-9 w-full rounded-lg border border-[#C4C7C5] px-2 text-xs" placeholder="Description" value={l.description} onChange={(e) => setLine(i, { description: e.target.value })} />}
+                        {vatSet.data?.registered && (
+                            <select className="h-9 w-full rounded-lg border border-[#C4C7C5] px-2 text-xs" value={l.taxCode} onChange={(e) => setLine(i, { taxCode: e.target.value })}>
+                                <option value="STANDARD">VAT: standard rate ({vatSet.data.rate}%)</option><option value="ZERO">VAT: zero-rated</option><option value="EXEMPT">VAT: exempt</option>
+                            </select>
+                        )}
                         <div className="grid grid-cols-3 gap-2">
                             <input type="number" min={1} className="h-9 rounded-lg border border-[#C4C7C5] px-2 text-xs" placeholder="Qty" value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })} />
                             <input type="number" min={0} step="0.01" className="h-9 rounded-lg border border-[#C4C7C5] px-2 text-xs" placeholder="Unit cost" value={l.unitCost} onChange={(e) => setLine(i, { unitCost: e.target.value })} />
@@ -133,8 +140,9 @@ function BillForm({ suppliers, supplierId, onClose, onSaved }: { suppliers: Supp
                 ))}
                 <button type="button" onClick={() => setLines((ls) => [...ls, emptyLine()])} className="text-xs font-semibold text-[#0059D8]"><Plus size={12} className="mr-1 inline" />Add a line</button>
                 {stockProducts.length === 0 && !products.isLoading && <p className="text-[11px] text-[#B06000]">No products track stock yet. Turn on stock tracking on a product to receive it here.</p>}
+                {vatSet.data?.registered && <label className="flex items-center gap-2 text-sm text-[#3C4043]"><input type="checkbox" checked={inclVat} onChange={(e) => setInclVat(e.target.checked)} />Prices typed above already include VAT</label>}
                 <div><label className={labelClass}>Notes</label><input className={fieldClass} value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
-                <div className="flex items-center justify-between pt-1"><span className="text-sm text-[#5F6368]">Total</span><span className="text-lg font-bold tabular-nums">{money(total)}</span></div>
+                <div className="flex items-center justify-between pt-1"><span className="text-sm text-[#5F6368]">{vatSet.data?.registered ? (inclVat ? 'Total (VAT included)' : 'Subtotal (VAT added on top)') : 'Total'}</span><span className="text-lg font-bold tabular-nums">{money(total)}</span></div>
                 <p className="text-[11px] text-[#5F6368]">Stock items go into inventory and raise the stock count. Everything is posted to your books, owed to the supplier until you pay it.</p>
                 <PrimaryButton busy={busy} onClick={save} disabled={!sid || total <= 0} className="w-full">Save bill</PrimaryButton>
             </div>

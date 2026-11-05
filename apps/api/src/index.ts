@@ -71,7 +71,7 @@ import pool from './db';
 // each cold Vercel instance otherwise opened a fresh direct connection and reran
 // ~15 sequential DDL statements just to find out they were all no-ops, which is
 // what was exhausting Postgres's connection limit under concurrent traffic.
-const MIGRATION_VERSION = 24;
+const MIGRATION_VERSION = 26;
 
 const runMigration = async () => {
     const directUrl = process.env.DIRECT_DATABASE_URL;
@@ -1278,6 +1278,84 @@ DROP TRIGGER IF EXISTS trg_log_invoices ON public.customer_invoices;
 CREATE TRIGGER trg_log_invoices AFTER UPDATE OR DELETE ON public.customer_invoices FOR EACH ROW EXECUTE FUNCTION public.log_accounting_change('status,total,voided_at,issue_date,follow_up_date,customer_id');
 DROP TRIGGER IF EXISTS trg_log_settings ON public.accounting_settings;
 CREATE TRIGGER trg_log_settings AFTER INSERT OR UPDATE OR DELETE ON public.accounting_settings FOR EACH ROW EXECUTE FUNCTION public.log_accounting_change('locked_through');
+
+
+-- VAT: settings per business, a record of every VAT amount charged or paid, and filed returns. Keep in step with the inline migration in apps/api/src/index.ts.
+
+ALTER TABLE public.accounting_settings ADD COLUMN IF NOT EXISTS vat_registered BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.accounting_settings ADD COLUMN IF NOT EXISTS vat_rate NUMERIC(5,2) NOT NULL DEFAULT 16;
+ALTER TABLE public.accounting_settings ADD COLUMN IF NOT EXISTS tpin TEXT;
+ALTER TABLE public.accounting_settings ADD COLUMN IF NOT EXISTS vat_number TEXT;
+
+ALTER TABLE public.customer_invoices ADD COLUMN IF NOT EXISTS vat_amount NUMERIC(14,2) NOT NULL DEFAULT 0;
+ALTER TABLE public.purchase_bills ADD COLUMN IF NOT EXISTS vat_amount NUMERIC(14,2) NOT NULL DEFAULT 0;
+ALTER TABLE public.purchase_bill_lines ADD COLUMN IF NOT EXISTS tax_code TEXT;
+ALTER TABLE public.purchase_bill_lines ADD COLUMN IF NOT EXISTS vat_amount NUMERIC(14,2) NOT NULL DEFAULT 0;
+
+-- One row per VAT amount: OUTPUT is VAT charged to customers, INPUT is VAT paid to suppliers.
+CREATE TABLE IF NOT EXISTS public.vat_transactions (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL,
+    direction       TEXT NOT NULL CHECK (direction IN ('OUTPUT','INPUT')),
+    tax_code        TEXT NOT NULL CHECK (tax_code IN ('STANDARD','ZERO','EXEMPT')),
+    tx_date         DATE NOT NULL,
+    net             NUMERIC(14,2) NOT NULL,
+    vat             NUMERIC(14,2) NOT NULL DEFAULT 0,
+    source_type     TEXT NOT NULL,                      -- INVOICE, PURCHASE_BILL, or MANUAL
+    source_id       UUID NOT NULL,
+    counterparty    TEXT,
+    reference       TEXT,
+    note            TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_vat_tx_org_date ON public.vat_transactions (organization_id, tx_date);
+CREATE INDEX IF NOT EXISTS idx_vat_tx_source ON public.vat_transactions (organization_id, source_type, source_id);
+
+CREATE TABLE IF NOT EXISTS public.vat_returns (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id   UUID NOT NULL,
+    period_start      DATE NOT NULL,
+    period_end        DATE NOT NULL,
+    totals            JSONB NOT NULL,                   -- the figures as they stood when it was filed
+    payment_reference TEXT,
+    filed_by          UUID,
+    filed_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (organization_id, period_start, period_end)
+);
+
+ALTER TABLE public.vat_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.vat_returns ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.vat_transactions, public.vat_returns TO service_role;
+
+
+-- Payroll in the books: accruing each approved run (gross pay, employer contributions, and what is owed to ZRA, NAPSA and NHIMA),
+-- and recording the payments made to them. Keep in step with the inline migration in apps/api/src/index.ts.
+
+-- A date turns accruals on from that day. Runs approved before it are not touched: their pay was already booked another way.
+ALTER TABLE public.accounting_settings ADD COLUMN IF NOT EXISTS payroll_accrual_from DATE;
+ALTER TABLE public.payroll_runs ADD COLUMN IF NOT EXISTS accrued_at TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS public.statutory_payments (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL,
+    agency          TEXT NOT NULL CHECK (agency IN ('PAYE','NAPSA','NHIMA')),
+    period_year     INTEGER NOT NULL,
+    period_month    INTEGER NOT NULL CHECK (period_month BETWEEN 1 AND 12),
+    amount          NUMERIC(14,2) NOT NULL CHECK (amount > 0),
+    paid_on         DATE NOT NULL,
+    method          TEXT,
+    reference       TEXT,
+    account_id      UUID,                              -- the bank or wallet account the money left, when it was posted to the books
+    created_by      UUID,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_statutory_payments_period ON public.statutory_payments (organization_id, period_year, period_month);
+ALTER TABLE public.statutory_payments ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.statutory_payments TO service_role;
+
+ALTER TABLE public.journal_entries DROP CONSTRAINT IF EXISTS journal_entries_source_type_check;
+ALTER TABLE public.journal_entries ADD CONSTRAINT journal_entries_source_type_check
+    CHECK (source_type = ANY (ARRAY['CASHBOOK','LINE_ITEMS','OPENING','MANUAL','RECLASS','MASTERFEES','INVOICE','IMPORT','PURCHASE_BILL','BILL_PAYMENT','STOCK_ADJUSTMENT','STOCK_SALE','PAYROLL_RUN','STATUTORY_PAYMENT']));
 
 
         `);

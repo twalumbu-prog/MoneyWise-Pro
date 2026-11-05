@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { StatutoryPanel } from '../components/payroll/StatutoryPanel';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
@@ -11,7 +12,7 @@ import { BatchImportStaff } from '../components/payroll/BatchImportStaff';
 import { PayrollConfigModal } from '../components/payroll/PayrollConfigModal';
 import { Search, SlidersHorizontal, ArrowDownUp, Plus, X, UserPlus, FileSpreadsheet, Settings } from 'lucide-react';
 
-type MainTab = 'history' | 'staff';
+type MainTab = 'history' | 'staff' | 'statutory';
 type SortDir = 'desc' | 'asc';
 
 const STATUS_CONFIG: Record<string, { label: string; dotColor: string; textColor: string; bgColor: string }> = {
@@ -180,6 +181,16 @@ export const Payroll: React.FC = () => {
                             >
                                 Staff Members
                             </button>
+                            <button
+                                onClick={() => { setMainTab('statutory'); setSearch(''); setSearchOpen(false); }}
+                                className={`px-3.5 h-full rounded-lg text-[10px] font-['DM_Sans'] transition-all ${
+                                    mainTab === 'statutory'
+                                        ? 'bg-white shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)] font-bold text-gray-900'
+                                        : 'font-normal text-gray-900 hover:bg-white/50'
+                                }`}
+                            >
+                                Statutory &amp; Books
+                            </button>
                         </div>
                         
                         {/* Configure Button */}
@@ -194,6 +205,8 @@ export const Payroll: React.FC = () => {
 
                     {/* Inner content */}
                     <div className="flex-1 flex flex-col gap-2 overflow-hidden">
+
+                        {mainTab === 'statutory' && <StatutoryPanel />}
 
                         {mainTab === 'history' && (
                             <>

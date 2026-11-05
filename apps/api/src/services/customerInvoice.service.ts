@@ -11,6 +11,7 @@
 import { supabase } from '../lib/supabase';
 import { randomBytes } from 'crypto';
 import { ledgerService } from './ledger.service';
+import * as vat from './vat.service';
 import { emailService } from './email.service';
 import { assignShortLink, shortPathFor } from './invoiceShortLink.service';
 import { isValidZambiaMobile, normalizeZambiaPhone } from '../utils/zambiaPhone';
@@ -111,19 +112,22 @@ export async function ensureCustomer(orgId: string, input: { id?: string | null;
 async function postInvoiceJournal(invoice: any): Promise<void> {
     await supabase.from('journal_entries').delete()
         .eq('organization_id', invoice.organization_id).eq('source_type', 'INVOICE').eq('source_id', invoice.id);
-    if (invoice.status === 'VOID') return;
+    if (invoice.status === 'VOID') { await vat.recordInvoiceVat(invoice).catch(() => undefined); return; }
 
     const fallbackIncome = await getDefaultRevenueAccountId(invoice.organization_id);
     const income = new Map<string, number>();
     let sum = 0;
+    let vatSum = 0;
     for (const it of invoice.items as any[]) {
-        const amt = round2(Number(it.unit_price) * Number(it.quantity));
+        // A line with VAT in it credits income with the amount before VAT; the VAT is credited to VAT payable below.
+        const amt = it.tax_code ? round2(Number(it.net)) : round2(Number(it.unit_price) * Number(it.quantity));
+        vatSum = round2(vatSum + (it.tax_code ? Number(it.vat) || 0 : 0));
         const acct = it.income_account_id || fallbackIncome;
         income.set(acct, round2((income.get(acct) || 0) + amt));
         sum = round2(sum + amt);
     }
     // Rounding / manual-total drift lands on the largest income line so the journal always ties to the invoice total.
-    const drift = round2(Number(invoice.total) - sum);
+    const drift = round2(Number(invoice.total) - sum - vatSum);
     if (Math.abs(drift) > TOLERANCE && income.size) {
         const [top] = [...income.entries()].sort((a, b) => b[1] - a[1])[0];
         income.set(top, round2((income.get(top) || 0) + drift));
@@ -132,6 +136,7 @@ async function postInvoiceJournal(invoice: any): Promise<void> {
     const lines = [
         { account_id: invoice.receivable_account_id, debit: Number(invoice.total), credit: 0 },
         ...[...income.entries()].filter(([, v]) => v > TOLERANCE).map(([account_id, v]) => ({ account_id, debit: 0, credit: v })),
+        ...(vatSum > TOLERANCE ? [{ account_id: await vat.vatPayableAccount(invoice.organization_id), debit: 0, credit: vatSum }] : []),
     ];
     const dr = lines.reduce((s, l) => s + l.debit, 0), cr = lines.reduce((s, l) => s + l.credit, 0);
     if (Math.abs(dr - cr) > TOLERANCE) throw new InvoiceError(`Invoice journal does not balance (Dr ${dr} Cr ${cr}).`, 500);
@@ -151,12 +156,13 @@ async function postInvoiceJournal(invoice: any): Promise<void> {
         await supabase.from('journal_entries').delete().eq('id', je.id);
         throw new InvoiceError(`Could not post the invoice lines: ${lineErr.message}`, 500);
     }
+    await vat.recordInvoiceVat(invoice).catch((e) => console.error('[Invoice] VAT record failed:', e?.message));
 }
 
 // ── Create ───────────────────────────────────────────────────────────────────
 
 export interface CreateInvoiceInput {
-    items: Array<{ product_id?: string; custom?: boolean; name?: string; quantity: number; price?: number; income_account_id?: string | null; check_in?: string; check_out?: string }>;
+    items: Array<{ product_id?: string; custom?: boolean; name?: string; quantity: number; price?: number; tax_code?: string; income_account_id?: string | null; check_in?: string; check_out?: string }>;
     customer: { id?: string | null; name: string; phone?: string | null; email?: string | null };
     follow_up_date: string;
     issue_date?: string;
@@ -213,6 +219,18 @@ export async function createInvoice(orgId: string, userId: string, input: Create
     const total = round2(lines.reduce((s, l) => s + l.unit_price * l.quantity, 0));
     if (!(total > 0)) throw new InvoiceError('The invoice total must be greater than 0.');
 
+    // A VAT-registered business: prices are taken as VAT-inclusive, so the total is unchanged and the VAT inside it is split out per line.
+    const vs = await vat.getSettings(orgId);
+    let vatTotal = 0;
+    if (vs.registered) {
+        lines.forEach((l, i) => {
+            const given = (input.items[i] as any)?.tax_code;
+            const code = vat.isTaxCode(given) ? given : 'STANDARD';
+            const s = vat.split(l.unit_price * l.quantity, code, vs.rate, true);
+            l.tax_code = code; l.net = s.net; l.vat = s.vat; vatTotal = round2(vatTotal + s.vat);
+        });
+    }
+
     // A credit sale commits the stay, so refuse up front if it overlaps one that is already confirmed.
     for (const l of lines.filter(l => l.check_in)) {
         const { data: clash } = await supabase.from('product_bookings').select('id')
@@ -239,6 +257,7 @@ export async function createInvoice(orgId: string, userId: string, input: Create
             follow_up_date: input.follow_up_date,
             items: lines,
             total,
+            ...(vatTotal > 0 ? { vat_amount: vatTotal } : {}),
             notes: input.notes?.trim() || null,
             reference,
             receivable_account_id: receivableId,

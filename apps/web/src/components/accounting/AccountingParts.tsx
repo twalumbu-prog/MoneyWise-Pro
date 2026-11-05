@@ -246,6 +246,29 @@ export function ImportTool() {
     );
 }
 
+/** VAT settings, shown in Settings. Enterprise plan; other plans see the upgrade card. */
+export const VatSettingsPanel: React.FC = () => {
+    const access = useAccountingAccess();
+    const qc = useQueryClient();
+    const navigate = useNavigate();
+    const enabled = !!access.data?.enabled;
+    const settings = useReport<VatSettings>('/accounting/vat/settings', enabled);
+    if (access.isLoading) return <p className="text-sm text-gray-500">Loading…</p>;
+    if (!enabled) return <Upgrade />;
+    if (settings.isLoading) return <p className="text-sm text-gray-500">Loading…</p>;
+    if (settings.error) return <ErrorNote text={(settings.error as any)?.message} />;
+    return (
+        <div className="flex max-w-3xl flex-col gap-4">
+            <div>
+                <h2 className="font-['DM_Sans'] text-lg font-bold text-gray-900">VAT</h2>
+                <p className="mt-0.5 text-sm text-gray-600">Tell MoneyWise whether this business charges VAT, and at what rate. Invoices and supplier bills then carry VAT, and your return builds itself.</p>
+            </div>
+            <VatSettingsForm key={JSON.stringify(settings.data)} initial={settings.data!} onSaved={() => qc.invalidateQueries({ queryKey: ['accounting'] })} />
+            {settings.data?.registered && <button onClick={() => navigate('/reporting')} className="w-fit text-sm font-semibold text-[#0059D8]">Open the VAT return in Reports (VAT tab)</button>}
+        </div>
+    );
+};
+
 export function useAccountingAccess() {
     return useQuery({ queryKey: ['accounting', 'access'], queryFn: () => apiJson<{ enabled: boolean; planId: string }>('/accounting/access'), retry: false });
 }
@@ -521,12 +544,152 @@ function Performance({ from, to }: Range) {
     );
 }
 
-export const StatementsPanel: React.FC<{ view: 'tb' | 'bs' | 'gl' | 'cf' | 'jn' | 'ar' | 'pf'; from: string; to: string }> = ({ view, from, to }) => {
+interface VatSettings { registered: boolean; rate: number; tpin: string | null; vatNumber: string | null }
+
+function VatSettingsForm({ initial, onSaved, compact }: { initial: VatSettings; onSaved: () => void; compact?: boolean }) {
+    const [f, setF] = useState({ registered: initial.registered, rate: String(initial.rate), tpin: initial.tpin ?? '', vatNumber: initial.vatNumber ?? '' });
+    const [busy, setBusy] = useState(false); const [err, setErr] = useState<string | null>(null);
+    const save = async () => {
+        setBusy(true); setErr(null);
+        try { await apiJson('/accounting/vat/settings', { method: 'PUT', body: JSON.stringify({ ...f, rate: Number(f.rate) }) }); onSaved(); }
+        catch (e: any) { setErr(e?.message || 'Could not save.'); } finally { setBusy(false); }
+    };
+    return (
+        <div className={`${CARD} p-5`}>
+            <ErrorNote text={err} />
+            <label className="mb-3 flex items-center gap-2 text-sm font-medium text-gray-900"><input type="checkbox" checked={f.registered} onChange={(e) => setF({ ...f, registered: e.target.checked })} />This business is registered for VAT</label>
+            {f.registered && (
+                <div className={`grid gap-3 ${compact ? 'grid-cols-2' : 'grid-cols-2 md:grid-cols-4'}`}>
+                    <div><label className={labelClass}>VAT rate %</label><input type="number" step="0.01" className={fieldClass} value={f.rate} onChange={(e) => setF({ ...f, rate: e.target.value })} /></div>
+                    <div><label className={labelClass}>TPIN</label><input className={fieldClass} value={f.tpin} onChange={(e) => setF({ ...f, tpin: e.target.value })} /></div>
+                    <div className="col-span-2"><label className={labelClass}>VAT registration number</label><input className={fieldClass} value={f.vatNumber} onChange={(e) => setF({ ...f, vatNumber: e.target.value })} /></div>
+                </div>
+            )}
+            <p className="mt-3 text-[11px] text-gray-500">When on, invoice prices are treated as including VAT, and supplier bills add the VAT you can claim back. The standard rate is usually 16%; confirm the rate and your filing dates with ZRA.</p>
+            <PrimaryButton busy={busy} onClick={save} className="mt-3">Save VAT settings</PrimaryButton>
+        </div>
+    );
+}
+
+function VatEntryForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+    const accounts = useReport<{ accounts: { id: string; code: string | null; name: string; type: string }[] }>('/accounting/accounts');
+    const [direction, setDirection] = useState<'OUTPUT' | 'INPUT'>('OUTPUT'); const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+    const [gross, setGross] = useState(''); const [accountId, setAccountId] = useState(''); const [taxCode, setTaxCode] = useState('STANDARD'); const [note, setNote] = useState('');
+    const [busy, setBusy] = useState(false); const [err, setErr] = useState<string | null>(null);
+    const list = (accounts.data?.accounts ?? []).filter((a) => a.type === (direction === 'OUTPUT' ? 'INCOME' : 'EXPENSE'));
+    const save = async () => {
+        setBusy(true); setErr(null);
+        try { await apiJson('/accounting/vat/adjustments', { method: 'POST', body: JSON.stringify({ direction, date, gross: Number(gross), accountId, taxCode, note }) }); onSaved(); onClose(); }
+        catch (e: any) { setErr(e?.message || 'Could not add it.'); } finally { setBusy(false); }
+    };
+    return (
+        <Dialog open title="Add VAT for sales or costs without an invoice" onClose={onClose}>
+            <ErrorNote text={err} />
+            <p className="mb-3 text-sm text-[#5F6368]">For cash sales already recorded at their full price, or costs you paid directly. Enter the total including VAT; the VAT is split out and moved to the right VAT account.</p>
+            <div className="mb-3 flex gap-2">{([['OUTPUT', 'Sales I made'], ['INPUT', 'Costs I paid']] as const).map(([id, l]) => <button key={id} type="button" onClick={() => { setDirection(id); setAccountId(''); }} className={`rounded-full px-4 py-1.5 text-sm ${direction === id ? 'bg-[#CFE4FF] font-medium text-[#0059D8]' : 'bg-[#F1F3F4] text-[#3C4043]'}`}>{l}</button>)}</div>
+            <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                    <div><label className={labelClass}>Date</label><input type="date" className={fieldClass} value={date} onChange={(e) => setDate(e.target.value)} /></div>
+                    <div><label className={labelClass}>Total including VAT</label><input type="number" step="0.01" className={fieldClass} value={gross} onChange={(e) => setGross(e.target.value)} /></div>
+                </div>
+                <div><label className={labelClass}>{direction === 'OUTPUT' ? 'Income account they were recorded in' : 'Expense account they were recorded in'}</label>
+                    <select className={fieldClass} value={accountId} onChange={(e) => setAccountId(e.target.value)}><option value="">Choose…</option>{list.map((a) => <option key={a.id} value={a.id}>{a.code ? `${a.code} · ` : ''}{a.name}</option>)}</select></div>
+                <div className="grid grid-cols-2 gap-3">
+                    <div><label className={labelClass}>VAT type</label><select className={fieldClass} value={taxCode} onChange={(e) => setTaxCode(e.target.value)}><option value="STANDARD">Standard rate</option><option value="ZERO">Zero-rated</option><option value="EXEMPT">Exempt</option></select></div>
+                    <div><label className={labelClass}>Note</label><input className={fieldClass} value={note} onChange={(e) => setNote(e.target.value)} /></div>
+                </div>
+                <PrimaryButton busy={busy} onClick={save} disabled={!accountId || !(Number(gross) > 0)} className="w-full">Add</PrimaryButton>
+            </div>
+        </Dialog>
+    );
+}
+
+function Vat({ from, to }: Range) {
+    const qc = useQueryClient();
+    const navigate = useNavigate();
+    const settings = useReport<VatSettings>('/accounting/vat/settings');
+    const ret = useReport<any>(`/accounting/vat/return?from=${from}&to=${to}`, !!settings.data?.registered);
+    const past = useReport<{ returns: any[] }>('/accounting/vat/returns', !!settings.data?.registered);
+    const [adding, setAdding] = useState(false); const [filing, setFiling] = useState(false); const [ref, setRef] = useState(''); const [err, setErr] = useState<string | null>(null); const [showTx, setShowTx] = useState(false);
+    const refresh = () => qc.invalidateQueries({ queryKey: ['accounting'] });
+    const file = async () => {
+        try { await apiJson('/accounting/vat/return/file', { method: 'POST', body: JSON.stringify({ from, to, paymentReference: ref }) }); setFiling(false); refresh(); }
+        catch (e: any) { setErr(e?.message || 'Could not record it.'); }
+    };
+    if (settings.isLoading) return <p className="text-sm text-gray-500">Loading…</p>;
+    if (settings.error) return <ErrorNote text={(settings.error as any)?.message} />;
+    if (!settings.data?.registered) return (
+        <Stack>
+            <Hero label="VAT" value="Not switched on" />
+            <Heading>VAT</Heading>
+            <div className={`${CARD} p-5`}>
+                <p className="text-sm text-gray-700">VAT is switched off for this business. Turn it on and set your rate and TPIN in Settings, and your VAT return will build here.</p>
+                <PrimaryButton className="mt-3" onClick={() => navigate('/settings?tab=vat')}>Open VAT settings</PrimaryButton>
+            </div>
+        </Stack>
+    );
+    const d = ret.data;
+    const row = (label: string, value: string, vat?: string, bold?: boolean) => (
+        <div className={`grid grid-cols-[1fr_8rem_8rem] items-center gap-2 border-b border-gray-100 px-6 py-2.5 text-sm tabular-nums ${bold ? 'bg-gray-50 font-bold' : ''}`}><span className="font-sans">{label}</span><span className="text-right">{value}</span><span className="text-right">{vat ?? ''}</span></div>
+    );
+    const csv = () => download(`vat-return-${from}-${to}.csv`, [['Date', 'Direction', 'Type', 'Net', 'VAT', 'Source', 'Reference', 'Party'], ...d.transactions.map((t: any) => [t.tx_date, t.direction, t.tax_code, t.net, t.vat, t.source_type, t.reference ?? '', t.counterparty ?? ''])]);
+    return (
+        <Stack>
+            <Hero label={d ? (d.position === 'PAYABLE' ? 'VAT payable to ZRA' : 'VAT refundable') : 'VAT return'} value={d ? money(Math.abs(d.netVat)) : '…'} pdf={`/accounting/pdf?report=vat&from=${from}&to=${to}`} action={d ? { label: 'Export CSV', onClick: csv } : undefined} />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <Heading>VAT return</Heading>
+                <div className="flex gap-2">
+                    <button onClick={() => setAdding(true)} className="h-8 rounded-[10px] bg-[#CFE4FF] px-4 font-['DM_Sans'] text-[11px] font-bold text-[#0059D8] hover:bg-[#BBD7FF]">Add VAT entry</button>
+                    {d && !d.filed && <button onClick={() => setFiling(true)} className="h-8 rounded-[10px] bg-[#0B57D0] px-4 font-['DM_Sans'] text-[11px] font-bold text-white hover:bg-[#0842A0]">Record as filed</button>}
+                </div>
+            </div>
+            <ErrorNote text={err ?? (ret.error as any)?.message} />
+            {ret.isLoading && <p className="text-sm text-gray-500">Loading…</p>}
+            {d && (<>
+                <p className="text-[11px] text-gray-500">Period {d.from} to {d.to}. Due by {d.dueBy} (the 18th of the following month, confirm with ZRA). Use the date button at the top to change the period.{d.filed ? ` Recorded as filed on ${new Date(d.filed.filed_at).toLocaleDateString()}.` : ''}</p>
+                <div className={CARD}>
+                    <div className={`${CARD_HEAD} text-[10px] font-semibold uppercase tracking-wider text-gray-500`}><span>Sales</span><span className="flex gap-10"><span className="w-28 text-right">Value</span><span className="w-28 text-right">VAT</span></span></div>
+                    {row('Standard-rated sales', money(d.sales.standardNet), money(d.sales.standardVat))}{row('Zero-rated sales', money(d.sales.zeroNet), money(0))}{row('Exempt sales', money(d.sales.exemptNet), money(0))}{row('Output VAT', '', money(d.outputVat), true)}
+                </div>
+                <div className={CARD}>
+                    <div className={`${CARD_HEAD} text-[10px] font-semibold uppercase tracking-wider text-gray-500`}><span>Purchases</span><span className="flex gap-10"><span className="w-28 text-right">Value</span><span className="w-28 text-right">VAT</span></span></div>
+                    {row('Standard-rated purchases', money(d.purchases.standardNet), money(d.purchases.standardVat))}{row('Zero-rated purchases', money(d.purchases.zeroNet), money(0))}{row('Exempt purchases', money(d.purchases.exemptNet), money(0))}{row('Input VAT recoverable', '', money(d.inputVat), true)}
+                </div>
+                <div className={`rounded-xl px-4 py-3 text-[12px] ${d.ledger.agrees ? 'bg-[#E6F4EA] text-[#137333]' : 'bg-[#FEF7E0] text-[#B06000]'}`}>{d.ledger.agrees ? 'These figures agree with the VAT accounts in your books.' : `The VAT accounts in your books show output ${money(d.ledger.outputVat)} and input ${money(d.ledger.inputVat)} for this period, which differs from the records above. Check for VAT posted by hand.`}</div>
+                <button onClick={() => setShowTx((v) => !v)} className="w-fit text-xs font-semibold text-[#0059D8]">{showTx ? 'Hide' : 'Show'} the {d.transactions.length} entries behind this return</button>
+                {showTx && (
+                    <div className={CARD}>
+                        {d.transactions.length === 0 && <p className="px-6 py-3 text-sm text-gray-500">No VAT entries in this period.</p>}
+                        {d.transactions.map((t: any) => (
+                            <div key={t.id} className="flex items-center justify-between gap-4 border-b border-gray-100 px-6 py-2 text-sm"><span className="min-w-0"><span className="block truncate text-gray-900">{t.reference ?? t.source_type}{t.counterparty ? ` · ${t.counterparty}` : ''}</span><span className="text-[11px] text-gray-500">{t.tx_date} · {t.direction === 'OUTPUT' ? 'sale' : 'purchase'} · {t.tax_code.toLowerCase()}</span></span><span className="text-right tabular-nums">{money(Number(t.net))}<span className="block text-[11px] text-gray-500">VAT {money(Number(t.vat))}</span></span></div>
+                        ))}
+                    </div>
+                )}
+            </>)}
+            {(past.data?.returns ?? []).length > 0 && (
+                <div><h3 className="mb-2 font-['DM_Sans'] text-xl font-semibold text-black">Filed returns</h3>
+                    <div className={CARD}>{past.data!.returns.map((r) => <div key={r.id} className="flex items-center justify-between border-b border-gray-100 px-6 py-3 text-sm"><span>{r.period_start} to {r.period_end}{r.payment_reference ? ` · ${r.payment_reference}` : ''}</span><span className="tabular-nums">{money(Number(r.totals?.netVat ?? 0))}</span></div>)}</div></div>
+            )}
+            <button onClick={() => navigate('/settings?tab=vat')} className="w-fit text-xs font-semibold text-[#0059D8]">VAT settings (rate, TPIN, registration)</button>
+            {adding && <VatEntryForm onClose={() => setAdding(false)} onSaved={refresh} />}
+            {filing && (
+                <Dialog open title="Record this return as filed" onClose={() => setFiling(false)}>
+                    <p className="mb-3 text-sm text-[#5F6368]">This keeps a copy of the figures for {from} to {to}. It does not send anything to ZRA; file on TaxOnline first, then record it here.</p>
+                    <label className={labelClass}>ZRA payment or filing reference (optional)</label>
+                    <input className={`${fieldClass} mb-4`} value={ref} onChange={(e) => setRef(e.target.value)} />
+                    <PrimaryButton onClick={file} className="w-full">Record as filed</PrimaryButton>
+                </Dialog>
+            )}
+        </Stack>
+    );
+}
+
+export const StatementsPanel: React.FC<{ view: 'tb' | 'bs' | 'gl' | 'cf' | 'jn' | 'ar' | 'pf' | 'vat'; from: string; to: string }> = ({ view, from, to }) => {
     const access = useAccountingAccess();
     if (access.isLoading) return <p className="p-4 text-sm text-gray-500">Loading…</p>;
     if (access.error) return <ErrorNote text={(access.error as any)?.message} />;
     if (!access.data?.enabled) return <Upgrade />;
-    return <>{view === 'tb' && <TrialBalance from={from} to={to} />}{view === 'bs' && <BalanceSheet from={from} to={to} />}{view === 'gl' && <AccountLedger from={from} to={to} />}{view === 'cf' && <CashFlow from={from} to={to} />}{view === 'jn' && <Journals from={from} to={to} />}{view === 'ar' && <Receivables />}{view === 'pf' && <Performance from={from} to={to} />}</>;
+    return <>{view === 'tb' && <TrialBalance from={from} to={to} />}{view === 'bs' && <BalanceSheet from={from} to={to} />}{view === 'gl' && <AccountLedger from={from} to={to} />}{view === 'cf' && <CashFlow from={from} to={to} />}{view === 'jn' && <Journals from={from} to={to} />}{view === 'ar' && <Receivables />}{view === 'pf' && <Performance from={from} to={to} />}{view === 'vat' && <Vat from={from} to={to} />}</>;
 };
 
 /** Import from other software, shown in Settings next to the Chart of Accounts. */

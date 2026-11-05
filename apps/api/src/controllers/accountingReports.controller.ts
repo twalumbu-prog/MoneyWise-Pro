@@ -17,7 +17,7 @@ export const changes = run('load the change history', async (r) => ({ changes: a
 export const pdf = async (req: any, res: Response) => {
     try {
         const { from, to } = range(req);
-        const out = await buildReportPdf(org(req), String(req.query.report ?? ''), { from, to, accountId: req.query.accountId as string | undefined, against: req.query.against as string | undefined });
+        const out = await buildReportPdf(org(req), String(req.query.report ?? ''), { from, to, accountId: req.query.accountId as string | undefined, against: req.query.against as string | undefined, year: req.query.year as string | undefined, month: req.query.month as string | undefined, agency: req.query.agency as string | undefined });
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="${out.file}"`);
         res.send(out.pdf);
