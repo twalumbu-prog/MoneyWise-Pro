@@ -380,7 +380,7 @@ export const cashbookService = {
         }
 
         const prefix = (opts.description.startsWith('Sale:') || opts.description.startsWith('Revenue:')) ? 'REC' : 'CR';
-        const { data: refNum, error: refError } = await supabase.rpc('generate_sequential_reference', {
+        const { data: firstRef, error: refError } = await supabase.rpc('generate_sequential_reference', {
             p_org_id: organizationId,
             p_entity_type: 'INFLOW',
             p_prefix: prefix
@@ -388,6 +388,7 @@ export const cashbookService = {
         if (refError) {
             throw new Error(`Failed to generate reference number for intent ${intentId}: ${refError.message}`);
         }
+        let refNum: string = firstRef;
 
         const newDate = opts.date || intent.date;
 
@@ -410,7 +411,8 @@ export const cashbookService = {
             .select()
             .maybeSingle();
 
-        let { data: updated, error: updateError } = await applyUpdate(opts.externalReference);
+        let usedExternalRef = opts.externalReference;
+        let { data: updated, error: updateError } = await applyUpdate(usedExternalRef);
 
         if (updateError?.message?.includes('uniq_cashbook_inflow_per_reference')) {
             // The inflow-reference index is GLOBAL across organizations.
@@ -434,7 +436,23 @@ export const cashbookService = {
                 // Cross-org collision (e.g. a commission-sweep credit resolving to the
                 // originating org's reference): keep OUR intent, retry with a reference
                 // that is unique by construction.
-                ({ data: updated, error: updateError } = await applyUpdate(opts.fallbackExternalReference));
+                usedExternalRef = opts.fallbackExternalReference;
+                ({ data: updated, error: updateError } = await applyUpdate(usedExternalRef));
+            }
+        }
+
+        // Same self-heal as createEntry: a generated CR-/REC- number already in use (counter behind the ledger, or —
+        // Twalumbu, 31 Oct 2026 — numbers past 9999 truncated to 4 digits) must not leave a paid deposit unbooked.
+        for (let attempt = 0; updateError?.message?.includes('cashbook_entries_org_reference_unique') && attempt < 2; attempt++) {
+            try {
+                await alignReferenceCounter(organizationId, 'INFLOW', new Date().getUTCFullYear());
+                const { data: fresh } = await supabase.rpc('generate_sequential_reference', { p_org_id: organizationId, p_entity_type: 'INFLOW', p_prefix: prefix });
+                if (!fresh) break;
+                refNum = fresh;
+                ({ data: updated, error: updateError } = await applyUpdate(usedExternalRef));
+            } catch (healErr: any) {
+                console.error('[Ledger] reference-counter self-heal failed:', healErr?.message);
+                break;
             }
         }
 

@@ -68,7 +68,7 @@ export const getStatementLines = async (req: any, res: any) => {
 
     let query = supabase
         .from('bank_statement_lines')
-        .select('id, seq, line_date, description, reference, money_in, money_out, balance, import_batch_id, created_at')
+        .select('id, seq, line_date, description, reference, external_id, agent, money_in, money_out, balance, import_batch_id, created_at')
         .eq('external_wallet_id', found.wallet.id)
         .order('line_date', { ascending: false })
         .order('seq', { ascending: false })
@@ -93,6 +93,8 @@ export const getStatementLines = async (req: any, res: any) => {
             date: r.line_date,
             description: r.description,
             reference: r.reference,
+            external_id: r.external_id ?? null,
+            agent: r.agent ?? null,
             money_in: Number(r.money_in),
             money_out: Number(r.money_out),
             balance: r.balance != null ? Number(r.balance) : null,
@@ -129,6 +131,10 @@ export const importStatementLines = async (req: any, res: any) => {
         if (moneyIn === null || moneyOut === null || moneyIn < 0 || moneyOut < 0) return fail(res, 400, `${where}.money_in and money_out must be non-negative numbers`);
         if (moneyIn === 0 && moneyOut === 0) return fail(res, 400, `${where} has neither money_in nor money_out`);
         if (moneyIn > 0 && moneyOut > 0) return fail(res, 400, `${where} has both money_in and money_out; send one line per movement`);
+        const externalId = l.external_id === undefined || l.external_id === null || !String(l.external_id).trim() ? null : String(l.external_id).trim();
+        if (externalId && externalId.length > 150) return fail(res, 400, `${where}.external_id is longer than 150 characters`);
+        const agent = l.agent === undefined || l.agent === null || !String(l.agent).trim() ? null : String(l.agent).trim();
+        if (agent && agent.length > 150) return fail(res, 400, `${where}.agent is longer than 150 characters`);
         const balance = l.balance === undefined || l.balance === null || l.balance === '' ? null : money(l.balance);
         if (l.balance !== undefined && l.balance !== null && l.balance !== '' && balance === null) return fail(res, 400, `${where}.balance must be a number`);
 
@@ -136,8 +142,8 @@ export const importStatementLines = async (req: any, res: any) => {
         // are legitimate, so identical lines are told apart by their order within the request. A caller
         // can pin identity explicitly with `external_id` instead.
         let hash: string;
-        if (l.external_id !== undefined && l.external_id !== null && String(l.external_id).trim()) {
-            hash = sha256(`${found.wallet.id}|ext|${String(l.external_id).trim()}`);
+        if (externalId) {
+            hash = sha256(`${found.wallet.id}|ext|${externalId}`);
         } else {
             const base = [found.wallet.id, l.date, description, moneyIn, moneyOut, balance ?? '', reference ?? ''].join('|');
             const n = (seen.get(base) ?? 0) + 1;
@@ -154,6 +160,9 @@ export const importStatementLines = async (req: any, res: any) => {
             money_out: moneyOut,
             balance,
             line_hash: hash,
+            // Kept (it used to be hashed and thrown away) so a statement line can be found again by the id its sender gave it.
+            external_id: externalId,
+            agent,
             import_batch_id: batchId,
         });
     }

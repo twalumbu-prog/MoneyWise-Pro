@@ -26,8 +26,6 @@ const MarketplaceCheckout = React.lazy(() => import('./pages/MarketplaceCheckout
 const Marketplace = React.lazy(() => import('./pages/Marketplace').then(m => ({ default: m.Marketplace })));
 const KycProfile = React.lazy(() => import('./pages/KycProfile').then(m => ({ default: m.KycProfile })));
 const InvestAccounts = React.lazy(() => import('./pages/InvestAccounts').then(m => ({ default: m.InvestAccounts })));
-const Rewards = React.lazy(() => import('./pages/Rewards').then(m => ({ default: m.Rewards })));
-const RewardsDetail = React.lazy(() => import('./pages/Rewards').then(m => ({ default: m.RewardsDetail })));
 const RewardsManage = React.lazy(() => import('./pages/RewardsManage').then(m => ({ default: m.RewardsManage })));
 const ManualEntry = React.lazy(() => import('./pages/ManualEntry').then(m => ({ default: m.ManualEntry })));
 const Budgets = React.lazy(() => import('./pages/Budgets').then(m => ({ default: m.Budgets })));
@@ -65,11 +63,13 @@ const RunPayrollPage = React.lazy(() => import('./pages/RunPayrollPage').then(m 
 const PublicStore = React.lazy(() => import('./pages/PublicPay').then(m => ({ default: m.PublicPay })));
 const PayEntry = React.lazy(() => import('./pages/PayEntry').then(m => ({ default: m.PayEntry })));
 const SavingsJoin = React.lazy(() => import('./pages/SavingsJoin').then(m => ({ default: m.SavingsJoin })));
+const PublicInvoiceLink = React.lazy(() => import('./pages/PublicInvoiceLink').then(m => ({ default: m.PublicInvoiceLink })));
 const PublicPaymentLink = React.lazy(() => import('./pages/PublicPaymentLink').then(m => ({ default: m.PublicPaymentLink })));
 const Schedules = React.lazy(() => import('./pages/Schedules').then(m => ({ default: m.Schedules })));
 const InvestHome = React.lazy(() => import('./pages/invest/InvestHome').then(m => ({ default: m.InvestHome })));
 const InvestCompany = React.lazy(() => import('./pages/invest/InvestCompany').then(m => ({ default: m.InvestCompany })));
 const InvestProductDetail = React.lazy(() => import('./pages/invest/InvestProductDetail').then(m => ({ default: m.InvestProductDetail })));
+const Rewards = React.lazy(() => import('./pages/Rewards').then(m => ({ default: m.Rewards })));
 const ApiDocs = React.lazy(() => import('./pages/ApiDocs').then(m => ({ default: m.ApiDocs })));
 import { CompleteProfile } from './pages/CompleteProfile';
 import { OAuthAuthorize, OAUTH_RETURN_KEY } from './pages/OAuthAuthorize';
@@ -77,6 +77,7 @@ import { Loader2 } from 'lucide-react';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { RealtimeCacheSync } from './components/RealtimeCacheSync';
 import { ReferralClaimer } from './components/ReferralClaimer';
+import { REWARDS_SIGNUP_KEY } from './lib/rewardClaims';
 import { UpdatePrompt } from './components/UpdatePrompt';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -174,6 +175,11 @@ const HomeRedirect = () => {
         return null;
     }
 
+    // Back from "Sign up with Google to redeem your rewards" on a store: straight to Rewards (it sets up the personal account).
+    try {
+        if (localStorage.getItem(REWARDS_SIGNUP_KEY) === '1') return <Navigate to="/rewards?welcome=1" replace />;
+    } catch { /* storage unavailable */ }
+
     try {
         const pendingOAuth = sessionStorage.getItem(OAUTH_RETURN_KEY);
         if (pendingOAuth && pendingOAuth.startsWith('/oauth/authorize')) {
@@ -249,6 +255,8 @@ function App() {
                         <Route path="/:username/store" element={<PublicStore />} />
                         <Route path="/:username/store/:walletSlug" element={<PublicStore />} />
                         <Route path="/pl/:token" element={<PublicPaymentLink />} />
+                        {/* Short invoice link: /<business-code>/invoice/<n> */}
+                        <Route path="/:code/invoice/:no" element={<PublicInvoiceLink />} />
                         <Route path="/savings/join/:code" element={<SavingsJoin />} />
                         <Route path="/docs/api" element={<ApiDocs />} />
                         <Route path="/oauth/authorize" element={<ProtectedRoute><OAuthAuthorize /></ProtectedRoute>} />
@@ -327,26 +335,10 @@ function App() {
                             }
                         />
                         <Route
-                            path="/rewards"
-                            element={
-                                <ProtectedRoute>
-                                    <Rewards />
-                                </ProtectedRoute>
-                            }
-                        />
-                        <Route
                             path="/rewards/manage"
                             element={
                                 <ProtectedRoute>
                                     <RewardsManage />
-                                </ProtectedRoute>
-                            }
-                        />
-                        <Route
-                            path="/rewards/:scope"
-                            element={
-                                <ProtectedRoute>
-                                    <RewardsDetail />
                                 </ProtectedRoute>
                             }
                         />
@@ -539,6 +531,14 @@ function App() {
                             element={
                                 <ProtectedRoute>
                                     <Schedules />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/rewards"
+                            element={
+                                <ProtectedRoute>
+                                    <Rewards />
                                 </ProtectedRoute>
                             }
                         />

@@ -1327,6 +1327,9 @@ app.use('/webhooks', express.raw({ type: '*/*', limit: '5mb' }), webhooksRoutes)
 // A photo search sends a (downsized) picture, which is bigger than the default body limit.
 app.use('/marketplace/image-search', express.json({ limit: '2mb' }));
 app.use('/accounting/import', express.json({ limit: '25mb' }));
+// Uploaded HTML email designs (CRM campaigns) are bigger than the default 100kb JSON limit.
+// express.json skips bodies that are already parsed, so this runs instead of the global parser here.
+app.use(['/crm/campaigns/send', '/crm/email-designs'], express.json({ limit: '2mb' }));
 
 app.use(express.json({
     verify: (req: any, res, buf) => {

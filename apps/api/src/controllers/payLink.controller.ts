@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { payLinkService, PayLinkError } from '../services/payLink.service';
+import { createStoreLink as createLink, storeLinkStatus } from '../services/storeMoneyWisePay.service';
 
 const user = (req: Request) => (req as any).user as { id: string; organization_id: string; role: string };
 
@@ -29,4 +30,14 @@ export const payWithWallet = async (req: Request, res: Response) => {
             { token, username, amount, purpose, walletId },
         ));
     } catch (e) { fail(res, e, 'make the payment'); }
+};
+
+/** Public: turns a store cart into a one-time pay link (priced server-side). */
+export const createStoreLink = async (req: Request, res: Response) => {
+    try { res.status(201).json(await createLink(req.body ?? {})); } catch (e) { fail(res, e, 'prepare this payment'); }
+};
+
+/** Public: whether a store pay link has been paid yet. */
+export const getStoreLinkStatus = async (req: Request, res: Response) => {
+    try { res.json(await storeLinkStatus(String(req.params.token))); } catch (e) { fail(res, e, 'check this payment'); }
 };

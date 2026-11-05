@@ -152,8 +152,36 @@ const renderCampaignHtml = (p: {
 </html>`;
 };
 
+// Custom HTML designs (uploaded ads). Generous enough for designs with a few inline images.
+const MAX_HTML_LENGTH = 1_500_000;
+
+/** Removes the things email clients refuse anyway (scripts, inline handlers, javascript: links). */
+const sanitizeEmailHtml = (html: string) =>
+    html
+        .replace(/<script\b[\s\S]*?<\/script\s*>/gi, '')
+        .replace(/<script\b[^>]*\/?>/gi, '')
+        .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+        .replace(/(href|src)\s*=\s*(["'])\s*javascript:[^"']*\2/gi, '$1=$2#$2');
+
 /**
- * POST /crm/campaigns/send — { audience, subject, body, cta_label?, cta_url?, test_only? }
+ * Renders an uploaded HTML design for one recipient: personalisation tokens are filled in (escaped),
+ * and the "why you're receiving this" footer is added just before </body> so every campaign keeps it.
+ */
+const renderCustomCampaignHtml = (p: { html: string; orgName: string; customerName: string }) => {
+    const firstName = p.customerName.trim().split(/\s+/)[0] || 'there';
+    const personalised = p.html
+        .replace(/\{\{\s*first_name\s*\}\}/gi, esc(firstName))
+        .replace(/\{\{\s*name\s*\}\}/gi, esc(p.customerName))
+        .replace(/\{\{\s*business\s*\}\}/gi, esc(p.orgName));
+    const footer = `<div style="max-width:640px; margin:0 auto; padding:18px 16px 28px; text-align:center; font-family:-apple-system,'Segoe UI',sans-serif; font-size:12px; line-height:1.6; color:#9AA0A7;">You're receiving this because you're a customer of ${esc(p.orgName)}. Reply to this email and ask to be removed if you'd rather not hear from us. Sent via MoneyWise.</div>`;
+    if (/<\/body\s*>/i.test(personalised)) return personalised.replace(/<\/body\s*>(?![\s\S]*<\/body\s*>)/i, `${footer}</body>`);
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0;">${personalised}${footer}</body></html>`;
+};
+
+/**
+ * POST /crm/campaigns/send — { audience, subject, body?, html?, cta_label?, cta_url?, test_only? }
+ * With `html` (an uploaded design) the email is that design as-is; otherwise `body` is laid out
+ * in the standard MoneyWise template.
  * Sends a personalised email to every emailable customer in the audience. `test_only` sends a single
  * copy to the caller so the message can be proofread first.
  */
@@ -167,9 +195,12 @@ export const sendCampaign = async (req: any, res: Response): Promise<any> => {
         const ctaUrl = String(req.body?.cta_url || '').trim();
         const ctaLabel = String(req.body?.cta_label || '').trim().slice(0, 60);
         const testOnly = !!req.body?.test_only;
+        const rawHtml = typeof req.body?.html === 'string' ? req.body.html.trim() : '';
+        const customHtml = rawHtml ? sanitizeEmailHtml(rawHtml) : '';
 
         if (!subject || subject.length > 150) return res.status(400).json({ error: 'A subject (up to 150 characters) is required' });
-        if (!body || body.length > 10_000) return res.status(400).json({ error: 'A message body (up to 10,000 characters) is required' });
+        if (rawHtml.length > MAX_HTML_LENGTH) return res.status(400).json({ error: 'The HTML design is too large (max ~1.5 MB). Host images online instead of embedding them.' });
+        if (!customHtml && (!body || body.length > 10_000)) return res.status(400).json({ error: 'A message body (up to 10,000 characters) is required' });
         if (ctaUrl && !/^https?:\/\/[^\s]+$/i.test(ctaUrl)) return res.status(400).json({ error: 'The button link must start with http:// or https://' });
 
         const { data: org } = await supabase
@@ -179,7 +210,9 @@ export const sendCampaign = async (req: any, res: Response): Promise<any> => {
             .maybeSingle();
         const orgName = org?.name || 'MoneyWise';
         const render = (customerName: string) =>
-            renderCampaignHtml({ orgName, orgLogoUrl: org?.logo_url, body, ctaLabel, ctaUrl: ctaUrl || undefined, customerName });
+            customHtml
+                ? renderCustomCampaignHtml({ html: customHtml, orgName, customerName })
+                : renderCampaignHtml({ orgName, orgLogoUrl: org?.logo_url, body, ctaLabel, ctaUrl: ctaUrl || undefined, customerName });
         const personalSubject = (customerName: string) =>
             subject
                 .replace(/\{\{\s*first_name\s*\}\}/gi, customerName.trim().split(/\s+/)[0] || 'there')
@@ -217,7 +250,7 @@ export const sendCampaign = async (req: any, res: Response): Promise<any> => {
         });
         if (result.skipped) return res.status(503).json({ error: 'Email sending is not configured on this server' });
 
-        console.log(`[CRM] Campaign by ${req.user?.id} for org ${organization_id}: ${result.sent} sent, ${result.failed} failed, audience ${JSON.stringify(audience)}`);
+        console.log(`[CRM] Campaign${customHtml ? ' (custom HTML)' : ''} by ${req.user?.id} for org ${organization_id}: ${result.sent} sent, ${result.failed} failed, audience ${JSON.stringify(audience)}`);
         res.json({ sent: result.sent, failed: result.failed, matched, without_email: withoutEmail });
     } catch (error: any) {
         console.error('[CRM] sendCampaign error:', error);
@@ -273,5 +306,83 @@ export const draftCampaignEmail = async (req: any, res: Response): Promise<any> 
         console.error('[CRM] draftCampaignEmail error:', error);
         const notConfigured = /not configured/i.test(error?.message || '');
         res.status(notConfigured ? 503 : 500).json({ error: notConfigured ? 'AI drafting is not configured on this server' : 'Failed to draft the email', details: error.message });
+    }
+};
+
+// ── Saved HTML designs ───────────────────────────────────────────────────────
+
+const designsTableMissing = (error: any) =>
+    !!error && (error.code === '42P01' || error.code === 'PGRST205' || /crm_email_designs/.test(error.message || ''));
+const DESIGNS_NOT_READY = 'Saved designs are not set up yet (migration 20261104150000_crm_email_designs has not been applied). You can still use the HTML for this email.';
+
+/** GET /crm/email-designs — the organisation's saved HTML email designs, newest first. */
+export const listEmailDesigns = async (req: any, res: Response): Promise<any> => {
+    try {
+        const organization_id = req.user?.organization_id;
+        if (!organization_id) return res.status(400).json({ error: 'Organization context missing' });
+        const { data, error } = await supabase
+            .from('crm_email_designs')
+            .select('id, name, html, created_at, updated_at')
+            .eq('organization_id', organization_id)
+            .order('updated_at', { ascending: false })
+            .limit(50);
+        if (error) {
+            if (designsTableMissing(error)) return res.json([]);
+            throw error;
+        }
+        res.json(data || []);
+    } catch (error: any) {
+        console.error('[CRM] listEmailDesigns error:', error);
+        res.status(500).json({ error: 'Failed to load saved designs', details: error.message });
+    }
+};
+
+/** POST /crm/email-designs — { id?, name, html }. Creates a design, or updates one when `id` is given. */
+export const saveEmailDesign = async (req: any, res: Response): Promise<any> => {
+    try {
+        const organization_id = req.user?.organization_id;
+        if (!organization_id) return res.status(400).json({ error: 'Organization context missing' });
+        const name = String(req.body?.name || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 120);
+        const html = typeof req.body?.html === 'string' ? req.body.html.trim() : '';
+        const id = req.body?.id ? String(req.body.id) : null;
+        if (!name) return res.status(400).json({ error: 'Give the design a name' });
+        if (!html) return res.status(400).json({ error: 'The design has no HTML' });
+        if (html.length > MAX_HTML_LENGTH) return res.status(400).json({ error: 'The HTML design is too large (max ~1.5 MB). Host images online instead of embedding them.' });
+
+        const now = new Date().toISOString();
+        const query = id
+            ? supabase.from('crm_email_designs').update({ name, html, updated_at: now }).eq('id', id).eq('organization_id', organization_id)
+            : supabase.from('crm_email_designs').insert({ organization_id, name, html, created_by: req.user?.id || null });
+        const { data, error } = await query.select('id, name, html, created_at, updated_at').maybeSingle();
+        if (error) {
+            if (designsTableMissing(error)) return res.status(503).json({ error: DESIGNS_NOT_READY });
+            throw error;
+        }
+        if (!data) return res.status(404).json({ error: 'Design not found' });
+        res.json(data);
+    } catch (error: any) {
+        console.error('[CRM] saveEmailDesign error:', error);
+        res.status(500).json({ error: 'Failed to save the design', details: error.message });
+    }
+};
+
+/** DELETE /crm/email-designs/:id */
+export const deleteEmailDesign = async (req: any, res: Response): Promise<any> => {
+    try {
+        const organization_id = req.user?.organization_id;
+        if (!organization_id) return res.status(400).json({ error: 'Organization context missing' });
+        const { error } = await supabase
+            .from('crm_email_designs')
+            .delete()
+            .eq('id', req.params.id)
+            .eq('organization_id', organization_id);
+        if (error) {
+            if (designsTableMissing(error)) return res.status(503).json({ error: DESIGNS_NOT_READY });
+            throw error;
+        }
+        res.json({ success: true });
+    } catch (error: any) {
+        console.error('[CRM] deleteEmailDesign error:', error);
+        res.status(500).json({ error: 'Failed to delete the design', details: error.message });
     }
 };

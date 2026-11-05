@@ -143,3 +143,79 @@ export const masterFeesService = {
         return apiJson<MasterFeesReconciliation>('/integrations/masterfees/reconcile');
     },
 };
+
+// ── Sage Accounting (Africa cloud) ───────────────────────────────────────────
+export interface SageStatus {
+    configured: boolean;
+    connected: boolean;
+    companyId?: string;
+    companyName?: string;
+    username?: string;
+    connectedAt?: string;
+    mappedAccounts?: number;
+    lastSyncedAt?: string | null;
+    syncCounts?: Record<string, number>;
+}
+
+export interface SageAccount { id: string; name: string; category: string | null; active: boolean; balance: number }
+
+export interface SageMapping {
+    id: string;
+    code: string | null;
+    name: string;
+    type: string;
+    is_active: boolean;
+    sage_account_id: string | null;
+    sage_account_name: string | null;
+}
+
+export interface SageSyncResult {
+    fromDate: string;
+    toDate: string;
+    scanned: number;
+    posted: number;
+    unchanged: number;
+    skipped: number;
+    failed: number;
+    truncated: boolean;
+    errors: Array<{ reference: string | null; error: string }>;
+}
+
+export const sageService = {
+    getStatus(): Promise<SageStatus> {
+        return apiJson<SageStatus>('/integrations/sage/status');
+    },
+
+    /** Returns `needsCompany` + `companies` when the login has several companies and none was chosen. */
+    connect(payload: { username: string; password: string; companyId?: string }): Promise<{
+        connected: boolean;
+        needsCompany?: boolean;
+        companies?: Array<{ id: string; name: string }>;
+        companyName?: string;
+    }> {
+        return apiJson('/integrations/sage/connect', { method: 'POST', body: JSON.stringify(payload) });
+    },
+
+    async disconnect(): Promise<void> {
+        await apiFetch('/integrations/sage', { method: 'DELETE' });
+    },
+
+    getAccounts(): Promise<SageAccount[]> {
+        return apiJson<SageAccount[]>('/integrations/sage/accounts');
+    },
+
+    getMappings(): Promise<SageMapping[]> {
+        return apiJson<SageMapping[]>('/integrations/sage/mappings');
+    },
+
+    async setMapping(accountId: string, sageAccountId: string | null, sageAccountName?: string | null): Promise<void> {
+        await apiFetch('/integrations/sage/mappings', {
+            method: 'PUT',
+            body: JSON.stringify({ accountId, sageAccountId, sageAccountName }),
+        });
+    },
+
+    sync(payload: { from?: string; to?: string } = {}): Promise<SageSyncResult> {
+        return apiJson<SageSyncResult>('/integrations/sage/sync', { method: 'POST', body: JSON.stringify(payload) });
+    },
+};

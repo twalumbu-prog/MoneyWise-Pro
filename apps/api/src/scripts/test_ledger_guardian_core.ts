@@ -3,7 +3,7 @@
  * One scenario per real incident, plus clean cases that must stay silent (a false positive here would mean an auto-healer
  * touching correct data).
  */
-import { analyze, isPlatformSweepDebit, LedgerRow, RawLencoTxn, AnalyzeInput, IssueCode } from '../services/ledgerGuardian/core';
+import { analyze, isPlatformSweepDebit, findUnclaimedMerchantRow, LedgerRow, RawLencoTxn, AnalyzeInput, IssueCode } from '../services/ledgerGuardian/core';
 
 let pass = 0, fail = 0;
 const ok = (name: string, cond: any, detail = '') => { if (cond) { pass++; console.log(`PASS  ${name}`); } else { fail++; console.log(`FAIL  ${name} ${detail}`); } };
@@ -258,6 +258,34 @@ const has = (a: ReturnType<typeof analyze>, c: IssueCode) => a.issues.some(i => 
     const a = analyze(base({ ledger: chain([row({ debit: 100, external_reference: a1.id })]), txns: [a1, sw1], balance: { available: 96.2, ledger: 96.2 } }));
     const sw = a.issues.find(i => i.code === 'SWEEP_NOT_IN_LEDGER');
     ok('S25 platform sweep gross = its amount (K3.81, not K3.81 + tariff) even when the running balance is a cent off', !!sw && sw.amount === 3.81, JSON.stringify(a.issues));
+}
+{
+    // S26 MoneyWise Pay with a MoneyWise fee (Wing'in, 3–4 Nov 2026): Lenco credits K1.03 and sweeps K0.03 named SPLIT-MWPAY-<id>; the ledger holds the
+    // recipient row NET (K1.00, MWPAY-<id>). The sweep is found through the ROW's reference — no FEE_RETAINED_GAP / SWEEP_NOT_IN_LEDGER noise.
+    const cr = txn({ type: 'credit', amount: 1.03, balance: 6.16, datetime: '2026-10-10T08:00:00.000Z', narration: "MoneyWise Pay from Stephen's Workspace / 2630709330" });
+    const sw = txn({ type: 'debit', amount: 0.03, balance: 6.13, datetime: '2026-10-10T08:00:06.000Z', narration: 'Split payment / 2630709336' });
+    const open = txn({ type: 'credit', amount: 5.13, balance: 5.13, datetime: '2026-09-08T08:00:00.000Z', narration: 'Stephen MP1' });
+    const rows = chain([row({ debit: 5.13, external_reference: open.id, date: '2026-09-08', created_at: '2026-09-08T08:01:00Z' }), row({ debit: 1, external_reference: 'MWPAY-76119217', description: "MoneyWise Pay from Stephen's Workspace" })]);
+    const a = analyze(base({ ledger: rows, txns: [open, cr, sw], refByTxnId: new Map([[sw.id, 'SPLIT-MWPAY-76119217']]), balance: { available: 6.13, ledger: 6.13 } }));
+    ok("S26 MoneyWise Pay booked net + its SPLIT-MWPAY sweep → clean (matched through the ledger row's reference)", a.status === 'OK' && a.issues.length === 0, JSON.stringify(a.issues));
+}
+{
+    // S27 findUnclaimedMerchantRow — the sync's guard against booking a credit twice when its reference could not be resolved
+    const rows = [
+        { id: 'r1', date: '2026-06-12', debit: 85, external_reference: 'DEP-1-PUB' },        // claimed by a resolvable transaction
+        { id: 'r2', date: '2026-06-12', debit: 85, external_reference: 'DEP-2-PUB' },        // unclaimed: the map had a hole for it
+        { id: 'r3', date: '2026-06-12', debit: 170, external_reference: 'DEP-3-PUB' },       // unclaimed, different size
+        { id: 'r4', date: '2026-06-12', debit: 87.13, external_reference: '080b945f-c21b-4ef1-b72a-63d4c40f1b5e' },   // a Lenco-id row is never a merchant row
+        { id: 'r5', date: '2026-06-01', debit: 85, external_reference: 'DEP-5-PUB' },        // wrong day
+    ];
+    const linked = new Set(['dep-1-pub']); const claimed = new Set<string>();
+    const t1 = findUnclaimedMerchantRow(rows, { amount: 87.13, day: '2026-06-12' }, linked, claimed);
+    ok('S27a an unresolved K87.13 credit pairs with the unclaimed K85 sale of that day', t1?.id === 'r2', JSON.stringify(t1));
+    claimed.add(t1!.id);
+    ok('S27b …and that sale is then spoken for: a second K87.13 credit is genuinely new', findUnclaimedMerchantRow(rows, { amount: 87.13, day: '2026-06-12' }, linked, claimed) === null);
+    ok('S27c a K173.40 credit pairs with the K170 sale, not the K85 one', findUnclaimedMerchantRow(rows, { amount: 173.4, day: '2026-06-12' }, linked, claimed)?.id === 'r3');
+    ok('S27d a K500 credit that no sale accounts for is new (nothing pairs)', findUnclaimedMerchantRow(rows, { amount: 500, day: '2026-06-12' }, linked, new Set()) === null);
+    ok('S27e a credit that is LARGER than every unclaimed sale by more than a fee is new', findUnclaimedMerchantRow(rows, { amount: 95, day: '2026-06-12' }, linked, new Set(['r2'])) === null);
 }
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

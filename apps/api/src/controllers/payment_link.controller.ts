@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { emailService } from '../services/email.service';
 import { getFrontendUrl } from '../utils/frontendUrl';
 import { cashbookService } from '../services/cashbook.service';
+import { assignShortLink } from '../services/invoiceShortLink.service';
 import { isValidZambiaMobile, normalizeZambiaPhone, INVALID_PHONE_MESSAGE } from '../utils/zambiaPhone';
 
 /**
@@ -206,6 +207,11 @@ export const createInvoiceLink = async (req: any, res: Response): Promise<any> =
 
         if (error) throw error;
 
+        // Short, readable link (/<business-code>/invoice/<n>); falls back to the long /pl/<token> if it can't be allocated.
+        let linkPath = `/pl/${token}`;
+        try { linkPath = (await assignShortLink(organization_id, data.id)).path; }
+        catch (e: any) { console.error('[PaymentLinks] short link failed (non-fatal):', e?.message); }
+
         // Create an Accounts Receivable cashbook entry to represent the revenue
         // earned but not yet collected. Status stays PENDING until the customer
         // pays; at that point markPaymentLinkPaid() voids it and the Lenco INFLOW
@@ -246,6 +252,7 @@ export const createInvoiceLink = async (req: any, res: Response): Promise<any> =
                     items: snapshot,
                     total: amount,
                     token,
+                    path: linkPath,
                     // Detected from the admin's own browser (Origin/Referer) so the
                     // "Pay now" button always points at whichever host they're actually
                     // using — localhost while testing, the deployed domain in production —
@@ -258,7 +265,7 @@ export const createInvoiceLink = async (req: any, res: Response): Promise<any> =
             }
         }
 
-        res.status(201).json({ ...data, path: `/pl/${token}`, email_sent: emailSent });
+        res.status(201).json({ ...data, path: linkPath, email_sent: emailSent });
     } catch (error: any) {
         console.error('[PaymentLinks] Invoice create error:', error);
         res.status(500).json({ error: 'Failed to create invoice link', details: error.message });

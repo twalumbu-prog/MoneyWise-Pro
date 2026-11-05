@@ -85,8 +85,9 @@ interface LinkContext {
     collections_api_enabled?: boolean;
 }
 
-export const PublicPaymentLink: React.FC = () => {
-    const { token } = useParams<{ token: string }>();
+export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenOverride }) => {
+    const { token: routeToken } = useParams<{ token: string }>();
+    const token = tokenOverride ?? routeToken;
 
     const [step, setStep] = useState<'LOADING' | 'READY' | 'CHECKOUT' | 'INACTIVE' | 'VERIFYING' | 'SUCCESS' | 'ERROR'>('LOADING');
     const [ctx, setCtx] = useState<LinkContext | null>(null);
@@ -123,6 +124,8 @@ export const PublicPaymentLink: React.FC = () => {
     // Flipped on Cancel so an in-flight poll loop stops recursing instead of racing
     // a fresh attempt (each retry uses a brand-new setTimeout chain).
     const pollCancelledRef = useRef(false);
+    // Lenco widget transaction id, so "Check payment status" can verify a widget payment too.
+    const widgetTransactionIdRef = useRef<string | null>(null);
     // Set once we've resumed an in-flight payment on load, so a second loadContext
     // run (StrictMode double-invoke, or an ERROR-screen retry) can't clobber it.
     const resumedRef = useRef(false);
@@ -374,20 +377,32 @@ export const PublicPaymentLink: React.FC = () => {
                 channels: ['card', 'mobile-money'],
                 onSuccess: async (response: any) => {
                     const transactionId = response.id || response.transactionId;
+                    widgetTransactionIdRef.current = transactionId || null;
+                    // Same branded waiting screen as the own-UX checkout: the widget has already taken
+                    // the payment, so it starts straight at "confirming" while we wait for the ledger.
+                    pollCancelledRef.current = false;
+                    setElapsedSeconds(0);
+                    setFailureIsDeclined(false);
+                    setRecheckNote(null);
+                    setPaymentPhase('polling');
                     setStep('VERIFYING');
                     setVerificationStep('POLLING');
-                    setAwaitingApproval(false);
+                    setAwaitingApproval(true);
 
                     let attempts = 0;
                     const maxAttempts = 15;
                     const pollStatus = async () => {
+                        if (pollCancelledRef.current) return;
                         attempts++;
                         try {
                             const verifyRes = await axios.get(
                                 `${API_URL}/lenco/public-verify-status/${ref}?transactionId=${transactionId}&organizationId=${ctx.organization.id}`
                             );
+                            if (pollCancelledRef.current) return;
                             if (verifyRes.data.verified) {
                                 setReceiptNumber(verifyRes.data.referenceNumber || null);
+                                setAwaitingApproval(false);
+                                setPaymentPhase('success');
                                 trackEvent('payment_link_checkout', 'payment', 'succeeded', {
                                     workflow_id: ref,
                                     organization_id: ctx.organization.id,
@@ -397,17 +412,19 @@ export const PublicPaymentLink: React.FC = () => {
                                     receipt_number: verifyRes.data.referenceNumber,
                                     duration_ms: Date.now() - checkoutStartedAt,
                                 });
-                                setStep('SUCCESS');
                                 return;
                             }
                         } catch (err) {
                             console.error('Payment-link verification attempt failed:', err);
                         }
+                        if (pollCancelledRef.current) return;
                         if (attempts < maxAttempts) {
                             setTimeout(pollStatus, 3000);
                         } else {
                             setVerificationStep('FAILED');
-                            setVerificationReason('Payment was submitted but the ledger sync is taking longer than expected. Please contact the business to confirm.');
+                            setVerificationReason('Your payment was submitted but confirming it is taking longer than usual. Check its status below, or contact the business.');
+                            setAwaitingApproval(false);
+                            setPaymentPhase('failed');
                             trackVerificationTimeout('payment_link_checkout', {
                                 workflow_id: ref,
                                 organization_id: ctx.organization.id,
@@ -673,7 +690,8 @@ export const PublicPaymentLink: React.FC = () => {
             payment_method: 'mobile-money',
         });
         try {
-            await axios.post(`${API_URL}/lenco/public-collection/cancel`, { reference: currentReference });
+            // Widget payments have no mobile money prompt to withdraw — just stop waiting.
+            if (ctx?.collections_api_enabled) await axios.post(`${API_URL}/lenco/public-collection/cancel`, { reference: currentReference });
         } catch (err) {
             console.error('Failed to cancel payment intent:', err);
         } finally {
@@ -706,7 +724,7 @@ export const PublicPaymentLink: React.FC = () => {
         });
         try {
             const verifyRes = await axios.get(
-                `${API_URL}/lenco/public-verify-status/${currentReference}?organizationId=${ctx.organization.id}`
+                `${API_URL}/lenco/public-verify-status/${currentReference}?organizationId=${ctx.organization.id}${widgetTransactionIdRef.current ? `&transactionId=${widgetTransactionIdRef.current}` : ''}`
             );
             let outcome: 'verified' | 'declined' | 'pending' = 'pending';
             if (verifyRes.data.verified) {

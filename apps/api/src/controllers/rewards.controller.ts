@@ -60,3 +60,13 @@ export const updateRewardItem = async (req: Request, res: Response) => {
 export const deleteRewardItem = async (req: Request, res: Response) => {
     try { await rewardsService.deleteRewardItem(me(req).organization_id, String(req.params.id)); res.json({ ok: true }); } catch (e) { fail(res, e, 'delete the reward'); }
 };
+
+/** Public (no sign-in): what a store purchase earns, for the checkout success screen. */
+export const previewPurchase = async (req: Request, res: Response) => {
+    try { res.json(await rewardsService.previewPurchase(String(req.query.reference ?? ''), String(req.query.organizationId ?? ''))); } catch (e) { fail(res, e, 'load the rewards for this purchase'); }
+};
+
+/** Adds a store purchase's points to the signed-in person's rewards. */
+export const claimPurchase = async (req: Request, res: Response) => {
+    try { res.json(await rewardsService.claimPurchase(me(req).id, String(req.body?.reference ?? ''), String(req.body?.organizationId ?? ''))); } catch (e) { fail(res, e, 'add these points'); }
+};

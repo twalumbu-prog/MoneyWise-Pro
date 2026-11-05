@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import jsPDF from 'jspdf';
 import posthog from '../lib/posthog';
@@ -48,6 +48,8 @@ import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs
 import { PaymentWaitingScreen, PaymentPhase } from '../components/PaymentWaitingScreen';
 import { savePendingPayment, loadPendingPayment, clearPendingPayment } from '../lib/paymentRecovery';
 import BookingCalendar from '../components/BookingCalendar';
+import { StoreMoneyWisePay } from '../components/StoreMoneyWisePay';
+import { StoreRewardsSection } from '../components/rewards/StoreRewardsSection';
 import { BookingRange, isBookingProductType, getBookingTerminology } from '../services/product.service';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -205,6 +207,10 @@ export const PublicPay: React.FC = () => {
     // until the context loads; `wallet?.id` is always the real wallet UUID.
     const { wallet_id: walletParam, username: storeUsername, walletSlug } = useParams<{ wallet_id?: string; username?: string; walletSlug?: string }>();
     const wallet_id = walletParam || storeUsername;
+    // Back from the MoneyWise app after paying (?mwp=<pay-link token>): show the receipt for that payment.
+    const [searchParams, setSearchParams] = useSearchParams();
+    const returnToken = searchParams.get('mwp');
+    const returnHandled = useRef(false);
 
     // UI Steps
     //  SHOP     = product catalogue grid (entry page)
@@ -230,7 +236,7 @@ export const PublicPay: React.FC = () => {
     const [products, setProducts] = useState<Product[]>([]);
     // Own-UX checkout (Collections API) kill-switch — see loadContext.
     const [collectionsApiEnabled, setCollectionsApiEnabled] = useState(false);
-    const [checkoutMethod, setCheckoutMethod] = useState<'mobile-money' | 'card'>('mobile-money');
+    const [checkoutMethod, setCheckoutMethod] = useState<'mobile-money' | 'card' | 'moneywise'>('mobile-money');
     const [checkoutPhone, setCheckoutPhone] = useState('');
     const [resolvedAccountName, setResolvedAccountName] = useState('');
     const [resolvingAccountName, setResolvingAccountName] = useState(false);
@@ -880,24 +886,35 @@ export const PublicPay: React.FC = () => {
                     const rawMethod = response?.type || response?.channel || response?.method || '';
                     if (/card/i.test(rawMethod)) setPaymentMethod('Card');
                     else if (rawMethod) setPaymentMethod('Mobile Money');
+                    // Same branded waiting screen as the own-UX checkout: the widget has already taken
+                    // the payment, so it starts straight at "confirming" while we wait for the ledger.
+                    pollCancelledRef.current = false;
+                    setElapsedSeconds(0);
+                    setFailureIsDeclined(false);
+                    setRecheckNote(null);
+                    setPaymentPhase('polling');
                     setStep('VERIFYING');
                     setVerificationStep('POLLING');
-                    setAwaitingApproval(false);
+                    setAwaitingApproval(true);
 
                     // Poll verification route
                     let attempts = 0;
                     const maxAttempts = 15;
                     
                     const pollStatus = async () => {
+                        if (pollCancelledRef.current) return;
                         attempts++;
                         try {
                             const verifyRes = await axios.get(
                                 `${API_URL}/lenco/public-verify-status/${ref}?transactionId=${transactionId}&organizationId=${org.id}`
                             );
                             
+                            if (pollCancelledRef.current) return;
                             if (verifyRes.data.verified) {
                                 setVerificationStep('SUCCESS');
                                 setReceiptNumber(verifyRes.data.referenceNumber || null);
+                                setAwaitingApproval(false);
+                                setPaymentPhase('success');
                                 trackEvent('public_catalogue_checkout', 'payment', 'succeeded', {
                                     workflow_id: ref,
                                     organization_id: org.id,
@@ -908,18 +925,20 @@ export const PublicPay: React.FC = () => {
                                     payment_method: paymentMethod,
                                     duration_ms: Date.now() - checkoutStartedAt,
                                 });
-                                setStep('SUCCESS');
                                 return;
                             }
                         } catch (err) {
                             console.error('Public Verification attempt failed:', err);
                         }
 
+                        if (pollCancelledRef.current) return;
                         if (attempts < maxAttempts) {
                             setTimeout(pollStatus, 3000);
                         } else {
                             setVerificationStep('FAILED');
-                            setVerificationReason('Payment was submitted but the ledger sync is taking longer than expected. Please contact the business admin to verify.');
+                            setVerificationReason('Your payment was submitted but confirming it is taking longer than usual. Check its status below, or contact the business.');
+                            setAwaitingApproval(false);
+                            setPaymentPhase('failed');
                             trackVerificationTimeout('public_catalogue_checkout', {
                                 workflow_id: ref,
                                 organization_id: org.id,
@@ -1221,7 +1240,8 @@ export const PublicPay: React.FC = () => {
             payment_method: 'mobile-money',
         });
         try {
-            await axios.post(`${API_URL}/lenco/public-collection/cancel`, { reference: currentReference });
+            // Widget payments have no mobile money prompt to withdraw — just stop waiting.
+            if (collectionsApiEnabled) await axios.post(`${API_URL}/lenco/public-collection/cancel`, { reference: currentReference });
         } catch (err) {
             console.error('Failed to cancel payment intent:', err);
         } finally {
@@ -1242,6 +1262,66 @@ export const PublicPay: React.FC = () => {
         }
     };
 
+    // "MoneyWise" payment option: the cart as a one-time pay link, priced on the server.
+    const cartHasBooking = lineItems.some(li => li.isBooking);
+    const storeLinkBody = {
+        walletId: wallet?.id || '',
+        items: lineItems.map(li => ({
+            id: li.product.id,
+            quantity: li.quantity,
+            ...(li.isDonation ? { price: li.unitPrice } : {}),
+            ...responsesFor(li.product.id),
+        })),
+        orderDetails: deliveryDetails,
+        riderCharge: cartAllowsExternalDelivery && deliveryMode === 'deliver' ? riderDeliveryCharge : 0,
+    };
+    const storeLinkKey = JSON.stringify(storeLinkBody);
+
+    // Paid with MoneyWise Pay (here or in the app): straight to the receipt.
+    const handleMoneyWisePaid = (r: { reference: string | null; referenceNumber: string | null }) => {
+        if (r.reference) setCurrentReference(r.reference);
+        setReceiptNumber(r.referenceNumber);
+        setPaymentMethod('MoneyWise Pay');
+        setVerificationStep('SUCCESS');
+        clearPendingPayment();
+        trackEvent('public_catalogue_checkout', 'payment', 'succeeded', {
+            workflow_id: r.reference || 'moneywise-pay', organization_id: org?.id || 'unknown', wallet_id: wallet?.id,
+            subtotal, total_payable: totalPayable, payment_method: 'MoneyWise Pay',
+        });
+        setStep('SUCCESS');
+    };
+
+    // The app sent the payer back here after paying: rebuild the receipt from the paid link. The payment can still be settling
+    // for a few seconds, so ask a handful of times before giving up and showing the shop.
+    useEffect(() => {
+        if (!returnToken || returnHandled.current || !org || !wallet || products.length === 0) return;
+        returnHandled.current = true;
+        resumedRef.current = true; // a second context load (StrictMode / retry) must not drop us back on the shop
+        setStep('LOADING');
+        (async () => {
+            let paid: any = null;
+            for (let i = 0; i < 10 && !paid; i++) {
+                try {
+                    const { data } = await axios.get(`${API_URL}/pay-links/store-link/${encodeURIComponent(returnToken)}`, { timeout: 15000 });
+                    if (data.paid) paid = data; else if (data.status !== 'ACTIVE') break;
+                } catch { /* try again */ }
+                if (!paid) await new Promise((r) => setTimeout(r, 2000));
+            }
+            setSearchParams((p) => { p.delete('mwp'); return p; }, { replace: true });
+            if (!paid) { setStep('SHOP'); return; }
+            const qty: Record<string, number> = {};
+            const donations: Record<string, number> = {};
+            for (const it of paid.items || []) {
+                qty[it.product_id] = (qty[it.product_id] || 0) + it.quantity;
+                if (products.find(p => p.id === it.product_id)?.product_type === 'DONATION') donations[it.product_id] = it.unit_price;
+            }
+            setSelectedQuantities(qty);
+            setDonationAmounts(donations);
+            handleMoneyWisePaid({ reference: paid.reference, referenceNumber: paid.referenceNumber });
+        })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [returnToken, org, wallet, products]);
+
     // Re-query whether the collection actually went through (used on the failed and
     // cancelled screens). Recovers a slow-but-successful payment and, crucially,
     // prevents a double-charge if the customer approved the prompt after cancelling.
@@ -1257,7 +1337,7 @@ export const PublicPay: React.FC = () => {
         });
         try {
             const verifyRes = await axios.get(
-                `${API_URL}/lenco/public-verify-status/${currentReference}?organizationId=${org.id}`
+                `${API_URL}/lenco/public-verify-status/${currentReference}?organizationId=${org.id}${lastTransactionId ? `&transactionId=${lastTransactionId}` : ''}`
             );
             let outcome: 'verified' | 'declined' | 'pending' = 'pending';
             if (verifyRes.data.verified) {
@@ -1310,7 +1390,8 @@ export const PublicPay: React.FC = () => {
         setRecheckNote(null);
         setVerificationStep('POLLING');
         setError(null);
-        setStep('CHECKOUT');
+        // The widget flow has no payment-method page: it starts again from the summary.
+        setStep(collectionsApiEnabled ? 'CHECKOUT' : 'SUMMARY');
     };
 
     // Failed "Cancel" / cancelled "Back to cart" → leave the flow back to the cart.
@@ -1432,6 +1513,7 @@ export const PublicPay: React.FC = () => {
     };
 
     const handleReset = () => {
+        setPaymentMethod('Mobile Money');
         setSelectedQuantities({});
         setDonationAmounts({});
         setBookingDates({});
@@ -3555,7 +3637,7 @@ Status: VERIFIED`;
                                             : 'text-gray-800 font-normal'
                                     }`}
                                 >
-                                    <Smartphone size={16} /> Mobile Money
+                                    <Smartphone size={16} /> Mobile
                                 </button>
                                 <button
                                     onClick={() => { setCheckoutMethod('card'); setError(null); }}
@@ -3565,8 +3647,20 @@ Status: VERIFIED`;
                                             : 'text-gray-800 font-normal'
                                     }`}
                                 >
-                                    <CreditCard size={16} /> Debit Card
+                                    <CreditCard size={16} /> Card
                                 </button>
+                                {!cartHasBooking && (
+                                    <button
+                                        onClick={() => { setCheckoutMethod('moneywise'); setError(null); }}
+                                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-full text-xs leading-4 transition-all ${
+                                            checkoutMethod === 'moneywise'
+                                                ? 'bg-white text-gray-800 font-normal shadow-sm'
+                                                : 'text-gray-800 font-normal'
+                                        }`}
+                                    >
+                                        <Wallet size={16} /> MoneyWise
+                                    </button>
+                                )}
                             </div>
                         </div>
 
@@ -3625,6 +3719,12 @@ Status: VERIFIED`;
                                         </div>
                                     )}
                                 </>
+                            ) : checkoutMethod === 'moneywise' && wallet ? (
+                                <StoreMoneyWisePay
+                                    cartKey={storeLinkKey}
+                                    body={storeLinkBody}
+                                    onPaid={handleMoneyWisePaid}
+                                />
                             ) : (
                                 <div className="text-center py-10 px-4 bg-white border border-slate-100 rounded-2xl">
                                     <div className="mx-auto w-12 h-12 bg-slate-200 text-slate-500 rounded-full flex items-center justify-center mb-3">
@@ -3643,7 +3743,7 @@ Status: VERIFIED`;
                                 <ShieldCheck size={16} className="text-zinc-600" />
                                 <span className="text-xs text-zinc-600">Secure payments powered by Lenco</span>
                             </div>
-                            {checkoutMethod === 'mobile-money' ? (
+                            {checkoutMethod === 'moneywise' ? null : checkoutMethod === 'mobile-money' ? (
                                 <button
                                     onClick={handlePayMobileMoney}
                                     disabled={submitting || !detectOperator(checkoutPhone) || resolvingAccountName}
@@ -3672,8 +3772,8 @@ Status: VERIFIED`;
                             phase={displayPaymentPhase}
                             amount={resumedPayment ? resumedPayment.amount : totalPayable}
                             businessName={org.name}
-                            payerPhone={resumedPayment ? resumedPayment.phone : checkoutPhone}
-                            operator={detectOperator(resumedPayment ? resumedPayment.phone : checkoutPhone)}
+                            payerPhone={resumedPayment ? resumedPayment.phone : (checkoutPhone || customerPhone)}
+                            operator={detectOperator(resumedPayment ? resumedPayment.phone : (checkoutPhone || customerPhone))}
                             isSlowNetwork={isSlowNetwork}
                             elapsedSeconds={elapsedSeconds}
                             reference={receiptNumber || currentReference}
@@ -3783,6 +3883,11 @@ Status: VERIFIED`;
                                 </p>
                             </div>
 
+                            {/* Points this purchase earned + rewards on offer (only when the business runs a programme) */}
+                            {currentReference && (
+                                <StoreRewardsSection reference={currentReference} organizationId={org.id} businessName={org.name} />
+                            )}
+
                             {/* Payment Details */}
                             <div className="mt-7 bg-gray-50 border border-neutral-200 rounded-2xl px-6 pt-4 pb-5">
                                 <div className="flex items-center gap-2 mb-3">
@@ -3794,14 +3899,18 @@ Status: VERIFIED`;
                                         <span className="text-xs text-zinc-600">Payment Method</span>
                                         <span className="text-xs font-semibold text-zinc-600">{paymentMethod}</span>
                                     </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-xs text-zinc-600">Account Number</span>
-                                        <span className="text-xs font-semibold text-zinc-600">{customerPhone}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-xs text-zinc-600">Account Name</span>
-                                        <span className="text-xs font-bold text-zinc-600 text-right truncate max-w-[55%]">{customerName}</span>
-                                    </div>
+                                    {paymentMethod !== 'MoneyWise Pay' && (
+                                        <>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-xs text-zinc-600">Account Number</span>
+                                                <span className="text-xs font-semibold text-zinc-600">{customerPhone}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-xs text-zinc-600">Account Name</span>
+                                                <span className="text-xs font-bold text-zinc-600 text-right truncate max-w-[55%]">{customerName}</span>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             </div>
 

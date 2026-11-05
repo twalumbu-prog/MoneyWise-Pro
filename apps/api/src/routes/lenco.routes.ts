@@ -14,6 +14,7 @@ import {
     resolveMobileMoney,
     getPublicWalletContext,
     getPaymentLinkContext,
+    resolveInvoiceShortLink,
     getProductAvailability,
     logPublicWalletDepositIntent,
     logInternalWalletDepositIntent,
@@ -53,6 +54,7 @@ router.post('/public-collection-finalize/:reference', finalizeCollection);
 router.get('/public-verify-status/:reference', verifyCollectionStatus);
 router.get('/public-context/:wallet_id', getPublicWalletContext);
 router.get('/public-payment-link/:token', getPaymentLinkContext);
+router.get('/public-invoice-link/:code/:no', resolveInvoiceShortLink);
 router.get('/public-product-availability/:productId', getProductAvailability);
 router.post('/public-wallet-deposit-intent', logPublicWalletDepositIntent);
 router.post('/public-collection/mobile-money', initiatePublicMobileMoneyCollection);

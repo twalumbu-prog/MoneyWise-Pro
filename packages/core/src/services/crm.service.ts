@@ -123,9 +123,19 @@ export interface SendCampaignInput {
     audience: CampaignAudience;
     subject: string;
     body: string;
+    /** A custom HTML design (e.g. an ad designed elsewhere). When set it is sent instead of `body`. */
+    html?: string;
     cta_label?: string;
     cta_url?: string;
     test_only?: boolean;
+}
+
+export interface EmailDesign {
+    id: string;
+    name: string;
+    html: string;
+    created_at: string;
+    updated_at: string;
 }
 
 export interface DraftCampaignInput {
@@ -201,6 +211,21 @@ export const crmService = {
             method: 'POST',
             body: JSON.stringify(input),
         });
+    },
+
+    async listEmailDesigns(): Promise<EmailDesign[]> {
+        return apiJson<EmailDesign[]>('/crm/email-designs');
+    },
+
+    async saveEmailDesign(input: { id?: string; name: string; html: string }): Promise<EmailDesign> {
+        return apiJson<EmailDesign>('/crm/email-designs', {
+            method: 'POST',
+            body: JSON.stringify(input),
+        });
+    },
+
+    async deleteEmailDesign(id: string): Promise<{ success: boolean }> {
+        return apiJson<{ success: boolean }>(`/crm/email-designs/${id}`, { method: 'DELETE' });
     },
 
     async draftCampaignEmail(input: DraftCampaignInput): Promise<{ subject: string; body: string }> {

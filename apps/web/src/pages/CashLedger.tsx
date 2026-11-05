@@ -31,7 +31,9 @@ import {
     ListFilter,
     Mail,
     ArrowRight,
+    Send,
 } from 'lucide-react';
+import { DesktopRequisitionWorkspace } from '../components/requisitions/DesktopRequisitionWorkspace';
 import '../styles/cashbook.css';
 import CloseBalanceModal from '../components/CloseBalanceModal';
 import CashInflowModal from '../components/CashInflowModal';
@@ -238,6 +240,8 @@ const renderMobileStatusIcon = (status: string) => {
 
 const CashLedger: React.FC = () => {
     const navigate = useNavigate();
+    // Desktop "Send Money": the new-requisition workspace opens in place of the wallets card; closing returns to it.
+    const [isSendMoneyOpen, setIsSendMoneyOpen] = useState(false);
     const [selectedEntry, setSelectedEntry] = useState<CashbookEntry | null>(null);
     // Inflow being classified as Accounts Receivable → pick the customer invoice(s) it settles.
     const [applyPayment, setApplyPayment] = useState<{ entry: CashbookEntry; accountId: string } | null>(null);
@@ -1680,8 +1684,13 @@ Status: VERIFIED`;
 
             {/* ============ DESKTOP LAYOUT ============ */}
             {/* Desktop: sidebar-nav era Wallets page */}
-            <div className="hidden md:block px-4 pb-4 pt-0">
-            <div className="bg-white rounded-[20px] p-3.5 flex flex-col gap-4 md:border md:border-[rgba(116,119,117,0.22)]">
+            <div className="hidden md:flex md:flex-col px-4 pb-4 pt-0 md:min-h-[calc(100vh-56px)]">
+            {isSendMoneyOpen ? (
+                <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <DesktopRequisitionWorkspace onClose={() => setIsSendMoneyOpen(false)} onSuccess={() => { loadData(); }} />
+                </div>
+            ) : (
+            <div className="animate-in fade-in duration-200 flex-1 flex flex-col"><div className="bg-white rounded-[20px] p-3.5 flex flex-col gap-4 md:border md:border-[rgba(116,119,117,0.22)] md:flex-1">
 
                 {/* Row 1: Main Wallets / External Accounts toggle + action bar */}
                 <div className="flex items-center justify-between">
@@ -1721,6 +1730,8 @@ Status: VERIFIED`;
                             {categoryGroup === 'MONEYWISE' ? (
                                 <>
                                     <ToolbarAction icon={ArrowDownToLine} label="Deposit" onClick={() => setIsInflowModalOpen(true)} />
+                                    <div className="w-[1px] h-4 bg-[#E9EEF6]" />
+                                    <ToolbarAction icon={Send} label="Send Money" onClick={() => setIsSendMoneyOpen(true)} />
                                     <div className="w-[1px] h-4 bg-[#E9EEF6]" />
                                     <ToolbarAction
                                         icon={ArrowLeftRight}
@@ -2089,6 +2100,8 @@ Status: VERIFIED`;
                     </table>
                 </div>
             </div>
+            </div>
+            )}
             </div>
 
             {/* Classification Results Modal */}

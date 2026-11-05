@@ -3,6 +3,6 @@ import { PayLinkOverlay } from '../../src/components/payments/PayLinkOverlay';
 
 /** A payment link opened in the app (https://…/pl/<token>, via universal link): the "slide to pay" overlay. */
 export default function PaymentLinkScreen() {
-    const { token, src } = useLocalSearchParams<{ token: string; src?: string }>();
-    return <PayLinkOverlay token={String(token)} fromSafari={src === 'safari'} />;
+    const { token, src, ret } = useLocalSearchParams<{ token: string; src?: string; ret?: string }>();
+    return <PayLinkOverlay token={String(token)} fromSafari={src === 'safari'} returnTo={ret ? String(ret) : undefined} />;
 }

@@ -1,6 +1,7 @@
 import { normalizeZambiaPhone } from '../utils/zambiaPhone';
+import { resolveShortLink } from '../services/invoiceShortLink.service';
 import { matchesRecordedInternalTransfer } from '../services/internalTransferMatch.service';
-import { isPlatformSweepDebit } from '../services/ledgerGuardian/core';
+import { isPlatformSweepDebit, findUnclaimedMerchantRow } from '../services/ledgerGuardian/core';
 import { recordSyncFailure, claimDebitBooking, releaseDebitClaim, runGuardianCycle, guardianMode, runOrgGuardian } from '../services/ledgerGuardian/guardian.service';
 import { Request, Response } from 'express';
 import { LencoService, classifyLencoFailureReason } from '../services/lenco.service';
@@ -919,6 +920,20 @@ export const getPublicWalletContext = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Organization not found' });
         }
         res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+};
+
+/** Public: GET /lenco/public-invoice-link/:code/:no — resolves a short invoice link (/<code>/invoice/<n>) to its payment-link token. */
+export const resolveInvoiceShortLink = async (req: Request, res: Response) => {
+    const no = Number(req.params.no);
+    if (!req.params.code || !Number.isInteger(no) || no <= 0) return res.status(404).json({ error: 'Invoice link not found' });
+    try {
+        const token = await resolveShortLink(req.params.code, no);
+        if (!token) return res.status(404).json({ error: 'Invoice link not found' });
+        res.json({ token });
+    } catch (error: any) {
+        console.error('[Lenco Invoice Short Link] resolve failed:', error?.message);
+        res.status(503).json({ error: 'Payment service is busy, please try again' });
     }
 };
 
@@ -2600,7 +2615,17 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
                 // on 2026-06-12). Page until no new references appear, hard-capped.
                 let colPage = 1;
                 while (colPage <= 40) {
-                    const collectionsResp = await LencoService.getCollections({ page: colPage }, secretKey);
+                    // A page that fails or comes back short leaves a hole in the map, and every credit in the hole is then
+                    // booked a second time (22 on 3 Nov 2026). Retry a page before giving up on it.
+                    let collectionsResp: any;
+                    for (let attempt = 1; ; attempt++) {
+                        try { collectionsResp = await LencoService.getCollections({ page: colPage }, secretKey); break; }
+                        catch (pageErr: any) {
+                            if (attempt >= 3) throw pageErr;
+                            console.warn(`[Lenco Sync] collections page ${colPage} failed (attempt ${attempt}/3) for org ${org.name}: ${pageErr.message}. Retrying.`);
+                            await new Promise((r) => setTimeout(r, 400 * attempt));
+                        }
+                    }
                     const collections: any[] = collectionsResp?.data || [];
                     if (collections.length === 0) break;
                     let newRefs = 0;
@@ -2632,6 +2657,10 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
 
             let newEntriesCount = 0;
             let finalizedCount = 0;
+            // Merchant references some resolvable transaction already points at, and the rows paired by amount this run
+            // (see findUnclaimedMerchantRow — the safety net for a settlement map that is missing entries).
+            const linkedMerchantRefs = new Set<string>([...settlementToRef.values()].map((r) => r.toLowerCase()));
+            const pairedMerchantRows = new Set<string>();
 
             for (const txn of windowTxns) {
                 const txnId = txn.id || txn.transactionId;
@@ -2884,6 +2913,38 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
                 // brand-new entries is not.
                 if (isPreCutoff) {
                     continue;
+                }
+
+                // Last line of defence against booking money twice. A credit we could not link to any reference (the settlement
+                // map had no entry for it) is only "new" if no sale we already booked accounts for it. If an unclaimed
+                // DEP-… row of the same amount and day exists, that row IS this credit: pair it instead of booking again.
+                if (txnType === 'credit' && !resolvedRef && !isSplitPaymentSweep && !isSubscriptionPayment) {
+                    const dayMs = Date.parse(txnDate);
+                    if (Number.isFinite(dayMs)) {
+                        const from = new Date(dayMs - 86400000).toISOString().slice(0, 10);
+                        const to = new Date(dayMs + 86400000).toISOString().slice(0, 10);
+                        const { data: nearRows, error: nearErr } = await supabase
+                            .from('cashbook_entries')
+                            .select('id, date, debit, external_reference')
+                            .eq('organization_id', orgId)
+                            .eq('account_type', 'MONEYWISE_WALLET')
+                            .eq('entry_type', 'INFLOW')
+                            .neq('status', 'PENDING')
+                            .like('external_reference', 'DEP-%')
+                            .gte('date', from).lte('date', to)
+                            .limit(500);
+                        if (nearErr) {
+                            // Cannot rule out an existing row → do not book (same stance as the duplicate checks above).
+                            await recordSyncFailure(orgId, txnId, `merchant-row check failed: ${nearErr.message}`);
+                            continue;
+                        }
+                        const twin = findUnclaimedMerchantRow(nearRows || [], { amount: txnAmount, day: txnDate }, linkedMerchantRefs, pairedMerchantRows);
+                        if (twin) {
+                            pairedMerchantRows.add(twin.id);
+                            console.warn(`[Lenco Sync] Credit ${txnId} (K${txnAmount}, ${txnDate}) had no reference in the settlement map but row ${twin.id.slice(0, 8)} (${twin.external_reference}) already accounts for it — not booking it again.`);
+                            continue;
+                        }
+                    }
                 }
 
                 // If not found, log it as a new transaction!

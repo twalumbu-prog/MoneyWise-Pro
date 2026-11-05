@@ -1,12 +1,56 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAchievements } from '../context/AchievementsContext';
 import { AchievementsDropdown } from './achievements/AchievementsDropdown';
-import { ChevronDown, LogOut, Trophy } from 'lucide-react';
+import { Check, ChevronDown, ChevronsDown, LogOut, Trophy } from 'lucide-react';
 
 interface DesktopHeaderProps {
     title: string;
 }
+
+/** A business's logo, or its first letter on a soft blue tile when it has none (or the image fails to load). */
+const OrgLogo: React.FC<{ name: string; logoUrl?: string | null; size: number }> = ({ name, logoUrl, size }) => {
+    const [failed, setFailed] = useState(false);
+    const box = { width: size, height: size };
+    if (logoUrl && !failed) {
+        return <img src={logoUrl} alt="" style={box} onError={() => setFailed(true)} className="rounded-lg object-cover bg-white border border-[#E8EEF8] flex-shrink-0" />;
+    }
+    return (
+        <span style={{ ...box, fontSize: Math.round(size * 0.45) }} className="rounded-lg bg-[#E6F0FF] text-[#0059D8] font-bold flex items-center justify-center flex-shrink-0">
+            {(name || '?').trim().charAt(0).toUpperCase()}
+        </span>
+    );
+};
+
+/**
+ * A fixed-height scrolling list. While there is more below, the bottom edge fades to white with a small down arrow
+ * (click to scroll); both disappear once the end is reached.
+ */
+const ScrollFade: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const ref = useRef<HTMLDivElement>(null);
+    const [more, setMore] = useState(false);
+    const update = useCallback(() => {
+        const el = ref.current;
+        if (el) setMore(el.scrollHeight - el.scrollTop - el.clientHeight > 4);
+    }, []);
+    useEffect(() => { update(); }, [update, children]);
+    return (
+        <div className="relative">
+            <div ref={ref} onScroll={update} className="max-h-80 overflow-y-auto space-y-0.5">{children}</div>
+            <div aria-hidden={!more} className={`absolute inset-x-0 bottom-0 h-14 rounded-b-xl bg-gradient-to-t from-white via-white/80 to-transparent flex items-end justify-center pb-1 transition-opacity duration-200 ${more ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                <button
+                    type="button"
+                    tabIndex={more ? 0 : -1}
+                    aria-label="Scroll for more businesses"
+                    onClick={() => ref.current?.scrollBy({ top: 160, behavior: 'smooth' })}
+                    className="p-1 rounded-full text-[#0059D8] hover:bg-[#E6F0FF] animate-bounce"
+                >
+                    <ChevronsDown size={16} />
+                </button>
+            </div>
+        </div>
+    );
+};
 
 /**
  * Slim breadcrumb-style header for the desktop shell: org switcher on the
@@ -14,7 +58,7 @@ interface DesktopHeaderProps {
  * full-width TopNavbar now that navigation itself lives in the Sidebar.
  */
 export const DesktopHeader: React.FC<DesktopHeaderProps> = ({ title }) => {
-    const { userName, userRole, signOut, userOrganizations, switchOrganization, organizationName, organizationId } = useAuth();
+    const { userName, userRole, signOut, userOrganizations, switchOrganization, organizationName, organizationId, organizationLogoUrl } = useAuth();
     const { isDesktopDropdownOpen, toggleDesktopDropdown, completedCount, totalCount } = useAchievements();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isOrgMenuOpen, setIsOrgMenuOpen] = useState(false);
@@ -43,51 +87,59 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({ title }) => {
                             <button
                                 type="button"
                                 onClick={() => setIsOrgMenuOpen(!isOrgMenuOpen)}
-                                className="flex items-center gap-1 text-xs font-semibold text-[#1F1F1F] hover:text-[#0842A0] transition-colors"
+                                className={`flex items-center gap-2 -ml-2 pl-2 pr-2.5 py-1 rounded-xl text-xs font-semibold text-[#111827] hover:bg-white hover:shadow-xs transition-all ${isOrgMenuOpen ? 'bg-white shadow-xs' : ''}`}
                             >
-                                <span className="truncate max-w-[220px]">{organizationName}</span>
-                                <ChevronDown size={12} className={`transition-transform ${isOrgMenuOpen ? 'rotate-180' : ''}`} />
+                                <OrgLogo name={organizationName} logoUrl={organizationLogoUrl} size={22} />
+                                <span className="truncate max-w-[200px]">{organizationName}</span>
+                                <ChevronDown size={12} className={`text-gray-400 transition-transform ${isOrgMenuOpen ? 'rotate-180' : ''}`} />
                             </button>
 
                             {isOrgMenuOpen && (
                                 <>
                                     <div className="fixed inset-0 z-40" onClick={() => setIsOrgMenuOpen(false)}></div>
-                                    <div className="absolute left-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-[rgba(116,119,117,0.22)] z-50 overflow-hidden py-2 transform origin-top-left animate-in fade-in slide-in-from-top-1">
-                                        <div className="px-4 py-2 border-b border-[rgba(116,119,117,0.22)] text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">
-                                            Switch Organization
+                                    <div className="absolute left-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-[#E8EEF8] z-50 overflow-hidden p-1.5 transform origin-top-left animate-in fade-in slide-in-from-top-1">
+                                        <div className="px-3 pt-2 pb-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                                            Your businesses
                                         </div>
-                                        {activeOrgs.map((uo: any) => {
-                                            const isCurrent = uo.organization.id === organizationId;
-                                            return (
-                                                <button
-                                                    key={uo.organization.id}
-                                                    type="button"
-                                                    disabled={isCurrent}
-                                                    onClick={async () => {
-                                                        setIsOrgMenuOpen(false);
-                                                        try {
-                                                            await switchOrganization(uo.organization.id);
-                                                        } catch (err) {
-                                                            console.error(err);
-                                                        }
-                                                    }}
-                                                    className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors flex items-center justify-between ${
-                                                        isCurrent
-                                                            ? 'text-brand-green bg-brand-green/5 cursor-default font-bold'
-                                                            : 'text-gray-600 hover:bg-gray-50 hover:text-[#1F1F1F]'
-                                                    }`}
-                                                >
-                                                    <span>{uo.organization.name}</span>
-                                                    {isCurrent && <span className="w-1.5 h-1.5 rounded-full bg-brand-green"></span>}
-                                                </button>
-                                            );
-                                        })}
+                                        <ScrollFade>
+                                            {activeOrgs.map((uo: any) => {
+                                                const isCurrent = uo.organization.id === organizationId;
+                                                return (
+                                                    <button
+                                                        key={uo.organization.id}
+                                                        type="button"
+                                                        disabled={isCurrent}
+                                                        onClick={async () => {
+                                                            setIsOrgMenuOpen(false);
+                                                            try {
+                                                                await switchOrganization(uo.organization.id);
+                                                            } catch (err) {
+                                                                console.error(err);
+                                                            }
+                                                        }}
+                                                        className={`w-full text-left px-2.5 py-2 rounded-xl transition-colors flex items-center gap-3 ${
+                                                            isCurrent ? 'bg-white border border-gray-200 cursor-default' : 'border border-transparent hover:bg-[#F8FAFD]'
+                                                        }`}
+                                                    >
+                                                        <OrgLogo name={uo.organization.name} logoUrl={uo.organization.logo_url} size={32} />
+                                                        <span className="flex-1 min-w-0">
+                                                            <span className={`block text-sm truncate ${isCurrent ? 'font-bold text-[#0059D8]' : 'font-semibold text-[#111827]'}`}>{uo.organization.name}</span>
+                                                            {uo.role && <span className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">{getPosition(uo.role)}</span>}
+                                                        </span>
+                                                        {isCurrent && <Check size={16} strokeWidth={3} className="text-[#0059D8] flex-shrink-0" />}
+                                                    </button>
+                                                );
+                                            })}
+                                        </ScrollFade>
                                     </div>
                                 </>
                             )}
                         </div>
                     ) : (
-                        <span className="text-xs font-semibold text-[#1F1F1F] truncate max-w-[220px]">{organizationName}</span>
+                        <div className="flex items-center gap-2 min-w-0">
+                            <OrgLogo name={organizationName} logoUrl={organizationLogoUrl} size={22} />
+                            <span className="text-xs font-semibold text-[#111827] truncate max-w-[220px]">{organizationName}</span>
+                        </div>
                     )
                 )}
                 <div className="w-[1px] h-4 bg-[#E9EEF6] flex-shrink-0" />

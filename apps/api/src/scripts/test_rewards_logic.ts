@@ -81,7 +81,14 @@ async function main() {
         { id: 'U2', name: 'Rey Two', email: 'rey@x.com', organization_id: 'P2', payment_info: { mobile_money_number: '0973333333' }, created_at: new Date().toISOString() },
         { id: 'U3', name: 'Fay Three', email: 'fay@x.com', organization_id: 'P3', payment_info: { mobile_money_number: '0972222222' }, created_at: new Date().toISOString() },
     ]);
-    set('user_organizations', [{ user_id: 'U2', organization_id: 'B2' }]);
+    // Saved mobile money numbers live on each membership (user_organizations.payment_info), not on the user row.
+    const momo = (number: string) => ({ mobile_money_number: number });
+    set('user_organizations', [
+        { user_id: 'U1', organization_id: 'P1', payment_info: momo('0971111111') },
+        { user_id: 'U2', organization_id: 'P2', payment_info: momo('0973333333') },
+        { user_id: 'U2', organization_id: 'B2' },
+        { user_id: 'U3', organization_id: 'P3', payment_info: momo('0972222222') },
+    ]);
     set('payment_links', [{ id: 'L1', organization_id: 'B', customer_phone: '0971111111', customer_email: null, amount: 300, status: 'PAID', paid_at: '2026-10-01T10:00:00Z' }, { id: 'L2', organization_id: 'B', customer_phone: '0971111111', amount: 999, status: 'ACTIVE' }]);
     set('quick_link_payments', [
         { reference: 'R1', organization_id: 'B', payer_phone: '0971111111', created_at: '2026-10-05T10:00:00Z' },
@@ -104,9 +111,6 @@ async function main() {
         await R.sync('U1', true); await R.sync('U1', true);
         must((await bal('U1', 'B')) === 550, 'double counted');
         must(db.reward_ledger.filter((r) => r.user_id === 'U1').length === 2, 'two ledger rows');
-    });
-    await step('buying from your own business earns nothing', async () => {
-        must((await bal('U2', 'B2')) === 0, 'U2 belongs to B2');
     });
     await step('detail shows the points history and achievements (tier, first purchase)', async () => {
         const d = await R.getDetail('U1', 'B');
@@ -148,14 +152,24 @@ async function main() {
         must(p.points_per_kwacha === 2 && p.reward_title === 'Free coffee', JSON.stringify(p));
         await R.updateProgram('B', { points_per_kwacha: 1, reward_title: 'K25 off your next purchase' });
     });
-    await step('MoneyWise Pay from a personal account to a business earns points; business-to-business and own business do not', async () => {
+    await step('MoneyWise Pay from a personal account to a business earns points; business-to-business does not', async () => {
         db.requisitions = [{ id: 'RQ1', requestor_id: 'U1', organization_id: 'P1' }, { id: 'RQ2', requestor_id: 'U1', organization_id: 'B2' }];
+        // Only payments that settle a pay link / store cart count; plain transfers (MWPAY-7) do not.
+        set('app_settings', ['MWPAY-1', 'MWPAY-2', 'MWPAY-3', 'MWPAY-9'].map((r) => ({ key: `paylink:${r}` })));
         await R.awardMoneyWisePay({ requisitionId: 'RQ1', recipientOrgId: 'B', amount: 120.9, ref: 'MWPAY-1' });
         await R.awardMoneyWisePay({ requisitionId: 'RQ1', recipientOrgId: 'B', amount: 120.9, ref: 'MWPAY-1' });
         must((await bal('U1', 'B')) === 50 + 120, 'expected 170 (floor of 120.9, once)');
         await R.awardMoneyWisePay({ requisitionId: 'RQ2', recipientOrgId: 'B', amount: 500, ref: 'MWPAY-2' });
         await R.awardMoneyWisePay({ requisitionId: 'RQ1', recipientOrgId: 'P2', amount: 500, ref: 'MWPAY-3' });
         must((await bal('U1', 'B')) === 170 && (await bal('U1', 'P2')) === 0, 'must not pay B2B or personal recipients');
+        // A member of a business who pays it from their own personal account is still an individual customer: it earns.
+        await R.updateProgram('B2', { enabled: true }); // switched off by an earlier step
+        db.requisitions.push({ id: 'RQ3', requestor_id: 'U2', organization_id: 'P2' });
+        const before = await bal('U2', 'B2'); // U2's own quick-pay purchase there (R3) counts too now
+        await R.awardMoneyWisePay({ requisitionId: 'RQ3', recipientOrgId: 'B2', amount: 50, ref: 'MWPAY-9' });
+        must((await bal('U2', 'B2')) === before + 50, 'a member paying their own business from a personal account earns');
+        await R.awardMoneyWisePay({ requisitionId: 'RQ3', recipientOrgId: 'B2', amount: 400, ref: 'MWPAY-7' });
+        must((await bal('U2', 'B2')) === before + 50, 'a plain transfer to a business (a loan) earns nothing');
     });
     await step('invite links: business link carries the code; a business with no pay page falls back to MoneyWise', async () => {
         const a = await R.getInvite('U2', 'B'), b = await R.getInvite('U2', 'B2'), c = await R.getInvite('U2', 'moneywise');
@@ -199,7 +213,10 @@ async function main() {
     await step('the overview lists MoneyWise first and businesses by most recent activity', async () => {
         const o = await R.getOverview('U2');
         must(o.platform.balance === 200 && o.platform.threshold === null && o.platform.isPlatform, JSON.stringify(o.platform));
-        must(o.businesses.length === 1 && o.businesses[0].id === 'B', JSON.stringify(o.businesses.map((b) => b.id)));
+        // B (invite points) and B2 (her own quick-pay and personal MoneyWise Pay purchases there), newest activity first.
+        const ids = o.businesses.map((b) => b.id);
+        must(ids.length === 2 && ids.includes('B') && ids.includes('B2'), JSON.stringify(ids));
+        must(o.businesses[0].lastActivity! >= o.businesses[1].lastActivity!, 'newest first');
     });
 
     await step('a personal account is never listed as a business — flagged or recognised by its name', async () => {

@@ -124,12 +124,16 @@ export type { OnboardingProgress, BusinessProfile, OnboardingState, PlSection, C
 export { organizationService } from './services/organization.service';
 export type { Organization } from './services/organization.service';
 
-export { integrationService, masterFeesService } from './services/integration.service';
+export { integrationService, masterFeesService, sageService } from './services/integration.service';
 export type {
     IntegrationStatus,
     MasterFeesStatus,
     MasterFeesCategory,
     MasterFeesReconciliation,
+    SageStatus,
+    SageAccount,
+    SageMapping,
+    SageSyncResult,
 } from './services/integration.service';
 
 export { lencoService } from './services/lenco.service';
@@ -139,7 +143,7 @@ export { savingsService } from './services/savings.service';
 export { rewardsService } from './services/rewards.service';
 export { payLinkService } from './services/payLink.service';
 export type { PayTarget, PayResult } from './services/payLink.service';
-export type { RewardCard, RewardsOverview, RewardDetail, RewardPointEntry, RewardAchievement, RewardInvite, RewardVoucher, RewardProgramSettings, RewardOption, RewardItem, RewardItemInput, RewardType } from './services/rewards.service';
+export type { RewardCard, RewardsOverview, RewardDetail, RewardPointEntry, RewardAchievement, RewardInvite, RewardVoucher, RewardProgramSettings, RewardOption, RewardItem, RewardItemInput, RewardType, PurchaseClaim, PurchasePreview } from './services/rewards.service';
 export { momoCaptureService } from './services/momoCapture.service';
 export type { MomoCapture, MomoCaptureSettings, MomoCaptureSource, MomoCaptureStatus } from './services/momoCapture.service';
 export type {
@@ -205,6 +209,7 @@ export type {
     CampaignPreview,
     SendCampaignInput,
     DraftCampaignInput,
+    EmailDesign,
     SendCampaignResult,
 } from './services/crm.service';
 

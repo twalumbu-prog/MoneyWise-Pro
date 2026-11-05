@@ -1,8 +1,9 @@
 import { supabase } from '../lib/supabase';
 import { QuickBooksService } from './quickbooks.service';
 import { getMasterFeesIntegration, MasterFeesConfig, acquireMasterFeesLock, releaseMasterFeesLock, touchMasterFeesLock } from './masterfees.service';
-import { matchStudentName, NameCandidate } from './masterfees_qb/name_match';
-import { buildMfNumberIndex, findQbInvoiceForItem, normDesc, qbTermOf, QbInvoiceLike } from './masterfees_qb/mf_qb_link';
+import { NameCandidate } from './masterfees_qb/name_match';
+import { buildCustomerMap, resolveStudentCustomer, CustomerMap } from './masterfees_qb/customer_map';
+import { buildMfNumberIndex, buildImpDocIndex, findQbInvoiceForItem, normDesc, qbTermOf, QbInvoiceLike } from './masterfees_qb/mf_qb_link';
 import { chooseQbItem, resolveItemId } from './masterfees_qb/fee_mapping';
 
 /**
@@ -26,6 +27,8 @@ import { chooseQbItem, resolveItemId } from './masterfees_qb/fee_mapping';
 
 const VOID = ['void', 'voided', 'cancelled', 'canceled', 'deleted', 'draft'];
 const RETRY_REVIEW_MS = 6 * 3600_000;
+const BACKLOG_PER_RUN = 25;                 // older (linkFrom-window) invoices examined per run
+const BACKLOG_TIME_RESERVE_MS = 12_000;     // stop backlog work this long before the deadline, leaving time for payments
 const AUDIT_NOTE = 'MoneyWise/MasterFees reconciliation. Ref: ';
 const day = (d: string) => Math.round(new Date(String(d).slice(0, 10)).getTime() / 86400000);
 const money = (n: number) => `K${Number(n).toLocaleString('en', { maximumFractionDigits: 2 })}`;
@@ -55,7 +58,7 @@ const near = (qDate: string, ref: string) => { const x = day(qDate) - day(ref); 
 
 export async function runQuickBooksAutoPost(
     organizationId: string,
-    opts: { deadline?: number; maxItems?: number; dryRun?: boolean; from?: string; force?: boolean; depositAccounts?: Record<string, string>; only?: 'payments' | 'invoices'; createFrom?: string } = {}
+    opts: { deadline?: number; maxItems?: number; dryRun?: boolean; from?: string; force?: boolean; depositAccounts?: Record<string, string>; only?: 'payments' | 'invoices'; createFrom?: string; linkFrom?: string } = {}
 ): Promise<AutoPostResult> {
     const result: AutoPostResult = { dryRun: !!opts.dryRun, invoices: { linked: 0, created: 0, review: 0, failed: 0 }, payments: { posted: 0, linked: 0, review: 0, waiting: 0, failed: 0 }, decisions: [] };
     const integ = await getMasterFeesIntegration(organizationId); const cfg = (integ?.config as MasterFeesConfig | undefined)?.qbAutoPost;
@@ -67,7 +70,10 @@ export async function runQuickBooksAutoPost(
     if (!qbInt) { result.skipped = 'QuickBooks not connected'; return result; }
     const depositAccounts = opts.depositAccounts ?? cfg?.depositAccounts ?? {};
     // Only invoices dated on/after createFrom may be CREATED in QuickBooks; older ones are link-only (history is reconciled, not re-invoiced).
-    const createFrom = opts.createFrom ?? from;
+    const createFrom = opts.createFrom ?? cfg?.createFrom ?? from;
+    // Invoices dated between linkFrom and `from` are examined in LINK-ONLY mode: they can be tied to the QuickBooks invoice that already exists (Term 1 invoices were
+    // imported FROM QuickBooks), but never created (they are older than createFrom). Payments are still limited to `from`, so this cannot post anything old.
+    const linkFromCfg = opts.linkFrom ?? cfg?.linkFrom; const invFrom = [from, linkFromCfg, createFrom].filter((d): d is string => !!d).sort()[0];
     // Exclusive: never overlap a Master Fees sync, the cron's own posting pass, or another bulk run (double-posting).
     let locked = false;
     if (!dryRun) { locked = await acquireMasterFeesLock(integ.id); if (!locked) { result.skipped = 'another sync or posting run holds the lock'; return result; } }
@@ -93,14 +99,31 @@ export async function runQuickBooksAutoPost(
     // ───────────────────────────── INVOICES ─────────────────────────────
     // Page through ALL candidates (a fixed .limit() in arbitrary order silently hides pending work once history grows).
     const pageAll = async (build: (from: number, to: number) => any): Promise<any[]> => { const out: any[] = []; for (let k = 0; k < 20000; k += 1000) { const { data, error } = await build(k, k + 999); if (error) throw error; out.push(...(data ?? [])); if ((data ?? []).length < 1000) break; } return out; };
+    // Master Fees "IMP-<n>-R<n>" payment references carry the QuickBooks DocNumber of the invoice they were imported from — the strongest link there is for
+    // the invoices that came FROM QuickBooks. Built once per run from the payments MoneyWise already holds. (The poster used to ignore it, so ~950 Term 1
+    // invoices that exist in QuickBooks were parked as "not in QuickBooks".)
+    // Student -> QuickBooks customer, read before any name matching. If it cannot be read the poster falls back to names, as it did before the map existed.
+    let custMapCache: CustomerMap | null = null;
+    const getCustMap = async (): Promise<CustomerMap> => {
+        if (custMapCache) return custMapCache;
+        try { custMapCache = buildCustomerMap(await pageAll((a, b) => supabase.from('masterfees_qb_customer_map').select('student_id,qb_customer_id,qb_customer_name').eq('organization_id', organizationId).order('student_id').range(a, b))); }
+        catch (e: any) { console.warn('[MasterFees→QB] customer map unavailable, using name matching only:', e?.message); custMapCache = buildCustomerMap([]); }
+        return custMapCache;
+    };
+    let impIdxCache: Map<string, string> | null = null;
+    const getImpIdx = async (): Promise<Map<string, string>> => {
+        if (impIdxCache) return impIdxCache;
+        const rows = await pageAll((a, b) => supabase.from('masterfees_records').select('mf_reference,mf_invoice_id').eq('organization_id', organizationId).eq('record_type', 'PAYMENT').like('mf_reference', 'IMP-%').not('mf_invoice_id', 'is', null).order('mf_id').range(a, b));
+        return (impIdxCache = buildImpDocIndex(rows.map((r: any) => ({ reference: r.mf_reference, invoice_id: r.mf_invoice_id }))));
+    };
     const invRecs = await pageAll((a, b) => supabase.from('masterfees_records')
         .select('id,mf_id,mf_reference,amount,mf_status,raw,qb_sync_status,qb_sync_at,qb_invoice_id,journal_entry_id')
         .eq('organization_id', organizationId).eq('record_type', 'INVOICE').not('journal_entry_id', 'is', null)
         .or('qb_sync_status.is.null,qb_sync_status.eq.REVIEW,qb_sync_status.eq.FAILED')
-        .gte('raw->>due_date', from).order('mf_id').range(a, b));
+        .gte('raw->>due_date', invFrom).order('mf_id').range(a, b));
     const pendingInv = (invRecs).filter(r => {
         if (VOID.includes(String(r.mf_status || '').toLowerCase()) || r.qb_sync_status === 'SUCCESS') return false;
-        const eff = String(r.raw?.date_issued || r.raw?.due_date || '').slice(0, 10); if (!eff || eff < from) return false;
+        const eff = String(r.raw?.date_issued || r.raw?.due_date || '').slice(0, 10); if (!eff || eff < invFrom) return false;
         return !r.qb_sync_at || Date.now() - new Date(r.qb_sync_at).getTime() > RETRY_REVIEW_MS;
     });
     // Resolve ONE Master Fees invoice against QuickBooks: link to an existing invoice, or (only when allowCreate) create it.
@@ -110,12 +133,13 @@ export async function runQuickBooksAutoPost(
             const inv = rec.raw ?? {}; const student = inv.student?.full_name || ''; const label = `${student} · ${money(Number(inv.total_amount))} · ${inv.date_issued || inv.due_date}`;
             const review = async (reason: string) => { result.invoices.review++; result.decisions.push({ kind: 'INVOICE', id: rec.mf_id, label, outcome: 'REVIEW', reason }); await markInvoice(rec.id, { qb_sync_status: 'REVIEW', qb_sync_error: reason }, rec.mf_id); };
             try {
-                const m = matchStudentName(student, roster);
+                const m = resolveStudentCustomer(inv.student?.student_id, student, roster, await getCustMap());
                 if (m.tier !== 'EXACT' && m.tier !== 'CONTAINED') { await review(`Customer match is ${m.tier}: ${m.detail}`); return; }
                 const custInvs = await getCust(m.match!.id);
                 const { data: claimedRows } = await supabase.from('masterfees_records').select('qb_invoice_id').eq('organization_id', organizationId).eq('record_type', 'INVOICE').neq('mf_id', rec.mf_id).not('qb_invoice_id', 'is', null).in('qb_invoice_id', custInvs.map(q => q.id));
                 const claimed = new Set<string>(); for (const r of claimedRows ?? []) for (const x of String(r.qb_invoice_id).split(',')) claimed.add(x);
                 const mfNum = String(inv.invoice_number || inv.invoice_id).trim(); const index = buildMfNumberIndex(custInvs);
+                const impDoc = (await getImpIdx()).get(rec.mf_id) ?? null; const qbByDoc = new Map<string, QbInvoiceLike>(custInvs.filter(q => q.docNumber).map(q => [q.docNumber, q] as [string, QbInvoiceLike]));
                 const items = (inv.items?.length ? inv.items : [{ description: mfNum, amount: inv.total_amount, category: '' }]).filter((i: any) => Number(i.amount) > 0);
                 const ids: string[] = []; let created = 0; let blocked = '';
                 // Master Fees discount / prize lines are negative. They reduce what is owed, so QuickBooks must carry the NET amount.
@@ -123,10 +147,11 @@ export async function runQuickBooksAutoPost(
                 if (discTotal < 0 && items.length !== 1) { await review(`Invoice has a discount (${money(discTotal)}) across ${items.length} priced fee items — which item it reduces needs a person`); return; }
                 for (const it of items) {
                     const gross = Number(it.amount); const amt = gross + (discTotal < 0 ? discTotal : 0);
-                    const link = findQbInvoiceForItem(mfNum, it.description || '', amt, custInvs, index, claimed, { mfTerm: inv.term ?? null });
+                    const link = findQbInvoiceForItem(mfNum, it.description || '', amt, custInvs, index, claimed, { mfTerm: inv.term ?? null, impDocNumber: impDoc, qbByDoc });
                     if (link.tier !== 'NONE' && link.invoice) { ids.push(link.invoice.id); claimed.add(link.invoice.id); continue; }
+                    if (link.impMismatch) { blocked = `The import reference points to QuickBooks invoice #${link.impMismatch.docNumber} for this student, but its total is ${money(link.impMismatch.qbTotal)} and Master Fees has "${it.description || 'this fee'}" at ${money(amt)} — not linking and not creating a second invoice; needs a person`; break; }
                     if (discTotal < 0) {
-                        const g = findQbInvoiceForItem(mfNum, it.description || '', gross, custInvs, index, claimed, { mfTerm: inv.term ?? null });
+                        const g = findQbInvoiceForItem(mfNum, it.description || '', gross, custInvs, index, claimed, { mfTerm: inv.term ?? null, impDocNumber: impDoc, qbByDoc });
                         if (g.tier !== 'NONE' && g.invoice) { blocked = `QuickBooks has this fee at the full ${money(gross)} (invoice #${g.invoice.docNumber || g.invoice.id}) but Master Fees applied a ${money(discTotal)} discount (net ${money(amt)}) — the discount needs applying in QuickBooks; not changed automatically`; break; }
                     }
                     // not in QuickBooks — create only if nothing for the same fee exists around that date (monthly-pieces guard)
@@ -148,9 +173,20 @@ export async function runQuickBooksAutoPost(
                 await markInvoice(rec.id, { qb_sync_status: 'SUCCESS', qb_sync_error: null, qb_invoice_id: ids.join(',') }, rec.mf_id);
             } catch (err: any) { result.invoices.failed++; result.decisions.push({ kind: 'INVOICE', id: rec.mf_id, label, outcome: 'FAILED', reason: err.message }); await markInvoice(rec.id, { qb_sync_status: 'FAILED', qb_sync_error: String(err.message).slice(0, 300) }); }
     };
-    if (opts.only !== 'payments') for (const rec of pendingInv) {
-        if (Date.now() > (deadline - 4000) || budget <= 0) break;
-        await processInvoice(rec, String(rec.raw?.date_issued || rec.raw?.due_date || '').slice(0, 10) >= createFrom);
+    // Current invoices first. Older ones (the linkFrom window) are a backlog: capped per run and stopped early, so they can never starve current invoices or the
+    // payment stage below, which only runs if time is left.
+    const invDay = (r: any) => String(r.raw?.date_issued || r.raw?.due_date || '').slice(0, 10);
+    const currentInv = pendingInv.filter(r => invDay(r) >= from), backlogInv = pendingInv.filter(r => invDay(r) < from);
+    if (opts.only !== 'payments') {
+        for (const rec of currentInv) {
+            if (Date.now() > (deadline - 4000) || budget <= 0) break;
+            await processInvoice(rec, invDay(rec) >= createFrom);
+        }
+        let backlogDone = 0;
+        for (const rec of backlogInv) {
+            if (backlogDone >= (opts.maxItems ?? BACKLOG_PER_RUN) || Date.now() > (deadline - BACKLOG_TIME_RESERVE_MS) || budget <= 0) break;
+            await processInvoice(rec, invDay(rec) >= createFrom); backlogDone++;
+        }
     }
 
     // ───────────────────────────── PAYMENTS ─────────────────────────────
@@ -159,9 +195,10 @@ export async function runQuickBooksAutoPost(
             .select('id,mf_id,amount,raw,cashbook_entry_id').eq('organization_id', organizationId).eq('record_type', 'PAYMENT').eq('mf_status', 'success')
             .not('cashbook_entry_id', 'is', null).gte('raw->>completed_at', from).order('mf_id').range(a, b));
         const ids = payRecs.map(r => r.cashbook_entry_id) as string[]; const cbs = new Map<string, any>();
-        for (let i = 0; i < ids.length; i += 150) { const { data } = await supabase.from('cashbook_entries').select('id,date,debit,qb_sync_status,qb_sync_at,qb_sync_error,mf_payment_channel,external_reference,sender_name').in('id', ids.slice(i, i + 150)); for (const c of data ?? []) cbs.set(c.id, c); }
+        for (let i = 0; i < ids.length; i += 150) { const { data } = await supabase.from('cashbook_entries').select('id,date,debit,qb_sync_status,qb_sync_at,qb_sync_error,mf_payment_channel,external_reference,sender_name,verification_status').in('id', ids.slice(i, i + 150)); for (const c of data ?? []) cbs.set(c.id, c); }
         const pending = payRecs.filter(r => {
             const c = cbs.get(r.cashbook_entry_id); if (!c || c.qb_sync_status === 'SUCCESS') return false;
+            if (c.verification_status === 'UNVERIFIED') return false;   // parked: no bank deposit behind it, never post it
             const waiting = String(c.qb_sync_error || '').startsWith('WAIT:'); // WAIT = depends on an invoice not in QuickBooks yet -> retry every tick
             return waiting || !c.qb_sync_at || Date.now() - new Date(c.qb_sync_at).getTime() > RETRY_REVIEW_MS;
         });
@@ -193,7 +230,7 @@ export async function runQuickBooksAutoPost(
                 if (qbIds.length !== items.length) { await park('QuickBooks invoice ids do not line up with the Master Fees fee items'); continue; }
                 if (items.length > 1 && Math.abs(amount - Number(invRec.raw?.total_amount)) > 0.01) { await park('Part-payment of a multi-item invoice — which item it paid cannot be told automatically'); continue; }
                 // customer = the customer who owns the linked QuickBooks invoice
-                const roster = await getRoster(organizationId); const m = matchStudentName(invRec.raw?.student?.full_name || '', roster);
+                const roster = await getRoster(organizationId); const m = resolveStudentCustomer(invRec.raw?.student?.student_id, invRec.raw?.student?.full_name || '', roster, await getCustMap());
                 if (m.tier !== 'EXACT' && m.tier !== 'CONTAINED') { await park(`Customer match is ${m.tier}`); continue; }
                 let custInvs = await getCust(m.match!.id); const lines: Array<{ invoiceId: string; amount: number }> = [];
                 // an invoice created earlier in this same run may not be in the cached list yet — refresh once before judging it missing

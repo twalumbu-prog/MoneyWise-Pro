@@ -76,7 +76,14 @@ export interface LinkResult {
     tier: LinkTier;
     invoice?: QbInvoiceLike;
     detail: string;
+    /** Set (with tier NONE) when an IMP- reference points at a QuickBooks invoice of this student whose total does NOT match the fee, so the poster can
+     *  say exactly that instead of "not found" — and never creates a second invoice for a fee that probably already exists. */
+    impMismatch?: { docNumber: string; invoiceId: string; qbTotal: number };
 }
+
+/** An IMP- reference names the invoice, but it is not proof of the AMOUNT: of 947 such matches on Twalumbu (Nov 2026) 934 agreed to the ngwee-level and
+ *  13 did not (K20 against K310, K65 against K315 ...). Rounding differences up to this much are accepted; anything bigger goes to a person. */
+export const IMP_AMOUNT_TOLERANCE = 0.05;
 
 /**
  * The academic term a QuickBooks invoice refers to, read from its line
@@ -152,10 +159,14 @@ export function findQbInvoiceForItem(
     // ---- Tier 1: the QuickBooks DocNumber embedded in an IMP- reference ----
     // Verified against the customer so a stray docnumber can never pull in
     // another student's invoice. Fallback only — see note above.
+    let impMismatch: LinkResult['impMismatch'];
     if (opts.impDocNumber && opts.qbByDoc) {
         const q = opts.qbByDoc.get(opts.impDocNumber);
         if (q && !claimed.has(q.id) && customerInvoices.some(c => c.id === q.id)) {
-            return { tier: 'IMP_DOCNUM', invoice: q, detail: `Linked by the QuickBooks document number ${opts.impDocNumber} embedded in the Master Fees import reference (IMP-${opts.impDocNumber}-...).` };
+            if (Math.abs(q.totalAmt - itemAmount) <= IMP_AMOUNT_TOLERANCE) {
+                return { tier: 'IMP_DOCNUM', invoice: q, detail: `Linked by the QuickBooks document number ${opts.impDocNumber} embedded in the Master Fees import reference (IMP-${opts.impDocNumber}-...).` };
+            }
+            impMismatch = { docNumber: opts.impDocNumber, invoiceId: q.id, qbTotal: q.totalAmt };   // right student, named invoice, wrong amount: do not link, do not duplicate
         }
     }
 
@@ -198,5 +209,5 @@ export function findQbInvoiceForItem(
         }
     }
 
-    return { tier: 'NONE', detail: `No QuickBooks invoice for "${itemDescription}" (K${itemAmount.toFixed(2)}${opts.mfTerm ? `, term ${opts.mfTerm}` : ''}) — no import-reference link, no invoice-number link, and no description or term match among this student's invoices at that amount. Likely never created in QuickBooks.` };
+    return { tier: 'NONE', detail: `No QuickBooks invoice for "${itemDescription}" (K${itemAmount.toFixed(2)}${opts.mfTerm ? `, term ${opts.mfTerm}` : ''}) — no import-reference link, no invoice-number link, and no description or term match among this student's invoices at that amount. Likely never created in QuickBooks.`, impMismatch };
 }

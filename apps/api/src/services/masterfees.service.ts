@@ -1,5 +1,8 @@
 import axios from 'axios';
 import { supabase } from '../lib/supabase';
+import { isUnverified, isWalletAccountType, decideWalletMove, channelChanged } from './ledgerCorrections/core';
+import { hasManualMove, logCorrection } from './ledgerCorrections/ledgerCorrections.service';
+import { collectPages } from './masterfees_paging';
 import { ledgerService } from './ledger.service';
 import { cashbookService } from './cashbook.service';
 import { broadcastInvalidate } from '../lib/realtimeBroadcast';
@@ -186,6 +189,12 @@ export interface MasterFeesConfig {
         enabled: boolean;
         /** Only items dated on/after this day are auto-posted (history is reconciled separately). YYYY-MM-DD */
         from: string;
+        /** Optional. Invoices dated from this day up to `from` are LINKED to the QuickBooks invoice that already exists (never created, no payment is posted for
+         *  them). Lets the Term 1 invoices that were imported from QuickBooks be tied to their QuickBooks invoices. YYYY-MM-DD */
+        linkFrom?: string;
+        /** Optional. Invoices dated on/after this day may be CREATED in QuickBooks when none exists (default: `from`). Term 3 onward is invoiced only in Master Fees /
+         *  MoneyWise, so this is where creation should start; earlier invoices came from QuickBooks and are link-only. YYYY-MM-DD */
+        createFrom?: string;
         /** Decide and log, but write nothing to QuickBooks or the database. */
         dryRun?: boolean;
         /** Max QuickBooks writes per cron tick. Default 8. */
@@ -366,6 +375,9 @@ function resolveItemCategory(item: MFInvoiceItem, categoriesByName: Map<string, 
 // ─────────────────────────────────────────────────────────────────────────────
 // REST client
 // ─────────────────────────────────────────────────────────────────────────────
+/** When the "pages overlap" notice was last logged, per list, so a standing API quirk does not repeat on every sync tick. */
+const overlapWarnedAt = new Map<string, number>();
+
 export class MasterFeesClient {
     private base: string;
     constructor(private config: MasterFeesConfig) {
@@ -403,37 +415,31 @@ export class MasterFeesClient {
     }
 
     /**
-     * Walk `?page=1,2,3...` until Master Fees signals the end. Confirmed live
-     * (2026-08-18, after their pagination fix): a page with fewer than 1000 rows
-     * can still be a real page (not necessarily the last), and requesting one
-     * page past the actual last page returns an HTTP error (500) rather than an
-     * empty array. So: keep going on any non-empty page; treat a request error
-     * as "end of data" ONLY once we've already got at least one good page —
-     * a failure on page 1 itself is a real error (auth/network/etc.) and must
-     * still propagate normally.
+     * Walk `?page=1,2,3...` and return every distinct row. The page-walking rules (retry a failing page before treating it as the end,
+     * de-duplicate overlapping pages, a short page ends the read, a failure on page 1 always propagates) live in masterfees_paging.ts, with
+     * the reasons: Master Fees' pages overlap, and its "past the last page" answer (HTTP 500) looks exactly like a transient failure.
      *
-     * MAX_PAGES is a sanity ceiling, not an expected limit — 200 pages would be
-     * 200,000 rows, far beyond any school's real size; it exists only so a
-     * pathological response (e.g. them always returning non-empty data with no
-     * real end) can't loop forever.
+     * Observed 2026-11-04 on Twalumbu: invoices = 1000+1000+1000+324 then a 500; transactions = 1000x4 + 362 then a 500 (4,362 rows, 4,267
+     * distinct). maxPages (200) is a sanity ceiling, not an expected limit.
      */
-    private async getPaginated<T = any>(path: string): Promise<T[]> {
-        const MAX_PAGES = 200;
-        const results: T[] = [];
-        for (let page = 1; page <= MAX_PAGES; page++) {
-            let resp: any;
-            try {
-                resp = await this.get(`${path}?page=${page}`);
-            } catch (err) {
-                if (page === 1) throw err; // real error — first page must succeed
-                break; // subsequent-page failure = end of data (their pagination signal)
-            }
-            const batch = this.list<T>(resp);
-            if (batch.length === 0) break;
-            results.push(...batch);
-            if (batch.length < 1000) break; // short page = last page (avoids one wasted round trip)
-        }
-        return results;
+    private async getPaginated<T extends Record<string, any> = any>(path: string, idKey: string | null = null): Promise<T[]> {
+        // Retry-before-believing, de-duplication and overlap warnings live in masterfees_paging.ts (see its header for what Master Fees does).
+        const result = await collectPages<T>(
+            async (page) => this.list<T>(await this.get(`${path}?page=${page}`)),
+            idKey,
+            {
+                onWarn: (m) => {
+                    // The overlap is a standing quirk of their API (every call): say it once per half hour, not on every sync tick. Failures always log.
+                    if (/repeated across overlapping pages/.test(m)) {
+                        const last = overlapWarnedAt.get(path) ?? 0;
+                        if (Date.now() - last < 30 * 60_000) return;
+                        overlapWarnedAt.set(path, Date.now());
+                    }
+                    console.warn(`[MasterFees] ${path}: ${m}`);
+                },
+            },
+        );
+        return result.rows;
     }
 
     async getSchoolMeta(): Promise<{ school_name?: string }> {
@@ -441,8 +447,8 @@ export class MasterFeesClient {
         return { school_name: resp?.school_name };
     }
     async getStudents(): Promise<MFStudent[]> { return this.list(await this.get('students')); }
-    async getInvoices(): Promise<MFInvoice[]> { return this.getPaginated<MFInvoice>('invoices'); }
-    async getTransactions(): Promise<MFTransaction[]> { return this.getPaginated<MFTransaction>('transactions'); }
+    async getInvoices(): Promise<MFInvoice[]> { return this.getPaginated<MFInvoice>('invoices', 'invoice_id'); }
+    async getTransactions(): Promise<MFTransaction[]> { return this.getPaginated<MFTransaction>('transactions', 'transaction_id'); }
     async getFeeCategories(): Promise<MFFeeCategory[]> { return this.list(await this.get('fee-categories')); }
     async getBalances(): Promise<any[]> { return this.list(await this.get('summary/balances')); }
     async getPaymentsSummary(): Promise<any> { return this.get('summary/payments'); }
@@ -793,7 +799,9 @@ async function upsertRecord(organizationId: string, integrationId: string, rec: 
 const VOID_STATUSES = new Set(['void', 'voided', 'cancelled', 'canceled', 'deleted', 'draft']);
 
 type PriorInvoiceRecord = { amount: number | string | null; mf_status: string | null; journal_entry_id: string | null; synced_at?: string | null };
-type PriorPaymentRecord = { amount: number | string | null; mf_status: string | null; journal_entry_id: string | null; cashbook_entry_id: string | null };
+type PriorPaymentRecord = { amount: number | string | null; mf_status: string | null; journal_entry_id: string | null; cashbook_entry_id: string | null; prior_account_name?: string | null; prior_payment_method?: string | null };
+// Columns loaded for every already-synced payment. The two aliases are the channel Master Fees reported when we last synced it, so a later channel change is noticed.
+const PRIOR_PAYMENT_COLUMNS = 'amount, mf_status, journal_entry_id, cashbook_entry_id, prior_account_name:raw->>account_name, prior_payment_method:raw->>payment_method';
 
 /**
  * Batch-preload every already-synced record of a given type for an org into a
@@ -1075,6 +1083,17 @@ async function postPayment(
         }
     }
     if (editable && prior?.cashbook_entry_id) {
+        // An entry parked as Unverified (no bank deposit behind it) is held at zero on purpose. An amount edit at Master Fees must not
+        // resurrect it: just remember the new amount and leave the ledger alone. (If the column does not exist yet this reads as "not parked".)
+        const { data: parked } = await supabase.from('cashbook_entries').select('verification_status').eq('id', prior.cashbook_entry_id).maybeSingle();
+        if (isUnverified((parked as any) || {})) {
+            await upsertRecord(organizationId, integrationId, {
+                record_type: 'PAYMENT', mf_id: txn.transaction_id, mf_reference: txn.reference, mf_invoice_id: txn.invoice_id,
+                student_name: studentName, grade: txn.student?.grade, amount, mf_status: txn.status,
+                journal_entry_id: null, cashbook_entry_id: prior.cashbook_entry_id, external_reference: txn.reference, raw: txn,
+            });
+            return 'skipped';
+        }
         const patch: Record<string, any> = { debit: amount };
         if (manualPayment) {
             const channel = classifyManualChannel(txn);
@@ -1168,6 +1187,45 @@ async function postPayment(
                     await ledgerService.repostForCashbookEntry(prior!.cashbook_entry_id);
                 }
             }
+        } else if (ce && isWalletAccountType(ce.account_type) && !isLencoProcessed(txn)) {
+            // Master Fees changed this payment's channel (e.g. Natsave → Zanaco bank). An entry already sitting on a per-bank wallet is not
+            // covered by the bucket rules above, so it used to stay on the old bank forever. Move it — unless a person decided where it lives,
+            // it was matched to a bank statement, or it is parked as Unverified (decideWalletMove).
+            const channel = classifyManualChannel(txn);
+            const resolved = await resolveManualAccountType(organizationId, channel);
+            const { data: extra } = await supabase.from('cashbook_entries').select('status, verification_status').eq('id', prior!.cashbook_entry_id).maybeSingle();
+            const decision = decideWalletMove({
+                lencoProcessed: false, currentAccountType: ce.account_type, resolvedAccountType: resolved,
+                hasBankStatementReference: !!ce.bank_statement_reference, unverified: isUnverified((extra as any) || {}),
+                hasManualMove: await hasManualMove(prior!.cashbook_entry_id),
+            });
+            if (decision.move) {
+                await getManualCollectionsAccountForChannel(organizationId, channel);
+                const patch: Record<string, any> = { account_type: resolved, mf_payment_channel: channel.key };
+                if ((extra as any)?.status === 'ACCOUNTED') patch.qb_resync_required = true;   // it is in QuickBooks under the old bank: flag, never edit QuickBooks here
+                let { error: mvErr } = await supabase.from('cashbook_entries').update(patch).eq('id', prior!.cashbook_entry_id).eq('account_type', ce.account_type);
+                if (mvErr && /qb_resync_required/.test(mvErr.message)) { delete patch.qb_resync_required; ({ error: mvErr } = await supabase.from('cashbook_entries').update(patch).eq('id', prior!.cashbook_entry_id).eq('account_type', ce.account_type)); }
+                if (mvErr) throw new Error(`could not move ${txn.reference} to its new wallet: ${mvErr.message}`);
+                await ledgerService.repostForCashbookEntry(prior!.cashbook_entry_id);          // the journal debits the new bank's asset account
+                await cashbookService.recalculateBalancesFrom(organizationId, ce.date, ce.created_at, ce.account_type);
+                await cashbookService.recalculateBalancesFrom(organizationId, ce.date, ce.created_at, resolved);
+                // Remember the new channel so this payment stops being re-examined every tick.
+                await upsertRecord(organizationId, integrationId, {
+                    record_type: 'PAYMENT', mf_id: txn.transaction_id, mf_reference: txn.reference, mf_invoice_id: txn.invoice_id,
+                    student_name: studentName, grade: txn.student?.grade, amount, mf_status: txn.status,
+                    journal_entry_id: null, cashbook_entry_id: prior!.cashbook_entry_id, external_reference: txn.reference, raw: txn,
+                });
+                await logCorrection({ orgId: organizationId, entryId: prior!.cashbook_entry_id, field: 'account_type', oldValue: ce.account_type, newValue: resolved,
+                    actionCode: 'SYNC_MOVE_WALLET', reason: 'Master Fees changed the payment channel', sourceRef: String(txn.reference || txn.transaction_id), actor: 'masterfees-sync' }).catch(() => undefined);
+                return 'reclassified';
+            }
+            // Not moving (a person decided, it is statement-matched, parked, or already right): still remember the new channel, otherwise
+            // the change detector would hand this payment back on every tick.
+            await upsertRecord(organizationId, integrationId, {
+                record_type: 'PAYMENT', mf_id: txn.transaction_id, mf_reference: txn.reference, mf_invoice_id: txn.invoice_id,
+                student_name: studentName, grade: txn.student?.grade, amount, mf_status: txn.status,
+                journal_entry_id: null, cashbook_entry_id: prior!.cashbook_entry_id, external_reference: txn.reference, raw: txn,
+            });
         }
         return 'skipped';
     }
@@ -1674,7 +1732,7 @@ export async function syncMasterfeesPayments(
         }
 
         const priorMap = await loadPriorRecords<PriorPaymentRecord>(
-            organizationId, 'PAYMENT', 'amount, mf_status, journal_entry_id, cashbook_entry_id'
+            organizationId, 'PAYMENT', PRIOR_PAYMENT_COLUMNS
         );
 
         // onlyMissing still has to notice changes to payments we already hold: a
@@ -1688,6 +1746,7 @@ export async function syncMasterfeesPayments(
             const priorVoid = isVoidStatus(p.mf_status);
             if (liveVoid) return !priorVoid && !!(p.cashbook_entry_id || p.journal_entry_id);
             if (priorVoid) return true;
+            if (channelChanged(p, t)) return true;   // e.g. Finance moved a payment from Natsave to Zanaco at Master Fees
             return num(t.amount) > 0 && Math.abs(num(p.amount) - num(t.amount)) >= TOLERANCE;
         };
         let queue = opts.onlyMissing
@@ -1934,7 +1993,7 @@ async function runMasterfeesSync(
                 summary.truncated = true;
                 summary.errors.push(`transactions: Hit the ${MF_ROW_CAP.toLocaleString()}-record pagination safety ceiling — this school may have more transactions than we fetched this sync. Contact us if this persists.`);
             }
-            const priorMap = await loadPriorRecords<PriorPaymentRecord>(organizationId, 'PAYMENT', 'amount, mf_status, journal_entry_id, cashbook_entry_id');
+            const priorMap = await loadPriorRecords<PriorPaymentRecord>(organizationId, 'PAYMENT', PRIOR_PAYMENT_COLUMNS);
             for (const txn of transactions) {
                 if (Date.now() > deadline) { deferredByBudget = true; break; }
                 try {

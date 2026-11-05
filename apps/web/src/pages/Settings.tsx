@@ -2,7 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { QuickBooksIntegration } from '../components/settings/integrations/QuickBooksIntegration';
 import { LencoIntegration } from '../components/settings/integrations/LencoIntegration';
+import { MetaMessagingIntegration } from '../components/settings/integrations/MetaMessagingIntegration';
 import { MasterfeesIntegration } from '../components/settings/integrations/MasterfeesIntegration';
+import { SageIntegration } from '../components/settings/integrations/SageIntegration';
+import { GmailIntegration, GmailLogo } from '../components/settings/integrations/GmailIntegration';
 import { DeveloperAPI } from '../components/settings/DeveloperAPI';
 import { InvestorPayouts } from '../components/settings/InvestorPayouts';
 import { useQuery } from '@tanstack/react-query';
@@ -16,7 +19,8 @@ import {
     GraduationCap,
     CreditCard,
     Code2,
-    Landmark
+    Landmark,
+    MessageCircle
 } from 'lucide-react';
 import { GeneralSettings } from '../components/settings/GeneralSettings';
 import { UserManagement } from '../components/settings/UserManagement';
@@ -38,7 +42,7 @@ export const Settings: React.FC = () => {
         staleTime: 5 * 60_000,
     });
 
-    const [activeIntegration, setActiveIntegration] = useState<'quickbooks' | 'lenco' | 'masterfees' | null>(null);
+    const [activeIntegration, setActiveIntegration] = useState<'quickbooks' | 'sage' | 'lenco' | 'masterfees' | 'meta' | 'gmail' | null>(null);
     const [integrationError, setIntegrationError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -60,6 +64,13 @@ export const Settings: React.FC = () => {
             if (mfStatus === 'error') {
                 setIntegrationError(searchParams.get('mf_message') || 'Master Fees connection failed');
             }
+            return;
+        }
+        // Gmail OAuth callback (?gmail=connected|error) — the card reads and clears its own params
+        const gmailStatus = searchParams.get('gmail');
+        if (gmailStatus === 'connected' || gmailStatus === 'error') {
+            setActiveTab('integrations');
+            setActiveIntegration('gmail');
         }
     }, [searchParams]);
 
@@ -158,6 +169,18 @@ export const Settings: React.FC = () => {
                                                             <p className="text-sm text-gray-500">Sync expenses and chart of accounts</p>
                                                         </button>
 
+                                                        {/* Sage Card */}
+                                                        <button
+                                                            onClick={() => setActiveIntegration('sage')}
+                                                            className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-green/30 transition-all text-left group"
+                                                        >
+                                                            <div className="h-12 w-12 bg-[#00D639] rounded-xl flex items-center justify-center text-white font-bold text-sm mb-4 group-hover:scale-105 transition-transform shadow-sm">
+                                                                sage
+                                                            </div>
+                                                            <h4 className="text-base font-bold text-gray-900 mb-1">Sage Accounting</h4>
+                                                            <p className="text-sm text-gray-500">Post journals to Sage Business Cloud (Pastel Online)</p>
+                                                        </button>
+
                                                         {/* Lenco Card */}
                                                         <button
                                                             onClick={() => setActiveIntegration('lenco')}
@@ -181,6 +204,26 @@ export const Settings: React.FC = () => {
                                                             <h4 className="text-base font-bold text-gray-900 mb-1">Master Fees</h4>
                                                             <p className="text-sm text-gray-500">Sync school invoices, fee revenue &amp; receivables</p>
                                                         </button>
+                                                        {/* Messaging (Meta) Card */}
+                                                        <button
+                                                            onClick={() => setActiveIntegration('meta')}
+                                                            className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-navy/30 transition-all text-left group"
+                                                        >
+                                                            <div className="h-12 w-12 bg-[#25D366] rounded-xl flex items-center justify-center text-white mb-4 group-hover:scale-105 transition-transform shadow-sm">
+                                                                <MessageCircle className="h-6 w-6" />
+                                                            </div>
+                                                            <h4 className="text-base font-bold text-gray-900 mb-1">WhatsApp, Facebook &amp; Instagram</h4>
+                                                            <p className="text-sm text-gray-500">Spot orders and payments in customer messages</p>
+                                                        </button>
+                                                        {/* Gmail Card */}
+                                                        <button
+                                                            onClick={() => setActiveIntegration('gmail')}
+                                                            className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-navy/30 transition-all text-left group"
+                                                        >
+                                                            <GmailLogo className="mb-4 group-hover:scale-105 transition-transform" />
+                                                            <h4 className="text-base font-bold text-gray-900 mb-1">Gmail</h4>
+                                                            <p className="text-sm text-gray-500">Pick up receipts, invoices and payment emails</p>
+                                                        </button>
                                                     </div>
                                                 </>
                                             ) : activeIntegration === 'quickbooks' ? (
@@ -188,6 +231,12 @@ export const Settings: React.FC = () => {
                                                     onBack={() => setActiveIntegration(null)}
                                                     initialError={integrationError}
                                                 />
+                                            ) : activeIntegration === 'sage' ? (
+                                                <SageIntegration onBack={() => setActiveIntegration(null)} />
+                                            ) : activeIntegration === 'meta' ? (
+                                                <MetaMessagingIntegration onBack={() => setActiveIntegration(null)} />
+                                            ) : activeIntegration === 'gmail' ? (
+                                                <GmailIntegration onBack={() => setActiveIntegration(null)} />
                                             ) : activeIntegration === 'masterfees' ? (
                                                 <MasterfeesIntegration
                                                     onBack={() => setActiveIntegration(null)}

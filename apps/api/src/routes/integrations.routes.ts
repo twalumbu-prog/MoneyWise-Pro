@@ -29,6 +29,31 @@ import {
     syncStudentsToCrmNow,
 } from '../controllers/masterfees.controller';
 
+import {
+    getMetaStatus,
+    getMetaConnectUrl,
+    metaOAuthCallback,
+    disconnectMeta,
+    verifyMetaWebhook,
+    receiveMetaWebhook,
+} from '../controllers/meta.controller';
+import {
+    getSageStatus,
+    connectSage,
+    disconnectSage,
+    getSageAccounts,
+    getSageMappings,
+    updateSageMapping,
+    syncSageNow,
+} from '../controllers/sage.controller';
+import {
+    getGmailStatus,
+    getGmailConnectUrl,
+    gmailOAuthCallback,
+    disconnectGmail,
+    gmailSyncCron,
+} from '../controllers/gmail.controller';
+
 const router = Router();
 
 // OAuth flow
@@ -72,5 +97,32 @@ router.put('/masterfees/lenco-mode', requireAuth, updateMasterFeesLencoMode);
 router.post('/masterfees/sync', requireAuth, syncMasterFeesNow);
 router.post('/masterfees/sync-students', requireAuth, syncStudentsToCrmNow);
 router.get('/masterfees/reconcile', requireAuth, getMasterFeesReconciliation);
+
+// ── Meta messaging (WhatsApp / Facebook / Instagram) ─────────────────────────
+// Webhook + callback are unauthenticated by design: the webhook is secured by X-Hub-Signature-256.
+router.get('/meta/webhook', verifyMetaWebhook);
+router.post('/meta/webhook', receiveMetaWebhook);
+router.get('/meta/callback', metaOAuthCallback);
+router.get('/meta/status', requireAuth, getMetaStatus);
+router.get('/meta/connect/:platform', requireAuth, getMetaConnectUrl);
+router.delete('/meta/connections/:id', requireAuth, disconnectMeta);
+
+// ── Sage Accounting (Africa cloud, API v2.0.0) ───────────────────────────────
+router.get('/sage/status', requireAuth, getSageStatus);
+router.post('/sage/connect', requireAuth, connectSage);
+router.delete('/sage', requireAuth, disconnectSage);
+router.get('/sage/accounts', requireAuth, getSageAccounts);
+router.get('/sage/mappings', requireAuth, getSageMappings);
+router.put('/sage/mappings', requireAuth, updateSageMapping);
+router.post('/sage/sync', requireAuth, syncSageNow);
+
+// ── Gmail capture (read-only, AI Transaction Capture) ────────────────────────
+// Callback is unauthenticated by design (identity comes from the HMAC-signed state); /sync is the internal
+// scheduler entry point, secured inside the handler with LENCO_SYNC_SECRET.
+router.get('/gmail/callback', gmailOAuthCallback);
+router.post('/gmail/sync', gmailSyncCron);
+router.get('/gmail/status', requireAuth, getGmailStatus);
+router.get('/gmail/connect', requireAuth, getGmailConnectUrl);
+router.delete('/gmail/:id', requireAuth, disconnectGmail);
 
 export default router;
