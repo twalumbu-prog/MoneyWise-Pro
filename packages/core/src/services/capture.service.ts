@@ -28,7 +28,7 @@ export interface CaptureRow {
 }
 
 export interface CaptureDetail {
-    capture: CaptureRow & { evidence_summary: string | null; line_items: any[]; match_candidates: any[]; matched_cashbook_entry_id: string | null; reasoning: string | null };
+    capture: CaptureRow & { conversation_id: string | null; evidence_summary: string | null; line_items: any[]; match_candidates: any[]; matched_cashbook_entry_id: string | null; reasoning: string | null };
     attachments: { id: string; mime: string; url: string | null }[];
     momoMessages: { id: string; raw_text: string; provider: string; occurred_at: string }[];
     chatMessages: { id: string; direction: 'IN' | 'OUT'; body: string | null; message_type: string; sent_at: string; contact_name: string | null }[];
@@ -36,6 +36,11 @@ export interface CaptureDetail {
     wallets: { id: string; name: string; provider_type: string }[];
     categories: { id: string; name: string; code: string; emoji: string | null }[];
     undoAvailableUntil: string | null;
+}
+
+export interface CaptureConversation {
+    messages: { id: string; direction: 'IN' | 'OUT'; body: string | null; message_type: string; sent_at: string }[];
+    captures: { id: string; status: CaptureStatus; intent: string | null; zmw_amount: number | null }[];
 }
 
 export interface CaptureSettings { enabled: boolean; autoPostEnabled: boolean; autoPostLimit: number; dailyAiBudget: number; planEligible: boolean }
@@ -46,6 +51,7 @@ export const captureService = {
     list: (status?: string) => apiJson<{ enabled: boolean; items: CaptureRow[]; nextBefore: string | null }>(`/captures${status ? `?status=${encodeURIComponent(status)}` : ''}`),
     count: () => apiJson<{ needsReview: number }>('/captures/count'),
     detail: (id: string) => apiJson<CaptureDetail>(`/captures/${id}`),
+    conversation: (id: string) => apiJson<CaptureConversation>(`/captures/${id}/conversation`),
     byEntry: (entryId: string) => apiJson<{ capture: { id: string; source: string; status: string } | null }>(`/captures/by-entry/${entryId}`),
     upload: (fileBase64: string, mime: string) => post<{ attachmentId: string; duplicate: boolean }>('/captures/upload', { fileBase64, mime }),
     approve: (id: string, edits: Record<string, unknown> = {}) => post(`/captures/${id}/approve`, { edits }),

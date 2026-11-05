@@ -6,7 +6,7 @@ import assert from 'assert';
 import crypto from 'crypto';
 import { shouldExtract } from '../services/capture/capture.prefilter';
 import { parseExtraction, amountAppearsInText, matchProducts } from '../services/capture/capture.extract';
-import { parseWebhook, verifySignature } from '../services/meta.service';
+import { parseWebhook, verifySignature, signConnectState, verifyConnectState, parseSignedRequest } from '../services/meta.service';
 import { encryptToken, decryptToken } from '../lib/tokenCrypto';
 
 let passed = 0;
@@ -72,6 +72,29 @@ test('only the valid signature passes', () => {
     assert.ok(!verifySignature(body, undefined));
     assert.ok(!verifySignature(body, 'sha256=abc'));
     assert.ok(!verifySignature(undefined, sig));
+});
+
+console.log('Connect state and data-deletion request');
+test('state round-trips and rejects tampering', () => {
+    const state = signConnectState({ organizationId: 'org-a', userId: 'user-a' });
+    assert.deepStrictEqual(verifyConnectState(state), { organizationId: 'org-a', userId: 'user-a' });
+    const [payload, sig] = state.split('.');
+    const forged = Buffer.from(JSON.stringify({ o: 'org-b', u: 'user-a', e: Date.now() + 60_000 })).toString('base64url');
+    assert.strictEqual(verifyConnectState(`${forged}.${sig}`), null);
+    assert.strictEqual(verifyConnectState(payload), null);
+    assert.strictEqual(verifyConnectState(undefined), null);
+});
+test('expired state is rejected', () => {
+    const payload = Buffer.from(JSON.stringify({ o: 'org-a', u: 'user-a', e: Date.now() - 1 })).toString('base64url');
+    const sig = crypto.createHmac('sha256', 'test-secret').update(payload).digest().toString('base64url');
+    assert.strictEqual(verifyConnectState(`${payload}.${sig}`), null);
+});
+test('signed_request needs a valid signature', () => {
+    const payload = Buffer.from(JSON.stringify({ algorithm: 'HMAC-SHA256', user_id: '123' })).toString('base64url');
+    const sig = crypto.createHmac('sha256', 'test-secret').update(payload).digest().toString('base64url');
+    assert.deepStrictEqual(parseSignedRequest(`${sig}.${payload}`), { userId: '123' });
+    assert.strictEqual(parseSignedRequest(`abc.${payload}`), null);
+    assert.strictEqual(parseSignedRequest(null), null);
 });
 
 console.log('U2 webhook parsing');

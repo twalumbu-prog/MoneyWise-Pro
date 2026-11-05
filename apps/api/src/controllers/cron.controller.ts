@@ -4,6 +4,7 @@ import { healMissingPlatformFeesWithinBudget } from '../services/reconciliation.
 import { autoCompleteRequisition, sendAutoCategorizationReminder } from './requisition.controller';
 import { drainCaptureJobs } from '../services/capture/capture.worker';
 import { sendCaptureDigests } from '../services/capture/capture.digest';
+import { checkMetaTokens, purgeOldEvidence } from '../services/capture/capture.maintenance';
 
 /**
  * Handlers for the internal scheduler (public.internal_cron_call -> these routes). All secret-gated with
@@ -191,3 +192,16 @@ export const captureDigest = async (req: any, res: any) => {
         return res.status(500).json({ success: false, error: e?.message });
     }
 };
+
+const cronTask = (label: string, run: () => Promise<Record<string, any>>) => async (req: any, res: any) => {
+    if (!isCronCall(req)) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+        return res.json({ success: true, ...(await run()) });
+    } catch (e: any) {
+        console.error(`[${label}] failed:`, e?.message);
+        return res.status(500).json({ success: false, error: e?.message });
+    }
+};
+
+export const metaTokenHealth = cronTask('MetaTokenHealth', checkMetaTokens);
+export const captureRetention = cronTask('CaptureRetention', () => purgeOldEvidence(45_000));

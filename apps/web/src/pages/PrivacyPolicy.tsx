@@ -14,7 +14,7 @@ export const PrivacyPolicy = () => {
                     </Link>
                 </div>
                 <h1 className="text-3xl font-bold text-brand-navy mb-2">Privacy Policy</h1>
-                <p className="text-sm text-gray-500 mb-8">Last Updated: October 14, 2026 &bull; Effective Date: October 14, 2026</p>
+                <p className="text-sm text-gray-500 mb-8">Last Updated: November 5, 2026 &bull; Effective Date: November 5, 2026</p>
 
                 <div className="prose prose-indigo max-w-none space-y-6 text-gray-700">
                     <section>
@@ -131,6 +131,19 @@ export const PrivacyPolicy = () => {
                             <li>Write-only access to create Expense transactions from approved requisitions.</li>
                             <li>We never modify or delete existing QuickBooks data, access payroll records, or access your bank login credentials.</li>
                         </ul>
+                    </section>
+
+                    <section className="mb-8">
+                        <h2 className="text-xl font-bold text-brand-navy mb-3">2A. Transaction Capture</h2>
+                        <p className="text-gray-700 leading-relaxed mb-3">
+                            When a business turns on transaction capture, MoneyWise processes the receipts it uploads, its mobile money messages, and messages customers send to the WhatsApp Business number it connects. This can include names, phone numbers, message text, images and documents.
+                        </p>
+                        <p className="text-gray-700 leading-relaxed mb-3">
+                            Message text and files are sent to our AI providers (OpenRouter and Google Gemini) to draft a transaction for the business to review. The AI cannot move money, and we do not sell this data.
+                        </p>
+                        <p className="text-gray-700 leading-relaxed">
+                            Messages and files that do not become a transaction are deleted after 90 days. Evidence for a recorded transaction is kept for as long as that ledger entry. A person can ask Meta to send us a deletion request, and we then delete their messages and files and remove their details from drafts. The business's own accounting records are kept.
+                        </p>
                     </section>
 
                     <section>

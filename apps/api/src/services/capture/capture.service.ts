@@ -706,6 +706,19 @@ export async function byEntry(orgId: string, entryId: string) {
     return { capture: data ?? null };
 }
 
+/** The full thread behind a capture, and every capture that came from it. */
+export async function conversation(orgId: string, id: string) {
+    const cap = await loadCapture(orgId, id);
+    if (!cap.conversation_id) return { messages: [], captures: [] };
+    const [{ data: messages }, { data: captures }] = await Promise.all([
+        supabase.from('messaging_messages').select('id, direction, body, message_type, sent_at').eq('organization_id', orgId)
+            .eq('conversation_id', cap.conversation_id).order('sent_at', { ascending: true }).limit(200),
+        supabase.from('transaction_captures').select('id, status, intent, zmw_amount').eq('organization_id', orgId)
+            .eq('conversation_id', cap.conversation_id).order('created_at', { ascending: true }),
+    ]);
+    return { messages: messages || [], captures: captures || [] };
+}
+
 export async function detail(orgId: string, id: string) {
     const cap = await loadCapture(orgId, id);
     const ids: string[] = cap.source_ids || [];

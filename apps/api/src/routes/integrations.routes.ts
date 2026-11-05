@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireRole } from '../middleware/auth';
 import {
     connectQuickBooks,
     quickBooksCallback,
@@ -34,11 +34,14 @@ import {
     getMetaConnectUrl,
     metaOAuthCallback,
     disconnectMeta,
+    metaDataDeletion,
+    metaDataDeletionStatus,
     verifyMetaWebhook,
     receiveMetaWebhook,
 } from '../controllers/meta.controller';
 
 const router = Router();
+const META_ROLES = ['OWNER', 'ADMIN', 'ACCOUNTANT'];
 
 // OAuth flow
 router.get('/quickbooks/connect', requireAuth, connectQuickBooks);
@@ -83,12 +86,14 @@ router.post('/masterfees/sync-students', requireAuth, syncStudentsToCrmNow);
 router.get('/masterfees/reconcile', requireAuth, getMasterFeesReconciliation);
 
 // ── Meta messaging (WhatsApp / Facebook / Instagram) ─────────────────────────
-// Webhook + callback are unauthenticated by design: the webhook is secured by X-Hub-Signature-256.
+// The webhook and data-deletion callback have no session: Meta signs them, and the handlers verify that signature.
 router.get('/meta/webhook', verifyMetaWebhook);
 router.post('/meta/webhook', receiveMetaWebhook);
-router.get('/meta/callback', metaOAuthCallback);
+router.post('/meta/data-deletion', metaDataDeletion);
+router.get('/meta/data-deletion/:code', metaDataDeletionStatus);
 router.get('/meta/status', requireAuth, getMetaStatus);
-router.get('/meta/connect/:platform', requireAuth, getMetaConnectUrl);
-router.delete('/meta/connections/:id', requireAuth, disconnectMeta);
+router.get('/meta/connect/:platform', requireAuth, requireRole(META_ROLES), getMetaConnectUrl);
+router.post('/meta/callback', requireAuth, requireRole(META_ROLES), metaOAuthCallback);
+router.delete('/meta/connections/:id', requireAuth, requireRole(META_ROLES), disconnectMeta);
 
 export default router;

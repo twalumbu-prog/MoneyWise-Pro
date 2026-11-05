@@ -1,5 +1,5 @@
 export { captureService as captureApi } from 'core';
-export type { CaptureRow, CaptureDetail, CaptureSettings, CaptureStatus } from 'core';
+export type { CaptureRow, CaptureDetail, CaptureConversation, CaptureSettings, CaptureStatus } from 'core';
 
 export const kwacha = (n: number | null | undefined) =>
     n == null ? '—' : `K${Number(n).toLocaleString('en-ZM', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

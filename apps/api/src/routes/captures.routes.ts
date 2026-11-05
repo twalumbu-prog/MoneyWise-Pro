@@ -64,6 +64,7 @@ router.post('/upload', requireRole(UPLOADERS), handle('upload', async (req) => {
 
 router.post('/bulk-approve', requireRole(REVIEWERS), handle('bulk-approve', (req) => capture.bulkApprove(org(req), req.user.id, req.body?.ids)));
 router.get('/:id', handle('detail', (req) => capture.detail(org(req), req.params.id)));
+router.get('/:id/conversation', handle('conversation', (req) => capture.conversation(org(req), req.params.id)));
 router.post('/:id/approve', requireRole(REVIEWERS), handle('approve', (req) => capture.approve(org(req), req.user.id, req.params.id, req.body?.edits ?? {})));
 router.post('/:id/dismiss', requireRole(REVIEWERS), handle('dismiss', (req) => capture.dismiss(org(req), req.user.id, req.params.id)));
 router.post('/:id/merge', requireRole(REVIEWERS), handle('merge', (req) => capture.merge(org(req), req.user.id, req.params.id, req.body ?? {})));

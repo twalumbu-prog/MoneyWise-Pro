@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiJson } from 'core';
 import { ArrowLeft, MessageCircle, Facebook, Instagram, AlertCircle, Trash2 } from 'lucide-react';
+import { ConnectMetaButton } from './ConnectMetaButton';
 
 interface Connection {
     id: string;
@@ -9,6 +10,7 @@ interface Connection {
     display_phone?: string | null;
     status: string;
     last_message_at?: string | null;
+    needs_reconnect?: boolean;
 }
 
 interface MetaStatus { configured: boolean; connections: Connection[] }
@@ -35,18 +37,6 @@ export const MetaMessagingIntegration: React.FC<{ onBack: () => void }> = ({ onB
         }
     };
     useEffect(() => { load(); }, []);
-
-    const connect = async (platform: string) => {
-        setBusy(platform); setError(null);
-        try {
-            const r = await apiJson<{ url: string }>(`/integrations/meta/connect/${platform}`);
-            window.location.href = r.url;
-        } catch (e: any) {
-            setError(e?.message || 'Could not start the connection');
-        } finally {
-            setBusy(null);
-        }
-    };
 
     const disconnect = async (id: string) => {
         setBusy(id);
@@ -91,17 +81,20 @@ export const MetaMessagingIntegration: React.FC<{ onBack: () => void }> = ({ onB
                                     <div className="font-bold text-gray-900">{p.label}</div>
                                     <div className="text-sm text-gray-500">{p.blurb}</div>
                                 </div>
-                                <button
-                                    onClick={() => connect(p.key)}
-                                    disabled={!configured || busy === p.key}
-                                    className="px-4 py-2 rounded-xl text-sm font-semibold bg-brand-navy text-white disabled:opacity-40 disabled:cursor-not-allowed"
-                                >
-                                    {conns.length ? 'Add another' : 'Connect'}
-                                </button>
+                                {p.key === 'WHATSAPP' ? (
+                                    <ConnectMetaButton
+                                        label={conns.some(c => c.needs_reconnect) ? 'Reconnect' : conns.length ? 'Add another' : 'Connect'}
+                                        disabled={!configured}
+                                        onConnected={() => { setError(null); load(); }}
+                                        onError={setError}
+                                    />
+                                ) : (
+                                    <span className="text-xs font-semibold text-gray-400">Coming soon</span>
+                                )}
                             </div>
                             {conns.map(c => (
                                 <div key={c.id} className="mt-3 flex items-center justify-between text-sm bg-gray-50 rounded-xl px-3 py-2">
-                                    <span className="text-gray-800">{c.display_name || c.display_phone || 'Connected account'} · <span className="text-gray-500">{c.status.toLowerCase()}</span></span>
+                                    <span className="text-gray-800">{c.display_name || c.display_phone || 'Connected account'} · <span className={c.needs_reconnect ? 'text-amber-700' : 'text-gray-500'}>{c.needs_reconnect ? 'needs reconnect' : `connected${c.last_message_at ? `, last message ${new Date(c.last_message_at).toLocaleDateString('en-ZM')}` : ''}`}</span></span>
                                     <button onClick={() => disconnect(c.id)} disabled={busy === c.id} className="text-gray-400 hover:text-red-600" aria-label="Disconnect">
                                         <Trash2 className="h-4 w-4" />
                                     </button>

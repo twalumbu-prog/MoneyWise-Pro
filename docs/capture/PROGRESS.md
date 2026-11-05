@@ -50,4 +50,12 @@
 - Deploy order matters: apply `20261105150000_capture_chat.sql` before the API, because `ingestMessages` now sends the media arguments. Otherwise Meta webhooks fail.
 - Assumptions: a conversation lasts 6 hours; two same-amount payments from one contact in that window merge into one capture (a missed entry is safer than a duplicate). Files sent in chat are treated as money in.
 
-**Next:** Meta connect, disconnect and token health; data deletion; privacy wording; retention; key rotation. Then Phase 2. Test everything once a staging database exists.
+**Added 2026-11-05, second batch (uncommitted, untested against a database or Meta)**
+
+- WhatsApp connect (signed state, code exchange, number ownership check, subscribe), proper disconnect, Reconnect state, expiry email, data-deletion callback and status page, 90-day purge, token key rotation script, conversation drawer, privacy and terms wording.
+- New migration after the others: `20261105160000_meta_connect_and_retention.sql`. New optional env var: `API_PUBLIC_URL`.
+- Check with real Meta test accounts: the Embedded Signup message format, and whether a new (non-coexistence) number also needs `POST /{phone}/register`. Facebook and Instagram show Coming soon until Phase 2.
+- Privacy and terms wording is a draft for legal review. It names OpenRouter and Gemini; the spec's "no training on inputs" is not claimed because the model settings haven't been confirmed.
+- Per-channel capture and auto-post toggles are not built; settings stay per org.
+
+**Still open in Phase 1:** tests that need a database or Meta (I6, I8, S3, S5, load tests), the 200-item golden set, the 500-line pre-filter set, the full S4 corpus, and the gate. **Next:** Phase 2.

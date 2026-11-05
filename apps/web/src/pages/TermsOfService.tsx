@@ -52,6 +52,16 @@ export const TermsOfService = () => {
                         </div>
                     </section>
 
+                    <section className="mb-8">
+                        <h2 className="text-xl font-bold text-brand-navy mb-3">3A. Transaction Capture</h2>
+                        <p className="text-gray-700 leading-relaxed mb-3">
+                            Transaction capture uses AI to draft entries from receipts and messages. Drafts can be wrong, so you are responsible for reviewing them, and for any entry you approve or set to book automatically.
+                        </p>
+                        <p className="text-gray-700 leading-relaxed">
+                            If you connect a messaging account, you confirm that you are allowed to connect it and that you have told your customers their messages may be processed in this way.
+                        </p>
+                    </section>
+
                     <section>
                         <h2 className="text-xl font-bold text-brand-navy mb-3">4. User Responsibilities</h2>
                         <p className="mb-2">You agree to:</p>

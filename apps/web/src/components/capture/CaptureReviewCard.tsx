@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { X, Sparkles, Check, Ban, RotateCcw, Link2, FileText, Smartphone, ZoomIn, ZoomOut, AlertTriangle } from 'lucide-react';
 import { captureApi, kwacha, type CaptureDetail } from './captureApi';
+import { ConversationDrawer } from './ConversationDrawer';
 
 interface Props {
     id: string;
@@ -43,6 +44,7 @@ export const CaptureReviewCard: React.FC<Props> = ({ id, canReview, onClose, onC
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [zoom, setZoom] = useState(1);
+    const [threadOpen, setThreadOpen] = useState(false);
     const amountRef = useRef<HTMLInputElement>(null);
 
     const load = async () => {
@@ -151,6 +153,7 @@ export const CaptureReviewCard: React.FC<Props> = ({ id, canReview, onClose, onC
                                             {m.body || `[${m.message_type}]`}
                                         </div>
                                     ))}
+                                    <button onClick={() => setThreadOpen(true)} className="text-xs font-semibold text-[#006AFF]">View full conversation</button>
                                 </div>
                             )}
                             {items.length > 0 && (
@@ -248,6 +251,7 @@ export const CaptureReviewCard: React.FC<Props> = ({ id, canReview, onClose, onC
                     </div>
                 )}
             </div>
+            {threadOpen && <ConversationDrawer captureId={id} onClose={() => setThreadOpen(false)} />}
         </div>
     );
 };

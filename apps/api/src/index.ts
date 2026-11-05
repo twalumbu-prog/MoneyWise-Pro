@@ -612,6 +612,8 @@ app.use('/webhooks', express.raw({ type: '*/*', limit: '5mb' }), webhooksRoutes)
 
 // Receipt uploads arrive as base64 JSON (≤10 MB file); parsed here so the global 100 kb limit still applies everywhere else.
 app.use('/captures/upload', express.json({ limit: '15mb' }));
+// Meta posts the data-deletion callback as a form.
+app.use('/integrations/meta/data-deletion', express.urlencoded({ extended: false }));
 
 app.use(express.json({
     verify: (req: any, res, buf) => {

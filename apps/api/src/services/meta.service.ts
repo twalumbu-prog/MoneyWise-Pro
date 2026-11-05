@@ -10,7 +10,7 @@ import { encryptToken } from '../lib/tokenCrypto';
  *   META_WEBHOOK_VERIFY_TOKEN           any random string; entered in the app's webhook config
  *   META_GRAPH_VERSION                  optional, default v21.0
  *   MESSAGING_TOKEN_KEY                 32-byte key for token encryption at rest
- *   META_WA_CONFIG_ID                   optional, Embedded Signup configuration id (WhatsApp)
+ *   META_WA_CONFIG_ID                   Embedded Signup configuration id (WhatsApp)
  *
  * Phase 1 is read-only: messages are ingested and classified; nothing is sent back.
  */
@@ -28,6 +28,84 @@ export function verifySignature(rawBody: Buffer | undefined, header: string | un
     const got = header.slice(7);
     if (got.length !== expected.length) return false;
     return crypto.timingSafeEqual(Buffer.from(got), Buffer.from(expected));
+}
+
+const b64url = (b: Buffer | string) => Buffer.from(b).toString('base64url');
+const appHmac = (data: string) => crypto.createHmac('sha256', process.env.META_APP_SECRET as string).update(data).digest();
+const sameBytes = (a: Buffer, b: Buffer) => a.length === b.length && crypto.timingSafeEqual(a, b);
+
+/** Ties a Meta sign-up to the org and user who started it, for 15 minutes. */
+export function signConnectState(p: { organizationId: string; userId: string }): string {
+    const payload = b64url(JSON.stringify({ o: p.organizationId, u: p.userId, e: Date.now() + 15 * 60_000 }));
+    return `${payload}.${b64url(appHmac(payload))}`;
+}
+
+export function verifyConnectState(state: unknown): { organizationId: string; userId: string } | null {
+    if (typeof state !== 'string' || !process.env.META_APP_SECRET) return null;
+    const [payload, sig] = state.split('.');
+    if (!payload || !sig || !sameBytes(Buffer.from(sig, 'base64url'), appHmac(payload))) return null;
+    try {
+        const d = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+        return typeof d.e === 'number' && d.e > Date.now() && d.o && d.u ? { organizationId: d.o, userId: d.u } : null;
+    } catch { return null; }
+}
+
+/** Meta's signed_request: base64url(HMAC-SHA256 of the payload).base64url(JSON). */
+export function parseSignedRequest(signed: unknown): { userId: string } | null {
+    if (typeof signed !== 'string' || !process.env.META_APP_SECRET) return null;
+    const [sig, payload] = signed.split('.');
+    if (!sig || !payload || !sameBytes(Buffer.from(sig, 'base64url'), appHmac(payload))) return null;
+    try {
+        const d = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+        return d.user_id ? { userId: String(d.user_id) } : null;
+    } catch { return null; }
+}
+
+/** `friendly` is safe to show a user. The raw Graph message is only ever logged. */
+export class MetaGraphError extends Error {
+    constructor(message: string, public code: number | null, public friendly: string) { super(message); }
+}
+
+const friendlyGraphError = (code: number | null) => {
+    if (code === 190) return 'Meta did not accept this sign-in. Please try connecting again.';
+    if (code === 10 || code === 200) return 'Some permissions were declined. Try again and allow everything MoneyWise asks for.';
+    return 'Meta could not finish this connection. Please try again.';
+};
+
+async function graph(path: string, opts: { method?: string; token?: string; query?: Record<string, string> } = {}): Promise<any> {
+    const url = new URL(`https://graph.facebook.com/${graphVersion()}/${path}`);
+    for (const [k, v] of Object.entries(opts.query ?? {})) url.searchParams.set(k, v);
+    const resp = await fetch(url, { method: opts.method ?? 'GET', headers: opts.token ? { Authorization: `Bearer ${opts.token}` } : undefined });
+    const body: any = await resp.json().catch(() => ({}));
+    if (!resp.ok || body?.error) {
+        const code = typeof body?.error?.code === 'number' ? body.error.code : null;
+        throw new MetaGraphError(`Graph ${path.split('?')[0]} failed (${resp.status}, code ${code})`, code, friendlyGraphError(code));
+    }
+    return body;
+}
+
+/** Everything Meta needs for one WhatsApp number. Throws before anything is saved. */
+export async function connectWhatsApp(p: { code: string; wabaId: string; phoneNumberId: string }) {
+    const exchanged = await graph('oauth/access_token', {
+        query: { client_id: process.env.META_APP_ID as string, client_secret: process.env.META_APP_SECRET as string, code: p.code },
+    });
+    const accessToken: string | undefined = exchanged.access_token;
+    if (!accessToken) throw new MetaGraphError('No access token returned', null, friendlyGraphError(null));
+
+    // The ids came from the browser, so confirm this token really controls this number.
+    const numbers = await graph(`${encodeURIComponent(p.wabaId)}/phone_numbers`, { token: accessToken, query: { fields: 'id,verified_name,display_phone_number' } });
+    const number = (numbers.data || []).find((n: any) => String(n.id) === p.phoneNumberId);
+    if (!number) throw new MetaGraphError('Number not in this account', null, 'That WhatsApp number does not belong to the account you picked.');
+
+    await graph(`${encodeURIComponent(p.wabaId)}/subscribed_apps`, { method: 'POST', token: accessToken });
+    return {
+        accessToken, displayName: number.verified_name as string | undefined, displayPhone: number.display_phone_number as string | undefined,
+        expiresAt: exchanged.expires_in ? new Date(Date.now() + Number(exchanged.expires_in) * 1000) : null,
+    };
+}
+
+export async function unsubscribeApp(accountId: string, token: string): Promise<void> {
+    await graph(`${encodeURIComponent(accountId)}/subscribed_apps`, { method: 'DELETE', token });
 }
 
 export interface InboundMessage {
@@ -149,7 +227,7 @@ export async function ingestMessages(
 }
 
 
-/** Saves a connection with its token encrypted. Used by the (stubbed) connect callbacks. */
+/** Saves a connection with its token encrypted. */
 export async function saveConnection(p: {
     organizationId: string; userId?: string; platform: MessagingPlatform; externalId: string; parentExternalId?: string;
     displayName?: string; displayPhone?: string; accessToken: string; expiresAt?: Date | null;
@@ -158,6 +236,6 @@ export async function saveConnection(p: {
         organization_id: p.organizationId, connected_by: p.userId ?? null, platform: p.platform, external_id: p.externalId,
         parent_external_id: p.parentExternalId ?? null, display_name: p.displayName ?? null, display_phone: p.displayPhone ?? null,
         access_token_enc: encryptToken(p.accessToken), token_expires_at: p.expiresAt?.toISOString() ?? null,
-        status: 'ACTIVE', last_error: null, updated_at: new Date().toISOString(),
+        status: 'ACTIVE', last_error: null, notified_expired_at: null, updated_at: new Date().toISOString(),
     }, { onConflict: 'platform,external_id' }).select('id').single();
 }

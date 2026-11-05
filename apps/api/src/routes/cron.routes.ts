@@ -4,7 +4,9 @@ import {
     healFeesCron,
     cronWatchdog,
     captureWorker,
-    captureDigest
+    captureDigest,
+    metaTokenHealth,
+    captureRetention
 } from '../controllers/cron.controller';
 const router = Router();
 
@@ -14,5 +16,7 @@ router.post('/heal-fees', healFeesCron);
 router.post('/watchdog', cronWatchdog);
 router.post('/capture-worker', captureWorker);
 router.post('/capture-digest', captureDigest);
+router.post('/meta-token-health', metaTokenHealth);
+router.post('/capture-retention', captureRetention);
 
 export default router;

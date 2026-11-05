@@ -2,7 +2,7 @@
 
 Updated 2026-11-05. Nothing has run against a database yet (see PROGRESS.md). Paths are relative to `MoneyWise-Pro/`.
 
-**Code written, still to be tested:** P0-2, P0-3 (integrity check only; L1-L3 not written), P0-4, P0-5, P0-6, P0-9, P0-10 (except the share-sheet target), P1-6, P1-7, P1-8, P1-9, P1-10, P1-11 (evidence only; no drawer), G-2. Conversations from P1-1 are in; the legacy columns stay.
+**Code written, still to be tested:** P0-2, P0-3 (integrity check only; L1-L3 not written), P0-4, P0-5, P0-6, P0-9, P0-10 (except the share-sheet target), P1-6, P1-7, P1-8, P1-9, P1-2, P1-3, P1-4, P1-5, P1-10, P1-11, P1-12, P1-13 (draft wording), P1-14, P1-15, G-2. Conversations from P1-1 are in; the legacy columns stay.
 
 **Superseded:** D1 is decided: keep the legacy `messaging_messages` columns until the old path is removed. D2 is decided: Resend, Premium only, Blue Opus owns App Review. For P0-1, do not use `db push`: production's migration history is out of sync.
 
