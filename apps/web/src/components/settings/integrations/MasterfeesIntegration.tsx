@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { IntegrationLogo } from './IntegrationLogo';
 import { masterFeesService, MasterFeesStatus, MasterFeesCategory } from '../../../services/integration.service';
 import { accountService, Account } from '../../../services/account.service';
 import {
@@ -251,6 +252,7 @@ export const MasterfeesIntegration: React.FC<MasterfeesIntegrationProps> = ({ on
                 <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
                     <ArrowLeft className="w-5 h-5 text-gray-500" />
                 </button>
+                <IntegrationLogo name="masterfees" size={40} />
                 <div>
                     <h3 className="text-lg font-bold text-brand-navy">Master Fees Integration</h3>
                     <p className="text-sm text-gray-500">Sync school invoices, fee revenue and receivables.</p>

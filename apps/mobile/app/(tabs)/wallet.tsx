@@ -246,7 +246,7 @@ export default function WalletScreen() {
                                         <View style={styles.actionDivider} />
                                         <Action
                                             icon={FileSpreadsheet}
-                                            label="Import statement"
+                                            label="Start bank reconciliation"
                                             onPress={() => {
                                                 const card = cards[Math.min(slide, cards.length - 1)];
                                                 router.push({

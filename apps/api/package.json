@@ -8,6 +8,7 @@
         "start": "node dist/index.js",
         "lint": "eslint .",
         "test:ledger": "tsc && node dist/scripts/test_ledger_scenarios.js",
+        "test:journals": "tsc && node dist/scripts/test_journal_entries.js",
         "audit:ledger": "tsc && node dist/scripts/ledger_audit.js --all",
         "test:ai": "tsc && node dist/scripts/sanity_ai.js",
         "oauth:create-client": "ts-node --transpile-only src/scripts/create_oauth_client.ts",

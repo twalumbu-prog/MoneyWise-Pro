@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { onboardingService } from './services/onboarding.service';
 const Login = React.lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
 const Onboarding = React.lazy(() => import('./pages/Onboarding').then(m => ({ default: m.Onboarding })));
+const Dashboard = React.lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const RequisitionList = React.lazy(() => import('./pages/RequisitionList').then(m => ({ default: m.RequisitionList })));
 const RequisitionCreate = React.lazy(() => import('./pages/RequisitionCreate').then(m => ({ default: m.RequisitionCreate })));
 const NewSale = React.lazy(() => import('./pages/NewSale').then(m => ({ default: m.NewSale })));
@@ -174,11 +175,12 @@ const HomeRedirect = () => {
         return <Navigate to="/onboarding" replace />;
     }
 
+    // Requestors work from their inbox; everyone else lands on the Home dashboard (the inbox is one click away).
     if (userRole === 'REQUESTOR') {
         return <Navigate to="/requisitions" replace />;
     }
 
-    return <RequisitionList />;
+    return <Dashboard />;
 };
 
 // MoneyWise Pro is a client-side-routed SPA (react-router, no full page

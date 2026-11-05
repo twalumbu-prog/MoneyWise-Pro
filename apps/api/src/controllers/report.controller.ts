@@ -22,7 +22,7 @@ function lineItemMatchesAccount(item: any, acc: any): boolean {
  * legacy per-type computation, so partially-backfilled orgs never show a wrong
  * balance sheet. Backfilling an org flips it onto the GL automatically.
  */
-async function isOrgFullyPosted(organizationId: string): Promise<boolean> {
+export async function isOrgFullyPosted(organizationId: string): Promise<boolean> {
     const { data: gaps, error } = await supabase.rpc('cashbook_entries_missing_journal', {
         p_organization_id: organizationId
     });

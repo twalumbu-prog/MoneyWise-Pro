@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { sageService, SageStatus, SageAccount, SageMapping, SageSyncResult } from 'core';
+import { IntegrationLogo } from './IntegrationLogo';
 import { ArrowLeft, AlertCircle, CheckCircle2, Loader2, RefreshCw, Search } from 'lucide-react';
 
 const today = () => new Date().toISOString().split('T')[0];
@@ -114,11 +115,14 @@ export const SageIntegration: React.FC<{ onBack: () => void }> = ({ onBack }) =>
             <button onClick={onBack} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800">
                 <ArrowLeft className="h-4 w-4" /> Back to integrations
             </button>
-            <div>
-                <h3 className="text-lg font-bold text-brand-navy">Sage Accounting</h3>
-                <p className="text-sm text-gray-500">
-                    Post MoneyWise and Master Fees journals into Sage Business Cloud Accounting (Pastel Online). Map each MoneyWise account to a Sage account, then push.
-                </p>
+            <div className="flex items-center gap-3">
+                <IntegrationLogo name="sage" size={40} />
+                <div>
+                    <h3 className="text-lg font-bold text-brand-navy">Sage Accounting</h3>
+                    <p className="text-sm text-gray-500">
+                        Post MoneyWise and Master Fees journals into Sage Business Cloud Accounting (Pastel Online). Map each MoneyWise account to a Sage account, then push.
+                    </p>
+                </div>
             </div>
 
             {loading && <div className="flex items-center gap-2 text-sm text-gray-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>}

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
     Inbox,
+    Home,
     CalendarDays,
     TrendingUp,
     ShieldCheck,
@@ -31,11 +32,12 @@ interface NavItem {
 }
 
 const GENERAL_ITEMS: NavItem[] = [
+    { label: 'Home', path: '/', icon: Home, isActive: (p) => p === '/' },
     {
         label: 'Inbox',
         path: '/requisitions',
         icon: Inbox,
-        isActive: (p) => p === '/requisitions' || p === '/',
+        isActive: (p) => p === '/requisitions',
         getBadge: (c) => c.requisitions + c.approvals + c.disbursements + c.vouchers,
     },
     { label: 'Schedules', path: '/schedules', icon: CalendarDays, isActive: (p) => p === '/schedules', tourTarget: 'nav-schedules-tab' },
@@ -137,7 +139,7 @@ const SidebarLink: React.FC<{ item: NavItem; active: boolean; collapsed: boolean
 export const Sidebar: React.FC = () => {
     const location = useLocation();
     const navigate = useNavigate();
-    const { signOut, notificationCounts } = useAuth();
+    const { signOut, notificationCounts, userRole } = useAuth();
     const [collapsed, setCollapsed] = useState<boolean>(() => {
         try {
             return localStorage.getItem(COLLAPSE_KEY) === '1';
@@ -209,7 +211,7 @@ export const Sidebar: React.FC = () => {
                     </div>
                 )}
                 <nav className={`flex flex-col gap-[3px] ${collapsed ? 'pt-3' : ''} mb-6`}>
-                    {GENERAL_ITEMS.map(item => (
+                    {GENERAL_ITEMS.filter(item => !(item.path === '/' && userRole === 'REQUESTOR')).map(item => (
                         <SidebarLink
                             key={item.path}
                             item={item}
