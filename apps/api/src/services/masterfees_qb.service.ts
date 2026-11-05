@@ -27,6 +27,8 @@ import { chooseQbItem, resolveItemId } from './masterfees_qb/fee_mapping';
 
 const VOID = ['void', 'voided', 'cancelled', 'canceled', 'deleted', 'draft'];
 const RETRY_REVIEW_MS = 6 * 3600_000;
+const BACKLOG_PER_RUN = 25;                 // older (linkFrom-window) invoices examined per run
+const BACKLOG_TIME_RESERVE_MS = 12_000;     // stop backlog work this long before the deadline, leaving time for payments
 const AUDIT_NOTE = 'MoneyWise/MasterFees reconciliation. Ref: ';
 const day = (d: string) => Math.round(new Date(String(d).slice(0, 10)).getTime() / 86400000);
 const money = (n: number) => `K${Number(n).toLocaleString('en', { maximumFractionDigits: 2 })}`;
@@ -171,9 +173,20 @@ export async function runQuickBooksAutoPost(
                 await markInvoice(rec.id, { qb_sync_status: 'SUCCESS', qb_sync_error: null, qb_invoice_id: ids.join(',') }, rec.mf_id);
             } catch (err: any) { result.invoices.failed++; result.decisions.push({ kind: 'INVOICE', id: rec.mf_id, label, outcome: 'FAILED', reason: err.message }); await markInvoice(rec.id, { qb_sync_status: 'FAILED', qb_sync_error: String(err.message).slice(0, 300) }); }
     };
-    if (opts.only !== 'payments') for (const rec of pendingInv) {
-        if (Date.now() > (deadline - 4000) || budget <= 0) break;
-        await processInvoice(rec, String(rec.raw?.date_issued || rec.raw?.due_date || '').slice(0, 10) >= createFrom);
+    // Current invoices first. Older ones (the linkFrom window) are a backlog: capped per run and stopped early, so they can never starve current invoices or the
+    // payment stage below, which only runs if time is left.
+    const invDay = (r: any) => String(r.raw?.date_issued || r.raw?.due_date || '').slice(0, 10);
+    const currentInv = pendingInv.filter(r => invDay(r) >= from), backlogInv = pendingInv.filter(r => invDay(r) < from);
+    if (opts.only !== 'payments') {
+        for (const rec of currentInv) {
+            if (Date.now() > (deadline - 4000) || budget <= 0) break;
+            await processInvoice(rec, invDay(rec) >= createFrom);
+        }
+        let backlogDone = 0;
+        for (const rec of backlogInv) {
+            if (backlogDone >= (opts.maxItems ?? BACKLOG_PER_RUN) || Date.now() > (deadline - BACKLOG_TIME_RESERVE_MS) || budget <= 0) break;
+            await processInvoice(rec, invDay(rec) >= createFrom); backlogDone++;
+        }
     }
 
     // ───────────────────────────── PAYMENTS ─────────────────────────────
