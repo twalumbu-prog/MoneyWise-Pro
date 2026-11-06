@@ -69,6 +69,10 @@ export interface OrgReconSummary {
     reconciliationPct: number | null;
     /** Funds Lenco is holding (ledgerBalance − availableBalance), typically failed payouts not yet released. The tie uses availableBalance. */
     lencoHold?: number;
+    /** Σ wallets of the balance the app displays; differs from closing when a running-balance chain is broken. */
+    displayedWalletBalance?: number;
+    /** displayedWalletBalance − ledger closing, only set when it exceeds a cent. Non-zero = the app shows the wrong wallet balance. */
+    walletBalanceDrift?: number;
     error?: string;
     lastCheckedAt: string;
     /** Set whenever the transaction-level fetch may be incomplete (see fetchAllLencoTransactions). The closing balance itself is unaffected — it always comes from the live balance endpoint directly — but the transaction-level Matched/MoneyWise-only/Lenco-only drill-down may be missing older rows. */
@@ -80,6 +84,8 @@ interface MoneyWiseTotals {
     outflow: number;
     closing: number;
     entryCount: number;
+    /** Sum over wallets of the balance the app shows (newest row's balance_after). */
+    displayed: number;
 }
 
 interface LencoTotals {
@@ -138,7 +144,7 @@ async function getMoneyWiseTotals(orgId: string): Promise<MoneyWiseTotals> {
     try {
         data = await fetchAllRows(() => supabase
             .from('cashbook_entries')
-            .select('debit, credit, status')
+            .select('debit, credit, status, wallet_id, balance_after, date, created_at, id')
             .eq('organization_id', orgId)
             .eq('account_type', 'MONEYWISE_WALLET')
             .order('id'));
@@ -149,13 +155,23 @@ async function getMoneyWiseTotals(orgId: string): Promise<MoneyWiseTotals> {
     let inflow = 0;
     let outflow = 0;
     let entryCount = 0;
+    // What the app DISPLAYS for each wallet is the newest row's stored balance_after (cashbookService.getCurrentBalance).
+    // Track it separately so a broken running-balance chain (2026-11-05 Blue Opus: a row saved with balance_after = 0 when
+    // the sync timed out before the recalculation) shows up here instead of only in the app.
+    const newest = new Map<string, { key: string; bal: number }>();
     for (const r of data) {
         if (String((r as any).status ?? '').toUpperCase() === 'PENDING') continue;
         inflow += n((r as any).debit);
         outflow += n((r as any).credit);
         entryCount++;
+        const w = String((r as any).wallet_id ?? 'none');
+        const key = `${(r as any).date}|${(r as any).created_at}|${(r as any).id}`;
+        const cur = newest.get(w);
+        if (!cur || key > cur.key) newest.set(w, { key, bal: n((r as any).balance_after) });
     }
-    return { inflow, outflow, closing: inflow - outflow, entryCount };
+    let displayed = 0;
+    for (const v of newest.values()) displayed += v.bal;
+    return { inflow, outflow, closing: inflow - outflow, entryCount, displayed: round2(displayed) };
 }
 
 export interface LencoTxn {
@@ -421,6 +437,15 @@ async function buildOrgSummary(org: OrgRow): Promise<OrgReconSummary> {
         base.status = status;
         base.reconciliationPct = pct;
         base.error = `Transaction detail unavailable: ${err?.message || 'unknown error'}`;
+    }
+
+    // The ledger may tie to Lenco while the balance the app SHOWS is wrong (broken balance_after chain). Never call that reconciled.
+    base.displayedWalletBalance = mw.displayed;
+    const drift = round2(mw.displayed - mw.closing);
+    if (Math.abs(drift) > 0.01) {
+        base.walletBalanceDrift = drift;
+        if (base.status === 'RECONCILED' || base.status === 'MINOR_DRIFT') base.status = 'OUT_OF_BALANCE';
+        base.error = `Wallet balance shown in the app is off by K${drift.toFixed(2)} (broken running-balance chain)${base.error ? ' — ' + base.error : ''}`;
     }
 
     return base;
