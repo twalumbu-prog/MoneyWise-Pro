@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { ingestVercelLogDrain } from '../controllers/vercelLogDrain.controller';
+import { webhook as lipilaWebhook } from '../controllers/lipila.controller';
 
 const router = Router();
 
@@ -16,5 +17,8 @@ router.use('/vercel-log-drain', (req, res, next) => {
 
 router.get('/vercel-log-drain', (_req, res) => res.status(200).json({ ok: true }));
 router.post('/vercel-log-drain', ingestVercelLogDrain);
+
+// Lipila card payments. The body stays raw (the signature covers its exact bytes).
+router.post('/lipila', lipilaWebhook);
 
 export default router;

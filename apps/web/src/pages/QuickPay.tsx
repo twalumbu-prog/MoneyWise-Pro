@@ -124,6 +124,7 @@ export const QuickPay: React.FC = () => {
     const [step, setStep] = useState<'LOADING' | 'ERROR' | 'AMOUNT' | 'PURPOSE' | 'PHONE' | 'PROCESSING'>('LOADING');
     const [org, setOrg] = useState<QuickLinkOrg | null>(null);
     const [wallet, setWallet] = useState<QuickLinkWallet | null>(null);
+    const [cardEnabled, setCardEnabled] = useState(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
     // AMOUNT step — a plain typed digit string, e.g. "1250.5", not a number
@@ -188,6 +189,7 @@ export const QuickPay: React.FC = () => {
                 const res = await axios.get(`${API_URL}/lenco/public-quicklink-context/${username}`, { timeout: 30000 });
                 setOrg(res.data.organization);
                 setWallet(res.data.wallet);
+                setCardEnabled(res.data.card_enabled === true);
 
                 if (!resumedRef.current) {
                     const saved = loadPendingPayment(username);
@@ -502,6 +504,60 @@ export const QuickPay: React.FC = () => {
                 workflow_id: ref, organization_id: org.id, error_code: err?.response?.status || 'NETWORK_ERROR',
                 error_message: err?.response?.data?.error || err.message, duration_ms: Date.now() - checkoutStartedAt,
             });
+        }
+    };
+
+    // ── Card (Lipila): the customer types their card on Lipila's own page. The sale is recorded first, then the card payment starts, then we wait
+    // for the result exactly as for mobile money. Desktop gets a popup; phones go to the card page in this tab.
+    const CARD_RATE = 0.04;
+    const cardCharged = Math.round((amount / (1 - CARD_RATE)) * 100) / 100;
+    const cardFee = Math.round((cardCharged - amount) * 100) / 100;
+    const onPhoneBrowser = typeof navigator !== 'undefined' && /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
+
+    const handleCardSend = async () => {
+        const purposeLabel = customPurpose.trim() || purposes.find(p => p.id === selectedPurposeId)?.label;
+        if (!purposeLabel) { setStep('PURPOSE'); setPurposeError('Please select or type a reason for this payment.'); return; }
+        if (!wallet || !org || !username) return;
+        // Opened inside the click, before anything is awaited, or the browser blocks the popup.
+        const popup = !onPhoneBrowser ? window.open('about:blank', 'lipila_card', 'width=440,height=760') : null;
+        const ref = `LPL-DEP-${Date.now()}-${org.id.substring(0, 8)}-PUB`;
+        setCurrentReference(ref);
+        setError(null);
+        setSubmitting(true);
+        pollCancelledRef.current = false;
+        setElapsedSeconds(0);
+        setAwaitingApproval(false);
+        setPaymentPhase('initiating');
+        setStep('PROCESSING');
+        const checkoutStartedAt = Date.now();
+        trackEvent('quick_link_checkout', 'payment', 'started', { workflow_id: ref, organization_id: org.id, wallet_id: wallet.id, amount, total_payable: cardCharged, payment_method: 'card' });
+        try {
+            await axios.post(`${API_URL}/lenco/public-quicklink-intent`, {
+                reference: ref, amount, walletId: wallet.id, purpose: purposeLabel, isCustomPurpose: !!customPurpose.trim(),
+                payerPhone: checkoutPhone || undefined, referralCode: new URLSearchParams(window.location.search).get('ref') || undefined,
+            });
+            const init = await axios.post(`${API_URL}/lipila/public/card`, { organizationId: org.id, reference: ref, phone: checkoutPhone || undefined, kind: 'quick_link', token: username, returnUrl: window.location.href });
+            const url: string | undefined = init.data?.redirectUrl;
+            if (!url) throw new Error('The card payment could not be started. Please try again.');
+            savePendingPayment({ reference: ref, contextId: username, orgId: org.id, phone: checkoutPhone || '', amount: cardCharged, businessName: org.name, startedAt: checkoutStartedAt });
+            setResumedPayment(null);
+            setRecheckNote(null);
+            setPaymentPhase('confirm');
+            setAwaitingApproval(true);
+            setElapsedSeconds(0);
+            setSubmitting(false);
+            startCompletionPoll(ref, org.id, checkoutStartedAt);
+            if (onPhoneBrowser || !popup || popup.closed) window.location.href = url;
+            else popup.location.href = url;
+        } catch (err: any) {
+            try { popup?.close(); } catch { /* already closed */ }
+            clearPendingPayment();
+            setSubmitting(false);
+            setAwaitingApproval(false);
+            setPaymentPhase(null);
+            setStep('PHONE');
+            setError(err.response?.data?.error || err.message || 'Failed to start the card payment. Please try again.');
+            trackEvent('quick_link_checkout', 'payment', 'failed', { workflow_id: ref, organization_id: org.id, error_code: err?.response?.status || 'NETWORK_ERROR', error_message: err?.response?.data?.error || err.message, payment_method: 'card', duration_ms: Date.now() - checkoutStartedAt });
         }
     };
 
@@ -904,6 +960,29 @@ export const QuickPay: React.FC = () => {
                                 </div>
                             )}
                         </>
+                    ) : cardEnabled ? (
+                        <div className="px-1">
+                            <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-[#E8F0FE] text-[#0B57D0] flex items-center justify-center"><CreditCard size={20} /></div>
+                                    <div>
+                                        <p className="text-sm font-bold text-gray-800">Pay with a Visa, Mastercard or Amex</p>
+                                        <p className="text-[11px] text-gray-500">You’ll enter your card on a secure page. Your card details never touch this site.</p>
+                                    </div>
+                                </div>
+                                <div className="mt-4 space-y-1 text-xs text-gray-600">
+                                    <div className="flex justify-between"><span>Amount</span><span>K{amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                    <div className="flex justify-between"><span>Card fee</span><span>K{cardFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                    <div className="flex justify-between border-t border-slate-100 pt-1 font-bold text-gray-800"><span>You pay</span><span>K{cardCharged.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                </div>
+                            </div>
+                            {error && (
+                                <div className="mt-4 p-3.5 bg-rose-50 text-rose-600 rounded-xl flex items-start space-x-2">
+                                    <AlertCircle className="flex-shrink-0 mt-0.5" size={14} />
+                                    <span className="text-[11px] font-semibold leading-normal">{error}</span>
+                                </div>
+                            )}
+                        </div>
                     ) : (
                         <div className="text-center py-10 px-4 bg-white border border-slate-100 rounded-2xl">
                             <div className="mx-auto w-12 h-12 bg-slate-200 text-slate-500 rounded-full flex items-center justify-center mb-3">
@@ -938,6 +1017,15 @@ export const QuickPay: React.FC = () => {
                         >
                             {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
                             <span>{submitting ? 'Starting…' : `Send K${totalDisplayed.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}</span>
+                        </button>
+                    ) : cardEnabled ? (
+                        <button
+                            onClick={handleCardSend}
+                            disabled={submitting || amount <= 0}
+                            className={`w-full h-14 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${!submitting && amount > 0 ? 'bg-[#0B57D0] hover:bg-[#0842A0] text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'}`}
+                        >
+                            {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
+                            <span>{submitting ? 'Starting…' : `Pay K${cardCharged.toLocaleString(undefined, { minimumFractionDigits: 2 })} by card`}</span>
                         </button>
                     ) : (
                         <button disabled className="w-full h-14 rounded-xl font-bold text-base bg-neutral-100 text-zinc-400 cursor-not-allowed">

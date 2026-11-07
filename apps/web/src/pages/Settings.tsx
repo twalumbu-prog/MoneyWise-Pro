@@ -6,10 +6,11 @@ import { MetaMessagingIntegration } from '../components/settings/integrations/Me
 import { MasterfeesIntegration } from '../components/settings/integrations/MasterfeesIntegration';
 import { SageIntegration } from '../components/settings/integrations/SageIntegration';
 import { GmailIntegration, GmailLogo } from '../components/settings/integrations/GmailIntegration';
+import { LipilaIntegration } from '../components/settings/integrations/LipilaIntegration';
 import { DeveloperAPI } from '../components/settings/DeveloperAPI';
 import { InvestorPayouts } from '../components/settings/InvestorPayouts';
 import { useQuery } from '@tanstack/react-query';
-import { investmentService } from 'core';
+import { investmentService, apiJson } from 'core';
 import {
     Settings as SettingsIcon,
     Users,
@@ -42,7 +43,9 @@ export const Settings: React.FC = () => {
         staleTime: 5 * 60_000,
     });
 
-    const [activeIntegration, setActiveIntegration] = useState<'quickbooks' | 'sage' | 'lenco' | 'masterfees' | 'meta' | 'gmail' | null>(null);
+    const [activeIntegration, setActiveIntegration] = useState<'quickbooks' | 'sage' | 'lenco' | 'masterfees' | 'meta' | 'gmail' | 'lipila' | null>(null);
+    // Card payments through Lipila are switched on business by business, so the card only shows for those that have it.
+    const lipilaAvailable = useQuery({ queryKey: ['lipila', 'available'], queryFn: () => apiJson<{ available?: boolean }>('/lipila/settings'), staleTime: 300_000, retry: false });
     const [integrationError, setIntegrationError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -217,6 +220,19 @@ export const Settings: React.FC = () => {
                                                             <h4 className="text-base font-bold text-gray-900 mb-1">WhatsApp, Facebook &amp; Instagram</h4>
                                                             <p className="text-sm text-gray-500">Spot orders and payments in customer messages</p>
                                                         </button>
+                                                        {/* Lipila card payments */}
+                                                        {lipilaAvailable.data?.available && (
+                                                            <button
+                                                                onClick={() => setActiveIntegration('lipila')}
+                                                                className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-navy/30 transition-all text-left group"
+                                                            >
+                                                                <div className="h-12 w-12 bg-[#0B57D0] rounded-xl flex items-center justify-center text-white mb-4 group-hover:scale-105 transition-transform shadow-sm">
+                                                                    <CreditCard className="h-6 w-6" />
+                                                                </div>
+                                                                <h4 className="text-base font-bold text-gray-900 mb-1">Lipila Card Payments</h4>
+                                                                <p className="text-sm text-gray-500">Take card payments straight into your own Lipila wallet</p>
+                                                            </button>
+                                                        )}
                                                         {/* Gmail Card */}
                                                         <button
                                                             onClick={() => setActiveIntegration('gmail')}
@@ -237,6 +253,8 @@ export const Settings: React.FC = () => {
                                                 <SageIntegration onBack={() => setActiveIntegration(null)} />
                                             ) : activeIntegration === 'meta' ? (
                                                 <MetaMessagingIntegration onBack={() => setActiveIntegration(null)} />
+                                            ) : activeIntegration === 'lipila' ? (
+                                                <LipilaIntegration onBack={() => setActiveIntegration(null)} />
                                             ) : activeIntegration === 'gmail' ? (
                                                 <GmailIntegration onBack={() => setActiveIntegration(null)} />
                                             ) : activeIntegration === 'masterfees' ? (

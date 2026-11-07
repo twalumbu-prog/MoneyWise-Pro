@@ -64,7 +64,7 @@ async function findBestFitAccount(organizationId: string, accountType: string, b
  * custom typed purpose is routed through the same decisionRouter used for
  * expense categorization, just handed the org's non-expense accounts instead.
  */
-async function postProcessQuickLinkPayment(reference: string): Promise<void> {
+export async function postProcessQuickLinkPayment(reference: string): Promise<void> {
     try {
         const { data: ql } = await supabase
             .from('quick_link_payments')

@@ -83,6 +83,7 @@ interface LinkContext {
     customer_phone: string;
     amount: number;
     collections_api_enabled?: boolean;
+    card_enabled?: boolean;
 }
 
 export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenOverride }) => {
@@ -675,6 +676,61 @@ export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenO
         }
     };
 
+    // ── Card (Lipila): the customer types their card on Lipila's own page. We record the sale first, start the card payment, then wait for the
+    // result exactly as for mobile money (the status check recognises card payments). Desktop gets a popup; phones go to the card page in this tab.
+    const CARD_RATE = 0.04;
+    const cardCharged = Math.round((subtotal / (1 - CARD_RATE)) * 100) / 100;
+    const cardFee = Math.round((cardCharged - subtotal) * 100) / 100;
+    const onPhoneBrowser = typeof navigator !== 'undefined' && /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
+
+    const handlePayCard = async () => {
+        if (!ctx || !token) return;
+        setError(null);
+        // The popup is opened inside the click, before anything is awaited, or the browser blocks it.
+        const popup = !onPhoneBrowser ? window.open('about:blank', 'lipila_card', 'width=440,height=760') : null;
+        const purpose = `Sale: ${linkLabel} | Cust: ${ctx.customer_phone}`;
+        const ref = `LPL-DEP-${Date.now()}-${ctx.organization.id.substring(0, 8)}-PL`;
+        setCurrentReference(ref);
+        setSubmitting(true);
+        pollCancelledRef.current = false;
+        setElapsedSeconds(0);
+        setAwaitingApproval(false);
+        setPaymentPhase('initiating');
+        setStep('VERIFYING');
+        const checkoutStartedAt = Date.now();
+        trackEvent('payment_link_checkout', 'payment', 'started', { workflow_id: ref, organization_id: ctx.organization.id, product_name: linkLabel, subtotal, total_payable: cardCharged, payment_link_token: token, payment_method: 'card' });
+        try {
+            await axios.post(`${API_URL}/lenco/public-wallet-deposit-intent`, { reference: ref, purpose, amount: subtotal, walletId: ctx.wallet.id, customerName: ctx.customer_name, customerPhone: ctx.customer_phone, paymentLinkToken: token, items: intentItems });
+            const [firstName, ...rest] = String(ctx.customer_name || '').trim().split(/\s+/);
+            const init = await axios.post(`${API_URL}/lipila/public/card`, { organizationId: ctx.organization.id, reference: ref, firstName: firstName || undefined, lastName: rest.join(' ') || undefined, phone: ctx.customer_phone, kind: 'payment_link', token, returnUrl: window.location.href });
+            const url: string | undefined = init.data?.redirectUrl;
+            if (init.data?.alreadyPaid) { setPaymentPhase('success'); setStep('VERIFYING'); return; }
+            if (!url) throw new Error('The card payment could not be started. Please try again.');
+
+            savePendingPayment({ reference: ref, contextId: token, orgId: ctx.organization.id, phone: ctx.customer_phone || '', amount: cardCharged, businessName: ctx.organization.name, startedAt: checkoutStartedAt });
+            setResumedPayment(null);
+            setRecheckNote(null);
+            setVerificationStep('POLLING');
+            setPaymentPhase('confirm');
+            setAwaitingApproval(true);
+            setElapsedSeconds(0);
+            setSubmitting(false);
+            startCompletionPoll(ref, ctx.organization.id, checkoutStartedAt, { product_name: linkLabel, subtotal, total_payable: cardCharged, payment_link_token: token });
+
+            if (onPhoneBrowser || !popup || popup.closed) window.location.href = url;
+            else popup.location.href = url;
+        } catch (err: any) {
+            try { popup?.close(); } catch { /* already closed */ }
+            clearPendingPayment();
+            setSubmitting(false);
+            setAwaitingApproval(false);
+            setPaymentPhase(null);
+            setStep('CHECKOUT');
+            setError(err.response?.data?.error || err.message || 'Failed to start the card payment. Please try again.');
+            trackEvent('payment_link_checkout', 'payment', 'failed', { workflow_id: ref, organization_id: ctx.organization.id, error_code: err?.response?.status || 'NETWORK_ERROR', error_message: err?.response?.data?.error || err.message, payment_method: 'card', duration_ms: Date.now() - checkoutStartedAt });
+        }
+    };
+
     // Customer-initiated "stop waiting" on a pending mobile money attempt. This only
     // stops OUR polling and returns them to the checkout form — Lenco has no API to
     // cancel a mobile money prompt already sent to the telco, so if they approve it
@@ -1119,6 +1175,29 @@ export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenO
                                 </div>
                             )}
                         </>
+                    ) : ctx.card_enabled ? (
+                        <div className="px-1">
+                            <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-[#E8F0FE] text-[#0B57D0] flex items-center justify-center"><CreditCard size={20} /></div>
+                                    <div>
+                                        <p className="text-sm font-bold text-gray-800">Pay with a Visa, Mastercard or Amex</p>
+                                        <p className="text-[11px] text-gray-500">You’ll enter your card on a secure page. Your card details never touch this site.</p>
+                                    </div>
+                                </div>
+                                <div className="mt-4 space-y-1 text-xs text-gray-600">
+                                    <div className="flex justify-between"><span>Invoice amount</span><span>K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                    <div className="flex justify-between"><span>Card fee</span><span>K{cardFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                    <div className="flex justify-between border-t border-slate-100 pt-1 font-bold text-gray-800"><span>You pay</span><span>K{cardCharged.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                </div>
+                            </div>
+                            {error && (
+                                <div className="mt-4 p-3.5 bg-rose-50 text-rose-600 rounded-xl flex items-start gap-2">
+                                    <AlertCircle className="flex-shrink-0 mt-0.5" size={14} />
+                                    <span className="text-[11px] font-semibold leading-normal">{error}</span>
+                                </div>
+                            )}
+                        </div>
                     ) : (
                         <div className="text-center py-10 px-4 bg-white border border-slate-100 rounded-2xl">
                             <div className="mx-auto w-12 h-12 bg-slate-200 text-slate-500 rounded-full flex items-center justify-center mb-3">
@@ -1156,6 +1235,15 @@ export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenO
                         >
                             {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
                             <span>{submitting ? 'Starting…' : `Pay K${totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}</span>
+                        </button>
+                    ) : ctx.card_enabled ? (
+                        <button
+                            onClick={handlePayCard}
+                            disabled={submitting}
+                            className={`w-full h-14 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${!submitting ? 'bg-[#0B57D0] hover:bg-[#0842A0] text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'}`}
+                        >
+                            {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
+                            <span>{submitting ? 'Starting…' : `Pay K${cardCharged.toLocaleString(undefined, { minimumFractionDigits: 2 })} by card`}</span>
                         </button>
                     ) : (
                         <button disabled className="w-full h-14 rounded-xl font-bold text-base bg-neutral-100 text-zinc-400 cursor-not-allowed">

@@ -18,6 +18,8 @@ import { QuickBooksService } from '../services/quickbooks.service';
 import { captureEvent, withTiming } from '../utils/analytics';
 import { ensureWalletTransferConfirmed } from './disbursement.controller';
 import { getCachedOrgSecretKey } from '../lib/orgSecretKeyCache';
+import { CARD_REF_PREFIX, cardsEnabledFor, finalizeCard } from '../services/lipila.service';
+import { status as lipilaCardStatus } from './lipila.controller';
 import { sanitizeCheckoutFields } from './product.controller';
 
 // MoneyWise's own Lenco settlement merchant (receives the commission-sweep
@@ -188,6 +190,7 @@ export const linkOrganizationLencoAccount = async (req: Request, res: Response) 
 
 export const verifyCollectionStatus = async (req: Request, res: Response) => {
     const { reference } = req.params;
+    if (String(reference).startsWith(CARD_REF_PREFIX)) return lipilaCardStatus(req, res);
     const { transactionId, organizationId: queryOrgId } = req.query;
     const organizationId = typeof queryOrgId === 'string' ? queryOrgId : null;
 
@@ -404,6 +407,16 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
 // ─────────────────────────────────────────────────────────────────────────────
 export const longPollCollectionStatus = async (req: Request, res: Response) => {
     const { reference } = req.params;
+    if (String(reference).startsWith(CARD_REF_PREFIX)) {
+        // Card payments are checked with Lipila a few times a second apart, then the browser is told to ask again.
+        for (let i = 0; i < 6; i++) {
+            const o = await finalizeCard(reference).catch(() => null);
+            if (o?.state === 'successful') return res.json({ verified: true, source: 'lipila', status: 'COMPLETED' });
+            if (o?.state === 'failed') return res.json({ verified: false, status: 'failed', reasonCode: 'CARD_DECLINED', message: o.message });
+            await new Promise((r) => setTimeout(r, 3000));
+        }
+        return res.json({ verified: false, status: 'still-pending' });
+    }
     const { organizationId: queryOrgId } = req.query;
     const organizationId = typeof queryOrgId === 'string' ? queryOrgId : null;
 
@@ -507,6 +520,11 @@ export const longPollCollectionStatus = async (req: Request, res: Response) => {
 // ─────────────────────────────────────────────────────────────────────────────
 export const finalizeCollection = async (req: Request, res: Response) => {
     const { reference } = req.params;
+    if (String(reference).startsWith(CARD_REF_PREFIX)) {
+        const o = await finalizeCard(reference).catch(() => null);
+        if (o?.state === 'successful') return res.json({ success: true, source: 'lipila', referenceNumber: o.referenceNumber ?? null });
+        return res.status(422).json({ error: 'Card payment not yet confirmed', status: o?.state ?? 'pending' });
+    }
     const { organizationId: queryOrgId } = req.query;
     const organizationId = typeof queryOrgId === 'string' ? queryOrgId : null;
 
@@ -912,7 +930,9 @@ export const getPublicWalletContext = async (req: Request, res: Response) => {
             },
             products: products || [],
             // Kill-switch for the own-UX mobile money checkout — see getPaymentLinkContext.
-            collections_api_enabled: collectionsApiEnabledFor(org)
+            collections_api_enabled: collectionsApiEnabledFor(org),
+            // Card payments through the business's own Lipila wallet (on for businesses that have saved a key and switched cards on).
+            card_enabled: await cardsEnabledFor(wallet.organization_id)
         });
     } catch (error: any) {
         console.error('[Lenco Public Context] Error:', error);
@@ -1043,7 +1063,9 @@ export const getPaymentLinkContext = async (req: Request, res: Response) => {
             // Kill-switch for the own-UX mobile money checkout. When false/unset the
             // frontend uses the existing LencoPay widget. Flip LENCO_COLLECTIONS_API_ENABLED
             // on the API to switch every client instantly (no frontend redeploy).
-            collections_api_enabled: collectionsApiEnabledFor(org)
+            collections_api_enabled: collectionsApiEnabledFor(org),
+            // Card payments through the business's own Lipila wallet (on for businesses that have saved a key and switched cards on).
+            card_enabled: await cardsEnabledFor(link.organization_id)
         });
     } catch (error: any) {
         console.error('[Lenco Payment Link Context] Error:', error);
@@ -1556,7 +1578,9 @@ export const getQuickLinkContext = async (req: Request, res: Response) => {
                 lenco_public_key: org.lenco_public_key || null,
                 payment_test_mode: org.payment_test_mode || false
             },
-            collections_api_enabled: collectionsApiEnabledFor(org)
+            collections_api_enabled: collectionsApiEnabledFor(org),
+            // Card payments through the business's own Lipila wallet (on for businesses that have saved a key and switched cards on).
+            card_enabled: await cardsEnabledFor(org.id)
         });
     } catch (error: any) {
         console.error('[Lenco Quick Link] Context error:', error);
