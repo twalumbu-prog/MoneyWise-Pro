@@ -1,4 +1,5 @@
 import { cleanVariants } from '../services/stock';
+import { catalogItemExists } from '../services/priceCompare.service';
 import { Response } from 'express';
 import { supabase } from '../lib/supabase';
 
@@ -121,7 +122,7 @@ export const createProduct = async (req: any, res: Response): Promise<any> => {
 
         const { name, description, price, image_url, product_type, wallet_id, income_account_id, category, digital_assets,
                 requires_delivery, allow_external_delivery, own_delivery_charge, weight_kg, parcel_size, track_stock, stock_quantity, low_stock_threshold, variants,
-                additional_images, whats_included, checkout_fields, marketplace_listed } = req.body;
+                additional_images, whats_included, checkout_fields, marketplace_listed, catalog_item_id } = req.body;
 
         if (!name || name.trim() === '') {
             return res.status(400).json({ error: 'Product name is required' });
@@ -177,6 +178,8 @@ export const createProduct = async (req: any, res: Response): Promise<any> => {
                 checkout_fields: sanitizeCheckoutFields(checkout_fields),
                 // Listed on the Marketplace unless the seller switches it off.
                 marketplace_listed: marketplace_listed !== false,
+                // Which catalogue product this is, so it shows up in that product's price comparison. Only sent when chosen.
+                ...(catalog_item_id && (await catalogItemExists(String(catalog_item_id))) ? { catalog_item_id } : {}),
             })
             .select()
             .single();
@@ -220,8 +223,13 @@ export const updateProduct = async (req: any, res: Response): Promise<any> => {
 
         const { name, description, price, is_active, image_url, product_type, wallet_id, income_account_id, category, digital_assets,
                 requires_delivery, allow_external_delivery, own_delivery_charge, weight_kg, parcel_size, track_stock, stock_quantity, low_stock_threshold, variants,
-                additional_images, whats_included, checkout_fields, marketplace_listed } = req.body;
+                additional_images, whats_included, checkout_fields, marketplace_listed, catalog_item_id } = req.body;
         const updateData: any = {};
+        if (catalog_item_id !== undefined) {
+            if (catalog_item_id === null || catalog_item_id === '') updateData.catalog_item_id = null;
+            else if (await catalogItemExists(String(catalog_item_id))) updateData.catalog_item_id = catalog_item_id;
+            else return res.status(400).json({ error: 'That product isn’t in the catalogue.' });
+        }
         if (weight_kg !== undefined) updateData.weight_kg = Number(weight_kg) > 0 ? Number(weight_kg) : null;
         if (parcel_size !== undefined) updateData.parcel_size = PARCEL_SIZES.includes(parcel_size) ? parcel_size : null;
         if (track_stock !== undefined) Object.assign(updateData, stockFields(track_stock, stock_quantity, low_stock_threshold, variants));

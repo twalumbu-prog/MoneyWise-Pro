@@ -190,6 +190,12 @@ export async function deleteRewardItem(orgId: string, id: string) {
 
 // ── Earning ────────────────────────────────────────────────────────────────────
 
+/** MoneyWise points (not tied to one business) for something other than a purchase, such as reporting a price. Returns false when this exact event was already counted or the points couldn't be recorded. */
+export async function awardPlatformBonus(userId: string, ref: string, points: number, description: string): Promise<boolean> {
+    try { return await addLedger({ user_id: userId, organization_id: null, kind: 'BONUS', ref, points, description }); }
+    catch (e: any) { console.warn('[Rewards] could not award points:', e?.message); return false; }
+}
+
 /** Writes one ledger row. Returns false when this exact event was already counted. */
 async function addLedger(row: { user_id: string; organization_id: string | null; points: number; kind: string; description: string; ref: string; amount?: number; created_at?: string }): Promise<boolean> {
     if (!row.points) return false;

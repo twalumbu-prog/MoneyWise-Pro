@@ -2,6 +2,9 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { adsOverview, buyAd, cancelAd, adEvents, imageSearch } from '../controllers/marketplaceAds.controller';
 import { quote, placeOrder, myOrders, getOrder, updateStatus, dispute, disputeRespond, disputeResolve, refund, payLaterOverview, payLaterPay, settle } from '../controllers/marketplaceOrders.controller';
+import * as rfq from '../controllers/rfq.controller';
+import * as advice from '../controllers/advice.controller';
+import { catalog as priceCatalog, catalogItem as priceCatalogItem, compare as priceCompare, submitReport as priceReport, myReports as priceMyReports, knownPlaces as priceKnownPlaces } from '../controllers/priceCompare.controller';
 import { browse as importsBrowse, quote as importsQuote, fromLink as importsFromLink, placeOrder as importsPlace, myOrders as importsMine } from '../controllers/imports.controller';
 import {
     getMarketplaceListings, createAuction, cancelAuction, placeBid, buyNowAuction, getAuctionBids,
@@ -45,6 +48,29 @@ router.get('/pay-later', payLaterOverview);
 router.post('/pay-later/instalments/:id/pay', payLaterPay);
 
 // Imported products: ordered from overseas stores by MoneyWise on the buyer's behalf
+// Price comparison: the shared product catalogue and every offer for one product
+router.get('/catalog', priceCatalog);
+router.get('/catalog/:id', priceCatalogItem);
+router.get('/compare/:id', priceCompare);
+router.get('/compare/:id/business', advice.business);
+router.get('/advice/templates', advice.templates);
+router.post('/advice/basket', advice.basket);
+router.get('/advice/sharing', advice.getSharing);
+router.post('/advice/sharing', advice.setSharing);
+router.post('/price-reports', priceReport);
+router.get('/price-reports/mine', priceMyReports);
+router.get('/price-reports/places', priceKnownPlaces);
+
+// Requests for quote
+router.get('/rfq', rfq.mine);
+router.get('/rfq/board', rfq.board);
+router.post('/rfq', rfq.create);
+router.get('/rfq/:id', rfq.one);
+router.post('/rfq/:id/quotes', rfq.quote);
+router.post('/rfq/:id/cancel', rfq.cancel);
+router.post('/rfq/quotes/:id/accept', rfq.accept);
+router.post('/rfq/quotes/:id/withdraw', rfq.withdraw);
+
 router.get('/imports', importsBrowse);
 router.get('/imports/orders', importsMine);
 router.post('/imports/orders', importsPlace);

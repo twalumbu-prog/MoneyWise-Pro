@@ -189,6 +189,30 @@ const Row: React.FC<{ onClick?: () => void; children: React.ReactNode }> = ({ on
     <div onClick={onClick} className={`flex items-center justify-between gap-4 border-b border-gray-100 px-5 py-3 text-sm text-gray-900 ${onClick ? 'cursor-pointer hover:bg-gray-50' : ''}`}>{children}</div>
 );
 
+/** Lets a business share what it pays suppliers, anonymously, so everyone can compare. Off until the owner turns it on. */
+const PriceSharing: React.FC = () => {
+    const qc = useQueryClient();
+    const q = useQuery<{ sharing: boolean }>({ queryKey: ['advice', 'sharing'], queryFn: () => apiJson('/marketplace/advice/sharing'), retry: false });
+    const [busy, setBusy] = useState(false);
+    const [err, setErr] = useState<string | null>(null);
+    const on = q.data?.sharing === true;
+    const toggle = async () => {
+        setBusy(true); setErr(null);
+        try { await apiJson('/marketplace/advice/sharing', { method: 'POST', body: JSON.stringify({ sharing: !on }) }); await qc.invalidateQueries({ queryKey: ['advice', 'sharing'] }); }
+        catch (e: any) { setErr(e?.message || 'Could not change that.'); } finally { setBusy(false); }
+    };
+    if (q.isLoading) return null;
+    return (
+        <div className={`rounded-xl border p-4 ${on ? 'border-[#0B57D0]/40 bg-[#F0F6FF]' : 'border-gray-200 bg-gray-50'}`}>
+            <button type="button" role="switch" aria-checked={on} onClick={toggle} disabled={busy || !!q.error} className="flex w-full items-center justify-between gap-4 text-left">
+                <span><span className="block text-sm font-bold text-gray-900">Help others compare prices</span><span className="mt-0.5 block text-xs text-gray-500">Share what you pay for products in the Marketplace catalogue. Only a combined figure from at least 5 businesses is ever shown, and never your name or your suppliers.</span></span>
+                <span className={`relative h-6 w-10 flex-shrink-0 rounded-full transition-colors ${on ? 'bg-[#0B57D0]' : 'bg-gray-300'}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-5' : 'translate-x-1'}`} /></span>
+            </button>
+            {err && <p className="mt-2 text-xs text-[#B31412]">{err}</p>}
+        </div>
+    );
+};
+
 export const SuppliersPanel: React.FC = () => {
     const access = useAccountingAccess();
     const qc = useQueryClient();
@@ -245,6 +269,7 @@ export const SuppliersPanel: React.FC = () => {
             </div>
             <ErrorNote text={err ?? (sup.error as any)?.message} />
             {notice && <p className="rounded-xl bg-[#E6F4EA] px-4 py-3 text-sm text-[#137333]">{notice}</p>}
+            {view === 'suppliers' && <PriceSharing />}
 
             {view === 'suppliers' && (
                 <div className="overflow-hidden rounded-xl outline outline-1 outline-offset-[-1px] outline-violet-100">

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiJson } from 'core';
-import { Briefcase, CalendarClock, Compass, Globe, Megaphone, MapPin, MoreHorizontal, Package, PackageCheck, Store, UtensilsCrossed } from 'lucide-react';
+import { Briefcase, CalendarClock, Compass, Globe, Megaphone, MapPin, MoreHorizontal, Package, PackageCheck, Store, UtensilsCrossed, Scale, ClipboardList, ShoppingBasket } from 'lucide-react';
 
 /**
  * The Marketplace on a phone. Its sections live in the app's bottom bar (replacing the usual four icons while you are in the Marketplace),
@@ -21,7 +21,7 @@ export const marketplaceSection = (p: string): Section => {
     if (p.startsWith('/marketplace/stores') || p.startsWith('/marketplace/store/')) return 'stores';
     if (p.startsWith('/marketplace/services')) return 'services';
     if (p.startsWith('/marketplace/food')) return 'food';
-    if (/^\/marketplace\/(orders|pay-later|ads|import-desk)/.test(p)) return 'more';
+    if (/^\/marketplace\/(orders|pay-later|ads|import-desk|compare|price-desk|requests|plan)/.test(p)) return 'more';
     return 'browse';
 };
 
@@ -34,10 +34,14 @@ export const MARKETPLACE_BOTTOM_TABS: { path: string; icon: React.ComponentType<
 ];
 
 const MORE = [
+    { to: '/marketplace/compare', label: 'Compare prices', hint: 'Find the cheapest place to buy', icon: Scale },
+    { to: '/marketplace/plan', label: 'Plan a purchase', hint: 'Find the cheapest place to buy everything you need', icon: ShoppingBasket },
+    { to: '/marketplace/requests', label: 'Requests for quote', hint: 'Ask suppliers for a price, or quote a request', icon: ClipboardList },
     { to: '/marketplace/orders', label: 'Orders', hint: 'What you bought and sold', icon: Package },
     { to: '/marketplace/imported/orders', label: 'Import orders', hint: 'Follow what you ordered from overseas', icon: PackageCheck },
     { to: '/marketplace/pay-later', label: 'Pay in 4', hint: 'Split a purchase into four payments', icon: CalendarClock },
     { to: '/marketplace/ads', label: 'Advertise', hint: 'Get your items and store seen first', icon: Megaphone },
+    { to: '/marketplace/price-desk', label: 'Price desk', hint: 'Enter prices from suppliers and shops (team only)', icon: Scale, adminOnly: true },
     { to: '/marketplace/import-desk', label: 'Import desk', hint: 'Orders to buy, catalogue and prices (team only)', icon: PackageCheck, adminOnly: true },
     { to: '/marketplace?location=1', label: 'Store location', hint: 'Where your store is, for buyers nearby', icon: MapPin },
 ];

@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useIsSuperAdmin } from './MarketplaceMobileNav';
-import { Briefcase, CalendarClock, Check, ChevronDown, Compass, Globe, Megaphone, MoreHorizontal, Package, PackageCheck, Store, UtensilsCrossed } from 'lucide-react';
+import { Briefcase, CalendarClock, Check, ChevronDown, Compass, Globe, Megaphone, MoreHorizontal, ClipboardList, Package, PackageCheck, Scale, ShoppingBasket, Store, UtensilsCrossed } from 'lucide-react';
 
-export type MarketplaceTab = 'import-desk' | 'browse' | 'stores' | 'services' | 'food' | 'imported' | 'import-orders' | 'orders' | 'pay-later' | 'ads';
+export type MarketplaceTab = 'plan' | 'requests' | 'price-desk' | 'compare' | 'import-desk' | 'browse' | 'stores' | 'services' | 'food' | 'imported' | 'import-orders' | 'orders' | 'pay-later' | 'ads';
 
 interface Tab { id: MarketplaceTab; label: string; to: string; icon: React.ComponentType<any>; hint?: string }
 
@@ -13,13 +13,17 @@ const MAIN: Tab[] = [
     { id: 'stores', label: 'Stores', to: '/marketplace/stores', icon: Store },
     { id: 'services', label: 'Services', to: '/marketplace/services', icon: Briefcase },
     { id: 'food', label: 'Food', to: '/marketplace/food', icon: UtensilsCrossed },
+    { id: 'compare', label: 'Compare', to: '/marketplace/compare', icon: Scale },
     { id: 'imported', label: 'Imported', to: '/marketplace/imported', icon: Globe },
 ];
 /** The sections about your own buying and selling, kept under "More". */
 const MORE: (Tab & { adminOnly?: boolean })[] = [
+    { id: 'plan', label: 'Plan a purchase', to: '/marketplace/plan', icon: ShoppingBasket, hint: 'Find the cheapest place to buy everything you need' },
+    { id: 'requests', label: 'Requests for quote', to: '/marketplace/requests', icon: ClipboardList, hint: 'Ask suppliers for a price, or quote a request' },
     { id: 'orders', label: 'Orders', to: '/marketplace/orders', icon: Package, hint: 'What you bought and sold' },
     { id: 'import-orders', label: 'Import orders', to: '/marketplace/imported/orders', icon: PackageCheck, hint: 'Follow what you ordered from overseas' },
     { id: 'import-desk', label: 'Import desk', to: '/marketplace/import-desk', icon: PackageCheck, hint: 'Orders to buy, catalogue and prices (team only)', adminOnly: true },
+    { id: 'price-desk', label: 'Price desk', to: '/marketplace/price-desk', icon: Scale, hint: 'Enter prices from suppliers and shops (team only)', adminOnly: true },
     { id: 'pay-later', label: 'Pay in 4', to: '/marketplace/pay-later', icon: CalendarClock, hint: 'Split a purchase into four payments' },
     { id: 'ads', label: 'Advertise', to: '/marketplace/ads', icon: Megaphone, hint: 'Get your items and store seen first' },
 ];

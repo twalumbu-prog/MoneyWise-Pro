@@ -15,6 +15,10 @@ const MarketplaceServices = React.lazy(() => import('./pages/MarketplaceServices
 const MarketplaceImported = React.lazy(() => import('./pages/MarketplaceImported').then(m => ({ default: m.MarketplaceImported })));
 const MarketplaceImportedItem = React.lazy(() => import('./pages/MarketplaceImportedItem').then(m => ({ default: m.MarketplaceImportedItem })));
 const MarketplaceImportOrders = React.lazy(() => import('./pages/MarketplaceImportOrders').then(m => ({ default: m.MarketplaceImportOrders })));
+const MarketplaceCompare = React.lazy(() => import('./pages/MarketplaceCompare').then(m => ({ default: m.MarketplaceCompare })));
+const MarketplacePlan = React.lazy(() => import('./pages/MarketplacePlan').then(m => ({ default: m.MarketplacePlan })));
+const MarketplaceRequests = React.lazy(() => import('./pages/MarketplaceRequests').then(m => ({ default: m.MarketplaceRequests })));
+const MarketplacePriceDesk = React.lazy(() => import('./pages/MarketplacePriceDesk').then(m => ({ default: m.MarketplacePriceDesk })));
 const ImportsDesk = React.lazy(() => import('./pages/ImportsDesk').then(m => ({ default: m.ImportsDesk })));
 const Loans = React.lazy(() => import('./pages/Loans').then(m => ({ default: m.Loans })));
 const LoansDemo = React.lazy(() => import('./pages/LoansDemo').then(m => ({ default: m.LoansDemo })));
@@ -290,6 +294,12 @@ function App() {
                         <Route path="/marketplace/food" element={<ProtectedRoute><MarketplaceFood /></ProtectedRoute>} />
                         <Route path="/marketplace/stores" element={<ProtectedRoute><MarketplaceStores /></ProtectedRoute>} />
                         <Route path="/marketplace/services" element={<ProtectedRoute><MarketplaceServices /></ProtectedRoute>} />
+                        <Route path="/marketplace/compare" element={<ProtectedRoute><MarketplaceCompare /></ProtectedRoute>} />
+                        <Route path="/marketplace/compare/:slug" element={<ProtectedRoute><MarketplaceCompare /></ProtectedRoute>} />
+                        <Route path="/marketplace/plan" element={<ProtectedRoute><MarketplacePlan /></ProtectedRoute>} />
+                        <Route path="/marketplace/requests" element={<ProtectedRoute><MarketplaceRequests /></ProtectedRoute>} />
+                        <Route path="/marketplace/requests/:id" element={<ProtectedRoute><MarketplaceRequests /></ProtectedRoute>} />
+                        <Route path="/marketplace/price-desk" element={<ProtectedRoute><MarketplacePriceDesk /></ProtectedRoute>} />
                         <Route path="/marketplace/import-desk" element={<ProtectedRoute><ImportsDesk /></ProtectedRoute>} />
                         <Route path="/invest/prices" element={<ProtectedRoute><FundPrices /></ProtectedRoute>} />
                         <Route path="/loans" element={<ProtectedRoute><Loans /></ProtectedRoute>} />

@@ -14,6 +14,7 @@ import type { AuctionForm } from '../marketplace/AuctionFields';
 import { useQuery } from '@tanstack/react-query';
 import { apiJson } from 'core';
 import { LISTINGS_KEY } from '../marketplace/parts';
+import { CatalogPicker } from '../marketplace/CatalogPicker';
 import type { MarketplaceData } from '../marketplace/parts';
 import { compressImage } from '../../utils/file_utils';
 import ShareProductLinkModal from '../ShareProductLinkModal';
@@ -84,6 +85,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
         income_account_id: '',
         image_url: '',
         category: '',
+        catalog_item_id: '',
         is_active: true,
         marketplace_listed: true,
         requires_delivery: false,
@@ -224,6 +226,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
             income_account_id: '',
             image_url: '',
             category: '',
+            catalog_item_id: '',
             is_active: true,
             marketplace_listed: true,
             requires_delivery: false,
@@ -266,6 +269,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
             income_account_id: product.income_account_id || '',
             image_url: product.image_url || '',
             category: product.category || '',
+            catalog_item_id: (product as any).catalog_item_id || '',
             is_active: product.is_active,
             marketplace_listed: product.marketplace_listed ?? false,
             requires_delivery: product.requires_delivery ?? false,
@@ -486,6 +490,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                 income_account_id: formData.income_account_id || null,
                 image_url: formData.image_url || null,
                 category: formData.category.trim() || null,
+                catalog_item_id: formData.catalog_item_id || null,
                 digital_assets: isDigital ? digitalAssets : null,
                 is_active: formData.is_active,
                 marketplace_listed: formData.marketplace_listed,
@@ -1015,6 +1020,13 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                         </datalist>
                                     </div>
                                 </div>
+                                {formData.marketplace_listed && formData.product_type === 'PRODUCT' && (
+                                    <div className="-mt-1">
+                                        <label className="block text-sm font-bold text-gray-800 mb-1.5">Same as a catalogue product <span className="font-normal text-gray-400">(optional)</span></label>
+                                        <CatalogPicker value={formData.catalog_item_id} onChange={(id) => setFormData(prev => ({ ...prev, catalog_item_id: id }))} disabled={submitting} placeholder="e.g. cement, blocks, river sand" />
+                                        <p className="text-xs text-gray-400 mt-1.5">If your product is in the catalogue, buyers can compare your price with other sellers and you show up when they search. Set your price for one unit of the catalogue product.</p>
+                                    </div>
+                                )}
                                 <p className="text-xs text-gray-400 -mt-3">
                                     {PRODUCT_TYPE_OPTIONS.find(o => o.value === formData.product_type)?.hint}
                                 </p>
