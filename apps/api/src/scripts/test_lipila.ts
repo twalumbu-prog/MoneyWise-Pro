@@ -144,6 +144,42 @@ const sign = (secret: string, id: string, ts: number, body: string) => `v1,${cry
         await verifyCollectionStatus({ params: { reference: ref }, query: { organizationId: A } } as any, { json: (b: any) => { sent = b; return b; }, status: () => ({ json: (b: any) => { sent = b; } }) } as any);
         check('the existing status address hands a card payment over and reports success', sent?.verified === true && sent?.source === 'lipila' && !!sent?.referenceNumber, JSON.stringify(sent));
 
+        // ── the amount is checked on the server, not taken from the browser
+        const mkLink = async (org: string, amount: number, status = 'ACTIVE') => {
+            const token = `zz-${randomUUID()}`;
+            const { error } = await supabase.from('payment_links').insert({ organization_id: org, token, customer_name: 'Mary', customer_phone: '0977000000', amount, status, items: [{ name: 'Goods', quantity: 1, unit_price: amount }] });
+            if (error) throw error;
+            return token;
+        };
+        const linkOk = await mkLink(A, 100); const refL1 = await sale(A, 100);
+        const l1 = await lipila.initiateCard({ organizationId: A, reference: refL1, apiBase: null, context: { kind: 'payment_link', token: linkOk } });
+        check('a payment link paid at its own amount goes through', !!l1.redirectUrl && l1.charged === 104.17);
+        const linkLow = await mkLink(A, 100); const refL2 = await sale(A, 40);
+        await expectErr('a payment link recorded at a lower amount is refused', () => lipila.initiateCard({ organizationId: A, reference: refL2, apiBase: null, context: { kind: 'payment_link', token: linkLow } }), 'AMOUNT');
+        const linkPaid = await mkLink(A, 100, 'PAID'); const refL3 = await sale(A, 100);
+        await expectErr('a payment link that is already paid is refused', () => lipila.initiateCard({ organizationId: A, reference: refL3, apiBase: null, context: { kind: 'payment_link', token: linkPaid } }), 'LINK_CLOSED');
+        const linkOther = await mkLink(B, 100); const refL4 = await sale(A, 100);
+        await expectErr('another business’s payment link can’t be used', () => lipila.initiateCard({ organizationId: A, reference: refL4, apiBase: null, context: { kind: 'payment_link', token: linkOther } }), 'LINK');
+
+        const { data: prod } = await supabase.from('products').insert({ organization_id: A, name: 'ZZ test item', price: 50, product_type: 'PRODUCT', is_active: true }).select('id').single();
+        const { data: gift } = await supabase.from('products').insert({ organization_id: A, name: 'ZZ test donation', price: 0, product_type: 'DONATION', is_active: true }).select('id').single();
+        const lines = async (ref: string, rows: { product_id: string; quantity: number; amount_paid: number }[]) => supabase.from('product_sales').insert(rows.map((r) => ({ ...r, organization_id: A, customer_name: 'Mary', customer_phone: '0977000000', reference: ref, status: 'PENDING' })));
+        const refS1 = await sale(A, 100); await lines(refS1, [{ product_id: prod!.id, quantity: 2, amount_paid: 100 }]);
+        const s1 = await lipila.initiateCard({ organizationId: A, reference: refS1, apiBase: null, context: { kind: 'store' } });
+        check('a store order at the real price goes through', !!s1.redirectUrl);
+        const refS2 = await sale(A, 10); await lines(refS2, [{ product_id: prod!.id, quantity: 2, amount_paid: 10 }]);
+        await expectErr('a store order priced below the real price is refused', () => lipila.initiateCard({ organizationId: A, reference: refS2, apiBase: null, context: { kind: 'store' } }), 'AMOUNT');
+        const refS3 = await sale(A, 20); await lines(refS3, [{ product_id: prod!.id, quantity: 2, amount_paid: 100 }]);
+        await expectErr('a recorded amount that doesn’t match the items is refused', () => lipila.initiateCard({ organizationId: A, reference: refS3, apiBase: null, context: { kind: 'store' } }), 'AMOUNT');
+        const refS4 = await sale(A, 7.5); await lines(refS4, [{ product_id: gift!.id, quantity: 1, amount_paid: 7.5 }]);
+        const s4 = await lipila.initiateCard({ organizationId: A, reference: refS4, apiBase: null, context: { kind: 'store' } });
+        check('a donation (the payer chooses the amount) is allowed', !!s4.redirectUrl);
+        const refQ = await sale(A, 33);
+        check('a quick-pay amount chosen by the customer is allowed', !!(await lipila.initiateCard({ organizationId: A, reference: refQ, apiBase: null, context: { kind: 'quick_link' } })).redirectUrl);
+        await supabase.from('payment_links').delete().in('organization_id', [A, B]);
+        await supabase.from('product_sales').delete().eq('organization_id', A);
+        await supabase.from('products').delete().eq('organization_id', A);
+
         // ── a declined card
         const ref2 = await sale(A, 50);
         await lipila.initiateCard({ organizationId: A, reference: ref2, apiBase: null });

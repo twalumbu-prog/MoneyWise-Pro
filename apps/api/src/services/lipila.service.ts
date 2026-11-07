@@ -167,6 +167,50 @@ export async function testKey(orgId: string) {
     } catch (e: any) { return { ok: false, message: `Couldn’t reach Lipila: ${e?.message ?? e}` }; }
 }
 
+/* ───────────── The business's Lipila wallet: balance and activity ───────────── */
+
+/** True when this business has a saved Lipila key and is in the rollout, so its wallet shows on the Wallets page (even if cards are switched off). */
+export async function walletConnected(orgId: string): Promise<boolean> {
+    if (!orgId || !(await isInRollout(orgId))) return false;
+    const { data } = await supabase.from('org_gateway_credentials').select('lipila_api_key_enc').eq('organization_id', orgId).maybeSingle();
+    return !!data?.lipila_api_key_enc;
+}
+
+/** Reads a number out of whatever shape Lipila answers with ({ success, data: { balance } } is the documented one). */
+const pickNumber = (...vals: unknown[]): number | null => { for (const v of vals) { const n = typeof v === 'string' ? Number(v) : v; if (typeof n === 'number' && Number.isFinite(n)) return n; } return null; };
+
+/** Lipila's own figure for the wallet balance, asked live with this business's key. Never throws: a problem is reported alongside what we do know. */
+export async function walletSummary(orgId: string) {
+    const ledger = await supabase.from('cashbook_entries').select('debit, credit').eq('organization_id', orgId).eq('account_type', CARD_ACCOUNT_TYPE).neq('status', 'PENDING').limit(20000);
+    const recorded = round2((ledger.data ?? []).reduce((s: number, r: any) => s + num(r.debit) - num(r.credit), 0));
+    const base = { connected: false, env: null as string | null, balance: null as number | null, booked: null as number | null, currency: 'ZMW', recordedSales: recorded, fetchedAt: new Date().toISOString(), error: null as string | null };
+    const creds = await getCredentials(orgId);
+    if (!creds) return { ...base, error: 'No Lipila key is saved.' };
+    try {
+        const res = await fetch(`${baseUrl(creds.env)}/api/v1/merchants/balance`, { headers: { accept: 'application/json', 'x-api-key': creds.apiKey }, signal: AbortSignal.timeout(15_000) });
+        const body: any = await res.json().catch(() => null);
+        if (res.status === 401 || res.status === 403) return { ...base, connected: true, env: creds.env, error: `Lipila refused the saved key. Check that it is a ${creds.env} key.` };
+        if (!res.ok) return { ...base, connected: true, env: creds.env, error: `Lipila answered ${res.status}.` };
+        const d = body?.data ?? body ?? {};
+        const balance = pickNumber(d.balance, d.availableBalance, d.available, body?.balance, body?.availableBalance);
+        const booked = pickNumber(d.bookedBalance, d.booked, body?.bookedBalance);
+        if (balance === null) return { ...base, connected: true, env: creds.env, booked, error: 'Lipila answered, but the balance wasn’t in the answer.' };
+        return { ...base, connected: true, env: creds.env, balance: round2(balance), booked: booked === null ? null : round2(booked), currency: String(d.currency ?? body?.currency ?? 'ZMW') };
+    } catch (e: any) {
+        return { ...base, connected: true, env: creds.env, error: `Couldn’t reach Lipila: ${e?.message ?? e}` };
+    }
+}
+
+/** Card payments started on this business's pages, including ones that were abandoned or declined (the Wallets list only shows paid ones). */
+export async function recentCardPayments(orgId: string, limit = 50) {
+    const { data, error } = await supabase.from('lipila_card_sessions').select('reference, net_amount, charged_amount, fee_amount, status, customer, context, failure_reason, record_error, created_at, finalized_at').eq('organization_id', orgId).order('created_at', { ascending: false }).limit(Math.min(200, Math.max(1, limit)));
+    if (error) throw error;
+    return (data ?? []).map((s: any) => ({
+        reference: s.reference, status: s.status as string, net: num(s.net_amount), charged: num(s.charged_amount), fee: num(s.fee_amount), customer: s.customer?.name ?? null, phone: s.customer?.phone ?? null,
+        source: s.context?.kind ?? null, reason: s.failure_reason ?? null, problem: s.record_error ?? null, startedAt: s.created_at, finishedAt: s.finalized_at,
+    }));
+}
+
 /* ───────────── Starting a card payment ───────────── */
 
 export interface InitiateInput {
@@ -182,6 +226,31 @@ async function pendingNet(orgId: string, reference: string): Promise<{ net: numb
     if (!rows?.length) rows = await find(supabase.from('cashbook_entries').select('id, status, debit, description').eq('organization_id', orgId).like('description', `%${reference}%`).limit(5));
     const pending = (rows ?? []).find((r) => r.status === 'PENDING');
     return pending && num(pending.debit) > 0 ? { net: round2(num(pending.debit)), description: pending.description ?? null } : null;
+}
+
+/**
+ * The checkout records the sale from what the browser sends, so the amount to charge is checked here against what the server knows:
+ * a payment link's own amount, and the real price of every product in the order. A tampered amount is refused before any card is charged.
+ * (A quick-pay amount is chosen by the customer, so there is nothing to check it against.)
+ */
+async function assertAmountIsRight(orgId: string, reference: string, net: number, ctx?: Record<string, unknown>): Promise<void> {
+    const wrong = () => new LipilaError('The amount doesn’t match this order. Please go back and try again.', 409, 'AMOUNT');
+    if (ctx?.kind === 'payment_link' && ctx?.token) {
+        const { data: link } = await supabase.from('payment_links').select('amount, status, organization_id').eq('token', String(ctx.token)).maybeSingle();
+        if (!link || link.organization_id !== orgId) throw new LipilaError('That payment link can’t be found.', 404, 'LINK');
+        if (link.status && link.status !== 'ACTIVE') throw new LipilaError('This payment link has already been paid or is closed.', 409, 'LINK_CLOSED');
+        if (Math.abs(num(link.amount) - net) > 0.01) throw wrong();
+    }
+    const { data: lines } = await supabase.from('product_sales').select('product_id, quantity, amount_paid').eq('organization_id', orgId).eq('reference', reference);
+    if (lines?.length) {
+        const sum = round2(lines.reduce((s: number, l: any) => s + num(l.amount_paid), 0));
+        if (Math.abs(sum - net) > 0.01) throw wrong();
+        const ids = [...new Set(lines.map((l: any) => l.product_id).filter(Boolean))];
+        const { data: prods } = ids.length ? await supabase.from('products').select('id, price').in('id', ids).eq('organization_id', orgId) : { data: [] as any[] };
+        const price = new Map<string, number>((prods ?? []).map((p: any) => [p.id, num(p.price)]));
+        // A product with a price can't be bought for less. (Donations have no price: the payer chooses.)
+        for (const l of lines) { const p = price.get(l.product_id) ?? 0; if (p > 0 && num(l.amount_paid) + 0.01 < round2(p * num(l.quantity))) throw wrong(); }
+    }
 }
 
 export async function initiateCard(input: InitiateInput) {
@@ -201,6 +270,7 @@ export async function initiateCard(input: InitiateInput) {
 
     const pend = await pendingNet(orgId, reference);
     if (!pend) throw new LipilaError('Start the payment from the checkout page first.', 409, 'NO_INTENT');
+    await assertAmountIsRight(orgId, reference, pend.net, input.context);
     const { charged, fee } = grossUp(pend.net);
 
     const c = input.customer ?? {};

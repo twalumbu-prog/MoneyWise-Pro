@@ -1,3 +1,4 @@
+import { CARD_ACCOUNT_TYPE, walletConnected } from '../services/lipila.service';
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { cashbookService } from '../services/cashbook.service';
@@ -969,6 +970,17 @@ export const getCashbookOverview = async (req: any, res: any): Promise<any> => {
             additionalExternalAccounts.push({ id: 'MASTERFEES_MANUAL', name: 'Master Fees Manual' });
         }
 
+        // A business that has connected Lipila gets a wallet tile for it, with the card sales recorded against it.
+        let lipilaBal = 0;
+        let recentLipila: any[] = [];
+        if (await walletConnected(organizationId)) {
+            [lipilaBal, recentLipila] = await Promise.all([
+                cashbookService.getCurrentBalance(organizationId, CARD_ACCOUNT_TYPE),
+                cashbookService.getEntries(organizationId, { accountType: CARD_ACCOUNT_TYPE, limit: 10 }),
+            ]);
+            additionalExternalAccounts.push({ id: CARD_ACCOUNT_TYPE, name: 'Lipila (Card payments)' });
+        }
+
         // Add custom external wallets to additionalExternalAccounts so frontend renders them
         extWalletList.forEach(w => {
             additionalExternalAccounts.push({ id: w.id, name: w.name });
@@ -981,6 +993,7 @@ export const getCashbookOverview = async (req: any, res: any): Promise<any> => {
             BANK: bankBal,
             MASTERFEES: masterFeesBal,
             MASTERFEES_MANUAL: masterFeesManualBal,
+            [CARD_ACCOUNT_TYPE]: lipilaBal,
         };
         extWalletList.forEach((w, idx) => {
             externalBalancesMap[w.id] = extBalances[idx];
@@ -996,7 +1009,7 @@ export const getCashbookOverview = async (req: any, res: any): Promise<any> => {
             wallets,
             recent: {
                 moneywise: recentMoneywise.map(sanitizeEntry),
-                external: [...recentCash, ...recentAirtel, ...recentBank, ...recentMasterFees, ...recentMasterFeesManual, ...flatRecentExt].map(sanitizeEntry),
+                external: [...recentCash, ...recentAirtel, ...recentBank, ...recentMasterFees, ...recentMasterFeesManual, ...recentLipila, ...flatRecentExt].map(sanitizeEntry),
             },
         });
     } catch (error: any) {

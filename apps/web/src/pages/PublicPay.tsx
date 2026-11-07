@@ -172,6 +172,7 @@ interface PublicContextResponse {
     wallet: WalletContext;
     products: Product[];
     collections_api_enabled?: boolean;
+    card_enabled?: boolean;
 }
 
 // Detect the Zambian mobile money operator from a phone prefix.
@@ -236,6 +237,7 @@ export const PublicPay: React.FC = () => {
     const [products, setProducts] = useState<Product[]>([]);
     // Own-UX checkout (Collections API) kill-switch — see loadContext.
     const [collectionsApiEnabled, setCollectionsApiEnabled] = useState(false);
+    const [cardEnabled, setCardEnabled] = useState(false);
     const [checkoutMethod, setCheckoutMethod] = useState<'mobile-money' | 'card' | 'moneywise'>('mobile-money');
     const [checkoutPhone, setCheckoutPhone] = useState('');
     const [resolvedAccountName, setResolvedAccountName] = useState('');
@@ -424,6 +426,7 @@ export const PublicPay: React.FC = () => {
             setWallet(response.data.wallet);
             setProducts(response.data.products);
             setCollectionsApiEnabled(response.data.collections_api_enabled === true);
+            setCardEnabled(response.data.card_enabled === true);
 
             // Reached the server, but the business hasn't connected a payment provider.
             if (!response.data.wallet.lenco_subaccount_id) {
@@ -1222,6 +1225,84 @@ export const PublicPay: React.FC = () => {
                 payment_method: 'mobile-money',
                 duration_ms: Date.now() - checkoutStartedAt,
             });
+        }
+    };
+
+    // ── Card (Lipila): the customer types their card on Lipila's own page, and the money goes to this business's own Lipila wallet. The sale is
+    // recorded first, then the card payment starts, then we wait for the result exactly as for mobile money. Desktop gets a popup; phones go to
+    // the card page in this tab. Orders with a delivery charge stay on mobile money for now.
+    const CARD_RATE = 0.04;
+    const cardCharged = subtotal > 0 ? Math.round((subtotal / (1 - CARD_RATE)) * 100) / 100 : 0;
+    const cardFee = Math.round((cardCharged - subtotal) * 100) / 100;
+    const cardBlockedByDelivery = effectiveDeliveryCharge > 0;
+    const cardDetailsReady = customerName.trim().length > 1 && customerPhone.replace(/\D/g, '').length >= 9 && (!cartHasDigital || emailIsValid);
+    const onPhoneBrowser = typeof navigator !== 'undefined' && /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
+
+    const handlePayCard = async () => {
+        if (lineItems.length === 0 || subtotal <= 0) { setError('Please select at least one product or service to purchase.'); return; }
+        if (pendingDonations.length > 0) { setError(`Please enter an amount for: ${pendingDonations.map(li => li.product.name).join(', ')}`); return; }
+        if (cardBlockedByDelivery) { setError('Card isn’t available for orders with a delivery charge yet. Choose Mobile Money, or pick the order up.'); return; }
+        if (!cardDetailsReady) { setError('Enter your name and phone number first.'); return; }
+        if (!wallet || !org) return;
+        // Opened inside the click, before anything is awaited, or the browser blocks the popup.
+        const popup = !onPhoneBrowser ? window.open('about:blank', 'lipila_card', 'width=440,height=760') : null;
+        const payerName = customerName.trim();
+        const payerPhone = customerPhone.trim();
+        const productNarration = lineItems.map(li => `${li.product.name} (x${li.quantity})`).join(', ');
+        const ref = `LPL-DEP-${Date.now()}-${org.id.substring(0, 8)}-PUB`;
+        setCurrentReference(ref);
+        setError(null);
+        setSubmitting(true);
+        setPaymentMethod('Card');
+        pollCancelledRef.current = false;
+        setElapsedSeconds(0);
+        setAwaitingApproval(false);
+        setPaymentPhase('initiating');
+        setStep('VERIFYING');
+        const checkoutStartedAt = Date.now();
+        trackEvent('public_catalogue_checkout', 'payment', 'started', { workflow_id: ref, organization_id: org.id, wallet_id: wallet.id, subtotal, total_payable: cardCharged, item_count: lineItems.length, payment_method: 'card' });
+        try {
+            await axios.post(`${API_URL}/lenco/public-wallet-deposit-intent`, {
+                reference: ref,
+                purpose: `Sale: Products: ${productNarration} | Cust: ${payerPhone}`,
+                amount: subtotal,
+                walletId: wallet.id,
+                customerName: payerName,
+                customerPhone: payerPhone,
+                customerEmail: cartHasDigital ? customerEmail.trim() : undefined,
+                items: lineItems.map(li => ({
+                    id: li.product.id,
+                    quantity: li.quantity,
+                    price: li.unitPrice,
+                    ...(li.isBooking && li.booking ? { check_in: li.booking.checkIn, check_out: li.booking.checkOut } : {}),
+                    ...responsesFor(li.product.id),
+                })),
+                orderDetails: deliveryDetails,
+            });
+            const [firstName, ...rest] = payerName.split(/\s+/);
+            const init = await axios.post(`${API_URL}/lipila/public/card`, { organizationId: org.id, reference: ref, firstName, lastName: rest.join(' ') || undefined, phone: payerPhone, email: cartHasDigital ? customerEmail.trim() : undefined, kind: 'store', token: wallet.id, returnUrl: window.location.href });
+            const url: string | undefined = init.data?.redirectUrl;
+            if (!url) throw new Error('The card payment could not be started. Please try again.');
+            savePendingPayment({ reference: ref, contextId: wallet.id, orgId: org.id, phone: payerPhone, amount: cardCharged, businessName: org.name, startedAt: checkoutStartedAt });
+            setResumedPayment(null);
+            setRecheckNote(null);
+            setVerificationStep('POLLING');
+            setPaymentPhase('confirm');
+            setAwaitingApproval(true);
+            setElapsedSeconds(0);
+            setSubmitting(false);
+            startCompletionPoll(ref, org.id, checkoutStartedAt, { wallet_id: wallet.id, subtotal, total_payable: cardCharged });
+            if (onPhoneBrowser || !popup || popup.closed) window.location.href = url;
+            else popup.location.href = url;
+        } catch (err: any) {
+            try { popup?.close(); } catch { /* already closed */ }
+            clearPendingPayment();
+            setSubmitting(false);
+            setAwaitingApproval(false);
+            setPaymentPhase(null);
+            setStep('CHECKOUT');
+            setError(err.response?.data?.error || err.message || 'Failed to start the card payment. Please try again.');
+            trackEvent('public_catalogue_checkout', 'payment', 'failed', { workflow_id: ref, organization_id: org.id, error_code: err?.response?.status || 'NETWORK_ERROR', error_message: err?.response?.data?.error || err.message, payment_method: 'card', duration_ms: Date.now() - checkoutStartedAt });
         }
     };
 
@@ -3725,6 +3806,35 @@ Status: VERIFIED`;
                                     body={storeLinkBody}
                                     onPaid={handleMoneyWisePaid}
                                 />
+                            ) : cardEnabled ? (
+                                <div className="px-1">
+                                    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-full bg-[#E8F0FE] text-[#0B57D0] flex items-center justify-center"><CreditCard size={20} /></div>
+                                            <div>
+                                                <p className="text-sm font-bold text-gray-800">Pay with a Visa, Mastercard or Amex</p>
+                                                <p className="text-[11px] text-gray-500">You’ll enter your card on a secure page. Your card details never touch this site.</p>
+                                            </div>
+                                        </div>
+                                        <div className="mt-4 space-y-2">
+                                            <input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Your name" autoComplete="name" className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0B57D0]" />
+                                            <input type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="Your phone number" autoComplete="tel" className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0B57D0]" />
+                                            {cartHasDigital && <input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="Email for your download" autoComplete="email" className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0B57D0]" />}
+                                        </div>
+                                        <div className="mt-4 space-y-1 text-xs text-gray-600">
+                                            <div className="flex justify-between"><span>Order total</span><span>K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                            <div className="flex justify-between"><span>Card fee</span><span>K{cardFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                            <div className="flex justify-between border-t border-slate-100 pt-1 font-bold text-gray-800"><span>You pay</span><span>K{cardCharged.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                        </div>
+                                        {cardBlockedByDelivery && <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">Card isn’t available for orders with a delivery charge yet. Use Mobile Money, or choose pick-up.</p>}
+                                    </div>
+                                    {error && (
+                                        <div className="mt-4 p-3.5 bg-rose-50 text-rose-600 rounded-xl flex items-start space-x-2">
+                                            <AlertCircle className="flex-shrink-0 mt-0.5" size={14} />
+                                            <span className="text-[11px] font-semibold leading-normal">{error}</span>
+                                        </div>
+                                    )}
+                                </div>
                             ) : (
                                 <div className="text-center py-10 px-4 bg-white border border-slate-100 rounded-2xl">
                                     <div className="mx-auto w-12 h-12 bg-slate-200 text-slate-500 rounded-full flex items-center justify-center mb-3">
@@ -3755,6 +3865,15 @@ Status: VERIFIED`;
                                 >
                                     {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
                                     <span>{submitting ? 'Starting…' : `Pay K${totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}</span>
+                                </button>
+                            ) : checkoutMethod === 'card' && cardEnabled ? (
+                                <button
+                                    onClick={handlePayCard}
+                                    disabled={submitting || !cardDetailsReady || cardBlockedByDelivery}
+                                    className={`w-full h-14 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${!submitting && cardDetailsReady && !cardBlockedByDelivery ? 'bg-[#0B57D0] hover:bg-[#0842A0] text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'}`}
+                                >
+                                    {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
+                                    <span>{submitting ? 'Starting…' : `Pay K${cardCharged.toLocaleString(undefined, { minimumFractionDigits: 2 })} by card`}</span>
                                 </button>
                             ) : (
                                 <button disabled className="w-full h-14 rounded-xl font-bold text-base bg-neutral-100 text-zinc-400 cursor-not-allowed">

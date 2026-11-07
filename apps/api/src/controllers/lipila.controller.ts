@@ -54,6 +54,15 @@ export const webhook = async (req: Request, res: Response) => {
     } catch (e) { fail(res, e, 'handle the webhook'); }
 };
 
+/* ── The wallet (signed in, finance roles) ── */
+
+export const wallet = async (req: any, res: Response) => {
+    try { const org = req.user?.organization_id; if (!org) return res.status(400).json({ error: 'No account on this sign-in.' }); res.json(await lipila.walletSummary(org)); } catch (e) { fail(res, e, 'load the Lipila wallet'); }
+};
+export const cardPayments = async (req: any, res: Response) => {
+    try { const org = req.user?.organization_id; if (!org) return res.status(400).json({ error: 'No account on this sign-in.' }); res.json({ payments: await lipila.recentCardPayments(org, Number(req.query.limit) || 50) }); } catch (e) { fail(res, e, 'load the card payments'); }
+};
+
 /* ── The owner's settings (signed in, account holder only) ── */
 
 const owner = (req: any, res: Response): string | null => {

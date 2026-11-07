@@ -55,7 +55,8 @@ import { ApplyPaymentModal, ReceivableAllocationPanel, isReceivableAccount } fro
 import { exportToCSV, exportToExcel, exportToPDF } from '../utils/export.utils';
 import { SegmentedControl, AnimatedTabContent, TabPillGroup } from '../components/AnimatedTabs';
 import { useNewnessTracker, isNewSinceStored } from '../hooks/useNewnessTracker';
-import { formatKwacha } from 'core';
+import { formatKwacha, apiJson } from 'core';
+import { LipilaWalletPanel, LIPILA_WALLET_KEY, type LipilaWalletSummary } from '../components/wallets/LipilaWalletPanel';
 
 
 const SearchableAccountSelect: React.FC<{
@@ -353,8 +354,8 @@ const CashLedger: React.FC = () => {
     const walletSeen = useNewnessTracker(
         organizationId
             ? (categoryGroup === 'MONEYWISE'
-                ? (selectedAccountType === 'MASTERFEES'
-                    ? newnessKey('a_MASTERFEES')
+                ? (selectedAccountType === 'MASTERFEES' || selectedAccountType === 'LIPILA_WALLET'
+                    ? newnessKey(`a_${selectedAccountType}`)
                     : (selectedWalletId ? newnessKey(`w_${selectedWalletId}`) : null))
                 : newnessKey(`a_${selectedAccountType}`))
             : null
@@ -412,6 +413,10 @@ const CashLedger: React.FC = () => {
     const entries: CashbookEntry[] = overview?.entries ?? [];
     const balance = overview?.balance ?? 0;
     const externalBalances: Record<string, number> = overview?.externalBalances ?? { CASH: 0, AIRTEL_MONEY: 0, BANK: 0 };
+    // Lipila's own balance for the Lipila wallet tile, asked live (the tile itself only exists for businesses that connected Lipila).
+    const lipilaTile = (overview?.additionalExternalAccounts ?? []).find((a: any) => a.id === 'LIPILA_WALLET');
+    const lipilaLive = useQuery({ queryKey: LIPILA_WALLET_KEY(organizationId), queryFn: () => apiJson<LipilaWalletSummary>('/lipila/wallet'), enabled: !!organizationId && !!lipilaTile, staleTime: 30_000, retry: false });
+    const lipilaBalance = lipilaLive.data?.balance ?? (externalBalances['LIPILA_WALLET'] || 0);
     const wallets: any[] = overview?.wallets ?? [];
     const recentMoneywiseEntries: CashbookEntry[] = overview?.recent?.moneywise ?? [];
     const recentExternalEntries: CashbookEntry[] = overview?.recent?.external ?? [];
@@ -1191,14 +1196,16 @@ Status: VERIFIED`;
     const masterFeesLencoTile = (overview?.additionalExternalAccounts ?? []).find(a => a.id === 'MASTERFEES');
     type MoneywiseCard =
         | { kind: 'wallet'; id: string; name: string; balance: number; is_main?: boolean }
-        | { kind: 'masterfees'; name: string; balance: number };
+        | { kind: 'masterfees'; name: string; balance: number }
+        | { kind: 'lipila'; name: string; balance: number };
     const moneywiseCards: MoneywiseCard[] = [
         ...wallets.map((w: any): MoneywiseCard => ({ kind: 'wallet', id: w.id, name: w.name, balance: w.balance || 0, is_main: w.is_main })),
         ...(masterFeesLencoTile ? [{ kind: 'masterfees' as const, name: masterFeesLencoTile.name, balance: externalBalances['MASTERFEES'] || 0 }] : []),
+        ...(lipilaTile ? [{ kind: 'lipila' as const, name: lipilaTile.name, balance: lipilaBalance }] : []),
     ];
     const externalAccounts: { id: string; name: string }[] = [
         { id: 'CASH', name: 'Cash Account' },
-        ...(overview?.additionalExternalAccounts ?? []).filter(a => a.id !== 'MASTERFEES'),
+        ...(overview?.additionalExternalAccounts ?? []).filter(a => a.id !== 'MASTERFEES' && a.id !== 'LIPILA_WALLET'),
     ];
     const slideCount = categoryGroup === 'MONEYWISE'
         ? Math.max(moneywiseCards.length, 1) + (!isRequestor && moneywiseCards.length > 0 ? 1 : 0)
@@ -1228,6 +1235,8 @@ Status: VERIFIED`;
                         setSelectedAccountType('MONEYWISE_WALLET');
                         setSelectedWalletId(card.id);
                     }
+                } else if (card.kind === 'lipila') {
+                    if (selectedAccountType !== 'LIPILA_WALLET') setSelectedAccountType('LIPILA_WALLET');
                 } else if (selectedAccountType !== 'MASTERFEES') {
                     setSelectedAccountType('MASTERFEES');
                 }
@@ -1338,7 +1347,9 @@ Status: VERIFIED`;
                                     {moneywiseCards.map((card) =>
                                         card.kind === 'wallet'
                                             ? renderWalletCard(card.id, card.name, card.balance)
-                                            : renderWalletCard('MASTERFEES', card.name, card.balance)
+                                            : card.kind === 'lipila'
+                                                ? renderWalletCard('LIPILA_WALLET', card.name, card.balance)
+                                                : renderWalletCard('MASTERFEES', card.name, card.balance)
                                     )}
                                     {moneywiseCards.length === 0 && isRequestor && renderWalletCard('empty', 'Main Wallet', 0)}
                                     {!isRequestor && (
@@ -1359,6 +1370,10 @@ Status: VERIFIED`;
                         </div>
                     );
                 })()}
+
+                {selectedAccountType === 'LIPILA_WALLET' && categoryGroup === 'MONEYWISE' && (
+                    <div className="px-5"><LipilaWalletPanel organizationId={organizationId} /></div>
+                )}
 
                 {/* Deposit / Transfer / Pay Link action bar */}
                 {!isRequestor && (
@@ -1783,6 +1798,15 @@ Status: VERIFIED`;
                                     isActive={selectedAccountType === 'MONEYWISE_WALLET' && selectedWalletId === card.id}
                                     onClick={() => { setSelectedAccountType('MONEYWISE_WALLET'); setSelectedWalletId(card.id); }}
                                 />
+                            ) : card.kind === 'lipila' ? (
+                                <DesktopWalletCard
+                                    key="LIPILA_WALLET"
+                                    label={card.name}
+                                    amount={`K ${formatCurrency(card.balance).replace('K', '')}`}
+                                    orgName={organizationName || 'MoneyWise'}
+                                    isActive={selectedAccountType === 'LIPILA_WALLET'}
+                                    onClick={() => setSelectedAccountType('LIPILA_WALLET')}
+                                />
                             ) : (
                                 <DesktopWalletCard
                                     key="MASTERFEES"
@@ -1807,6 +1831,8 @@ Status: VERIFIED`;
                         ))
                     )}
                 </div>
+
+                {selectedAccountType === 'LIPILA_WALLET' && categoryGroup === 'MONEYWISE' && <LipilaWalletPanel organizationId={organizationId} />}
 
                 {/* Transactions header */}
                 <div className="flex items-center justify-between pt-2 flex-wrap gap-3">
@@ -1870,7 +1896,7 @@ Status: VERIFIED`;
                                 )}
                             </>
                         )}
-                        {selectedAccountType !== 'MONEYWISE_WALLET' && (
+                        {selectedAccountType !== 'MONEYWISE_WALLET' && selectedAccountType !== 'LIPILA_WALLET' && (
                             <button
                                 onClick={() => setIsCloseModalOpen(true)}
                                 className="p-2 rounded-lg border border-[rgba(116,119,117,0.22)] text-[#80868B] hover:text-[#0B57D0] hover:bg-[#F8FAFD] transition-all"

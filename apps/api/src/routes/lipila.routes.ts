@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireRole } from '../middleware/auth';
 import * as c from '../controllers/lipila.controller';
 
 const router = Router();
@@ -10,6 +10,8 @@ router.get('/public/status/:reference', c.status);
 
 // The owner's settings.
 router.use(requireAuth);
+router.get('/wallet', requireRole(['AUTHORISER', 'CASHIER', 'ACCOUNTANT', 'ADMIN']), c.wallet);
+router.get('/card-payments', requireRole(['AUTHORISER', 'CASHIER', 'ACCOUNTANT', 'ADMIN']), c.cardPayments);
 router.get('/settings', c.getSettings);
 router.put('/settings', c.saveSettings);
 router.post('/settings/test', c.testSettings);
