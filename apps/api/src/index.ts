@@ -30,6 +30,7 @@ import organizationRoutes from './routes/organization.routes';
 import budgetRoutes from './routes/budget.routes';
 import reportRoutes from './routes/report.routes';
 import lencoRoutes from './routes/lenco.routes';
+import lipilaRoutes from './routes/lipila.routes';
 import productRoutes from './routes/product.routes';
 import paymentLinkRoutes from './routes/payment_link.routes';
 import departmentRoutes from './routes/department.routes';
@@ -71,7 +72,7 @@ import pool from './db';
 // each cold Vercel instance otherwise opened a fresh direct connection and reran
 // ~15 sequential DDL statements just to find out they were all no-ops, which is
 // what was exhausting Postgres's connection limit under concurrent traffic.
-const MIGRATION_VERSION = 28;
+const MIGRATION_VERSION = 33;
 
 const runMigration = async () => {
     const directUrl = process.env.DIRECT_DATABASE_URL;
@@ -1462,6 +1463,150 @@ ALTER TABLE public.purchase_order_lines ENABLE ROW LEVEL SECURITY;
 GRANT ALL ON public.quotes, public.purchase_orders, public.purchase_order_lines TO service_role;
 
 
+        ALTER TABLE public.imported_products ADD COLUMN IF NOT EXISTS specs JSONB;
+CREATE TABLE IF NOT EXISTS public.catalog_items (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    slug        TEXT NOT NULL UNIQUE,
+    name        TEXT NOT NULL,                       -- "Cement 50 kg bag"
+    category    TEXT NOT NULL,                       -- "Cement"
+    vertical    TEXT NOT NULL DEFAULT 'CONSTRUCTION',-- CONSTRUCTION, GROCERY, ...
+    unit        TEXT NOT NULL,                       -- what one price is for: bag, piece, tonne, metre, litre, kg, sheet, roll, load
+    unit_detail TEXT,                                -- "50 kg"
+    brand       TEXT,
+    keywords    TEXT,                                -- extra search words
+    is_active   BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_catalog_items_category ON public.catalog_items (vertical, category) WHERE is_active;
+
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS catalog_item_id UUID REFERENCES public.catalog_items(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_products_catalog_item ON public.products (catalog_item_id) WHERE catalog_item_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS public.price_points (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    catalog_item_id UUID NOT NULL REFERENCES public.catalog_items(id) ON DELETE CASCADE,
+    source_type     TEXT NOT NULL DEFAULT 'SUPPLIER_LIST' CHECK (source_type IN ('SUPPLIER_LIST','SHOPPER_REPORT','RFQ_QUOTE','BUSINESS_AGGREGATE')),
+    place_name      TEXT NOT NULL,                   -- "Chilanga Cement depot" or "ShopRite Garden City"
+    town            TEXT,
+    province        TEXT,
+    address         TEXT,
+    phone           TEXT,
+    org_id          UUID,                            -- the MoneyWise business, when the place is one
+    price           NUMERIC(14,2) NOT NULL CHECK (price > 0),   -- for one unit of the catalogue item
+    min_qty         INTEGER,                         -- the price applies from this quantity (bulk price)
+    delivers        BOOLEAN NOT NULL DEFAULT FALSE,
+    delivery_note   TEXT,
+    observed_on     DATE NOT NULL DEFAULT CURRENT_DATE,
+    status          TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','PENDING','REJECTED','EXPIRED')),
+    trust           TEXT NOT NULL DEFAULT 'ENTERED' CHECK (trust IN ('ENTERED','VERIFIED')),
+    evidence_url    TEXT,                            -- a photo of the price tag or receipt
+    reported_by     UUID,
+    created_by      UUID,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_price_points_item ON public.price_points (catalog_item_id, status, observed_on DESC);
+CREATE INDEX IF NOT EXISTS idx_price_points_town ON public.price_points (town);
+
+ALTER TABLE public.catalog_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.price_points ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.catalog_items, public.price_points TO service_role;
+CREATE TABLE IF NOT EXISTS public.rfq_requests (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    reference         TEXT NOT NULL UNIQUE,
+    buyer_org_id      UUID NOT NULL,
+    buyer_user_id     UUID NOT NULL,
+    buyer_name        TEXT,
+    buyer_phone       TEXT,
+    catalog_item_id   UUID REFERENCES public.catalog_items(id) ON DELETE SET NULL,
+    title             TEXT NOT NULL,
+    details           TEXT,
+    quantity          NUMERIC(14,2) NOT NULL CHECK (quantity > 0),
+    unit              TEXT NOT NULL,
+    delivery_town     TEXT,
+    delivery_province TEXT,
+    delivery_address  TEXT,
+    needed_by         DATE,
+    status            TEXT NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN','AWARDED','CLOSED','CANCELLED','EXPIRED')),
+    expires_at        TIMESTAMPTZ NOT NULL,
+    awarded_quote_id  UUID,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_rfq_requests_buyer ON public.rfq_requests (buyer_org_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_rfq_requests_open ON public.rfq_requests (status, expires_at) WHERE status = 'OPEN';
+
+CREATE TABLE IF NOT EXISTS public.rfq_quotes (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    rfq_id         UUID NOT NULL REFERENCES public.rfq_requests(id) ON DELETE CASCADE,
+    supplier_org_id UUID,                            -- the MoneyWise business, or null when the team entered a quote taken by phone
+    supplier_name  TEXT NOT NULL,
+    supplier_phone TEXT,
+    unit_price     NUMERIC(14,2) NOT NULL CHECK (unit_price > 0),
+    quantity       NUMERIC(14,2) NOT NULL CHECK (quantity > 0),
+    delivery_fee   NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK (delivery_fee >= 0),
+    total          NUMERIC(14,2) NOT NULL CHECK (total > 0),
+    delivers       BOOLEAN NOT NULL DEFAULT FALSE,
+    valid_until    DATE,
+    note           TEXT,
+    status         TEXT NOT NULL DEFAULT 'SUBMITTED' CHECK (status IN ('SUBMITTED','ACCEPTED','DECLINED','WITHDRAWN')),
+    product_id     UUID REFERENCES public.products(id) ON DELETE SET NULL,     -- the private listing made when the quote is accepted
+    price_point_id UUID REFERENCES public.price_points(id) ON DELETE SET NULL, -- the price record this quote added to the comparison
+    created_by     UUID,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_rfq_quotes_rfq ON public.rfq_quotes (rfq_id, status);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_rfq_quotes_supplier ON public.rfq_quotes (rfq_id, supplier_org_id) WHERE supplier_org_id IS NOT NULL;
+
+ALTER TABLE public.rfq_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rfq_quotes ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.rfq_requests, public.rfq_quotes TO service_role;
+ALTER TABLE public.price_points ADD COLUMN IF NOT EXISTS place_key     TEXT;                       -- the place's name boiled down, so "ShopRite  Garden City" and "Shoprite, Garden City" match
+ALTER TABLE public.price_points ADD COLUMN IF NOT EXISTS flag          TEXT;                       -- OUTLIER: held for review because it is far from the other prices
+ALTER TABLE public.price_points ADD COLUMN IF NOT EXISTS confirmations INTEGER NOT NULL DEFAULT 1; -- how many different shoppers have reported about this price here
+ALTER TABLE public.price_points ADD COLUMN IF NOT EXISTS review_note   TEXT;
+ALTER TABLE public.price_points ADD COLUMN IF NOT EXISTS points_awarded INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_price_points_place_key ON public.price_points (catalog_item_id, place_key, observed_on DESC) WHERE place_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_price_points_reporter ON public.price_points (reported_by, created_at DESC) WHERE reported_by IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_price_points_pending ON public.price_points (status, created_at) WHERE status = 'PENDING';
+CREATE TABLE IF NOT EXISTS public.org_gateway_credentials (
+    organization_id           UUID PRIMARY KEY REFERENCES public.organizations(id) ON DELETE CASCADE,
+    lipila_api_key_enc        TEXT,                        -- the wallet's API key, encrypted (AES-256-GCM)
+    lipila_webhook_secret_enc TEXT,                        -- that wallet's webhook signing secret, encrypted (empty when the shared one is used)
+    lipila_env                TEXT NOT NULL DEFAULT 'sandbox' CHECK (lipila_env IN ('sandbox', 'production')),
+    lipila_enabled            BOOLEAN NOT NULL DEFAULT FALSE,
+    key_hint                  TEXT,                        -- the last characters of the key, so the owner can tell which one is saved
+    updated_by                UUID,
+    created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.lipila_card_sessions (
+    reference       TEXT PRIMARY KEY,
+    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+    net_amount      NUMERIC(14,2) NOT NULL CHECK (net_amount > 0),       -- what the business should receive
+    charged_amount  NUMERIC(14,2) NOT NULL CHECK (charged_amount > 0),   -- what the customer's card is charged (net plus Lipila's fee)
+    fee_amount      NUMERIC(14,2) NOT NULL DEFAULT 0,
+    currency        TEXT NOT NULL DEFAULT 'ZMW',
+    status          TEXT NOT NULL DEFAULT 'INITIATED' CHECK (status IN ('INITIATED', 'PROCESSING', 'SUCCESSFUL', 'FAILED')),
+    redirect_url    TEXT,
+    customer        JSONB,
+    context         JSONB,                                               -- where the sale came from: payment link, quick link, store
+    failure_reason  TEXT,
+    record_error    TEXT,                                                -- set when Lipila confirmed the payment but we could not record it yet
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    finalized_at    TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_lipila_card_sessions_org ON public.lipila_card_sessions (organization_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_lipila_card_sessions_open ON public.lipila_card_sessions (status, created_at) WHERE status IN ('INITIATED', 'PROCESSING');
+
+ALTER TABLE public.org_gateway_credentials ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.lipila_card_sessions ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.org_gateway_credentials, public.lipila_card_sessions FROM anon, authenticated;
+GRANT ALL ON public.org_gateway_credentials, public.lipila_card_sessions TO service_role;
         `);
 
         // Refresh PostgREST schema cache
@@ -1551,6 +1696,7 @@ app.use('/onboarding', onboardingRoutes);
 app.use('/budgets', budgetRoutes);
 app.use('/reports', reportRoutes);
 app.use('/lenco', lencoRoutes);
+app.use('/lipila', lipilaRoutes);
 app.use('/payroll', payrollRoutes);
 app.use('/crm', crmRoutes);
 app.use('/invoices', invoiceRoutes);

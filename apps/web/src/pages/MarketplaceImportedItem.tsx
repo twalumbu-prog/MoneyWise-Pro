@@ -103,7 +103,11 @@ export const MarketplaceImportedItem: React.FC = () => {
                         )}
                         <h1 className="mt-5 text-xl font-bold leading-snug text-[#1F1F1F] md:text-2xl">{p.title}</h1>
                         <p className="mt-1 flex items-center gap-1.5 text-sm text-[#5F6368]"><Plane size={14} /> {p.origin ? `Ships from ${p.origin} · ` : ''}arrives in about {daysText(p.deliveryDaysMin, p.deliveryDaysMax)}</p>
-                        {p.description && <p className="mt-4 text-sm leading-6 text-[#3C4043]">{p.description}</p>}
+                        {p.specs?.engineCc ? (
+                            <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 rounded-2xl bg-[#F8FAFD] p-4 text-sm sm:grid-cols-3">
+                                {([['Year', p.specs.year], ['Mileage', p.specs.mileageKm ? `${Number(p.specs.mileageKm).toLocaleString()} km` : null], ['Engine', `${Number(p.specs.engineCc).toLocaleString()} cc`], ['Fuel', p.specs.fuel], ['Gearbox', p.specs.transmission], ['Steering', p.specs.steering ? `${p.specs.steering}-hand drive` : null], ['Drive', p.specs.drive], ['Doors', p.specs.doors], ['Seats', p.specs.seats], ['Colour', p.specs.color]] as [string, unknown][]).filter(([, v]) => v).map(([k, v]) => <div key={k}><dt className="text-[11px] uppercase tracking-wide text-[#80868B]">{k}</dt><dd className="font-medium text-[#1F1F1F]">{String(v)}</dd></div>)}
+                            </dl>
+                        ) : p.description && <p className="mt-4 text-sm leading-6 text-[#3C4043]">{p.description}</p>}
                         <ol className="mt-6 grid gap-3 sm:grid-cols-3">
                             {[['We buy it', 'We order it from the store for you, so you never need a foreign card.'], ['We ship it', 'You get the store’s tracking number, then ours as it crosses the border.'], ['You collect', 'We bring it to you in Lusaka, or you collect it from us.']].map(([t, d], i) => (
                                 <li key={t} className="rounded-2xl bg-[#F8FAFD] p-4"><p className="flex items-center gap-2 text-sm font-bold text-[#1F1F1F]"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#D3E3FD] text-xs text-[#041E49]">{i + 1}</span>{t}</p><p className="mt-1 text-xs text-[#5F6368]">{d}</p></li>
@@ -114,7 +118,8 @@ export const MarketplaceImportedItem: React.FC = () => {
                     <aside className="lg:sticky lg:top-4 lg:self-start">
                         <section className="rounded-2xl border border-[rgba(116,119,117,0.22)] bg-white p-4 md:p-5">
                             <h2 className="mb-3 text-base font-bold text-[#1F1F1F]">Your price</h2>
-                            <div className="mb-4 inline-flex items-center rounded-full shadow-[inset_0_0_0_1px_#C4C7C5]">
+                            {q.quote.estimate && <p className="mb-4 rounded-xl bg-[#FEF7E0] px-3 py-2.5 text-xs leading-5 text-[#7A4B00]"><b>Preview price.</b> We’re still confirming the freight, duty and clearing for cars, so this is an estimate and cars can’t be ordered just yet.</p>}
+                            <div className={`mb-4 inline-flex items-center rounded-full shadow-[inset_0_0_0_1px_#C4C7C5] ${p.specs?.engineCc ? 'hidden' : ''}`}>
                                 <button type="button" aria-label="One fewer" onClick={() => setQuantity((n) => Math.max(1, n - 1))} className="flex h-9 w-9 items-center justify-center text-[#5F6368] hover:text-black"><Minus size={14} /></button>
                                 <span className="w-8 text-center text-sm font-semibold tabular-nums">{quantity}</span>
                                 <button type="button" aria-label="One more" onClick={() => setQuantity((n) => Math.min(20, n + 1))} className="flex h-9 w-9 items-center justify-center text-[#5F6368] hover:text-black"><Plus size={14} /></button>
@@ -122,7 +127,7 @@ export const MarketplaceImportedItem: React.FC = () => {
                             <dl className="space-y-2 text-sm">
                                 {row('Item', q.quote.itemZmw, q.quote.currency !== 'ZMW' ? `Converted at K${q.quote.rate} per ${q.quote.currency}` : undefined)}
                                 {row('Shipping to Zambia', q.quote.shippingZmw)}
-                                {row('Import duty and VAT', q.quote.taxesZmw, 'An estimate, included now')}
+                                {row(q.taxLabel ?? 'Import duty and VAT', q.quote.taxesZmw, 'Included now')}
                                 {row('MoneyWise fee', q.quote.feeZmw)}
                                 <div className="flex justify-between border-t border-[rgba(116,119,117,0.2)] pt-3 text-lg font-bold"><dt>Total</dt><dd className="tabular-nums">{formatKwacha(total)}</dd></div>
                             </dl>
@@ -143,7 +148,7 @@ export const MarketplaceImportedItem: React.FC = () => {
                                 </div>
                             </div>
                             <ErrorNote text={error} />
-                            <PrimaryButton onClick={pay} busy={busy} disabled={!q.enabled || short || !walletId} className="mt-4 h-12 w-full text-base"><Lock size={16} /> {q.enabled ? `Pay ${formatKwacha(total)}` : 'Opening soon'}</PrimaryButton>
+                            <PrimaryButton onClick={pay} busy={busy} disabled={!q.enabled || short || !walletId || !!q.quote.estimate} className="mt-4 h-12 w-full text-base"><Lock size={16} /> {q.quote.estimate ? 'Orders open soon' : q.enabled ? `Pay ${formatKwacha(total)}` : 'Opening soon'}</PrimaryButton>
                             <p className="mt-3 flex items-start gap-2 text-xs text-[#5F6368]"><ShieldCheck size={14} className="mt-0.5 flex-shrink-0 text-[#0B57D0]" /> You pay MoneyWise from your wallet. If we can’t get the item, you’re refunded in full.</p>
                             <p className="mt-2 flex items-start gap-2 text-xs text-[#5F6368]"><ShoppingBag size={14} className="mt-0.5 flex-shrink-0 text-[#0B57D0]" /> Price from the store, checked {q.product.lastRefreshedAt ? new Date(q.product.lastRefreshedAt).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'recently'}. If it changes before we buy, we’ll tell you first.</p>
                         </section>

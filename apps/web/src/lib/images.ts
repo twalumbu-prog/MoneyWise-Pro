@@ -13,6 +13,11 @@ export function resized(url: string | null | undefined, width: number, opts: { s
     if (!url) return '';
     try {
         const u = new URL(url);
+        // Other stores' photos are full-size (Apple's are about 700 KB each): ask their image servers for the size needed.
+        if (/(^|\.)storeimages\.cdn-apple\.com$/i.test(u.host)) { u.searchParams.set('wid', String(Math.round(width))); u.searchParams.set('hei', String(Math.round(width))); u.searchParams.set('fmt', 'jpeg'); u.searchParams.set('qlt', '80'); return u.toString(); }
+        if (/(^|\.)cdn\.shopify\.com$/i.test(u.host)) { u.searchParams.set('width', String(Math.round(width))); return u.toString(); }
+        if (/(^|\.)images\.samsung\.com$/i.test(u.host)) { u.searchParams.set('wid', String(Math.round(width))); u.searchParams.set('fmt', 'webp'); return u.toString(); }
+        if (/(^|\.)image-cdn\.beforward\.jp$/i.test(u.host)) return url.replace('/medium/', '/large/'); // cars are judged by their photos: always the large one
         if (!u.pathname.startsWith(OBJECT_PATH) || !/\.supabase\.co$/i.test(u.host)) return url;
         u.pathname = u.pathname.replace(OBJECT_PATH, RENDER_PATH);
         u.searchParams.set('width', String(Math.round(width)));

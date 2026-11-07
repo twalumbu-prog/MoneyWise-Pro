@@ -5,15 +5,22 @@ export interface ImportCard {
     deliveryDaysMin: number; deliveryDaysMax: number; options: { name: string; values: string[] }[]; lastRefreshedAt: string | null; createdAt: string;
     /** Found by a search and not yet checked in full: the price is a close estimate until the item is opened. */
     estimated?: boolean;
+    /** The store it comes from, as a buyer knows it (Apple, Samsung, BE FORWARD...). */
+    store?: string | null;
+    /** What a car is: year, mileage, engine size and so on. */
+    specs?: { year?: number; mileageKm?: number; engineCc?: number; fuel?: string; transmission?: string; steering?: string; drive?: string; doors?: number; seats?: number; color?: string; port?: string } | null;
+    /** A car priced from provisional costs: shown as an estimate and not yet open to orders. */
+    vehicleEstimate?: boolean;
 }
 
-export interface ImportBrowse { products: ImportCard[]; total: number; hasMore: boolean; categories: { name: string; count: number }[]; enabled: boolean; needsMigration: boolean }
+export interface ImportBrowse { products: ImportCard[]; total: number; hasMore: boolean; categories: { name: string; count: number }[]; stores?: { name: string; count: number }[]; enabled: boolean; needsMigration: boolean }
 
 export interface ImportQuoteResponse {
     enabled: boolean;
     product: ImportCard & { sourceUrl: string | null };
-    quote: { quantity: number; currency: string; rate: number; itemZmw: number; shippingZmw: number; taxesZmw: number; feeZmw: number; totalZmw: number; perItemZmw: number };
+    quote: { quantity: number; currency: string; rate: number; itemZmw: number; shippingZmw: number; taxesZmw: number; feeZmw: number; totalZmw: number; perItemZmw: number; estimate?: boolean };
     taxNote: string;
+    taxLabel?: string;
     wallets: { id: string; name: string; is_main: boolean; balance: number }[];
 }
 

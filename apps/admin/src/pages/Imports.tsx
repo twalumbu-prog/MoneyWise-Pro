@@ -12,8 +12,10 @@ interface Product {
     id: string; source: string; title: string; price: number; currency: string; category: string | null; is_active: boolean; listed: boolean; views: number; last_refreshed_at: string | null; refresh_error: string | null; images: string[];
 }
 interface Feed { source: string; query: string; category?: string; limit?: number }
+interface VehicleRule { maxCc: number; maxAgeYears: number; dutyPercent: number }
+interface VehicleCosts { configured: boolean; preview?: boolean; transportZmw: number; clearingZmw: number; vatPercent: number; marginPercent: number; minMarginZmw: number; rules: VehicleRule[] }
 interface Overview {
-    orders: Order[]; products: Product[]; settings: { fx: Record<string, number>; pricing: Record<string, number> }; feeds: Feed[];
+    orders: Order[]; products: Product[]; settings: { fx: Record<string, number>; pricing: Record<string, number>; vehicle?: VehicleCosts }; feeds: Feed[];
     sources: { id: string; label: string; configured: boolean }[]; statuses: string[];
 }
 
@@ -89,6 +91,10 @@ export default function Imports() {
     const [fx, setFx] = useState<Record<string, string>>({});
     const [pricing, setPricing] = useState<Record<string, string>>({});
     const [feeds, setFeeds] = useState<Feed[]>([]);
+    const [veh, setVeh] = useState<Record<string, string>>({});
+    const [vehRules, setVehRules] = useState<Record<keyof VehicleRule, string>[]>([]);
+    const [vehReady, setVehReady] = useState(false);
+    const [vehPreview, setVehPreview] = useState(false);
     const [manual, setManual] = useState({ title: '', price: '', currency: 'USD', images: '', category: '', origin: '', weightKg: '', description: '' });
 
     const load = useCallback(async () => {
@@ -99,6 +105,13 @@ export default function Imports() {
             setFx(Object.fromEntries(Object.entries(r.settings.fx).map(([k, v]) => [k, String(v)])));
             setPricing(Object.fromEntries(Object.entries(r.settings.pricing).map(([k, v]) => [k, String(v)])));
             setFeeds(r.feeds);
+            const v = r.settings.vehicle;
+            if (v) {
+                setVeh({ transportZmw: String(v.transportZmw), clearingZmw: String(v.clearingZmw), vatPercent: String(v.vatPercent), marginPercent: String(v.marginPercent), minMarginZmw: String(v.minMarginZmw) });
+                setVehRules(v.rules.map((x) => ({ maxCc: String(x.maxCc), maxAgeYears: String(x.maxAgeYears), dutyPercent: String(x.dutyPercent) })));
+                setVehReady(v.configured);
+                setVehPreview(!!v.preview);
+            }
         } catch (e: any) { setError(e?.message || 'Could not load.'); }
     }, []);
     useEffect(() => { load(); }, [load]);
@@ -180,7 +193,7 @@ export default function Imports() {
                         <div><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Kwacha per unit of each currency</p>
                             <div className="grid grid-cols-3 gap-2">{Object.keys(fx).filter((k) => k !== 'ZMW').map((k) => <label key={k} className="text-xs text-slate-500">{k}<input className={`${input} mt-0.5 w-full`} inputMode="decimal" value={fx[k]} onChange={(e) => setFx({ ...fx, [k]: e.target.value })} /></label>)}</div></div>
                         <div><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Fee, duty, VAT and shipping</p>
-                            <div className="grid grid-cols-2 gap-2">{([['feePercent', 'Our fee %'], ['minFee', 'Minimum fee (K)'], ['dutyPercent', 'Import duty %'], ['vatPercent', 'VAT %'], ['shippingPerKgUsd', 'Shipping per kg (USD)']] as const).map(([k, l]) => <label key={k} className="text-xs text-slate-500">{l}<input className={`${input} mt-0.5 w-full`} inputMode="decimal" value={pricing[k] ?? ''} onChange={(e) => setPricing({ ...pricing, [k]: e.target.value })} /></label>)}</div></div>
+                            <div className="grid grid-cols-2 gap-2">{([['feePercent', 'Our fee %'], ['minFee', 'Minimum fee (K)'], ['dutyPercent', 'Import duty %'], ['vatPercent', 'VAT %'], ['shippingPerKgUsd', 'Shipping per kg (USD)'], ['bufferPercent', 'Buffer on market-priced items %']] as const).map(([k, l]) => <label key={k} className="text-xs text-slate-500">{l}<input className={`${input} mt-0.5 w-full`} inputMode="decimal" value={pricing[k] ?? ''} onChange={(e) => setPricing({ ...pricing, [k]: e.target.value })} /></label>)}</div></div>
                     </div>
                     <div className="mt-5">
                         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Searches that keep the catalogue stocked (run once a day, when a source is connected)</p>
@@ -195,6 +208,24 @@ export default function Imports() {
                         <button onClick={() => setFeeds([...feeds, { source: connected[0]?.id ?? 'EBAY', query: '', limit: 10 }])} className={`${btn} border border-slate-200 text-slate-700`}>Add a search</button>
                     </div>
                     <button disabled={busy} onClick={() => run(() => apiPut('/admin/imports/settings', { fx: Object.fromEntries(Object.entries(fx).map(([k, v]) => [k, Number(v)])), pricing: Object.fromEntries(Object.entries(pricing).map(([k, v]) => [k, Number(v)])), feeds }))} className={`${btn} mt-5 bg-brand-navy text-white`}>Save prices and searches</button>
+                </section>
+
+                <section className="mb-8 rounded-xl border border-slate-200 bg-white p-5">
+                    <h2 className="mb-1 text-sm font-semibold text-slate-700">Cars: what it costs to land one in Lusaka</h2>
+                    <p className="mb-3 text-xs text-slate-500">The dealer's price already includes shipping, inspection and certificate to the port (Dar es Salaam). Add what happens after: the road trip, duty by engine size and age, VAT, clearing and your margin. Cars are not shown to buyers until the figures are marked as real.</p>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">{([['transportZmw', 'Road to Lusaka (K)'], ['clearingZmw', 'Clearing and agent (K)'], ['vatPercent', 'VAT %'], ['marginPercent', 'Our margin %'], ['minMarginZmw', 'Minimum margin (K)']] as const).map(([k, l]) => <label key={k} className="text-xs text-slate-500">{l}<input className={`${input} mt-0.5 w-full`} inputMode="decimal" value={veh[k] ?? ''} onChange={(e) => setVeh({ ...veh, [k]: e.target.value })} /></label>)}</div>
+                    <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">Duty by engine size and age (a car uses the first row it fits, smallest engine first)</p>
+                    {vehRules.map((r, i) => (
+                        <div key={i} className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                            up to <input className={`${input} w-24`} inputMode="numeric" value={r.maxCc} onChange={(e) => setVehRules(vehRules.map((x, k) => (k === i ? { ...x, maxCc: e.target.value } : x)))} /> cc, up to
+                            <input className={`${input} w-20`} inputMode="numeric" value={r.maxAgeYears} onChange={(e) => setVehRules(vehRules.map((x, k) => (k === i ? { ...x, maxAgeYears: e.target.value } : x)))} /> years old: duty
+                            <input className={`${input} w-20`} inputMode="decimal" value={r.dutyPercent} onChange={(e) => setVehRules(vehRules.map((x, k) => (k === i ? { ...x, dutyPercent: e.target.value } : x)))} /> % of the price at the port
+                            <button onClick={() => setVehRules(vehRules.filter((_, k) => k !== i))} className={`${btn} text-red-600`}>Remove</button>
+                        </div>))}
+                    <button onClick={() => setVehRules([...vehRules, { maxCc: '', maxAgeYears: '', dutyPercent: '' }])} className={`${btn} border border-slate-200 text-slate-700`}>Add a duty row</button>
+                    <label className="mt-4 flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={vehPreview} onChange={(e) => setVehPreview(e.target.checked)} /> Preview: show cars with these figures as an estimate, and don't take orders yet</label>
+                    <label className="mt-2 flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={vehReady} onChange={(e) => setVehReady(e.target.checked)} /> These figures are real: show cars to buyers with a price</label>
+                    <button disabled={busy} onClick={() => run(() => apiPut('/admin/imports/settings', { vehicle: { ...Object.fromEntries(Object.entries(veh).map(([k, v]) => [k, Number(v)])), rules: vehRules.map((r) => ({ maxCc: Number(r.maxCc), maxAgeYears: Number(r.maxAgeYears), dutyPercent: Number(r.dutyPercent) })), configured: vehReady, preview: vehPreview } }))} className={`${btn} mt-4 bg-brand-navy text-white`}>Save car costs</button>
                 </section>
             </>)}
         </div>

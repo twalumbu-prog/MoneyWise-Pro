@@ -1,7 +1,8 @@
 import { supabase } from '../lib/supabase';
 import { payLinkService, PayLinkError } from './payLink.service';
 import { notifySeller, notifyUser } from './marketplaceNotify';
-import { DEFAULT_SETTINGS, ImportSettings, PricingError, priceImport } from './imports/pricing';
+import { DEFAULT_SETTINGS, ImportSettings, PricingError, VehicleCosts, isTooCostly, priceImport } from './imports/pricing';
+import { loadWatchlist, normaliseUrl, storeHost, storeLabel, type WatchEntry } from './imports/web';
 import { CONNECTORS, SourceItem, backgroundTurn, connectorFor, connectorForUrl, userFirst } from './imports/sources';
 
 /**
@@ -40,13 +41,14 @@ export async function loadSettings(force = false): Promise<{ settings: ImportSet
     const value: ImportSettings = {
         fx: { ...DEFAULT_SETTINGS.fx, ...((m.get('fx') as object) ?? {}) },
         pricing: { ...DEFAULT_SETTINGS.pricing, ...((m.get('pricing') as object) ?? {}) },
+        vehicle: { ...DEFAULT_SETTINGS.vehicle, ...((m.get('vehicle') as object) ?? {}) },
     };
     const feeds = Array.isArray(m.get('feeds')) ? (m.get('feeds') as Feed[]) : [];
     settingsCache = { at: Date.now(), value, feeds };
     return { settings: value, feeds };
 }
 
-export async function saveSettings(input: { fx?: Record<string, number>; pricing?: Partial<ImportSettings['pricing']>; feeds?: Feed[] }) {
+export async function saveSettings(input: { fx?: Record<string, number>; pricing?: Partial<ImportSettings['pricing']>; feeds?: Feed[]; watch?: WatchEntry[]; vehicle?: Partial<VehicleCosts> }) {
     const rows: { key: string; value: unknown }[] = [];
     if (input.fx) {
         const fx: Record<string, number> = {};
@@ -64,6 +66,32 @@ export async function saveSettings(input: { fx?: Record<string, number>; pricing
         const feeds = input.feeds.filter((f) => f && CONNECTORS[f.source] && String(f.query ?? '').trim()).slice(0, 30).map((f) => ({ source: f.source, query: String(f.query).trim().slice(0, 80), category: f.category ? String(f.category).slice(0, 60) : undefined, limit: Math.min(30, Math.max(1, Math.floor(Number(f.limit) || 10))) }));
         rows.push({ key: 'feeds', value: feeds });
     }
+    if (input.vehicle) {
+        const cur = (await loadSettings(true)).settings.vehicle;
+        const n = (x: unknown, fallback: number) => { const v = Number(x); return Number.isFinite(v) && v >= 0 ? v : fallback; };
+        const rules = Array.isArray(input.vehicle.rules)
+            ? input.vehicle.rules.map((r) => ({ maxCc: n(r?.maxCc, 0), maxAgeYears: n(r?.maxAgeYears, 0), dutyPercent: n(r?.dutyPercent, -1) })).filter((r) => r.maxCc > 0 && r.maxAgeYears > 0 && r.dutyPercent >= 0 && r.dutyPercent <= 300).sort((a, b) => a.maxCc - b.maxCc || a.maxAgeYears - b.maxAgeYears).slice(0, 40)
+            : cur.rules;
+        const next: VehicleCosts = { transportZmw: n(input.vehicle.transportZmw, cur.transportZmw), clearingZmw: n(input.vehicle.clearingZmw, cur.clearingZmw), vatPercent: n(input.vehicle.vatPercent, cur.vatPercent), marginPercent: n(input.vehicle.marginPercent, cur.marginPercent), minMarginZmw: n(input.vehicle.minMarginZmw, cur.minMarginZmw), rules, configured: false };
+        // Cars only get a price once the team says the figures are real, and there is at least one duty row.
+        next.configured = input.vehicle.configured === true && rules.length > 0;
+        // Preview: show cars with provisional figures, labelled as an estimate and closed to orders.
+        next.preview = input.vehicle.preview === true && rules.length > 0;
+        rows.push({ key: 'vehicle', value: next });
+    }
+    if (input.watch) {
+        const seen = new Set<string>();
+        const watch: WatchEntry[] = [];
+        for (const w of input.watch.slice(0, 200)) {
+            const slug = String(w?.slug ?? '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+            const urls = (Array.isArray(w?.urls) ? w.urls : []).map((u) => normaliseUrl(String(u))).filter((u): u is string => !!u).slice(0, 8);
+            if (!slug || seen.has(slug) || !String(w?.title ?? '').trim() || !urls.length) continue;
+            seen.add(slug);
+            const n = (x: unknown) => (Number(x) > 0 ? Number(x) : undefined);
+            watch.push({ slug, title: String(w.title).trim().slice(0, 200), category: w.category ? String(w.category).slice(0, 60) : undefined, weightKg: n(w.weightKg), urls, minUsd: n(w.minUsd), maxUsd: n(w.maxUsd), description: w.description ? String(w.description).slice(0, 1500) : undefined, image: typeof w.image === 'string' && /^https:\/\//.test(w.image) ? w.image : undefined });
+        }
+        rows.push({ key: 'watch', value: watch });
+    }
     for (const r of rows) await supabase.from('import_settings').upsert({ key: r.key, value: r.value, updated_at: new Date().toISOString() });
     settingsCache = null;
     return loadSettings(true);
@@ -71,19 +99,39 @@ export async function saveSettings(input: { fx?: Record<string, number>; pricing
 
 /* ───────────── Catalogue ───────────── */
 
-const PRODUCT_COLS = 'id, source, source_id, source_url, title, description, images, category, origin, price, currency, shipping_price, weight_kg, delivery_days_min, delivery_days_max, options, is_active, listed, views, last_refreshed_at, refresh_error, created_at';
+const PRODUCT_COLS = 'id, source, source_id, source_url, title, description, images, category, origin, price, currency, shipping_price, weight_kg, delivery_days_min, delivery_days_max, options, specs, is_active, listed, views, last_refreshed_at, refresh_error, created_at';
 
 const publicView = (p: any, s: ImportSettings) => {
     let perItemZmw: number | null = null;
-    try { perItemZmw = priceImport(p, 1, s).totalZmw; } catch { /* no rate for this currency: the item is shown without a price */ }
+    let estimate = false;
+    let tooCostly = false;
+    try { const q = priceImport(p, 1, s); perItemZmw = q.totalZmw; estimate = !!q.estimate; tooCostly = isTooCostly(q); } catch { /* no rate for this currency: the item is shown without a price */ }
     return {
         id: p.id, title: p.title, description: p.description, images: p.images ?? [], category: p.category, origin: p.origin, source: p.source,
         perItemZmw, deliveryDaysMin: p.delivery_days_min, deliveryDaysMax: p.delivery_days_max, options: p.options ?? [], lastRefreshedAt: p.last_refreshed_at,
-        createdAt: p.created_at,
+        createdAt: p.created_at, specs: p.specs ?? null, store: storeName(p), vehicleEstimate: estimate, tooCostly,
         /** Found by a search but not yet looked up in full: the price is a close estimate until the item is opened. */
         estimated: !p.last_refreshed_at,
     };
 };
+
+let facetCache: { at: number; rows: any[] } | null = null;
+async function facetRows(): Promise<any[]> {
+    if (facetCache && Date.now() - facetCache.at < 60_000) return facetCache.rows;
+    const rows: any[] = [];
+    for (let from = 0; from < 20_000; from += 1000) {
+        const { data, error } = await supabase.from('imported_products').select('id, category, source, source_url, specs, price, shipping_price, weight_kg, currency, images').eq('is_active', true).eq('listed', true).order('id').range(from, from + 999);
+        if (error) throw error;
+        rows.push(...(data ?? []));
+        if ((data ?? []).length < 1000) break;
+    }
+    facetCache = { at: Date.now(), rows };
+    return rows;
+}
+
+/** The name a buyer knows the store by. */
+const storeName = (p: { source: string; source_url: string | null }): string | null =>
+    p.source === 'CJ' ? 'CJ Dropshipping' : p.source === 'EBAY' ? 'eBay' : storeLabel(p.source_url);
 
 const PAGE_SIZE = 48;
 const words = (q: string) => q.replace(/[%,()\\_]/g, ' ').split(/\s+/).map((w) => w.trim()).filter((w) => w.length > 1).slice(0, 5);
@@ -113,7 +161,7 @@ async function searchOnDemand(phrase: string): Promise<void> {
     } catch (e) { console.error('[Imports] live search failed', phrase, e); }
 }
 
-export async function browse(q?: string, category?: string, pageNo?: number) {
+export async function browse(q?: string, category?: string, pageNo?: number, store?: string) {
     const { settings } = await loadSettings();
     const ws = words(String(q ?? ''));
     const page = Math.max(0, Math.floor(Number(pageNo) || 0));
@@ -126,18 +174,35 @@ export async function browse(q?: string, category?: string, pageNo?: number) {
 
     let qb = base();
     if (category) qb = qb.eq('category', category);
+    if (store) {
+        if (store === 'CJ Dropshipping') qb = qb.eq('source', 'CJ');
+        else if (store === 'eBay') qb = qb.eq('source', 'EBAY');
+        else { const host = storeHost(store); qb = host ? qb.ilike('source_url', `%${host}%`) : qb.eq('id', '00000000-0000-0000-0000-000000000000'); }
+    }
     const { data, error, count } = await matching(qb, ws).order('created_at', { ascending: false }).range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
     if (error) { if (isTableMissing(error)) return { needsMigration: true, products: [], total: 0, hasMore: false, categories: [] as { name: string; count: number }[], enabled: false }; throw error; }
-    const products = ((data ?? []) as any[]).map((p: any) => publicView(p, settings)).filter((p) => p.perItemZmw != null);
+    // An item with no photo, or one that costs far more to ship than it is worth, isn't shown.
+    const products = ((data ?? []) as any[]).map((p: any) => publicView(p, settings)).filter((p) => p.perItemZmw != null && !p.tooCostly && p.images.length > 0);
 
     let categories: { name: string; count: number }[] = [];
-    if (page === 0 && !ws.length && !category) {
-        const { data: cats } = await supabase.from('imported_products').select('category').eq('is_active', true).eq('listed', true).not('category', 'is', null).limit(10000);
+    let stores: { name: string; count: number }[] = [];
+    if (page === 0 && !ws.length && !category && !store) {
+        // The database hands back at most 1,000 rows at a time, so the catalogue is read in pages (and the answer kept for a minute).
+        const cats = await facetRows();
         const counts = new Map<string, number>();
-        (cats ?? []).forEach((r: any) => counts.set(r.category, (counts.get(r.category) ?? 0) + 1));
+        const storeCounts = new Map<string, number>();
+        (cats ?? []).forEach((r: any) => {
+            // An item with no price to show (a car before its costs are set) isn't counted, so a category never promises what the grid can't show.
+            try { if (isTooCostly(priceImport(r, 1, settings))) return; } catch { return; }
+            if (!Array.isArray(r.images) || !r.images.length) return;
+            if (r.category) counts.set(r.category, (counts.get(r.category) ?? 0) + 1);
+            const sn = storeName(r);
+            if (sn) storeCounts.set(sn, (storeCounts.get(sn) ?? 0) + 1);
+        });
         categories = [...counts].map(([name, n]) => ({ name, count: n })).sort((x, y) => y.count - x.count).slice(0, 40);
+        stores = [...storeCounts].map(([name, n]) => ({ name, count: n })).sort((x, y) => y.count - x.count).slice(0, 30);
     }
-    return { products, total: count ?? 0, hasMore: (page + 1) * PAGE_SIZE < (count ?? 0), categories, enabled: !!(await importsOrg()), needsMigration: false };
+    return { products, total: count ?? 0, hasMore: (page + 1) * PAGE_SIZE < (count ?? 0), categories, stores, enabled: !!(await importsOrg()), needsMigration: false };
 }
 
 /** Upserts what a source returned. New items start listed or not as the caller says; existing ones keep their listed flag. */
@@ -149,6 +214,7 @@ async function saveSourceItem(source: string, it: SourceItem, opts: { listed: bo
         shipping_price: it.shippingPrice ?? 0, is_active: it.available, last_refreshed_at: now, refresh_error: null, updated_at: now,
         ...(it.weightKg ? { weight_kg: it.weightKg } : {}),
         ...(it.options ? { options: it.options } : {}),
+        ...(it.specs ? { specs: it.specs } : {}),
         ...(it.deliveryDays ? { delivery_days_min: it.deliveryDays.min, delivery_days_max: it.deliveryDays.max } : {}),
         ...(opts.publish ? { listed: true } : {}),
     };
@@ -166,7 +232,7 @@ async function saveSourceItem(source: string, it: SourceItem, opts: { listed: bo
  * and stays unlisted unless a customer is waiting to see it.
  */
 async function savePending(source: string, it: SourceItem, opts: { listed: boolean; category?: string }): Promise<boolean> {
-    if (!it.images.length) return false; // a card without a picture looks empty
+    if (!it.images.length && source !== 'WEB') return false; // a card without a picture looks empty (a store page candidate gets its picture when it is read in full)
     const { data: ex } = await supabase.from('imported_products').select('id, listed, last_refreshed_at').eq('source', source).eq('source_id', it.sourceId).maybeSingle();
     if (ex) {
         if (opts.listed && !ex.listed && !ex.last_refreshed_at) await supabase.from('imported_products').update({ listed: true }).eq('id', ex.id);
@@ -174,7 +240,7 @@ async function savePending(source: string, it: SourceItem, opts: { listed: boole
     }
     const { error } = await supabase.from('imported_products').insert({
         source, source_id: it.sourceId, source_url: it.url || null, title: it.title, images: it.images, category: opts.category ?? it.category ?? null, origin: it.origin ?? null,
-        price: it.price, currency: it.currency, shipping_price: 0, is_active: true, listed: opts.listed, last_refreshed_at: null,
+        price: it.price, currency: it.currency, shipping_price: 0, is_active: true, listed: opts.listed, last_refreshed_at: null, ...(it.specs ? { specs: it.specs } : {}),
     });
     return !error;
 }
@@ -206,7 +272,7 @@ const STARTER_SEARCHES: { query: string; category: string }[] = [
     ...['backpack', 'handbag', 'wallet', 'travel bag', 'laptop bag', 'school bag', 'crossbody bag'].map((query) => ({ query, category: 'Bags' })),
     ...['sneakers', 'women dress', 'men jacket', 'hoodie', 't-shirt', 'jeans', 'leggings', 'sandals', 'boots', 'swimwear', 'suit', 'skirt', 'socks', 'cap', 'scarf', 'sunglasses', 'watch men', 'belt', 'school uniform', 'kids clothes', 'sportswear', 'underwear', 'pajamas', 'sweater', 'coat'].map((query) => ({ query, category: 'Fashion' })),
     ...['jewelry necklace', 'earrings', 'bracelet', 'ring', 'anklet'].map((query) => ({ query, category: 'Jewelry' })),
-    ...['car accessories', 'car seat cover', 'car vacuum', 'dash cam', 'tyre inflator', 'car led light', 'motorcycle helmet', 'car organizer'].map((query) => ({ query, category: 'Car' })),
+    ...['car accessories', 'car seat cover', 'car vacuum', 'dash cam', 'tyre inflator', 'car led light', 'motorcycle helmet', 'car organizer'].map((query) => ({ query, category: 'Car accessories' })),
     ...['baby toys', 'baby clothes', 'stroller', 'toy car', 'puzzle', 'doll', 'lego blocks', 'baby bottle', 'school supplies', 'kids bicycle'].map((query) => ({ query, category: 'Kids' })),
     ...['skin care', 'hair extensions', 'wig', 'makeup brush', 'lipstick', 'nail polish', 'perfume', 'hair dryer', 'hair straightener', 'beard trimmer', 'face mask', 'shampoo', 'body lotion', 'eyelashes'].map((query) => ({ query, category: 'Beauty' })),
     ...['fitness resistance bands', 'yoga mat', 'dumbbell', 'jump rope', 'football', 'camping tent', 'fishing rod', 'bicycle accessories', 'gym gloves', 'massage gun'].map((query) => ({ query, category: 'Sports' })),
@@ -215,6 +281,21 @@ const STARTER_SEARCHES: { query: string; category: string }[] = [
     ...['pet bed', 'dog toy', 'cat toy', 'dog leash', 'pet feeder', 'aquarium'].map((query) => ({ query, category: 'Pets' })),
     ...['hair clipper', 'blood pressure monitor', 'thermometer', 'first aid kit', 'massage chair', 'posture corrector'].map((query) => ({ query, category: 'Health' })),
 ];
+
+/** Every product on the watchlist gets a row to be priced. It is shown once its price has been read. */
+async function seedWatchlist(): Promise<void> {
+    const watch = await loadWatchlist();
+    if (!watch.length) return;
+    const { data: have } = await supabase.from('imported_products').select('source_id').eq('source', 'WEB').like('source_id', 'w:%');
+    const known = new Set((have ?? []).map((r: any) => r.source_id));
+    for (const w of watch) {
+        if (known.has(`w:${w.slug}`) || !w.urls?.length) continue;
+        await supabase.from('imported_products').insert({
+            source: 'WEB', source_id: `w:${w.slug}`, source_url: w.urls[0], title: w.title, description: w.description ?? null, images: w.image ? [w.image] : [], category: w.category ?? null,
+            origin: 'USA', price: 0, currency: 'USD', shipping_price: 0, weight_kg: w.weightKg ?? null, is_active: true, listed: false, last_refreshed_at: null,
+        });
+    }
+}
 
 /** A search that turned up this many waiting items pauses new searches until the backlog has been checked. */
 const BACKLOG_LIMIT = 1500;
@@ -233,6 +314,8 @@ export async function refreshStale(limits: SweepLimits = {}): Promise<{ hydrated
     const result = { hydrated: 0, refreshed: 0, discovered: 0, waiting: 0 };
     const spare = () => Date.now() < deadline && Object.values(CONNECTORS).every((c) => !c.configured() || !c.spareBudget || c.spareBudget());
 
+    await seedWatchlist().catch((e) => console.error('[Imports] watchlist seed failed', e));
+
     const pending = await supabase.from('imported_products').select(PRODUCT_COLS).neq('source', 'MANUAL').eq('is_active', true).is('last_refreshed_at', null).order('created_at', { ascending: false }).limit(limits.hydrate ?? 25);
     if (pending.error) { if (isTableMissing(pending.error)) return result; throw pending.error; }
     for (const p of pending.data ?? []) {
@@ -242,7 +325,7 @@ export async function refreshStale(limits: SweepLimits = {}): Promise<{ hydrated
     }
 
     const old = await supabase.from('imported_products').select(PRODUCT_COLS).neq('source', 'MANUAL').eq('is_active', true).not('last_refreshed_at', 'is', null).order('last_refreshed_at', { ascending: true }).limit((limits.refresh ?? 8) * 4);
-    const due = (old.data ?? []).filter((p) => Date.now() - Date.parse(p.last_refreshed_at) > (p.views >= 20 ? 6 : p.views >= 3 ? 24 : 14 * 24) * HOUR).slice(0, limits.refresh ?? 8);
+    const due = (old.data ?? []).filter((p) => Date.now() - Date.parse(p.last_refreshed_at) > (p.source === 'WEB' ? (p.views >= 20 ? 6 : 12) : p.views >= 20 ? 6 : p.views >= 3 ? 24 : 14 * 24) * HOUR).slice(0, limits.refresh ?? 8);
     for (const p of due) {
         if (!spare()) break;
         await backgroundTurn();
@@ -253,7 +336,7 @@ export async function refreshStale(limits: SweepLimits = {}): Promise<{ hydrated
     result.waiting = backlog ?? 0;
     if (result.waiting < BACKLOG_LIMIT) {
         const { feeds: saved } = await loadSettings();
-        const starter: Feed[] = Object.values(CONNECTORS).filter((c) => c.configured() && c.detailOnDiscover).flatMap((c) => STARTER_SEARCHES.map((x) => ({ source: c.id, query: x.query, category: x.category, limit: 100 })));
+        const starter: Feed[] = Object.values(CONNECTORS).filter((c) => c.configured() && c.detailOnDiscover).flatMap((c) => (c.starter ?? STARTER_SEARCHES).map((x) => ({ source: c.id, query: x.query, category: x.category, limit: 100 })));
         const feeds = saved.length ? saved : starter;
         let searches = 0;
         for (const f of feeds) {
@@ -279,6 +362,26 @@ export async function refreshStale(limits: SweepLimits = {}): Promise<{ hydrated
         }
     }
     return result;
+}
+
+/** Runs one saved search right now and records the candidates it finds (they are priced by the next sweeps). Returns how many were new. */
+export async function discoverNow(source: string, query: string, category?: string): Promise<number> {
+    const c = connectorFor(source);
+    if (!c?.configured()) throw new ImportError('That source isn’t connected yet.', 409, 'NOT_CONFIGURED');
+    let added = 0;
+    for (const found of await c.search(query, 40)) if (await savePending(source, found, { listed: false, category })) added++;
+    const at = new Date().toISOString();
+    await supabase.from('import_settings').upsert({ key: `feed:${source}:${query}`.slice(0, 120), value: { at }, updated_at: at });
+    return added;
+}
+
+/** Prices up to `n` candidates that are waiting, so they can go live. */
+export async function hydrateWaiting(n: number, source?: string): Promise<number> {
+    let q = supabase.from('imported_products').select(PRODUCT_COLS).neq('source', 'MANUAL').eq('is_active', true).is('last_refreshed_at', null).order('created_at', { ascending: false }).limit(n);
+    if (source) q = q.eq('source', source);
+    const { data } = await q;
+    for (const p of data ?? []) await refreshProduct(p);
+    return (data ?? []).length;
 }
 
 let sweeping = false;
@@ -340,7 +443,10 @@ export async function quoteImport(ctx: Ctx, input: { id: string; quantity?: numb
         enabled: !!(await importsOrg()),
         product: { ...publicView(p, settings), sourceUrl: p.source_url },
         quote,
-        taxNote: `Import duty and VAT are estimated at ${settings.pricing.dutyPercent}% and ${settings.pricing.vatPercent}%. They’re included now, so nothing is added when it arrives.`,
+        taxLabel: quote.estimate || settings.pricing.dutyPercent > 0 ? 'Import duty and VAT' : 'VAT',
+        taxNote: quote.estimate ? 'Duty and VAT for cars are provisional until the figures are confirmed.' : settings.pricing.dutyPercent > 0
+            ? `Import duty and VAT are estimated at ${settings.pricing.dutyPercent}% and ${settings.pricing.vatPercent}%. They’re included now, so nothing is added when it arrives.`
+            : `VAT is included at ${settings.pricing.vatPercent}%, so nothing is added when it arrives.`,
         wallets: await payLinkService.payerWallets(ctx.orgId),
     };
 }
@@ -374,6 +480,7 @@ export async function placeImportOrder(ctx: Ctx, input: PlaceInput) {
         if (prior) { if (prior.buyer_user_id !== ctx.userId) throw new ImportError('That request isn’t yours.', 403, 'FORBIDDEN'); return prior; }
     }
     const q = await quoteImport(ctx, { id: input.productId, quantity: input.quantity });
+    if (q.quote.estimate) throw new ImportError('Car prices are still being confirmed, so cars can’t be ordered just yet.', 409, 'ESTIMATE');
     const phone = String(input.phone ?? '').trim().slice(0, 20);
     const address = String(input.address ?? '').trim().slice(0, 300);
     if (!phone) throw new ImportError('Add a phone number so we can reach you.', 400, 'PHONE');

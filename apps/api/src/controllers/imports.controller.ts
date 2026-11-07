@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { supabase } from '../lib/supabase';
 import * as svc from '../services/imports.service';
+import { loadWatchlist } from '../services/imports/web';
 
 async function ctxOf(req: any): Promise<svc.Ctx> {
     const { data } = await supabase.from('users').select('name').eq('id', req.user.id).maybeSingle();
@@ -18,7 +19,7 @@ const who = (req: any) => String(req.user?.email ?? req.user?.id ?? 'admin');
 
 /** GET /marketplace/imports?q=&category=  What can be ordered from overseas, priced in kwacha. */
 export const browse = async (req: any, res: Response) => {
-    try { res.json(await svc.browse(req.query.q as string, req.query.category as string, Number(req.query.page) || 0)); } catch (e) { fail(res, e, 'load the imported products'); }
+    try { res.json(await svc.browse(req.query.q as string, req.query.category as string, Number(req.query.page) || 0, req.query.store as string)); } catch (e) { fail(res, e, 'load the imported products'); }
 };
 /** POST /marketplace/imports/quote  { id, quantity }  One item, what it costs, and the buyer's wallets. */
 export const quote = async (req: any, res: Response) => {
@@ -43,7 +44,7 @@ export const myOrders = async (req: any, res: Response) => {
 export const adminOverview = async (req: any, res: Response) => {
     try {
         const [orders, products, cfg] = await Promise.all([svc.queue(req.query.status as string), svc.adminProducts(), svc.loadSettings(true)]);
-        res.json({ orders, products, settings: cfg.settings, feeds: cfg.feeds, sources: svc.connectorStatus(), statuses: svc.STATUSES });
+        res.json({ orders, products, settings: cfg.settings, feeds: cfg.feeds, watch: await loadWatchlist(), sources: svc.connectorStatus(), statuses: svc.STATUSES });
     } catch (e) { fail(res, e, 'load the imports'); }
 };
 export const adminUpdateOrder = async (req: any, res: Response) => {

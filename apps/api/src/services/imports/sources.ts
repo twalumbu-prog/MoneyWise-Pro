@@ -7,6 +7,8 @@
  * (CJ_API_KEY) was tried against the live API: search, product details, and the shipping options to Zambia.
  */
 
+import { web } from './web';
+
 export interface SourceItem {
     sourceId: string;
     url: string;
@@ -24,10 +26,12 @@ export interface SourceItem {
     options?: { name: string; values: string[] }[];
     /** How long delivery to Zambia takes, when the source says. */
     deliveryDays?: { min: number; max: number };
+    /** What a vehicle is: year, mileage, engine size and so on. */
+    specs?: Record<string, unknown>;
 }
 
 export interface Connector {
-    id: 'EBAY' | 'CJ';
+    id: 'EBAY' | 'CJ' | 'WEB';
     label: string;
     configured(): boolean;
     fetch(sourceId: string): Promise<SourceItem | null>;
@@ -38,6 +42,8 @@ export interface Connector {
     parseUrl(url: string): string | null;
     /** True when a search only returns a summary, so a new item is fetched in full before it is saved. */
     detailOnDiscover?: boolean;
+    /** The searches this source runs by itself to fill the catalogue, when they differ from the general list. */
+    starter?: { query: string; category: string }[];
 }
 
 const stripHtml = (s: string) => s.replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
@@ -227,7 +233,7 @@ const cj: Connector = {
     },
 };
 
-export const CONNECTORS: Record<string, Connector> = { EBAY: ebay, CJ: cj };
+export const CONNECTORS: Record<string, Connector> = { EBAY: ebay, CJ: cj, WEB: web };
 export const connectorFor = (source: string): Connector | null => CONNECTORS[source] ?? null;
 export const connectorForUrl = (url: string): { connector: Connector; sourceId: string } | null => {
     for (const c of Object.values(CONNECTORS)) { const id = c.parseUrl(url); if (id) return { connector: c, sourceId: id }; }
