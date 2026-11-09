@@ -25,3 +25,18 @@ export function bankReconciliationHold(
     if (String(e.date).slice(0, 10) > latest) return null;
     return `Not matched to a line on the bank statement (the statement covers up to ${latest}) — held until it reconciles`;
 }
+
+/**
+ * A single Master Fees fee billed TERMLY can sit in QuickBooks as several MONTHLY invoices (K855 = 3 x K285). The payment is then spread over those pieces, oldest
+ * first, each taking at most its open balance. Returns null when the pieces together do not have enough open balance for the payment (a person must look), so a
+ * payment is never applied beyond what the invoices still owe.
+ */
+export function allocateAcrossPieces(amount: number, pieces: Array<{ id: string; balance: number; date: string }>): Array<{ invoiceId: string; amount: number }> | null {
+    let left = Math.round(amount * 100);
+    const lines: Array<{ invoiceId: string; amount: number }> = [];
+    for (const p of [...pieces].sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.id).localeCompare(String(b.id)))) {
+        const open = Math.round(p.balance * 100); if (open <= 0 || left <= 0) continue;
+        const take = Math.min(open, left); lines.push({ invoiceId: p.id, amount: take / 100 }); left -= take;
+    }
+    return left === 0 && lines.length ? lines : null;
+}
