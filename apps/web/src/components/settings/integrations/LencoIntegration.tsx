@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { IntegrationLogo } from './IntegrationLogo';
 import { organizationService } from '../../../services/organization.service';
 import { lencoService } from '../../../services/lenco.service';
 import { useAuth } from '../../../context/AuthContext';
@@ -191,6 +192,7 @@ export const LencoIntegration: React.FC<LencoIntegrationProps> = ({ onBack }) =>
                 >
                     <ArrowLeft className="w-5 h-5 text-gray-500" />
                 </button>
+                <IntegrationLogo name="lenco" size={40} wide />
                 <div>
                     <h3 className="text-lg font-bold text-[#1F1F1F]">Lenco Integration</h3>
                     <p className="text-sm text-gray-500">Manage your Lenco banking integration.</p>

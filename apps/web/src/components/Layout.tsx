@@ -60,7 +60,8 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
     const getPageTitle = () => {
         if (title) return title;
         const path = location.pathname;
-        if (path === '/' || path === '/requisitions') return 'Inbox';
+        if (path === '/') return 'Home';
+        if (path === '/requisitions') return 'Inbox';
         if (path === '/cashbook') return 'Wallet';
         if (path === '/reporting') return isRequestor ? 'Portfolio' : 'Reports';
         if (path === '/intelligence') return 'Business Intelligence';

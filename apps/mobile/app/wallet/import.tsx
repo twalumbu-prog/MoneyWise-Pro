@@ -82,7 +82,7 @@ export default function ImportStatementScreen() {
     return (
         <View style={styles.root}>
             <Stack.Screen options={{ headerShown: false }} />
-            <ScreenHeader title="Import Statement" />
+            <ScreenHeader title="Start Bank Reconciliation" />
 
             <ScrollView contentContainerStyle={styles.scroll}>
                 {stage === 'pick' && (

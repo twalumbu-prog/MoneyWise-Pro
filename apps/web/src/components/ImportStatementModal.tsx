@@ -135,7 +135,7 @@ const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
                             <FileSpreadsheet className="h-5 w-5 text-white" />
                         </div>
                         <div>
-                            <h2 className="text-base font-bold leading-tight">Import Bank Statement</h2>
+                            <h2 className="text-base font-bold leading-tight">Start Bank Reconciliation</h2>
                             <p className="text-slate-400 text-[10px]">Upload bank statement for {walletName}</p>
                         </div>
                     </div>

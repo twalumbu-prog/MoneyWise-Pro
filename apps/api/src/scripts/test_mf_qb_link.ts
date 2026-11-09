@@ -44,5 +44,23 @@ const run = (mfNum: string, desc: string, amt: number, cust: QbInvoiceLike[], al
   const r = findQbInvoiceForItem('INV-X', 'Term 1 fees', 100, [q], buildMfNumberIndex([q]), new Set(), { mfTerm: 1 });
   ok('M9 callers that pass no IMP data behave exactly as before', r.tier !== 'IMP_DOCNUM'); }
 
+// ---- school year (Makupe Tobias, Nov 2026: 2026 Term 3 transport K1,500 linked to the 2025 "TERM 3" K1,500 invoice)
+const yr = (date: string, desc: string) => inv({ id: 'y' + date, docNumber: 'D' + date, totalAmt: 1500, date, lines: [{ amount: 1500, itemName: 'Bus', description: desc }] } as any);
+{ const last = yr('2025-09-03', 'TERM 3');
+  const r = findQbInvoiceForItem('INV-Y', 'KAT10 - Between Katende', 1500, [last], buildMfNumberIndex([last]), new Set(), { mfTerm: 3, mfYear: 2026 });
+  ok('Y1 a 2025 "TERM 3" invoice is NOT Term 3 of 2026 (same student, same amount)', r.tier === 'NONE', JSON.stringify(r)); }
+{ const last = yr('2025-09-03', 'TERM 3'), now = yr('2026-09-02', 'TERM 3');
+  const r = findQbInvoiceForItem('INV-Y', 'KAT10 - Between Katende', 1500, [last, now], buildMfNumberIndex([last, now]), new Set(), { mfTerm: 3, mfYear: 2026 });
+  ok('Y2 with both years present, the 2026 invoice is chosen', r.invoice?.id === 'y2026-09-02', JSON.stringify(r)); }
+{ const dec = yr('2025-12-10', 'TERM 1');
+  const r = findQbInvoiceForItem('INV-Y', 'Tuition', 1500, [dec], buildMfNumberIndex([dec]), new Set(), { mfTerm: 1, mfYear: 2026 });
+  ok('Y3 a December invoice counts as Term 1 of the NEXT year', r.tier === 'TERM_AMOUNT' && r.invoice?.id === 'y2025-12-10', JSON.stringify(r)); }
+{ const last = yr('2025-09-03', 'KAT10 - Between Katende');
+  const r = findQbInvoiceForItem('INV-Y', 'KAT10 - Between Katende', 1500, [last], buildMfNumberIndex([last]), new Set(), { mfTerm: 3, mfYear: 2026 });
+  ok('Y4 the year also blocks an identical-description match from last year', r.tier === 'NONE', JSON.stringify(r)); }
+{ const last = yr('2025-09-03', 'TERM 3');
+  const r = findQbInvoiceForItem('INV-Y', 'KAT10', 1500, [last], buildMfNumberIndex([last]), new Set(), { mfTerm: 3 });
+  ok('Y5 callers that pass no year behave exactly as before', r.tier === 'TERM_AMOUNT', JSON.stringify(r)); }
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

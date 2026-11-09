@@ -4,6 +4,7 @@ import { QuickBooksIntegration } from '../components/settings/integrations/Quick
 import { LencoIntegration } from '../components/settings/integrations/LencoIntegration';
 import { MetaMessagingIntegration } from '../components/settings/integrations/MetaMessagingIntegration';
 import { MasterfeesIntegration } from '../components/settings/integrations/MasterfeesIntegration';
+import { IntegrationLogo } from '../components/settings/integrations/IntegrationLogo';
 import { SageIntegration } from '../components/settings/integrations/SageIntegration';
 import { GmailIntegration, GmailLogo } from '../components/settings/integrations/GmailIntegration';
 import { LipilaIntegration } from '../components/settings/integrations/LipilaIntegration';
@@ -17,11 +18,9 @@ import {
     FileText,
     Share2,
     User,
-    GraduationCap,
     CreditCard,
     Code2,
-    Landmark,
-    MessageCircle
+    Landmark
 } from 'lucide-react';
 import { GeneralSettings } from '../components/settings/GeneralSettings';
 import { UserManagement } from '../components/settings/UserManagement';
@@ -167,9 +166,7 @@ export const Settings: React.FC = () => {
                                                             onClick={() => setActiveIntegration('quickbooks')}
                                                             className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-green/30 transition-all text-left group"
                                                         >
-                                                            <div className="h-12 w-12 bg-[#2CA01C] rounded-xl flex items-center justify-center text-white font-bold text-xl mb-4 group-hover:scale-105 transition-transform shadow-sm">
-                                                                qb
-                                                            </div>
+                                                            <IntegrationLogo name="quickbooks" className="mb-4 group-hover:scale-105 transition-transform" />
                                                             <h4 className="text-base font-bold text-gray-900 mb-1">QuickBooks Online</h4>
                                                             <p className="text-sm text-gray-500">Sync expenses and chart of accounts</p>
                                                         </button>
@@ -179,9 +176,7 @@ export const Settings: React.FC = () => {
                                                             onClick={() => setActiveIntegration('sage')}
                                                             className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-green/30 transition-all text-left group"
                                                         >
-                                                            <div className="h-12 w-12 bg-[#00D639] rounded-xl flex items-center justify-center text-white font-bold text-sm mb-4 group-hover:scale-105 transition-transform shadow-sm">
-                                                                sage
-                                                            </div>
+                                                            <IntegrationLogo name="sage" className="mb-4 group-hover:scale-105 transition-transform" />
                                                             <h4 className="text-base font-bold text-gray-900 mb-1">Sage Accounting</h4>
                                                             <p className="text-sm text-gray-500">Post journals to Sage Business Cloud (Pastel Online)</p>
                                                         </button>
@@ -191,9 +186,7 @@ export const Settings: React.FC = () => {
                                                             onClick={() => setActiveIntegration('lenco')}
                                                             className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-pink/30 transition-all text-left group"
                                                         >
-                                                            <div className="h-12 w-12 bg-brand-pink rounded-xl flex items-center justify-center text-white font-bold text-xl mb-4 group-hover:scale-105 transition-transform shadow-sm">
-                                                                L
-                                                            </div>
+                                                            <IntegrationLogo name="lenco" wide className="mb-4 group-hover:scale-105 transition-transform" />
                                                             <h4 className="text-base font-bold text-gray-900 mb-1">Lenco Banking</h4>
                                                             <p className="text-sm text-gray-500">Manage corporate wallets and transfers</p>
                                                         </button>
@@ -203,9 +196,7 @@ export const Settings: React.FC = () => {
                                                             onClick={() => setActiveIntegration('masterfees')}
                                                             className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-navy/30 transition-all text-left group"
                                                         >
-                                                            <div className="h-12 w-12 bg-brand-navy rounded-xl flex items-center justify-center text-white mb-4 group-hover:scale-105 transition-transform shadow-sm">
-                                                                <GraduationCap className="h-6 w-6" />
-                                                            </div>
+                                                            <IntegrationLogo name="masterfees" className="mb-4 group-hover:scale-105 transition-transform" />
                                                             <h4 className="text-base font-bold text-gray-900 mb-1">Master Fees</h4>
                                                             <p className="text-sm text-gray-500">Sync school invoices, fee revenue &amp; receivables</p>
                                                         </button>
@@ -214,8 +205,10 @@ export const Settings: React.FC = () => {
                                                             onClick={() => setActiveIntegration('meta')}
                                                             className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-navy/30 transition-all text-left group"
                                                         >
-                                                            <div className="h-12 w-12 bg-[#25D366] rounded-xl flex items-center justify-center text-white mb-4 group-hover:scale-105 transition-transform shadow-sm">
-                                                                <MessageCircle className="h-6 w-6" />
+                                                            <div className="flex -space-x-2 mb-4">
+                                                                <IntegrationLogo name="whatsapp" className="group-hover:scale-105 transition-transform" />
+                                                                <IntegrationLogo name="facebook" className="group-hover:scale-105 transition-transform" />
+                                                                <IntegrationLogo name="instagram" className="group-hover:scale-105 transition-transform" />
                                                             </div>
                                                             <h4 className="text-base font-bold text-gray-900 mb-1">WhatsApp, Facebook &amp; Instagram</h4>
                                                             <p className="text-sm text-gray-500">Spot orders and payments in customer messages</p>

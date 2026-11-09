@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiJson } from 'core';
-import { ArrowLeft, MessageCircle, Facebook, Instagram, AlertCircle, Trash2 } from 'lucide-react';
+import { ArrowLeft, AlertCircle, Trash2 } from 'lucide-react';
+import { IntegrationLogo, IntegrationLogoKey } from './IntegrationLogo';
 
 interface Connection {
     id: string;
@@ -13,10 +14,10 @@ interface Connection {
 
 interface MetaStatus { configured: boolean; connections: Connection[] }
 
-const PLATFORMS: { key: Connection['platform']; label: string; blurb: string; icon: React.ReactNode }[] = [
-    { key: 'WHATSAPP', label: 'WhatsApp Business', blurb: 'Read customer messages and spot orders and payments.', icon: <MessageCircle className="h-5 w-5" /> },
-    { key: 'FACEBOOK', label: 'Facebook Page', blurb: 'Messenger conversations on your business Page.', icon: <Facebook className="h-5 w-5" /> },
-    { key: 'INSTAGRAM', label: 'Instagram Business', blurb: 'Direct messages on your business or creator account.', icon: <Instagram className="h-5 w-5" /> },
+const PLATFORMS: { key: Connection['platform']; label: string; blurb: string; logo: IntegrationLogoKey }[] = [
+    { key: 'WHATSAPP', label: 'WhatsApp Business', blurb: 'Read customer messages and spot orders and payments.', logo: 'whatsapp' },
+    { key: 'FACEBOOK', label: 'Facebook Page', blurb: 'Messenger conversations on your business Page.', logo: 'facebook' },
+    { key: 'INSTAGRAM', label: 'Instagram Business', blurb: 'Direct messages on your business or creator account.', logo: 'instagram' },
 ];
 
 export const MetaMessagingIntegration: React.FC<{ onBack: () => void }> = ({ onBack }) => {
@@ -86,7 +87,7 @@ export const MetaMessagingIntegration: React.FC<{ onBack: () => void }> = ({ onB
                     return (
                         <div key={p.key} className="p-5 bg-white border border-gray-200 rounded-2xl">
                             <div className="flex items-center gap-4">
-                                <div className="h-10 w-10 rounded-xl bg-brand-navy text-white flex items-center justify-center">{p.icon}</div>
+                                <IntegrationLogo name={p.logo} size={40} />
                                 <div className="flex-1 min-w-0">
                                     <div className="font-bold text-gray-900">{p.label}</div>
                                     <div className="text-sm text-gray-500">{p.blurb}</div>

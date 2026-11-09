@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { Layout } from '../components/Layout';
-import { StatementsPanel } from '../components/accounting/AccountingParts';
 import { reportService, ExpenditureAggregation, ExpenditureItem } from '../services/report.service';
 import { budgetService, Budget } from '../services/budget.service';
 import { accountService, Account } from '../services/account.service';
@@ -13,6 +12,8 @@ import { FinancialHighlights } from '../components/FinancialHighlights';
 import { BucketProgressBar } from '../components/BucketProgressBar';
 
 import { StaffPortfolio } from './StaffPortfolio';
+import { FinancialStatements, STATEMENT_TABS, StatementTab } from '../components/FinancialStatements';
+import { useSearchParams } from 'react-router-dom';
 import {
   Accordion,
   AccordionItem,
@@ -25,6 +26,18 @@ import { buildReportGroups, computeReportTotals, getPercentageChange } from 'cor
 
 type PeriodType = 'MONTHLY' | 'WEEKLY' | 'QUARTERLY';
 type ModeType = 'EXPENSE' | 'CASH_OUTFLOW';
+
+export type ReportView = 'PROFIT_LOSS' | 'NET_WORTH' | StatementTab;
+
+export const REPORT_VIEWS: { id: ReportView; label: string }[] = [
+    { id: 'NET_WORTH', label: 'Net Worth' },
+    { id: 'PROFIT_LOSS', label: 'Profit/Loss' },
+    ...STATEMENT_TABS,
+];
+
+const isStatementView = (v: ReportView): v is StatementTab => {
+    return STATEMENT_TABS.some(t => t.id === v);
+};
 
 interface ReportGroup {
     id: string;
@@ -40,16 +53,6 @@ interface ReportGroup {
 const toLocalISODate = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-/** Runs `fn` over `items` with at most `limit` in flight, so a page never opens dozens of requests at once. */
-async function mapLimit<T, R>(items: T[], limit: number, fn: (x: T) => Promise<R>): Promise<R[]> {
-    const out: R[] = new Array(items.length);
-    let next = 0;
-    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
-        while (next < items.length) { const k = next++; out[k] = await fn(items[k]); }
-    }));
-    return out;
-}
-
 export const Reporting: React.FC = () => {
         // State
     const [mode] = useState<ModeType>('EXPENSE');
@@ -62,9 +65,24 @@ export const Reporting: React.FC = () => {
     const [filterEndInput, setFilterEndInput] = useState('');
     
     const queryClient = useQueryClient();
-    const [reportView, setReportView] = useState<'PROFIT_LOSS' | 'NET_WORTH'>('PROFIT_LOSS');
-    const [stmtTab, setStmtTab] = useState<'tb' | 'bs' | 'gl' | 'cf' | 'jn' | 'ar' | 'pf' | null>(null);
-    const showStatements = stmtTab !== null;
+    const [searchParams, setSearchParams] = useSearchParams();
+    const initialView = useMemo<ReportView>(() => {
+        const p = (searchParams.get('tab') || searchParams.get('view') || '').toUpperCase();
+        if (p === 'STATEMENTS') return 'CASHFLOW';
+        if (REPORT_VIEWS.some(r => r.id === p)) return p as ReportView;
+        return 'PROFIT_LOSS';
+    }, [searchParams]);
+
+    const [reportView, setReportView] = useState<ReportView>(initialView);
+
+    const selectView = (v: string) => {
+        const next = v as ReportView;
+        if (isStatementView(next)) {
+            setIsChartOpen(false);
+        }
+        setReportView(next);
+        setSearchParams(next === 'PROFIT_LOSS' ? {} : { view: next }, { replace: true });
+    };
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['INCOME', 'EXPENSE', 'ASSET', 'LIABILITY', 'EQUITY']));
 
     // Mobile Layout States
@@ -73,7 +91,8 @@ export const Reporting: React.FC = () => {
     // Visibility Settings
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [hiddenAccounts, setHiddenAccounts] = useState<Set<string>>(new Set());
-    const [excludeZeroSpend, setExcludeZeroSpend] = useState(false);
+    // On by default: zero-balance accounts have always been hidden, so the toggle starts matching what is shown.
+    const [excludeZeroSpend, setExcludeZeroSpend] = useState(true);
     
     const [expandedAccount, setExpandedAccount] = useState<string | null>(null);
     const [itemsLoading, setItemsLoading] = useState(false);
@@ -328,7 +347,9 @@ export const Reporting: React.FC = () => {
         chartFetchingRef.current.add(key);
         try {
             const periods = buildChartPeriods(tf);
-            const results = await mapLimit(periods, 3, p => reportService.getExpenditures(p.startDate, p.endDate, m));
+            const results = await Promise.all(
+                periods.map(p => reportService.getExpenditures(p.startDate, p.endDate, m))
+            );
             setChartRawCache(prev => ({ ...prev, [key]: results }));
         } catch (err) {
             console.error('Failed to load chart data', err);
@@ -374,25 +395,23 @@ export const Reporting: React.FC = () => {
         // Prefetch every timeframe for the current mode in the background so the
         // chart is ready before it's even opened. Current timeframe goes first.
         if (!orgId) return;
-        if (stmtTab) return; // the statement tabs have their own requests; don't compete with them
         let cancelled = false;
         (async () => {
             await ensureTimeframe(chartTimeframe, mode);
-            await new Promise(r => setTimeout(r, 4000));
             for (const tf of ['1D', '1W', '1M', '3M', 'YTD'] as const) {
                 if (cancelled) break;
-                await ensureTimeframe(tf, mode);
+                ensureTimeframe(tf, mode);
             }
         })();
         return () => { cancelled = true; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [orgId, mode, stmtTab]);
+    }, [orgId, mode]);
 
     useEffect(() => {
         // Make sure the freshly selected timeframe is fetched (deduped by cache).
-        if (orgId && !stmtTab) ensureTimeframe(chartTimeframe, mode);
+        if (orgId) ensureTimeframe(chartTimeframe, mode);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [chartTimeframe, orgId, mode, stmtTab]);
+    }, [chartTimeframe, orgId, mode]);
 
     useEffect(() => {
         // Reset the analyzed window to a recent span whenever the timeframe (and
@@ -529,7 +548,6 @@ export const Reporting: React.FC = () => {
     
 
     const periodKeyRef = useRef(`${periodData.start}|${periodData.end}|${mode}`);
-    const itemsInFlight = useRef<Set<string>>(new Set());
     
     // Prefetch all account items so the progress bar is instant
     useEffect(() => {
@@ -543,11 +561,11 @@ export const Reporting: React.FC = () => {
             return;
         }
 
-        if (!expenditures.length || stmtTab) return;
+        if (!expenditures.length) return;
         
         const fetchAll = async () => {
             const activeAccounts = expenditures.filter(e => Number(e.total_amount) !== 0);
-            const toFetch = activeAccounts.filter(e => !accountItems[e.account_id] && !itemsInFlight.current.has(`${periodKeyRef.current}|${e.account_id}`));
+            const toFetch = activeAccounts.filter(e => !accountItems[e.account_id]);
             
             if (toFetch.length === 0) return;
 
@@ -555,22 +573,18 @@ export const Reporting: React.FC = () => {
                 const chunk = toFetch.slice(i, i + 5);
                 await Promise.all(
                     chunk.map(async (acc) => {
-                        const flightKey = `${periodKeyRef.current}|${acc.account_id}`;
-                        itemsInFlight.current.add(flightKey);
                         try {
                             const items = await reportService.getExpenditureItems(acc.account_id, periodData.start, periodData.end, mode);
                             setAccountItems(prev => ({ ...prev, [acc.account_id]: items }));
                         } catch (err) {
                             // ignore
-                        } finally {
-                            itemsInFlight.current.delete(flightKey);
                         }
                     })
                 );
             }
         };
         fetchAll();
-    }, [expenditures, periodData.start, periodData.end, mode, accountItems, stmtTab]);
+    }, [expenditures, periodData.start, periodData.end, mode, accountItems]);
 
     const toggleExpand = async (accountId: string) => {
         if (expandedAccount === accountId) {
@@ -644,8 +658,9 @@ export const Reporting: React.FC = () => {
     // accounts to expenditures, merging budgets, and grouping by type is not
     // logic either client should carry an independent copy of.
     const displayData = useMemo(() => {
+        const coreView = reportView === 'NET_WORTH' ? 'NET_WORTH' : 'PROFIT_LOSS';
         const { groups, flatData } = buildReportGroups(
-            allAccounts, expenditures, budgets, prevExpenditures, reportView,
+            allAccounts, expenditures, budgets, prevExpenditures, coreView,
             { hiddenAccountIds: hiddenAccounts, excludeZeroSpend, sortField, sortDesc },
         );
         return { isGrouped: true as const, groups, data: flatData, flatData };
@@ -759,113 +774,13 @@ export const Reporting: React.FC = () => {
     // Ordering for the animated tab transitions (drives slide direction).
     const REPORT_VIEW_ORDER: ('NET_WORTH' | 'PROFIT_LOSS')[] = ['NET_WORTH', 'PROFIT_LOSS'];
     const TIMEFRAME_ORDER: ('1D' | '1W' | '1M' | '3M' | 'YTD')[] = ['1D', '1W', '1M', '3M', 'YTD'];
-    const reportViewIndex = REPORT_VIEW_ORDER.indexOf(reportView);
+    const reportViewIndex = REPORT_VIEW_ORDER.indexOf(reportView === 'NET_WORTH' ? 'NET_WORTH' : 'PROFIT_LOSS');
     const timeframeIndex = TIMEFRAME_ORDER.indexOf(chartTimeframe);
 
     if (isRequestor) {
         return (
             <Layout backgroundColor="bg-gray-50 md:bg-white" title="Portfolio">
                 <StaffPortfolio />
-            </Layout>
-        );
-    }
-
-    const dateFilter = (
-        <>
-            {/* Date-range filter — defaults to YTD; filter opens a date picker */}
-            <div className="relative flex items-center gap-2">
-                <div className="h-8 px-3 bg-slate-100 rounded-[10px] flex items-center gap-2">
-                    <span className="text-gray-900 text-[10px] font-bold font-['DM_Sans'] uppercase whitespace-nowrap">
-                        {displayPeriodLabel}
-                    </span>
-                    {customFilter && (
-                        <button onClick={handleClearFilter} className="text-gray-400 hover:text-gray-700 transition-colors">
-                            <X size={12} />
-                        </button>
-                    )}
-                </div>
-                <button
-                    onClick={openDateFilter}
-                    className={`h-8 w-8 flex items-center justify-center rounded-[10px] transition-colors ${isDateFilterOpen || customFilter ? 'bg-[#0B57D0] md:bg-[#0B57D0] text-white' : 'bg-slate-100 text-gray-600 hover:bg-slate-200'}`}
-                    title="Filter by date range"
-                >
-                    <CalendarDays size={14} />
-                </button>
-                {isDateFilterOpen && (
-                    <>
-                        <div className="fixed inset-0 z-40" onClick={() => setIsDateFilterOpen(false)} />
-                        <div className="absolute right-0 top-10 z-50 bg-white border border-gray-100 rounded-2xl shadow-xl p-4 w-72 animate-in fade-in slide-in-from-top-2 duration-200">
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Filter by Date Range</p>
-                            <div className="flex flex-col gap-3">
-                                <div>
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">From</label>
-                                    <input
-                                        type="date"
-                                        value={filterStartInput}
-                                        onChange={e => setFilterStartInput(e.target.value)}
-                                        className="w-full text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#0B57D0] focus:ring-1 focus:ring-[#0B57D0]"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">To</label>
-                                    <input
-                                        type="date"
-                                        value={filterEndInput}
-                                        onChange={e => setFilterEndInput(e.target.value)}
-                                        className="w-full text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#0B57D0] focus:ring-1 focus:ring-[#0B57D0]"
-                                    />
-                                </div>
-                                <div className="flex gap-2 pt-1">
-                                    <button
-                                        onClick={handleClearFilter}
-                                        className="flex-1 py-2 text-xs font-bold text-gray-500 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
-                                    >
-                                        Reset to YTD
-                                    </button>
-                                    <button
-                                        onClick={handleApplyFilter}
-                                        disabled={!filterStartInput || !filterEndInput || filterStartInput > filterEndInput}
-                                        className="flex-1 py-2 text-xs font-bold text-white bg-[#0B57D0] md:bg-[#0B57D0] rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-40"
-                                    >
-                                        Apply
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </>
-                )}
-            </div>
-        </>
-    );
-
-    const pillValue: string = stmtTab ?? reportView;
-    const onPill = (v: string) => { if (v === 'tb' || v === 'bs' || v === 'gl' || v === 'cf' || v === 'jn' || v === 'ar' || v === 'pf') setStmtTab(v); else { setStmtTab(null); setReportView(v as 'NET_WORTH' | 'PROFIT_LOSS'); } };
-    const pills = (
-        <div className="h-8 max-w-[calc(100vw-22rem)] overflow-x-auto p-1 bg-slate-100 md:bg-[#F8FAFD] rounded-[10px] flex justify-start items-center gap-1">
-            <TabPillGroup value={pillValue} onChange={onPill} trackClassName="flex items-center gap-1" indicatorClassName="bg-white rounded-lg shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)]"
-                tabs={[
-                    { value: 'NET_WORTH', buttonClassName: 'px-3.5 h-6 rounded-lg flex justify-center items-center', label: (<span className={`text-center text-[10px] font-['DM_Sans'] leading-5 ${pillValue === 'NET_WORTH' ? 'text-gray-900 font-bold' : 'text-gray-600 font-normal'}`}>Net Worth</span>) },
-                    { value: 'PROFIT_LOSS', buttonClassName: 'px-3.5 h-6 rounded-lg flex justify-center items-center', label: (<span className={`text-center text-[10px] font-['DM_Sans'] leading-5 ${pillValue === 'PROFIT_LOSS' ? 'text-gray-900 font-bold' : 'text-gray-600 font-normal'}`}>Profit/Loss</span>) },
-                    { value: 'tb', buttonClassName: 'px-3.5 h-6 rounded-lg flex justify-center items-center whitespace-nowrap', label: (<span className={`text-center text-[10px] font-['DM_Sans'] leading-5 ${pillValue === 'tb' ? 'text-gray-900 font-bold' : 'text-gray-600 font-normal'}`}>Trial Balance</span>) },
-                    { value: 'bs', buttonClassName: 'px-3.5 h-6 rounded-lg flex justify-center items-center whitespace-nowrap', label: (<span className={`text-center text-[10px] font-['DM_Sans'] leading-5 ${pillValue === 'bs' ? 'text-gray-900 font-bold' : 'text-gray-600 font-normal'}`}>Balance Sheet</span>) },
-                    { value: 'gl', buttonClassName: 'px-3.5 h-6 rounded-lg flex justify-center items-center whitespace-nowrap', label: (<span className={`text-center text-[10px] font-['DM_Sans'] leading-5 ${pillValue === 'gl' ? 'text-gray-900 font-bold' : 'text-gray-600 font-normal'}`}>Account Ledger</span>) },
-                    { value: 'cf', buttonClassName: 'px-3.5 h-6 rounded-lg flex justify-center items-center whitespace-nowrap', label: (<span className={`text-center text-[10px] font-['DM_Sans'] leading-5 ${pillValue === 'cf' ? 'text-gray-900 font-bold' : 'text-gray-600 font-normal'}`}>Cash Flow</span>) },
-                    { value: 'ar', buttonClassName: 'px-3.5 h-6 rounded-lg flex justify-center items-center whitespace-nowrap', label: (<span className={`text-center text-[10px] font-['DM_Sans'] leading-5 ${pillValue === 'ar' ? 'text-gray-900 font-bold' : 'text-gray-600 font-normal'}`}>Receivables</span>) },
-                    { value: 'jn', buttonClassName: 'px-3.5 h-6 rounded-lg flex justify-center items-center whitespace-nowrap', label: (<span className={`text-center text-[10px] font-['DM_Sans'] leading-5 ${pillValue === 'jn' ? 'text-gray-900 font-bold' : 'text-gray-600 font-normal'}`}>Journals</span>) },
-                    { value: 'pf', buttonClassName: 'px-3.5 h-6 rounded-lg flex justify-center items-center whitespace-nowrap', label: (<span className={`text-center text-[10px] font-['DM_Sans'] leading-5 ${pillValue === 'pf' ? 'text-gray-900 font-bold' : 'text-gray-600 font-normal'}`}>Budget &amp; Compare</span>) },
-                ]} />
-        </div>
-    );
-
-    if (showStatements) {
-        return (
-            <Layout noPadding={true} backgroundColor="bg-gray-50 md:bg-white" title="Reports">
-                <div className="flex flex-1 flex-col overflow-hidden bg-transparent p-4 pt-0 md:h-[calc(100vh-64px)]">
-                    <div className="flex flex-1 flex-col gap-3 overflow-hidden rounded-[20px] border border-gray-200 bg-white p-3.5 shadow-sm">
-                        <div className="flex flex-shrink-0 items-center justify-between">{pills}{dateFilter}</div>
-                        <div className="flex-1 overflow-y-auto px-1 pb-4"><StatementsPanel view={stmtTab!} from={periodData.start} to={periodData.end} /></div>
-                    </div>
-                </div>
             </Layout>
         );
     }
@@ -880,18 +795,92 @@ export const Reporting: React.FC = () => {
                             
                             {/* Header Tabs */}
                             <div className="self-stretch inline-flex justify-between items-center flex-shrink-0">
-                                <div className="flex items-center gap-2">{pills}
-                                    {reportView === 'PROFIT_LOSS' && (
-                                        <div className="w-[1px] h-3 bg-gray-300" />
-                                    )}
+                                <div className="h-8 p-1 bg-slate-100 md:bg-[#F8FAFD] rounded-[10px] flex justify-start items-center gap-1 overflow-x-auto no-scrollbar max-w-[calc(100%-200px)]">
+                                    <TabPillGroup
+                                        value={reportView}
+                                        onChange={selectView}
+                                        trackClassName="flex items-center gap-1"
+                                        indicatorClassName="bg-white rounded-lg shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)]"
+                                        tabs={REPORT_VIEWS.map(t => ({
+                                            value: t.id,
+                                            buttonClassName: 'px-3.5 h-6 rounded-lg flex justify-center items-center shrink-0',
+                                            label: (
+                                                <span className={`text-center text-[10px] font-['DM_Sans'] leading-5 whitespace-nowrap ${reportView === t.id ? 'text-gray-900 font-bold' : 'text-gray-600 font-normal'}`}>
+                                                    {t.label}
+                                                </span>
+                                            ),
+                                        }))}
+                                    />
                                 </div>
 
-                                {dateFilter}
+                                {/* Date-range filter — defaults to YTD; filter opens a date picker */}
+                                <div className="relative flex items-center gap-2">
+                                    <div className="h-8 px-3 bg-slate-100 rounded-[10px] flex items-center gap-2">
+                                        <span className="text-gray-900 text-[10px] font-bold font-['DM_Sans'] uppercase whitespace-nowrap">
+                                            {displayPeriodLabel}
+                                        </span>
+                                        {customFilter && (
+                                            <button onClick={handleClearFilter} className="text-gray-400 hover:text-gray-700 transition-colors">
+                                                <X size={12} />
+                                            </button>
+                                        )}
+                                    </div>
+                                    <button
+                                        onClick={openDateFilter}
+                                        className={`h-8 w-8 flex items-center justify-center rounded-[10px] transition-colors ${isDateFilterOpen || customFilter ? 'bg-[#006AFF] md:bg-[#0059D8] text-white' : 'bg-slate-100 text-gray-600 hover:bg-slate-200'}`}
+                                        title="Filter by date range"
+                                    >
+                                        <CalendarDays size={14} />
+                                    </button>
+                                    {isDateFilterOpen && (
+                                        <>
+                                            <div className="fixed inset-0 z-40" onClick={() => setIsDateFilterOpen(false)} />
+                                            <div className="absolute right-0 top-10 z-50 bg-white border border-gray-100 rounded-2xl shadow-xl p-4 w-72 animate-in fade-in slide-in-from-top-2 duration-200">
+                                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Filter by Date Range</p>
+                                                <div className="flex flex-col gap-3">
+                                                    <div>
+                                                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">From</label>
+                                                        <input
+                                                            type="date"
+                                                            value={filterStartInput}
+                                                            onChange={e => setFilterStartInput(e.target.value)}
+                                                            className="w-full text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#006AFF] focus:ring-1 focus:ring-[#006AFF]"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">To</label>
+                                                        <input
+                                                            type="date"
+                                                            value={filterEndInput}
+                                                            onChange={e => setFilterEndInput(e.target.value)}
+                                                            className="w-full text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#006AFF] focus:ring-1 focus:ring-[#006AFF]"
+                                                        />
+                                                    </div>
+                                                    <div className="flex gap-2 pt-1">
+                                                        <button
+                                                            onClick={handleClearFilter}
+                                                            className="flex-1 py-2 text-xs font-bold text-gray-500 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+                                                        >
+                                                            Reset to YTD
+                                                        </button>
+                                                        <button
+                                                            onClick={handleApplyFilter}
+                                                            disabled={!filterStartInput || !filterEndInput || filterStartInput > filterEndInput}
+                                                            className="flex-1 py-2 text-xs font-bold text-white bg-[#006AFF] md:bg-[#0059D8] rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-40"
+                                                        >
+                                                            Apply
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
                             </div>
 
                             {/* Main Chart/Reporting Area */}
                             <div className="w-full flex-1 flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-1 min-h-0">
-                                {isChartOpen ? (
+                                {isStatementView(reportView) ? <FinancialStatements tab={reportView} start={periodData.start} end={periodData.end} /> : isChartOpen ? (
                                     <div className="w-full flex-1 min-h-0 flex flex-col bg-white rounded-xl outline outline-1 outline-offset-[-1px] outline-violet-100 overflow-visible mb-4 shadow-[0px_4px_4px_0px_rgba(0,0,0,0.10)]">
                                         <div className="w-full py-4 px-6 flex justify-between items-center border-b border-gray-100">
                                             <div className="flex flex-col">
@@ -937,7 +926,7 @@ export const Reporting: React.FC = () => {
                                         <div ref={desktopChartBodyRef} className="flex-1 min-h-0 flex flex-col">
                                         {chartLoading ? (
                                             <div className="flex-1 flex items-center justify-center">
-                                                <Loader2 className="h-8 w-8 animate-spin text-[#0B57D0]" />
+                                                <Loader2 className="h-8 w-8 animate-spin text-[#2563EB]" />
                                             </div>
                                         ) : chartData.length > 0 ? (() => {
                                             const CHART_H = desktopChartHeight;
@@ -951,7 +940,7 @@ export const Reporting: React.FC = () => {
                                             const renderYAxisTick = (props: any) => {
                                                 const { y, payload } = props;
                                                 return (
-                                                    <text x={4} y={y} dy={4} textAnchor="start" fontSize={11} fontWeight={500} fill="#9AA0A6">
+                                                    <text x={4} y={y} dy={4} textAnchor="start" fontSize={11} fontWeight={500} fill="#94a3b8">
                                                         {yTickFormatter(payload.value)}
                                                     </text>
                                                 );
@@ -1012,30 +1001,30 @@ export const Reporting: React.FC = () => {
                                                         >
                                                             <defs>
                                                                 <linearGradient id="colorValueDesktop" x1="0" y1="0" x2="0" y2="1">
-                                                                    <stop offset="5%" stopColor="#4285F4" stopOpacity={0.3}/>
-                                                                    <stop offset="95%" stopColor="#4285F4" stopOpacity={0}/>
+                                                                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3}/>
+                                                                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
                                                                 </linearGradient>
                                                             </defs>
-                                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F3F4" />
+                                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                                                             <XAxis
                                                                 dataKey="startDate"
                                                                 axisLine={false}
                                                                 tickLine={false}
-                                                                tick={{ fill: '#9AA0A6', fontSize: 11, fontWeight: 500 }}
+                                                                tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 500 }}
                                                                 tickFormatter={(val) => new Date(val).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                                                                 dy={10}
                                                                 minTickGap={40}
                                                             />
                                                             <YAxis hide domain={domain} />
-                                                            <Tooltip content={tooltipContent} cursor={{ stroke: '#DADCE0', strokeWidth: 1, strokeDasharray: '4 4' }} />
+                                                            <Tooltip content={tooltipContent} cursor={{ stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '4 4' }} />
                                                             <Area
                                                                 type="monotone"
                                                                 dataKey="value"
-                                                                stroke="#4285F4"
+                                                                stroke="#3B82F6"
                                                                 strokeWidth={3}
                                                                 fillOpacity={1}
                                                                 fill="url(#colorValueDesktop)"
-                                                                activeDot={{ r: 6, fill: '#4285F4', stroke: 'white', strokeWidth: 2 }}
+                                                                activeDot={{ r: 6, fill: '#3B82F6', stroke: 'white', strokeWidth: 2 }}
                                                             />
                                                         </AreaChart>
                                                     </div>
@@ -1050,7 +1039,7 @@ export const Reporting: React.FC = () => {
                                     <div className="w-full flex flex-col gap-4">
                                         <div className="flex flex-col gap-2">
                                             {/* Desktop Summary Banner */}
-                                            <div className="w-full h-24 p-5 bg-gradient-to-l from-[#0B57D0] to-[#0842A0] rounded-2xl flex justify-between items-center overflow-hidden">
+                                            <div className="w-full h-24 p-5 bg-gradient-to-l from-blue-950 to-slate-900 rounded-2xl flex justify-between items-center overflow-hidden">
                                                 <div className="flex flex-col justify-start items-start gap-2">
                                                     <div className="text-white text-[10px] font-normal font-['Figtree'] uppercase tracking-wider text-white/70">
                                                         {reportView === 'PROFIT_LOSS' ? 'Total Profit' : 'Net Worth'}
@@ -1089,8 +1078,12 @@ export const Reporting: React.FC = () => {
                                                     >
                                                         <ArrowUpDown size={16} className="text-gray-900" />
                                                     </button>
-                                                    <button className="p-1 hover:bg-gray-100 rounded-lg transition-colors">
-                                                        <Filter size={16} className="text-gray-900" />
+                                                    <button
+                                                        onClick={() => setExcludeZeroSpend(!excludeZeroSpend)}
+                                                        title={excludeZeroSpend ? 'Zero-balance accounts hidden (click to show)' : 'Showing zero-balance accounts (click to hide)'}
+                                                        className={`p-1 rounded-lg transition-colors ${excludeZeroSpend ? 'bg-[#0059D8] text-white' : 'hover:bg-gray-100 text-gray-900'}`}
+                                                    >
+                                                        <Filter size={16} />
                                                     </button>
                                                 </div>
                                             </div>
@@ -1098,7 +1091,7 @@ export const Reporting: React.FC = () => {
 
                                         {loading && (!displayData.isGrouped ? displayData.data?.length === 0 : displayData.flatData?.length === 0) ? (
                                             <div className="w-full bg-white rounded-xl outline outline-1 outline-offset-[-1px] outline-violet-100 flex flex-col justify-center items-center p-8 shadow-[0px_4px_4px_0px_rgba(0,0,0,0.10)]">
-                                                <Loader2 className="h-7 w-7 animate-spin text-[#0B57D0]" />
+                                                <Loader2 className="h-7 w-7 animate-spin text-[#2563EB]" />
                                             </div>
                                         ) : (!displayData.isGrouped ? displayData.data?.length === 0 : displayData.flatData?.length === 0) ? (
                                             <div className="w-full bg-white rounded-xl outline outline-1 outline-offset-[-1px] outline-violet-100 flex flex-col justify-center items-center p-8 shadow-[0px_4px_4px_0px_rgba(0,0,0,0.10)] text-center text-gray-500 font-bold">
@@ -1144,7 +1137,7 @@ export const Reporting: React.FC = () => {
                                                                         <div className="w-full space-y-2 pb-1">
                                                                             <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
                                                                                 <div 
-                                                                                    className={`h-full rounded-full transition-all duration-500 ${progressPercent > 100 ? 'bg-red-500' : 'bg-[#0B57D0] md:bg-[#0B57D0]'}`}
+                                                                                    className={`h-full rounded-full transition-all duration-500 ${progressPercent > 100 ? 'bg-red-500' : 'bg-[#006AFF] md:bg-[#0059D8]'}`}
                                                                                     style={{ width: `${Math.min(progressPercent, 100)}%` }}
                                                                                 />
                                                                             </div>
@@ -1167,7 +1160,7 @@ export const Reporting: React.FC = () => {
                                                                         {groupData.items
                                                                             .filter((row: any) => {
                                                                                 const curr = Number(row.total_amount) || 0;
-                                                                                return curr !== 0; // Hide if current balance is zero
+                                                                                return !excludeZeroSpend || curr !== 0; // Hide zero balances only while the filter is on
                                                                             })
                                                                             .map((row: any) => {
                                                                             const isRowExpanded = expandedAccount === row.account_id;
@@ -1210,7 +1203,7 @@ export const Reporting: React.FC = () => {
                                                                                                         setSelectedAccountForBudget({ id: row.account_id, name: row.account_name });
                                                                                                         setIsBudgetModalOpen(true);
                                                                                                     }}
-                                                                                                    className="text-[10px] font-bold text-[#0B57D0] hover:underline"
+                                                                                                    className="text-[10px] font-bold text-[#006AFF] hover:underline"
                                                                                                 >
                                                                                                     Set Budget
                                                                                                 </button>
@@ -1218,7 +1211,7 @@ export const Reporting: React.FC = () => {
 
                                                                                             {itemsLoading ? (
                                                                                                 <div className="flex items-center text-xs text-gray-500 py-2">
-                                                                                                    <Loader2 className="h-3 w-3 animate-spin mr-1.5 text-[#0B57D0]" />
+                                                                                                    <Loader2 className="h-3 w-3 animate-spin mr-1.5 text-[#006AFF]" />
                                                                                                     Loading items...
                                                                                                 </div>
                                                                                             ) : !items.length ? (
@@ -1233,7 +1226,7 @@ export const Reporting: React.FC = () => {
                                                                                                                     <span className="font-medium text-gray-700 truncate">{item.description}</span>
                                                                                                                     <span className="text-[10px] text-gray-400 flex items-center gap-1">
                                                                                                                         {new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                                                                                                                        {fresh && <span className="bg-[#0B57D0] md:bg-[#0B57D0] text-white text-[8px] font-bold px-1 py-0.5 rounded uppercase leading-none">New</span>}
+                                                                                                                        {fresh && <span className="bg-[#006AFF] md:bg-[#0059D8] text-white text-[8px] font-bold px-1 py-0.5 rounded uppercase leading-none">New</span>}
                                                                                                                     </span>
                                                                                                                 </div>
                                                                                                                 <span className="font-black whitespace-nowrap text-gray-900 mt-0.5">
@@ -1278,20 +1271,106 @@ export const Reporting: React.FC = () => {
                 } : { minHeight: '100vh', paddingBottom: '7rem' }}
             >
                 {/* Mobile View Toggle */}
-                <SegmentedControl
-                    className="mx-4 mb-4"
-                    variant="capsule"
-                    value={reportView}
-                    onChange={(v) => setReportView(v as 'NET_WORTH' | 'PROFIT_LOSS')}
-                    options={[
-                        { value: 'NET_WORTH', label: 'Net Worth' },
-                        { value: 'PROFIT_LOSS', label: 'Profit/Loss' },
-                    ]}
-                />
+                <div className="px-4 mb-3 overflow-x-auto no-scrollbar">
+                    <div className="inline-flex p-1 bg-slate-100 rounded-[12px]">
+                        <TabPillGroup
+                            value={reportView}
+                            onChange={selectView}
+                            trackClassName="flex items-center gap-1"
+                            indicatorClassName="bg-white rounded-lg shadow-sm"
+                            tabs={REPORT_VIEWS.map(t => ({
+                                value: t.id,
+                                buttonClassName: 'px-3 py-1.5 rounded-lg flex justify-center items-center shrink-0',
+                                label: (
+                                    <span className={`text-xs font-['DM_Sans'] whitespace-nowrap ${reportView === t.id ? 'text-gray-900 font-bold' : 'text-gray-500 font-medium'}`}>
+                                        {t.label}
+                                    </span>
+                                ),
+                            }))}
+                        />
+                    </div>
+                </div>
 
-                {!isChartOpen && (
+                {isStatementView(reportView) ? (
+                    <div className="flex flex-col flex-1 pb-24">
+                        {/* Mobile Date Filter header for statement views */}
+                        <div className="mx-5 mb-3 flex items-center justify-between">
+                            <div className="relative flex items-center gap-2">
+                                <button
+                                    onClick={openDateFilter}
+                                    className="flex items-center gap-1.5 text-2xl font-black text-brand-navy tracking-tight focus:outline-none"
+                                >
+                                    <span>{displayPeriodLabel}</span>
+                                    <CalendarDays size={18} className={`mt-0.5 ${customFilter ? 'text-[#006AFF]' : 'text-gray-400'}`} />
+                                </button>
+                                {customFilter && (
+                                    <button
+                                        onClick={handleClearFilter}
+                                        className="flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors mt-0.5"
+                                        title="Reset to YTD"
+                                    >
+                                        <X size={12} />
+                                    </button>
+                                )}
+
+                                {isDateFilterOpen && (
+                                    <>
+                                        <div className="fixed inset-0 z-40 bg-black/20" onClick={() => setIsDateFilterOpen(false)} />
+                                        <div className="absolute left-0 top-10 z-50 bg-white border border-gray-100 rounded-3xl shadow-xl p-5 w-72 animate-in fade-in slide-in-from-top-2 duration-200">
+                                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Filter by Date Range</p>
+                                            <div className="flex flex-col gap-3">
+                                                <div>
+                                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">From</label>
+                                                    <input
+                                                        type="date"
+                                                        value={filterStartInput}
+                                                        onChange={e => setFilterStartInput(e.target.value)}
+                                                        className="w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-[#006AFF] focus:ring-1 focus:ring-[#006AFF]"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">To</label>
+                                                    <input
+                                                        type="date"
+                                                        value={filterEndInput}
+                                                        onChange={e => setFilterEndInput(e.target.value)}
+                                                        className="w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-[#006AFF] focus:ring-1 focus:ring-[#006AFF]"
+                                                    />
+                                                </div>
+                                                <div className="flex gap-2 pt-1">
+                                                    <button
+                                                        onClick={handleClearFilter}
+                                                        className="flex-1 py-2.5 text-xs font-bold text-gray-500 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+                                                    >
+                                                        Reset to YTD
+                                                    </button>
+                                                    <button
+                                                        onClick={handleApplyFilter}
+                                                        disabled={!filterStartInput || !filterEndInput || filterStartInput > filterEndInput}
+                                                        className="flex-1 py-2.5 text-xs font-bold text-white bg-[#006AFF] md:bg-[#0059D8] rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-40"
+                                                    >
+                                                        Apply
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                        <div className="px-3">
+                            <FinancialStatements
+                                tab={reportView}
+                                start={periodData.start}
+                                end={periodData.end}
+                            />
+                        </div>
+                    </div>
+                ) : (
+                    <>
+                        {!isChartOpen && (
                 <div
-                    className="mx-5 mb-3 rounded-2xl p-5 text-white relative overflow-hidden bg-gradient-to-l from-[#0B57D0] to-[#0842A0]"
+                    className="mx-5 mb-3 rounded-2xl p-5 text-white relative overflow-hidden bg-gradient-to-l from-blue-950 to-slate-900"
                     style={{
                         animation: 'atabs-fade-up 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
                     }}
@@ -1361,10 +1440,10 @@ export const Reporting: React.FC = () => {
                     <div className="relative flex items-center gap-2">
                         <button
                             onClick={openDateFilter}
-                            className="flex items-center gap-1.5 text-2xl font-black text-[#1F1F1F] tracking-tight focus:outline-none"
+                            className="flex items-center gap-1.5 text-2xl font-black text-brand-navy tracking-tight focus:outline-none"
                         >
                             <span>{displayPeriodLabel}</span>
-                            <CalendarDays size={18} className={`mt-0.5 ${customFilter ? 'text-[#0B57D0]' : 'text-gray-400'}`} />
+                            <CalendarDays size={18} className={`mt-0.5 ${customFilter ? 'text-[#006AFF]' : 'text-gray-400'}`} />
                         </button>
                         {customFilter && (
                             <button
@@ -1388,7 +1467,7 @@ export const Reporting: React.FC = () => {
                                                 type="date"
                                                 value={filterStartInput}
                                                 onChange={e => setFilterStartInput(e.target.value)}
-                                                className="w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-[#0B57D0] focus:ring-1 focus:ring-[#0B57D0]"
+                                                className="w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-[#006AFF] focus:ring-1 focus:ring-[#006AFF]"
                                             />
                                         </div>
                                         <div>
@@ -1397,7 +1476,7 @@ export const Reporting: React.FC = () => {
                                                 type="date"
                                                 value={filterEndInput}
                                                 onChange={e => setFilterEndInput(e.target.value)}
-                                                className="w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-[#0B57D0] focus:ring-1 focus:ring-[#0B57D0]"
+                                                className="w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-[#006AFF] focus:ring-1 focus:ring-[#006AFF]"
                                             />
                                         </div>
                                         <div className="flex gap-2 pt-1">
@@ -1410,7 +1489,7 @@ export const Reporting: React.FC = () => {
                                             <button
                                                 onClick={handleApplyFilter}
                                                 disabled={!filterStartInput || !filterEndInput || filterStartInput > filterEndInput}
-                                                className="flex-1 py-2.5 text-xs font-bold text-white bg-[#0B57D0] md:bg-[#0B57D0] rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-40"
+                                                className="flex-1 py-2.5 text-xs font-bold text-white bg-[#006AFF] md:bg-[#0059D8] rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-40"
                                             >
                                                 Apply
                                             </button>
@@ -1439,7 +1518,7 @@ export const Reporting: React.FC = () => {
                             {/* Filter button */}
                             <button 
                                 onClick={() => setExcludeZeroSpend(!excludeZeroSpend)}
-                                className={`p-2 rounded-full transition-all active:scale-95 ${excludeZeroSpend ? 'text-[#0B57D0] bg-white shadow-xs' : 'text-gray-500 hover:text-gray-900'}`}
+                                className={`p-2 rounded-full transition-all active:scale-95 ${excludeZeroSpend ? 'text-[#006AFF] bg-white shadow-xs' : 'text-gray-500 hover:text-gray-900'}`}
                                 title="Filter zero spend"
                             >
                                 <Filter size={18} />
@@ -1450,7 +1529,7 @@ export const Reporting: React.FC = () => {
                         <div className="relative">
                             <button 
                                 onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-                                className={`p-2.5 rounded-full transition-all active:scale-95 bg-gray-100/80 text-gray-500 hover:text-gray-900 ${isSettingsOpen ? 'text-[#0B57D0] bg-[#E8F0FE]' : ''}`}
+                                className={`p-2.5 rounded-full transition-all active:scale-95 bg-gray-100/80 text-gray-500 hover:text-gray-900 ${isSettingsOpen ? 'text-[#006AFF] bg-[#F0F7FF]' : ''}`}
                                 title="Settings"
                             >
                                 <Settings2 size={18} />
@@ -1473,7 +1552,7 @@ export const Reporting: React.FC = () => {
                                                     className="w-full flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg transition-colors group text-left"
                                                 >
                                                     <div className="flex items-center gap-2 text-sm text-gray-700 font-medium">
-                                                        <Filter className="h-4 w-4 text-gray-400 group-hover:text-[#1F1F1F]" />
+                                                        <Filter className="h-4 w-4 text-gray-400 group-hover:text-brand-navy" />
                                                         Exclude Zero Spend
                                                     </div>
                                                     <div className={`w-8 h-4 rounded-full transition-colors relative flex items-center ${excludeZeroSpend ? 'bg-brand-green' : 'bg-gray-200'}`}>
@@ -1490,7 +1569,7 @@ export const Reporting: React.FC = () => {
                                                 
                                                 <label className="w-full flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg transition-colors cursor-pointer group mb-2">
                                                     <div className="flex items-center gap-2 text-sm text-gray-700 font-medium">
-                                                        <FolderOutput className="h-4 w-4 text-gray-400 group-hover:text-[#1F1F1F]" />
+                                                        <FolderOutput className="h-4 w-4 text-gray-400 group-hover:text-brand-navy" />
                                                         Group by Custom Groups
                                                     </div>
                                                     <div className={`w-8 h-4 rounded-full transition-colors relative flex items-center ${isGroupingEnabled ? 'bg-brand-green' : 'bg-gray-200'}`}>
@@ -1505,13 +1584,13 @@ export const Reporting: React.FC = () => {
                                                         value={newGroupName}
                                                         onChange={(e) => setNewGroupName(e.target.value)}
                                                         placeholder="New Group Name"
-                                                        className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#0B57D0] focus:ring-1 focus:ring-[#0B57D0]"
+                                                        className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#006AFF] focus:ring-1 focus:ring-[#006AFF]"
                                                         onKeyDown={(e) => { if(e.key === 'Enter') handleCreateGroup() }}
                                                     />
                                                     <button 
                                                         onClick={handleCreateGroup}
                                                         disabled={!newGroupName.trim()}
-                                                        className="p-1.5 bg-[#0B57D0] md:bg-[#0B57D0] text-white rounded-lg hover:bg-brand-navy transition-colors disabled:opacity-50"
+                                                        className="p-1.5 bg-[#006AFF] md:bg-[#0059D8] text-white rounded-lg hover:bg-brand-navy transition-colors disabled:opacity-50"
                                                     >
                                                         <Plus className="h-3.5 w-3.5" />
                                                     </button>
@@ -1543,7 +1622,7 @@ export const Reporting: React.FC = () => {
                                                     {hiddenAccounts.size > 0 && (
                                                         <button 
                                                             onClick={() => setHiddenAccounts(new Set())}
-                                                            className="text-xs font-bold text-brand-green hover:text-[#1F1F1F] transition-colors"
+                                                            className="text-xs font-bold text-brand-green hover:text-brand-navy transition-colors"
                                                         >
                                                             Show All
                                                         </button>
@@ -1562,7 +1641,7 @@ export const Reporting: React.FC = () => {
                                                             {hiddenAccounts.has(account.id) ? (
                                                                 <EyeOff className="h-3.5 w-3.5 text-gray-300 flex-shrink-0" />
                                                             ) : (
-                                                                <Eye className="h-3.5 w-3.5 text-[#1F1F1F] flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                                <Eye className="h-3.5 w-3.5 text-brand-navy flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
                                                             )}
                                                         </button>
                                                     ))}
@@ -1599,8 +1678,8 @@ export const Reporting: React.FC = () => {
                                             }}
                                             className={`w-full text-left px-5 py-3 text-sm font-bold transition-all ${
                                                 isSelected 
-                                                    ? 'text-[#0B57D0] bg-[#F8FAFD]' 
-                                                    : 'text-gray-600 hover:text-[#1F1F1F] hover:bg-gray-50'
+                                                    ? 'text-[#006AFF] bg-[#F5FAFF]' 
+                                                    : 'text-gray-600 hover:text-brand-navy hover:bg-gray-50'
                                             }`}
                                         >
                                             {opt.label}
@@ -1627,7 +1706,7 @@ export const Reporting: React.FC = () => {
                     <div className="flex-1 min-h-0 rounded-[28px] overflow-hidden flex flex-col bg-white">
                         {chartLoading ? (
                             <div className="flex items-center justify-center flex-1">
-                                <Loader2 className="h-7 w-7 animate-spin text-[#0B57D0]" />
+                                <Loader2 className="h-7 w-7 animate-spin text-[#2563EB]" />
                             </div>
                         ) : chartRenderData ? (
                             <div className="pt-4 pb-3 flex flex-col flex-1 min-h-0">
@@ -1641,7 +1720,7 @@ export const Reporting: React.FC = () => {
                                             ? `${(ep.value / 1e6).toFixed(2)}M`
                                             : ep.value.toLocaleString(undefined, { maximumFractionDigits: 0 });
                                         return (
-                                            <div style={{ position: 'absolute', left: 0, top: `${ep.y}px`, transform: 'translateY(-50%)', background: '#1F1F1F', color: 'white', fontSize: '12px', fontWeight: 700, padding: '3px 9px', borderRadius: '9999px', zIndex: 6, whiteSpace: 'nowrap', lineHeight: 1.2 }}>
+                                            <div style={{ position: 'absolute', left: 0, top: `${ep.y}px`, transform: 'translateY(-50%)', background: '#0F172A', color: 'white', fontSize: '12px', fontWeight: 700, padding: '3px 9px', borderRadius: '9999px', zIndex: 6, whiteSpace: 'nowrap', lineHeight: 1.2 }}>
                                                 {lbl}
                                             </div>
                                         );
@@ -1650,7 +1729,7 @@ export const Reporting: React.FC = () => {
                                     <div className="flex-shrink-0" style={{ width: '46px', paddingLeft: '2px' }}>
                                         <svg width="44" height={chartRenderData.SVG_H}>
                                             {chartRenderData.yLabels.map((lbl, i) => (
-                                                <text key={i} x={42} y={lbl.y + 3} textAnchor="end" fill="#9AA0A6" fontSize="9" fontWeight="600">
+                                                <text key={i} x={42} y={lbl.y + 3} textAnchor="end" fill="#9CA3AF" fontSize="9" fontWeight="600">
                                                     {lbl.value >= 1e6
                                                         ? `${(lbl.value / 1e6).toFixed(1)}M`
                                                         : lbl.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
@@ -1667,9 +1746,9 @@ export const Reporting: React.FC = () => {
                                         <svg width={chartRenderData.svgWidth} height={chartRenderData.SVG_H}>
                                             <defs>
                                                 <linearGradient id="chartAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                                                    <stop offset="0%" stopColor="#4285F4" stopOpacity="0.20" />
-                                                    <stop offset="80%" stopColor="#4285F4" stopOpacity="0.04" />
-                                                    <stop offset="100%" stopColor="#4285F4" stopOpacity="0" />
+                                                    <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.20" />
+                                                    <stop offset="80%" stopColor="#3B82F6" stopOpacity="0.04" />
+                                                    <stop offset="100%" stopColor="#3B82F6" stopOpacity="0" />
                                                 </linearGradient>
                                             </defs>
 
@@ -1687,7 +1766,7 @@ export const Reporting: React.FC = () => {
                                                 if (!p) return null;
                                                 return (
                                                     <line key={i} x1={0} y1={p.y} x2={chartRenderData.svgWidth} y2={p.y}
-                                                        stroke="#DADCE0" strokeWidth={1} strokeDasharray="6 6" />
+                                                        stroke="#CBD5E1" strokeWidth={1} strokeDasharray="6 6" />
                                                 );
                                             })}
 
@@ -1697,12 +1776,12 @@ export const Reporting: React.FC = () => {
                                                 if (!p) return null;
                                                 return (
                                                     <line key={`v-${i}`} x1={p.x} y1={0} x2={p.x} y2={chartRenderData.SVG_H}
-                                                        stroke="#DADCE0" strokeWidth={1} strokeDasharray="6 6" />
+                                                        stroke="#CBD5E1" strokeWidth={1} strokeDasharray="6 6" />
                                                 );
                                             })}
 
                                             {/* Main line */}
-                                            <path d={chartRenderData.linePath} fill="none" stroke="#0842A0" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+                                            <path d={chartRenderData.linePath} fill="none" stroke="#1D4ED8" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
 
                                             {/* Markers at selected indices — small blue ring with a yellow centre */}
                                             {chartRenderData.pts.map((p, i) => {
@@ -1710,8 +1789,8 @@ export const Reporting: React.FC = () => {
                                                 if (!isMarker) return null;
                                                 return (
                                                     <g key={i}>
-                                                        <circle cx={p.x} cy={p.y} r={8} fill="white" stroke="#0B57D0" strokeWidth={2.5} />
-                                                        <circle cx={p.x} cy={p.y} r={3.5} fill="#FBBC04" />
+                                                        <circle cx={p.x} cy={p.y} r={8} fill="white" stroke="#2563EB" strokeWidth={2.5} />
+                                                        <circle cx={p.x} cy={p.y} r={3.5} fill="#FACC15" />
                                                     </g>
                                                 );
                                             })}
@@ -1727,7 +1806,7 @@ export const Reporting: React.FC = () => {
                                                 className="absolute"
                                                 style={{
                                                     top: '13px', left: `${chartRenderData.COL_W / 2}px`, right: `${chartRenderData.COL_W / 2}px`,
-                                                    height: '8px', background: '#0842A0', borderRadius: '9999px', overflow: 'hidden',
+                                                    height: '8px', background: '#0055CC', borderRadius: '9999px', overflow: 'hidden',
                                                 }}
                                             >
                                                 {/* Light-blue overlay = the analyzed window */}
@@ -1735,7 +1814,7 @@ export const Reporting: React.FC = () => {
                                                     position: 'absolute', top: 0, bottom: 0,
                                                     left: `${Math.max(0, (chartRenderData.pts[chartStartIdx]?.x ?? 0) - chartRenderData.COL_W / 2)}px`,
                                                     width: `${Math.max(0, (chartRenderData.pts[chartEndIdx]?.x ?? 0) - (chartRenderData.pts[chartStartIdx]?.x ?? 0))}px`,
-                                                    background: '#D3E3FD',
+                                                    background: '#D9E9FF',
                                                 }} />
                                             </div>
                                             {/* Start pin — vertically under the start marker */}
@@ -1746,7 +1825,7 @@ export const Reporting: React.FC = () => {
                                                 onPointerMove={handleMarkerPointerMove}
                                                 onPointerUp={handleMarkerPointerUp}
                                             >
-                                                <div style={{ width: '3px', background: '#0842A0', borderRadius: '9999px', boxShadow: '0 1px 4px rgba(0,85,204,0.35)', position: 'absolute', top: '5px', bottom: '5px', left: '50%', transform: 'translateX(-50%)' }} />
+                                                <div style={{ width: '3px', background: '#0055CC', borderRadius: '9999px', boxShadow: '0 1px 4px rgba(0,85,204,0.35)', position: 'absolute', top: '5px', bottom: '5px', left: '50%', transform: 'translateX(-50%)' }} />
                                             </div>
                                             {/* End pin — vertically under the end marker */}
                                             <div
@@ -1756,7 +1835,7 @@ export const Reporting: React.FC = () => {
                                                 onPointerMove={handleMarkerPointerMove}
                                                 onPointerUp={handleMarkerPointerUp}
                                             >
-                                                <div style={{ width: '3px', background: '#0842A0', borderRadius: '9999px', boxShadow: '0 1px 4px rgba(0,85,204,0.35)', position: 'absolute', top: '5px', bottom: '5px', left: '50%', transform: 'translateX(-50%)' }} />
+                                                <div style={{ width: '3px', background: '#0055CC', borderRadius: '9999px', boxShadow: '0 1px 4px rgba(0,85,204,0.35)', position: 'absolute', top: '5px', bottom: '5px', left: '50%', transform: 'translateX(-50%)' }} />
                                             </div>
                                         </div>
 
@@ -1766,7 +1845,7 @@ export const Reporting: React.FC = () => {
                                                 <span
                                                     key={i}
                                                     className="absolute"
-                                                    style={{ left: `${p.x}px`, top: '0px', transform: 'translateX(-50%)', fontSize: '8px', fontWeight: 400, color: '#80868B', whiteSpace: 'nowrap' }}
+                                                    style={{ left: `${p.x}px`, top: '0px', transform: 'translateX(-50%)', fontSize: '8px', fontWeight: 400, color: '#7C8FA2', whiteSpace: 'nowrap' }}
                                                 >
                                                     {chartData[i].shortLabel}
                                                 </span>
@@ -1783,7 +1862,7 @@ export const Reporting: React.FC = () => {
                     </div>
 
                     {/* Delta card — flex-shrink-0, anchored at bottom of the chart flex column */}
-                    <div className="flex-shrink-0 rounded-2xl p-6 text-white shadow-[0px_2px_6px_3px_rgba(0,0,0,0.25)] overflow-hidden bg-gradient-to-l from-[#0B57D0] to-[#0842A0]">
+                    <div className="flex-shrink-0 rounded-2xl p-6 text-white shadow-[0px_2px_6px_3px_rgba(0,0,0,0.25)] overflow-hidden bg-gradient-to-l from-blue-950 to-slate-900">
                         <div className="flex items-center justify-between mb-1">
                             <p className="font-figtree text-xs font-normal uppercase tracking-wide leading-4 text-white">
                                 {reportView === 'PROFIT_LOSS' ? 'Net Profit' : 'Net Worth'}
@@ -1800,7 +1879,7 @@ export const Reporting: React.FC = () => {
                                 K{chartDelta.endValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </h2>
                             <span className="text-[28px] font-black leading-none">
-                                <span className="text-[#669DF6]">{chartDelta.isIncrease ? '+' : '-'}</span>
+                                <span className="text-[#4D9FFF]">{chartDelta.isIncrease ? '+' : '-'}</span>
                                 <span className="text-white">{chartDelta.percentStr}%</span>
                             </span>
                         </div>
@@ -1810,8 +1889,8 @@ export const Reporting: React.FC = () => {
                                 <span>{chartData[chartStartIdx]?.shortLabel} <strong className="font-extrabold text-white">→</strong> {chartData[chartEndIdx]?.shortLabel}</span>
                             </div>
                             <div className="flex items-center gap-1.5">
-                                <ArrowUpRight size={14} className={chartDelta.isIncrease ? 'text-[#34A853]' : 'text-red-400'} />
-                                <span className={chartDelta.isIncrease ? 'text-[#34A853]' : 'text-red-400'}>
+                                <ArrowUpRight size={14} className={chartDelta.isIncrease ? 'text-[#34D399]' : 'text-red-400'} />
+                                <span className={chartDelta.isIncrease ? 'text-[#34D399]' : 'text-red-400'}>
                                     {chartDelta.isIncrease ? '+' : '-'}K{Math.abs(chartDelta.delta).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                                 </span>
                             </div>
@@ -1826,7 +1905,7 @@ export const Reporting: React.FC = () => {
                 <AnimatedTabContent tabKey={reportView} index={reportViewIndex}>
                 {loading && (!displayData.isGrouped ? displayData.data?.length === 0 : displayData.flatData?.length === 0) ? (
                     <div className="mx-6 bg-white border border-gray-100 rounded-[28px] shadow-sm p-6 text-center text-gray-500">
-                        <Loader2 className="h-8 w-8 animate-spin text-[#0B57D0] mx-auto mb-4" />
+                        <Loader2 className="h-8 w-8 animate-spin text-[#006AFF] mx-auto mb-4" />
                         Loading reports...
                     </div>
                 ) : (!displayData.isGrouped ? displayData.data?.length === 0 : displayData.flatData?.length === 0) ? (
@@ -1854,7 +1933,7 @@ export const Reporting: React.FC = () => {
                                         showArrow={false}
                                         className="flex justify-between items-center cursor-pointer p-6 hover:no-underline"
                                     >
-                                        <h3 className="font-extrabold text-sm text-[#1F1F1F] leading-tight flex items-center gap-1.5">
+                                        <h3 className="font-extrabold text-sm text-brand-navy leading-tight flex items-center gap-1.5">
                                             {groupData.groupName}
                                             <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
                                                 {groupData.items.length}
@@ -1875,7 +1954,7 @@ export const Reporting: React.FC = () => {
                                                 <div className="space-y-2 pb-1">
                                                     <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
                                                         <div 
-                                                            className={`h-full rounded-full transition-all duration-500 ${progressPercent > 100 ? 'bg-red-500' : 'bg-[#0B57D0] md:bg-[#0B57D0]'}`}
+                                                            className={`h-full rounded-full transition-all duration-500 ${progressPercent > 100 ? 'bg-red-500' : 'bg-[#006AFF] md:bg-[#0059D8]'}`}
                                                             style={{ width: `${Math.min(progressPercent, 100)}%` }}
                                                         />
                                                     </div>
@@ -1900,7 +1979,7 @@ export const Reporting: React.FC = () => {
                                                 {groupData.items
                                                     .filter((row: any) => {
                                                         const curr = Number(row.total_amount) || 0;
-                                                        return curr !== 0; // Hide if current balance is zero
+                                                        return !excludeZeroSpend || curr !== 0; // Hide zero balances only while the filter is on
                                                     })
                                                     .map((row: any) => {
                                                     const isRowExpanded = expandedAccount === row.account_id;
@@ -1922,7 +2001,7 @@ export const Reporting: React.FC = () => {
                                                                         {isRowExpanded ? <ChevronDown size={15} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={15} className="text-gray-400 flex-shrink-0" />}
                                                                         {row.logo_url && <img src={row.logo_url} alt="" className="w-5 h-5 rounded-md object-contain flex-shrink-0" />}
                                                                         <span className="truncate">{row.account_name}</span>
-                                                                        {hasNew && <span className="w-1.5 h-1.5 rounded-full bg-[#0B57D0] md:bg-[#0B57D0] flex-shrink-0" />}
+                                                                        {hasNew && <span className="w-1.5 h-1.5 rounded-full bg-[#006AFF] md:bg-[#0059D8] flex-shrink-0" />}
                                                                     </h4>
                                                                     <span className="text-base font-medium text-black whitespace-nowrap">
                                                                         K{curr.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1947,7 +2026,7 @@ export const Reporting: React.FC = () => {
                                                                                 setSelectedAccountForBudget({ id: row.account_id, name: row.account_name });
                                                                                 setIsBudgetModalOpen(true);
                                                                             }}
-                                                                            className="text-[10px] font-black text-[#0B57D0] hover:underline"
+                                                                            className="text-[10px] font-black text-[#006AFF] hover:underline"
                                                                         >
                                                                             Set Budget
                                                                         </button>
@@ -1955,7 +2034,7 @@ export const Reporting: React.FC = () => {
 
                                                                     {itemsLoading ? (
                                                                         <div className="flex items-center text-xs text-gray-500 py-2">
-                                                                            <Loader2 className="h-3 w-3 animate-spin mr-1.5 text-[#0B57D0]" />
+                                                                            <Loader2 className="h-3 w-3 animate-spin mr-1.5 text-[#006AFF]" />
                                                                             Loading items...
                                                                         </div>
                                                                     ) : !items.length ? (
@@ -1968,7 +2047,7 @@ export const Reporting: React.FC = () => {
                                                                                 <div key={item.id} className="text-xs flex justify-between items-start py-1 border-b border-gray-100 last:border-0 last:pb-0">
                                                                                     <div className="flex-1 pr-3">
                                                                                         <p className={`line-clamp-1 flex items-center gap-1.5 ${fresh ? 'font-black text-gray-900' : 'font-bold text-gray-800'}`}>
-                                                                                            {fresh && <span className="w-1.5 h-1.5 rounded-full bg-[#0B57D0] md:bg-[#0B57D0] flex-shrink-0" />}
+                                                                                            {fresh && <span className="w-1.5 h-1.5 rounded-full bg-[#006AFF] md:bg-[#0059D8] flex-shrink-0" />}
                                                                                             {item.description}
                                                                                         </p>
                                                                                         <div className="flex items-center gap-1.5 text-[9px] text-gray-400 mt-0.5">
@@ -2000,6 +2079,8 @@ export const Reporting: React.FC = () => {
                 )}
                 </AnimatedTabContent>
                 </>)}
+                </>
+                )}
             </div>
 
             {isBudgetModalOpen && selectedAccountForBudget && (

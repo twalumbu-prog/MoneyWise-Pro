@@ -6,6 +6,7 @@ import { usePersonalAccount } from './hooks/usePersonalAccount';
 import { onboardingService } from './services/onboarding.service';
 const Login = React.lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
 const Onboarding = React.lazy(() => import('./pages/Onboarding').then(m => ({ default: m.Onboarding })));
+const Dashboard = React.lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const MarketplaceListing = React.lazy(() => import('./pages/MarketplaceListing').then(m => ({ default: m.MarketplaceListing })));
 const MarketplaceOrders = React.lazy(() => import('./pages/MarketplaceOrders').then(m => ({ default: m.MarketplaceOrders })));
 const MarketplaceCategory = React.lazy(() => import('./pages/MarketplaceCategory').then(m => ({ default: m.MarketplaceCategory })));
@@ -208,14 +209,15 @@ const HomeRedirect = () => {
         return <Navigate to="/onboarding" replace />;
     }
 
+    // Requestors work from their inbox; everyone else lands on the Home dashboard (the inbox is one click away).
     if (userRole === 'REQUESTOR') {
         return <Navigate to="/requisitions" replace />;
     }
 
-    // A personal account's first screen is Home; businesses keep the Inbox.
+    // A personal account's first screen is Home; businesses land on the business dashboard.
     if (isPersonal) return <PersonalHome />;
 
-    return <RequisitionList />;
+    return <Dashboard />;
 };
 
 // MoneyWise Pro is a client-side-routed SPA (react-router, no full page

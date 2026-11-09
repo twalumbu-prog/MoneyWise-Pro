@@ -1775,7 +1775,7 @@ Status: VERIFIED`;
                                     <div className="w-[1px] h-4 bg-[#E9EEF6]" />
                                     <ToolbarAction
                                         icon={Upload}
-                                        label="Import Statement"
+                                        label="Start Bank Reconciliation"
                                         disabled={!selectedWalletId || selectedWalletId === 'CASH'}
                                         onClick={() => setIsImportStatementOpen(true)}
                                     />

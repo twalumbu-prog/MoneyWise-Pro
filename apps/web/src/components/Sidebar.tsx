@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-    House,
     Inbox,
+    Home,
     CalendarDays,
     TrendingUp,
     ShieldCheck,
@@ -34,14 +34,14 @@ interface NavItem {
 }
 
 const PLAN_ITEM: NavItem = { label: 'Plan', path: '/savings', icon: PiggyBank, isActive: (p) => p.startsWith('/savings') || p === '/budgets' || p.startsWith('/rewards') };
-const HOME_ITEM: NavItem = { label: 'Home', path: '/', icon: House, isActive: (p) => p === '/' };
 
 const GENERAL_ITEMS: NavItem[] = [
+    { label: 'Home', path: '/', icon: Home, isActive: (p) => p === '/' },
     {
         label: 'Inbox',
         path: '/requisitions',
         icon: Inbox,
-        isActive: (p) => p === '/requisitions' || p === '/',
+        isActive: (p) => p === '/requisitions',
         getBadge: (c) => c.requisitions + c.approvals + c.disbursements + c.vouchers,
     },
     { label: 'Schedules', path: '/schedules', icon: CalendarDays, isActive: (p) => p === '/schedules', tourTarget: 'nav-schedules-tab' },
@@ -143,10 +143,12 @@ const SidebarLink: React.FC<{ item: NavItem; active: boolean; collapsed: boolean
 export const Sidebar: React.FC = () => {
     const location = useLocation();
     const navigate = useNavigate();
-    const { signOut, notificationCounts } = useAuth();
+    const { signOut, notificationCounts, userRole } = useAuth();
     // A personal account's first item is Home; the Inbox is behind its bell, so it moves out of the sidebar's lead spot.
     const { isPersonal } = usePersonalAccount();
-    const generalItems = isPersonal ? [HOME_ITEM, ...GENERAL_ITEMS.map(i => i.label === 'Inbox' ? { ...i, isActive: (p: string) => p === '/requisitions' } : i).flatMap(i => i.label === 'Wallets' ? [i, PLAN_ITEM] : [i])] : GENERAL_ITEMS;
+    const generalItems = GENERAL_ITEMS
+        .filter(item => !(item.path === '/' && userRole === 'REQUESTOR'))
+        .flatMap(item => (isPersonal && item.label === 'Wallets') ? [item, PLAN_ITEM] : [item]);
     const [collapsed, setCollapsed] = useState<boolean>(() => {
         try {
             return localStorage.getItem(COLLAPSE_KEY) === '1';

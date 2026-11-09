@@ -195,6 +195,8 @@ export interface MasterFeesConfig {
         /** Optional. Invoices dated on/after this day may be CREATED in QuickBooks when none exists (default: `from`). Term 3 onward is invoiced only in Master Fees /
          *  MoneyWise, so this is where creation should start; earlier invoices came from QuickBooks and are link-only. YYYY-MM-DD */
         createFrom?: string;
+        /** Optional one-off list of owner-confirmed NEW students: the poster creates their QuickBooks customer (or maps to an existing one with exactly that name) and removes the entry. */
+        createCustomers?: Array<{ student_id: string; name: string }>;
         /** Decide and log, but write nothing to QuickBooks or the database. */
         dryRun?: boolean;
         /** Max QuickBooks writes per cron tick. Default 8. */

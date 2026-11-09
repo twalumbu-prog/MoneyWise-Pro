@@ -151,14 +151,14 @@ export const FinancialHighlights: React.FC<{ className?: string }> = ({ classNam
                         if (achievement) {
                             return (
                                 <div key={card.id} className="snap-center shrink-0 w-full px-1">
-                                    <div className="flex items-center gap-3 px-4 py-1.5 rounded-xl bg-gradient-to-r from-[#0B57D0] to-[#0A4FBF] shadow-[0_10px_24px_-12px_rgba(11,87,208,0.9)]">
-                                        <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-                                            <Trophy size={14} className="text-white" strokeWidth={2} />
+                                    <div className="flex items-start gap-2.5">
+                                        <div className="w-8 h-8 rounded-full bg-[#FEF3C7] flex items-center justify-center shrink-0">
+                                            <Trophy size={18} className="text-[#B45309]" strokeWidth={2} />
                                         </div>
-                                        <div className="min-w-0">
-                                            <div className="text-[10px] font-bold uppercase tracking-widest text-white/70">New record</div>
-                                            <div className="text-sm font-black text-white truncate">
-                                                {achievement.title} · {money(achievement.value)}
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-sm font-bold text-black truncate">{card.title || achievement.title}</div>
+                                            <div className="text-xs font-normal text-gray-500 leading-[17px] mt-0.5 line-clamp-2">
+                                                {card.body || `${achievement.title} · ${money(achievement.value)}`}
                                             </div>
                                         </div>
                                     </div>
