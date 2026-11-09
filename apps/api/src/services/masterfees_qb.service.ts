@@ -4,6 +4,7 @@ import { getMasterFeesIntegration, MasterFeesConfig, acquireMasterFeesLock, rele
 import { NameCandidate } from './masterfees_qb/name_match';
 import { buildCustomerMap, resolveStudentCustomer, CustomerMap } from './masterfees_qb/customer_map';
 import { paymentInScope, bankReconciliationHold } from './masterfees_qb/payment_rules';
+import { possibleSameCharge } from './masterfees_qb/create_guard';
 import { isWalletAccountType } from './ledgerCorrections/core';
 import { buildMfNumberIndex, buildImpDocIndex, findQbInvoiceForItem, normDesc, qbTermOf, QbInvoiceLike } from './masterfees_qb/mf_qb_link';
 import { chooseQbItem, resolveItemId } from './masterfees_qb/fee_mapping';
@@ -177,8 +178,8 @@ export async function runQuickBooksAutoPost(
                     }
                     // not in QuickBooks — create only if nothing for the same fee exists around that date (monthly-pieces guard)
                     const fam = famOf(`${it.category || ''} ${it.description || ''}`); const issued = inv.date_issued || inv.due_date; const due = inv.due_date || issued;
-                    const sameFee = custInvs.filter(q => (near(q.date, issued) || near(q.date, due)) && (qbTermOf(q) == null || inv.term == null || Number(qbTermOf(q)) === Number(inv.term))
-                        && !(q.privateNote || '').includes(AUDIT_NOTE) && q.lines.some(l => famOf(`${l.itemName} ${l.description}`) === fam));
+                    const sameFee = possibleSameCharge({ family: fam, description: it.description || '', issued: String(issued || ''), due: String(due || ''), term: inv.term != null ? Number(inv.term) : null, year: inv.year != null ? Number(inv.year) : null },
+                        custInvs, famOf, claimed, AUDIT_NOTE);
                     if (sameFee.length) { blocked = `QuickBooks already has ${fam} invoice(s) for this student around then (${sameFee.map(q => `#${q.docNumber || q.id} ${money(q.totalAmt)}`).join(', ')}) — not creating "${it.description}" ${money(amt)} to avoid double-billing`; break; }
                     if (!allowCreate) { blocked = `This invoice (${issued}) is older than the auto-post start date and is not in QuickBooks — needs reconciliation, not auto-creation`; break; }
                     const choice = chooseQbItem(it.description || '', it.category || '', inv.student?.grade || ''); const itemId = choice.itemName ? resolveItemId(choice.itemName, await getItems(organizationId)) : null;
