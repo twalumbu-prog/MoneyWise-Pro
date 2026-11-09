@@ -7,6 +7,7 @@
           { "/": "/paid", "exclude": true, "comment": "The return page after paying from the app opens in Safari, not back in the app" },
           { "/": "/*/store", "exclude": true, "comment": "Store links (/<business>/store) are a website to browse and pay on; never hand them to the app" },
           { "/": "/*/store/*", "exclude": true, "comment": "Same, for a specific wallet's store (/<business>/store/<wallet>)" },
+          { "/": "/pay/????????-????-????-????-????????????", "exclude": true, "comment": "Long store link (/pay/<wallet-uuid>) is the store website too; Quick Pay usernames never contain hyphens so they still open the app" },
           { "/": "/*" }
         ]
       }
