@@ -1367,7 +1367,7 @@ export const logInternalWalletDepositIntent = async (req: Request, res: Response
 const VALID_MOMO_OPERATORS = ['airtel', 'mtn', 'zamtel', 'tnm'];
 
 /** Resolve {organizationId, secretKey} from a public walletId — shared by every public-collection endpoint. */
-async function resolveOrgFromWallet(walletId: string): Promise<{ organizationId: string; secretKey?: string; hasOwnKey?: boolean } | null> {
+async function resolveOrgFromWallet(walletId: string): Promise<{ organizationId: string; secretKey?: string; hasOwnKey?: boolean; isMasterOrg?: boolean } | null> {
     const { data: wallet, error: walletError } = await supabase
         .from('organization_wallets')
         .select('organization_id')
@@ -1381,7 +1381,7 @@ async function resolveOrgFromWallet(walletId: string): Promise<{ organizationId:
         .eq('id', wallet.organization_id)
         .maybeSingle();
 
-    return { organizationId: wallet.organization_id, secretKey: org?.lenco_secret_key || process.env.LENCO_SECRET_KEY, hasOwnKey: !!org?.lenco_secret_key };
+    return { organizationId: wallet.organization_id, secretKey: org?.lenco_secret_key || process.env.LENCO_SECRET_KEY, hasOwnKey: !!org?.lenco_secret_key, isMasterOrg: wallet.organization_id === BLUE_OPUS_ORG_ID };
 }
 
 /**
@@ -1411,7 +1411,8 @@ export const initiatePublicMobileMoneyCollection = async (req: Request, res: Res
         if (!resolved) return res.status(404).json({ error: 'Wallet not found' });
         // Never charge a customer through the master key: the money would settle
         // into the master's default account, not this merchant's (see collectionsApiEnabledFor).
-        if (!resolved.hasOwnKey) {
+        // Blue Opus (MoneyWise itself) IS the master account, so the master key settles into its own till.
+        if (!resolved.hasOwnKey && !resolved.isMasterOrg) {
             return res.status(409).json({ error: 'Direct mobile money checkout is not available for this business. Please pay with the standard checkout.' });
         }
 
