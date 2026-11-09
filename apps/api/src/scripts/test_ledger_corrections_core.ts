@@ -2,7 +2,7 @@
  * Ledger corrections — pure decision tests (no database, no network):  npx ts-node --transpile-only src/scripts/test_ledger_corrections_core.ts
  * These pin the rules that keep a correction from being undone by the Master Fees sync, and keep every correction re-runnable.
  */
-import { planFixDate, planUnverified, decideWalletMove, channelChanged, isWalletAccountType } from '../services/ledgerCorrections/core';
+import { planFixDate, planUnverified, decideWalletMove, channelChanged, invoiceLinkChanged, isWalletAccountType } from '../services/ledgerCorrections/core';
 
 let pass = 0, fail = 0;
 const ok = (name: string, cond: any, detail = '') => { if (cond) { pass++; console.log(`PASS  ${name}`); } else { fail++; console.log(`FAIL  ${name} ${detail}`); } };
@@ -51,5 +51,14 @@ const ZAN = 'b3184aed-8806-46ec-9723-0625256f9866', NAT = 'c2d49c28-454d-4c61-a2
     ok('C5 a brand-new payment (no prior) is handled by the normal path', !channelChanged(undefined, { account_name: 'zanaco' }));
 }
 ok('W1 wallet ids are recognised; buckets are not', isWalletAccountType(ZAN) && !isWalletAccountType('MASTERFEES_MANUAL') && !isWalletAccountType(null));
+
+// ── invoice link changed at Master Fees
+ok('L1 linked at Master Fees after we synced it with no invoice', invoiceLinkChanged({ prior_invoice_id: null }, { invoice_id: 'inv-1' }));
+ok('L2 unlinked at Master Fees', invoiceLinkChanged({ prior_invoice_id: 'inv-1' }, { invoice_id: null }));
+ok('L3 re-linked to a different invoice', invoiceLinkChanged({ prior_invoice_id: 'inv-1' }, { invoice_id: 'inv-2' }));
+ok('L4 same invoice (case and spacing ignored) is not a change', !invoiceLinkChanged({ prior_invoice_id: 'INV-1 ' }, { invoice_id: 'inv-1' }));
+ok('L5 no link on either side is not a change (null == undefined == empty)', !invoiceLinkChanged({ prior_invoice_id: null }, { invoice_id: undefined }) && !invoiceLinkChanged({ prior_invoice_id: '' }, { invoice_id: null }));
+ok('L6 a payment we have never synced is not a "change"', !invoiceLinkChanged(undefined, { invoice_id: 'inv-1' }));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
