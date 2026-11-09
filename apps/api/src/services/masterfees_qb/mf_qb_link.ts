@@ -98,6 +98,16 @@ export function qbTermOf(inv: QbInvoiceLike): number | null {
 }
 
 /**
+ * The school year a QuickBooks invoice belongs to, from its date. The school year runs January–November; invoices raised in December are for
+ * Term 1 of the following year (Master Fees issues next year's Term 1 fees in December too). Null when the invoice has no usable date.
+ */
+export function qbSchoolYearOf(inv: QbInvoiceLike): number | null {
+    const m = String(inv.date || '').match(/^(\d{4})-(\d{2})/);
+    if (!m) return null;
+    return Number(m[2]) === 12 ? Number(m[1]) + 1 : Number(m[1]);
+}
+
+/**
  * Master Fees "IMP-<n>-R<n>" transaction references embed the QuickBooks
  * DocNumber of the invoice they were imported from — `IMP-34655-R349` means
  * QuickBooks invoice DocNumber 34655. This is the single most reliable key
@@ -132,7 +142,7 @@ export function findQbInvoiceForItem(
     customerInvoices: QbInvoiceLike[],
     mfNumberIndex: Map<string, QbInvoiceLike[]>,
     claimed: Set<string>,
-    opts: { mfTerm?: number | null; impDocNumber?: string | null; qbByDoc?: Map<string, QbInvoiceLike> } = {},
+    opts: { mfTerm?: number | null; mfYear?: number | null; impDocNumber?: string | null; qbByDoc?: Map<string, QbInvoiceLike> } = {},
 ): LinkResult {
     // ---- Tier 0: the Master Fees invoice number/ID, quoted in PrivateNote ----
     // An invoice explicitly tagged "Ref: <this exact MF invoice>" was created
@@ -174,7 +184,10 @@ export function findQbInvoiceForItem(
     // Where both sides state a term, a differing term disqualifies outright —
     // that is precisely what stops Term 3 money landing on a Term 2 invoice.
     const sameAmount = customerInvoices.filter(q => Math.abs(q.totalAmt - itemAmount) < 0.01 && !claimed.has(q.id));
+    // ...and the SCHOOL YEAR must agree too: "TERM 3" on a September 2025 invoice is not Term 3 of 2026. Before this check a 2026 Term 3 fee of
+    // K1,500 linked to the student's 2025 "TERM 3" K1,500 invoice and 2026 payments were applied to last year's invoice (6 links, Nov 2026).
     const termCompatible = sameAmount.filter(q => {
+        if (opts.mfYear != null) { const qy = qbSchoolYearOf(q); if (qy != null && qy !== opts.mfYear) return false; }
         const qt = qbTermOf(q);
         if (opts.mfTerm == null || qt == null) return true;
         return qt === opts.mfTerm;

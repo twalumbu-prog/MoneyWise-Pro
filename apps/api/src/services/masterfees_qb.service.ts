@@ -168,11 +168,11 @@ export async function runQuickBooksAutoPost(
                 if (discTotal < 0 && items.length !== 1) { await review(`Invoice has a discount (${money(discTotal)}) across ${items.length} priced fee items — which item it reduces needs a person`); return; }
                 for (const it of items) {
                     const gross = Number(it.amount); const amt = gross + (discTotal < 0 ? discTotal : 0);
-                    const link = findQbInvoiceForItem(mfNum, it.description || '', amt, custInvs, index, claimed, { mfTerm: inv.term ?? null, impDocNumber: impDoc, qbByDoc });
+                    const link = findQbInvoiceForItem(mfNum, it.description || '', amt, custInvs, index, claimed, { mfTerm: inv.term ?? null, mfYear: inv.year != null ? Number(inv.year) : null, impDocNumber: impDoc, qbByDoc });
                     if (link.tier !== 'NONE' && link.invoice) { ids.push(link.invoice.id); claimed.add(link.invoice.id); continue; }
                     if (link.impMismatch) { blocked = `The import reference points to QuickBooks invoice #${link.impMismatch.docNumber} for this student, but its total is ${money(link.impMismatch.qbTotal)} and Master Fees has "${it.description || 'this fee'}" at ${money(amt)} — not linking and not creating a second invoice; needs a person`; break; }
                     if (discTotal < 0) {
-                        const g = findQbInvoiceForItem(mfNum, it.description || '', gross, custInvs, index, claimed, { mfTerm: inv.term ?? null, impDocNumber: impDoc, qbByDoc });
+                        const g = findQbInvoiceForItem(mfNum, it.description || '', gross, custInvs, index, claimed, { mfTerm: inv.term ?? null, mfYear: inv.year != null ? Number(inv.year) : null, impDocNumber: impDoc, qbByDoc });
                         if (g.tier !== 'NONE' && g.invoice) { blocked = `QuickBooks has this fee at the full ${money(gross)} (invoice #${g.invoice.docNumber || g.invoice.id}) but Master Fees applied a ${money(discTotal)} discount (net ${money(amt)}) — the discount needs applying in QuickBooks; not changed automatically`; break; }
                     }
                     // not in QuickBooks — create only if nothing for the same fee exists around that date (monthly-pieces guard)
