@@ -5,6 +5,8 @@
         "appIDs": ["9VM62949TC.cloud.blueopus.moneywise"],
         "components": [
           { "/": "/paid", "exclude": true, "comment": "The return page after paying from the app opens in Safari, not back in the app" },
+          { "/": "/*/store", "exclude": true, "comment": "Store links (/<business>/store) are a website to browse and pay on; never hand them to the app" },
+          { "/": "/*/store/*", "exclude": true, "comment": "Same, for a specific wallet's store (/<business>/store/<wallet>)" },
           { "/": "/*" }
         ]
       }
