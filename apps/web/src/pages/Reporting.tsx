@@ -91,7 +91,8 @@ export const Reporting: React.FC = () => {
     // Visibility Settings
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [hiddenAccounts, setHiddenAccounts] = useState<Set<string>>(new Set());
-    const [excludeZeroSpend, setExcludeZeroSpend] = useState(false);
+    // On by default: zero-balance accounts have always been hidden, so the toggle starts matching what is shown.
+    const [excludeZeroSpend, setExcludeZeroSpend] = useState(true);
     
     const [expandedAccount, setExpandedAccount] = useState<string | null>(null);
     const [itemsLoading, setItemsLoading] = useState(false);
@@ -1077,8 +1078,12 @@ export const Reporting: React.FC = () => {
                                                     >
                                                         <ArrowUpDown size={16} className="text-gray-900" />
                                                     </button>
-                                                    <button className="p-1 hover:bg-gray-100 rounded-lg transition-colors">
-                                                        <Filter size={16} className="text-gray-900" />
+                                                    <button
+                                                        onClick={() => setExcludeZeroSpend(!excludeZeroSpend)}
+                                                        title={excludeZeroSpend ? 'Zero-balance accounts hidden (click to show)' : 'Showing zero-balance accounts (click to hide)'}
+                                                        className={`p-1 rounded-lg transition-colors ${excludeZeroSpend ? 'bg-[#0059D8] text-white' : 'hover:bg-gray-100 text-gray-900'}`}
+                                                    >
+                                                        <Filter size={16} />
                                                     </button>
                                                 </div>
                                             </div>
@@ -1155,7 +1160,7 @@ export const Reporting: React.FC = () => {
                                                                         {groupData.items
                                                                             .filter((row: any) => {
                                                                                 const curr = Number(row.total_amount) || 0;
-                                                                                return curr !== 0; // Hide if current balance is zero
+                                                                                return !excludeZeroSpend || curr !== 0; // Hide zero balances only while the filter is on
                                                                             })
                                                                             .map((row: any) => {
                                                                             const isRowExpanded = expandedAccount === row.account_id;
@@ -1974,7 +1979,7 @@ export const Reporting: React.FC = () => {
                                                 {groupData.items
                                                     .filter((row: any) => {
                                                         const curr = Number(row.total_amount) || 0;
-                                                        return curr !== 0; // Hide if current balance is zero
+                                                        return !excludeZeroSpend || curr !== 0; // Hide zero balances only while the filter is on
                                                     })
                                                     .map((row: any) => {
                                                     const isRowExpanded = expandedAccount === row.account_id;
