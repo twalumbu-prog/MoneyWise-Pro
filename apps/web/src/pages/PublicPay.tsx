@@ -740,7 +740,8 @@ export const PublicPay: React.FC = () => {
     // Begin payment: the dedicated payment page (own-UX) or the Lenco widget.
     const startPayment = () => {
         if (!canPay) return;
-        if (collectionsApiEnabled) {
+        // With the card option on, the customer first lands on the Mobile Money / Card choice instead of straight in the Lenco window.
+        if (collectionsApiEnabled || cardEnabled) {
             setError(null);
             setCheckoutPhone(customerPhone);
             setResolvedAccountName('');
@@ -1472,7 +1473,7 @@ export const PublicPay: React.FC = () => {
         setVerificationStep('POLLING');
         setError(null);
         // The widget flow has no payment-method page: it starts again from the summary.
-        setStep(collectionsApiEnabled ? 'CHECKOUT' : 'SUMMARY');
+        setStep(collectionsApiEnabled || cardEnabled ? 'CHECKOUT' : 'SUMMARY');
     };
 
     // Failed "Cancel" / cancelled "Back to cart" → leave the flow back to the cart.
@@ -3746,7 +3747,17 @@ Status: VERIFIED`;
                         </div>
 
                         <div className="flex-1 overflow-y-auto px-6 pt-6 pb-2">
-                            {checkoutMethod === 'mobile-money' ? (
+                            {checkoutMethod === 'mobile-money' && !collectionsApiEnabled ? (
+                                <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-[#E8F0FE] text-[#0B57D0] flex items-center justify-center"><Smartphone size={20} /></div>
+                                        <div>
+                                            <p className="text-sm font-bold text-gray-800">Pay with Mobile Money</p>
+                                            <p className="text-[11px] text-gray-500">You’ll choose your network and approve on your phone in the next window.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : checkoutMethod === 'mobile-money' ? (
                                 <>
                                     <label className="block text-sm font-semibold text-gray-800 mb-2">
                                         Enter your mobile money number
@@ -3853,7 +3864,16 @@ Status: VERIFIED`;
                                 <ShieldCheck size={16} className="text-zinc-600" />
                                 <span className="text-xs text-zinc-600">Secure payments powered by Lenco</span>
                             </div>
-                            {checkoutMethod === 'moneywise' ? null : checkoutMethod === 'mobile-money' ? (
+                            {checkoutMethod === 'moneywise' ? null : checkoutMethod === 'mobile-money' && !collectionsApiEnabled ? (
+                                <button
+                                    onClick={handlePay}
+                                    disabled={submitting || !canPay}
+                                    className={`w-full h-14 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${!submitting && canPay ? 'bg-[#0B57D0] hover:bg-[#0842A0] text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'}`}
+                                >
+                                    {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
+                                    <span>{submitting ? 'Starting…' : `Pay K${totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}</span>
+                                </button>
+                            ) : checkoutMethod === 'mobile-money' ? (
                                 <button
                                     onClick={handlePayMobileMoney}
                                     disabled={submitting || !detectOperator(checkoutPhone) || resolvingAccountName}

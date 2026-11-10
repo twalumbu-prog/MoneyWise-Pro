@@ -1195,11 +1195,11 @@ Status: VERIFIED`;
     // same footing as Cash/Bank/Airtel Money.
     const masterFeesLencoTile = (overview?.additionalExternalAccounts ?? []).find(a => a.id === 'MASTERFEES');
     type MoneywiseCard =
-        | { kind: 'wallet'; id: string; name: string; balance: number; is_main?: boolean }
+        | { kind: 'wallet'; id: string; name: string; balance: number; is_main?: boolean; live?: boolean }
         | { kind: 'masterfees'; name: string; balance: number }
         | { kind: 'lipila'; name: string; balance: number };
     const moneywiseCards: MoneywiseCard[] = [
-        ...wallets.map((w: any): MoneywiseCard => ({ kind: 'wallet', id: w.id, name: w.name, balance: w.balance || 0, is_main: w.is_main })),
+        ...wallets.map((w: any): MoneywiseCard => ({ kind: 'wallet', id: w.id, name: w.name, balance: w.balance || 0, is_main: w.is_main, live: w.balance_source === 'LENCO_LIVE' })),
         ...(masterFeesLencoTile ? [{ kind: 'masterfees' as const, name: masterFeesLencoTile.name, balance: externalBalances['MASTERFEES'] || 0 }] : []),
         ...(lipilaTile ? [{ kind: 'lipila' as const, name: lipilaTile.name, balance: lipilaBalance }] : []),
     ];
@@ -1311,6 +1311,9 @@ Status: VERIFIED`;
                             </div>
                             <div className="text-[34px] font-bold leading-8 tracking-tight whitespace-nowrap">
                                 K {formatCurrency(balance).replace('K', '')}
+                                {wallets.find((w: any) => w.id === key)?.balance_source === 'LENCO_LIVE' && (
+                                    <span className="ml-2 align-middle text-[10px] font-bold uppercase tracking-wider text-white/70">Live from Lenco</span>
+                                )}
                             </div>
                             <div className="flex items-end gap-2">
                                 <span className="flex-1 font-figtree text-xs font-extrabold uppercase tracking-wide text-white/70 truncate">
@@ -1792,7 +1795,7 @@ Status: VERIFIED`;
                             {moneywiseCards.map((card) => card.kind === 'wallet' ? (
                                 <DesktopWalletCard
                                     key={card.id}
-                                    label={`${card.name}${card.is_main ? ' (Main)' : ''}`}
+                                    label={`${card.name}${card.is_main ? ' (Main)' : ''}${card.live ? ' · Live' : ''}`}
                                     amount={`K ${formatCurrency(card.balance).replace('K', '')}`}
                                     orgName={organizationName || 'MoneyWise'}
                                     isActive={selectedAccountType === 'MONEYWISE_WALLET' && selectedWalletId === card.id}

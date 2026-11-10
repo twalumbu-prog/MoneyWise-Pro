@@ -187,15 +187,24 @@ export async function walletSummary(orgId: string) {
     const creds = await getCredentials(orgId);
     if (!creds) return { ...base, error: 'No Lipila key is saved.' };
     try {
-        const res = await fetch(`${baseUrl(creds.env)}/api/v1/merchants/balance`, { headers: { accept: 'application/json', 'x-api-key': creds.apiKey }, signal: AbortSignal.timeout(15_000) });
-        const body: any = await res.json().catch(() => null);
-        if (res.status === 401 || res.status === 403) return { ...base, connected: true, env: creds.env, error: `Lipila refused the saved key. Check that it is a ${creds.env} key.` };
-        if (!res.ok) return { ...base, connected: true, env: creds.env, error: `Lipila answered ${res.status}.` };
+        // Exactly as Lipila documents it: only accept and x-api-key. A content-type on this bodiless GET is a known cause of a generic 400.
+        const res = await fetch(`${baseUrl(creds.env)}/api/v1/merchants/balance`, { method: 'GET', headers: { accept: 'application/json', 'x-api-key': creds.apiKey }, signal: AbortSignal.timeout(20_000) });
+        const text = await res.text().catch(() => '');
+        let body: any = null; try { body = text ? JSON.parse(text) : null; } catch { body = null; }
+        if (!res.ok) {
+            // Lipila's headline can be generic ("One or more errors occurred!"); the real reason is in `errors`, so it is shown.
+            const detail = body?.errors ? JSON.stringify(body.errors).slice(0, 240) : text.slice(0, 200);
+            const why = res.status === 401 ? `The key was refused. Check that it is a ${creds.env === 'production' ? 'live' : 'testing'} key and that the environment saved in Integrations matches it.`
+                : res.status === 403 ? 'The key is inactive or not allowed. Check it is active in Lipila (and, if Lipila asks for it, that this server’s address is whitelisted).'
+                : res.status === 429 ? 'Too many requests. Wait a moment and refresh.' : '';
+            return { ...base, connected: true, env: creds.env, error: `${why ? `${why} ` : ''}Lipila said: ${body?.message || 'error'} (HTTP ${res.status}${detail ? `: ${detail}` : ''})` };
+        }
         const d = body?.data ?? body ?? {};
         const balance = pickNumber(d.balance, d.availableBalance, d.available, body?.balance, body?.availableBalance);
         const booked = pickNumber(d.bookedBalance, d.booked, body?.bookedBalance);
         if (balance === null) return { ...base, connected: true, env: creds.env, booked, error: 'Lipila answered, but the balance wasn’t in the answer.' };
-        return { ...base, connected: true, env: creds.env, balance: round2(balance), booked: booked === null ? null : round2(booked), currency: String(d.currency ?? body?.currency ?? 'ZMW') };
+        // Kept as Lipila sends it (up to three decimals); the page rounds it only to display it.
+        return { ...base, connected: true, env: creds.env, balance, booked, currency: String(d.currency ?? body?.currency ?? 'ZMW') };
     } catch (e: any) {
         return { ...base, connected: true, env: creds.env, error: `Couldn’t reach Lipila: ${e?.message ?? e}` };
     }
@@ -298,6 +307,34 @@ export async function initiateCard(input: InitiateInput) {
     const { error } = await supabase.from('lipila_card_sessions').upsert(row, { onConflict: 'reference' });
     if (error) throw error;
     return { redirectUrl: data.cardRedirectionUrl as string, alreadyPaid: false, charged, fee };
+}
+
+/**
+ * A signed-in member tops up the business's card wallet by card. The amount is what the business should end up with; the card is charged
+ * that plus Lipila's fee. The pending deposit is written here, on the server, so the card payment is built on our own record of it.
+ */
+export const DEPOSIT_MIN = 10;
+export const DEPOSIT_MAX = 50_000;
+export async function initiateDeposit(input: { organizationId: string; userId: string; amount: unknown; apiBase: string | null; returnUrl?: string; customer?: InitiateInput['customer'] }) {
+    const orgId = input.organizationId;
+    const amount = round2(num(input.amount));
+    if (!(amount >= DEPOSIT_MIN)) throw new LipilaError(`The smallest card deposit is K${DEPOSIT_MIN}.`, 400, 'AMOUNT');
+    if (amount > DEPOSIT_MAX) throw new LipilaError(`The largest card deposit is K${DEPOSIT_MAX.toLocaleString()}.`, 400, 'AMOUNT');
+    if (!(await cardsEnabledFor(orgId))) throw new LipilaError('Card payments aren’t available for this business yet.', 403, 'NOT_ENABLED');
+
+    const reference = `${CARD_REF_PREFIX}DEP-${Date.now()}-${orgId.slice(0, 8)}-${crypto.randomBytes(3).toString('hex')}`;
+    const { error } = await supabase.from('cashbook_entries').insert({
+        organization_id: orgId, entry_type: 'INFLOW', account_type: CARD_ACCOUNT_TYPE, description: `PENDING_INTENT: Card deposit | Ref: ${reference}`,
+        debit: amount, credit: 0, balance_after: 0, date: new Date().toISOString().split('T')[0], status: 'PENDING', wallet_id: null, external_reference: reference,
+    });
+    if (error) throw new LipilaError('Couldn’t start the deposit. Please try again.', 500, 'INTENT');
+    try {
+        const r = await initiateCard({ organizationId: orgId, reference, apiBase: input.apiBase, returnUrl: input.returnUrl, customer: input.customer, context: { kind: 'deposit', user: input.userId } });
+        return { reference, ...r };
+    } catch (e) {
+        await supabase.from('cashbook_entries').delete().eq('organization_id', orgId).eq('external_reference', reference).eq('status', 'PENDING');
+        throw e;
+    }
 }
 
 /* ───────────── The webhook ───────────── */

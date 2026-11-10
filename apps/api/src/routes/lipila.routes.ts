@@ -10,6 +10,7 @@ router.get('/public/status/:reference', c.status);
 
 // The owner's settings.
 router.use(requireAuth);
+router.post('/deposit', requireRole(['AUTHORISER', 'CASHIER', 'ACCOUNTANT', 'ADMIN']), c.deposit);
 router.get('/wallet', requireRole(['AUTHORISER', 'CASHIER', 'ACCOUNTANT', 'ADMIN']), c.wallet);
 router.get('/card-payments', requireRole(['AUTHORISER', 'CASHIER', 'ACCOUNTANT', 'ADMIN']), c.cardPayments);
 router.get('/settings', c.getSettings);

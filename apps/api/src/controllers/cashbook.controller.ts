@@ -9,6 +9,7 @@ import { QuickBooksService } from '../services/quickbooks.service';
 import { ledgerService } from '../services/ledger.service';
 import { releaseAllocationsIfNotReceivable } from '../services/customerInvoice.service';
 import { calculatePlatformFee } from '../utils/platformFee';
+import { liveLencoBalance, applyLiveBalance } from '../services/liveWalletBalance.service';
 
 /**
  * Get all cashbook entries with optional filters
@@ -865,14 +866,19 @@ const fetchOrgWallets = async (organizationId: string): Promise<any[]> => {
         wallets = [newWallet];
     }
 
-    // Fetch balances for each wallet dynamically
-    return Promise.all((wallets || []).map(async (wallet: any) => {
-        const balance = await cashbookService.getCurrentBalance(organizationId, 'MONEYWISE_WALLET', wallet.id);
-        return {
-            ...wallet,
-            balance
-        };
-    }));
+    // Fetch balances for each wallet dynamically (the books), and ask Lenco what is really in the account.
+    const [withBooks, live] = await Promise.all([
+        Promise.all((wallets || []).map(async (wallet: any) => {
+            const balance = await cashbookService.getCurrentBalance(organizationId, 'MONEYWISE_WALLET', wallet.id);
+            return {
+                ...wallet,
+                balance
+            };
+        })),
+        liveLencoBalance(organizationId),
+    ]);
+    // The Main Wallet shows Lenco's live figure when it can be had, so nobody pays out against a stale books balance.
+    return applyLiveBalance(withBooks, live);
 };
 
 export const getWallets = async (req: any, res: any): Promise<any> => {
@@ -1001,9 +1007,14 @@ export const getCashbookOverview = async (req: any, res: any): Promise<any> => {
 
         const flatRecentExt = recentExts.flat();
 
+        // When a MoneyWise wallet is selected, its headline balance is the same figure its card shows (live for the Main Wallet).
+        const selectedWallet = accountType === 'MONEYWISE_WALLET'
+            ? (wallets.find((w: any) => w.id === effectiveWalletId) ?? (effectiveWalletId ? undefined : wallets.find((w: any) => w.is_main)))
+            : undefined;
+
         res.json({
             entries: entries.map(sanitizeEntry),
-            balance,
+            balance: selectedWallet ? selectedWallet.balance : balance,
             externalBalances: externalBalancesMap,
             additionalExternalAccounts,
             wallets,

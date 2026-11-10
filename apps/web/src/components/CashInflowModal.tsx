@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Phone, FileText, Wallet, ArrowDownToLine, CheckCircle, AlertCircle, Calendar, Loader2 } from 'lucide-react';
+import { X, User, Phone, FileText, Wallet, ArrowDownToLine, CheckCircle, AlertCircle, Calendar, Loader2, Smartphone, CreditCard } from 'lucide-react';
+import { apiFetch } from '../lib/api';
 import { cashbookService } from '../services/cashbook.service';
 import { organizationService } from '../services/organization.service';
 import { lencoService } from '../services/lenco.service';
@@ -45,6 +46,55 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
     const [verificationReason, setVerificationReason] = useState<string | null>(null);
     const [reconSummary, setReconSummary] = useState<any>(null);
     const [currentReference, setCurrentReference] = useState<string | null>(null);
+
+    // Card deposit (Lipila): the money lands in the business's Card Wallet, not the Lenco wallet.
+    const [walletMethod, setWalletMethod] = useState<'MOBILE' | 'CARD'>('MOBILE');
+    const [cardAvailable, setCardAvailable] = useState(false);
+    const [cardRef, setCardRef] = useState<string | null>(null);
+    const [cardNote, setCardNote] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!isOpen || inflowType !== 'WALLET') return;
+        let live = true;
+        apiFetch('/lipila/settings').then((r) => r.ok ? r.json() : null).then((s) => { if (live) setCardAvailable(!!(s && s.available && s.enabled)); }).catch(() => { if (live) setCardAvailable(false); });
+        return () => { live = false; };
+    }, [isOpen, inflowType]);
+
+    // After the card page is opened, ask for the result until it is decided.
+    useEffect(() => {
+        if (!cardRef) return;
+        let stop = false;
+        const tick = async () => {
+            try {
+                const r = await apiFetch(`/lipila/public/status/${encodeURIComponent(cardRef)}`);
+                const d = await r.json().catch(() => null);
+                if (stop) return;
+                if (d?.verified) { setCardRef(null); setCardNote(null); setWalletAmount(''); onSuccess(); onClose(); return; }
+                if (d?.status === 'failed') { setCardRef(null); setCardNote(null); setError(d.message || 'The card payment did not go through. Nothing was charged.'); return; }
+            } catch { /* keep waiting */ }
+        };
+        const t = setInterval(tick, 3000);
+        return () => { stop = true; clearInterval(t); };
+    }, [cardRef]);
+
+    const handleCardDeposit = async () => {
+        const popup = window.open('about:blank', 'lipila_card', 'width=440,height=760');
+        setIsSubmitting(true);
+        setError(null);
+        try {
+            const r = await apiFetch('/lipila/deposit', { method: 'POST', body: JSON.stringify({ amount: Number(walletAmount), returnUrl: window.location.href }) });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok || !d.redirectUrl) throw new Error(d.error || 'Could not start the card deposit.');
+            if (popup && !popup.closed) popup.location.href = d.redirectUrl; else window.location.href = d.redirectUrl;
+            setCardNote('Finish the payment in the card window. This page updates by itself.');
+            setCardRef(d.reference);
+        } catch (e: any) {
+            try { popup?.close(); } catch { /* already closed */ }
+            setError(e?.message || 'Could not start the card deposit.');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
 
     useEffect(() => {
         if (isOpen) {
@@ -147,6 +197,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
             setError('Please enter a valid deposit amount.');
             return;
         }
+        if (walletMethod === 'CARD') { await handleCardDeposit(); return; }
 
         if (!lencoSubaccountId) {
             setError('This organization does not have a linked Lenco Wallet. Please configure it in Settings > General.');
@@ -488,6 +539,18 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
                                             </div>
                                         </div>
 
+                                        {cardAvailable && (
+                                            <div className="p-0.5 bg-slate-100 rounded-full flex items-center">
+                                                <button type="button" onClick={() => { setWalletMethod('MOBILE'); setError(null); }} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-full text-xs font-bold transition-all ${walletMethod === 'MOBILE' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}><Smartphone size={15} /> Mobile Money</button>
+                                                <button type="button" onClick={() => { setWalletMethod('CARD'); setError(null); }} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-full text-xs font-bold transition-all ${walletMethod === 'CARD' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}><CreditCard size={15} /> Card</button>
+                                            </div>
+                                        )}
+                                        {walletMethod === 'CARD' && (
+                                            <p className="text-[11px] text-slate-500 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">Card deposits go to your <strong>Card Wallet</strong> (your Lipila account), not the Lenco wallet.</p>
+                                        )}
+                                        {cardNote && (
+                                            <div className="flex items-center gap-3 text-sm font-semibold text-slate-700 bg-slate-50 border border-slate-100 rounded-xl px-3 py-3"><Loader2 size={16} className="animate-spin text-[#0B57D0]" />{cardNote}</div>
+                                        )}
                                         <div className="rounded-2xl p-5 border border-slate-100">
                                             <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-3">
                                                 Amount to Deposit (K)
@@ -506,8 +569,8 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
                                             </div>
                                             <div className="mt-3 space-y-2">
                                                 <div className="flex justify-between items-center bg-slate-50/70 p-3.5 rounded-xl text-sm">
-                                                    <span className="text-slate-500 font-semibold">Transaction Fee (1%)</span>
-                                                    <span className="text-blue-600 font-bold">+ K {((Number(walletAmount) / 0.99 - Number(walletAmount)) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                    <span className="text-slate-500 font-semibold">{walletMethod === 'CARD' ? 'Card fee (4%)' : 'Transaction Fee (1%)'}</span>
+                                                    <span className="text-blue-600 font-bold">+ K {((Number(walletAmount) / (walletMethod === 'CARD' ? 0.96 : 0.99) - Number(walletAmount)) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                                 </div>
                                                 <p className="text-[10px] text-slate-400 italic px-1">
                                                     You'll be redirected to the secure Lenco payment gateway to pay the total of <strong>K {((Number(walletAmount) / 0.99) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong> via Card or Mobile Money.
@@ -605,7 +668,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
                             <div className="flex flex-col">
                                 <span className="text-slate-400 text-[10px] font-black uppercase tracking-wider">Total {inflowType === 'CASH' ? 'Inflow' : 'Deposit'} Amount</span>
                                 <span className="text-2xl font-black text-slate-950">
-                                    K {(inflowType === 'CASH' ? totalAmount : (Number(walletAmount) / 0.99) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    K {(inflowType === 'CASH' ? totalAmount : (Number(walletAmount) / (walletMethod === 'CARD' ? 0.96 : 0.99)) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                 </span>
                             </div>
                             <div className="flex space-x-2">
@@ -635,7 +698,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
                                     <button
                                         type="button"
                                         onClick={handleWalletDeposit}
-                                        disabled={Number(walletAmount) <= 0 || loadingOrg}
+                                        disabled={Number(walletAmount) <= 0 || loadingOrg || isSubmitting || !!cardRef}
                                         className="flex items-center px-7 py-3 bg-slate-950 text-white text-xs font-black uppercase tracking-wider rounded-2xl shadow-md shadow-slate-950/10 hover:bg-[#0B57D0] disabled:opacity-50 disabled:shadow-none transition-all active:scale-95"
                                     >
                                         <ArrowDownToLine size={16} className="mr-2" />

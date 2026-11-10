@@ -28,6 +28,20 @@ export const initiate = async (req: Request, res: Response) => {
     } catch (e) { fail(res, e, 'start the card payment'); }
 };
 
+/** POST /lipila/deposit  A signed-in member tops up the business's card wallet by card. Returns the card page to open. */
+export const deposit = async (req: any, res: Response) => {
+    try {
+        const org = req.user?.organization_id; if (!org) return res.status(400).json({ error: 'No account on this sign-in.' });
+        const b = req.body ?? {};
+        const name = String(req.user?.name ?? '').trim().split(/\s+/);
+        const r = await lipila.initiateDeposit({
+            organizationId: org, userId: req.user.id, amount: b.amount, apiBase: apiBase(req), returnUrl: typeof b.returnUrl === 'string' ? b.returnUrl.slice(0, 300) : undefined,
+            customer: { firstName: name[0] || undefined, lastName: name.slice(1).join(' ') || undefined, email: req.user?.email || undefined, phone: b.phone },
+        });
+        res.json({ success: true, ...r });
+    } catch (e) { fail(res, e, 'start the card deposit'); }
+};
+
 /** GET /lipila/public/status/:reference  The outcome (asks Lipila, and records the payment the first time it is confirmed). */
 export const status = async (req: Request, res: Response) => {
     try {
