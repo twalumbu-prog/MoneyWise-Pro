@@ -10,7 +10,7 @@ import { QuickBooksService } from '../services/quickbooks.service';
 import { ledgerService } from '../services/ledger.service';
 import { releaseAllocationsIfNotReceivable } from '../services/customerInvoice.service';
 import { calculatePlatformFee } from '../utils/platformFee';
-import { liveLencoBalance, applyLiveBalance } from '../services/liveWalletBalance.service';
+import { liveLencoStatus, applyLiveBalance } from '../services/liveWalletBalance.service';
 
 /**
  * Get all cashbook entries with optional filters
@@ -694,10 +694,10 @@ const fetchOrgWallets = async (organizationId: string): Promise<any[]> => {
                 balance
             };
         })),
-        liveLencoBalance(organizationId),
+        liveLencoStatus(organizationId),
     ]);
     // The Main Wallet shows Lenco's live figure when it can be had, so nobody pays out against a stale books balance.
-    return applyLiveBalance(withBooks, live);
+    return applyLiveBalance(withBooks, live.live, live.reason);
 };
 
 export const getWallets = async (req: any, res: any): Promise<any> => {
@@ -803,7 +803,7 @@ export const getCashbookOverview = async (req: any, res: any): Promise<any> => {
                 cashbookService.getCurrentBalance(organizationId, CARD_ACCOUNT_TYPE),
                 cashbookService.getEntries(organizationId, { accountType: CARD_ACCOUNT_TYPE, limit: 10 }),
             ]);
-            additionalExternalAccounts.push({ id: CARD_ACCOUNT_TYPE, name: 'Lipila (Card payments)' });
+            additionalExternalAccounts.push({ id: CARD_ACCOUNT_TYPE, name: 'Card Wallet' });
         }
 
         // Add custom external wallets to additionalExternalAccounts so frontend renders them

@@ -1195,11 +1195,11 @@ Status: VERIFIED`;
     // same footing as Cash/Bank/Airtel Money.
     const masterFeesLencoTile = (overview?.additionalExternalAccounts ?? []).find(a => a.id === 'MASTERFEES');
     type MoneywiseCard =
-        | { kind: 'wallet'; id: string; name: string; balance: number; is_main?: boolean; live?: boolean }
+        | { kind: 'wallet'; id: string; name: string; balance: number; is_main?: boolean; live?: boolean; liveUnavailable?: string }
         | { kind: 'masterfees'; name: string; balance: number }
         | { kind: 'lipila'; name: string; balance: number };
     const moneywiseCards: MoneywiseCard[] = [
-        ...wallets.map((w: any): MoneywiseCard => ({ kind: 'wallet', id: w.id, name: w.name, balance: w.balance || 0, is_main: w.is_main, live: w.balance_source === 'LENCO_LIVE' })),
+        ...wallets.map((w: any): MoneywiseCard => ({ kind: 'wallet', id: w.id, name: w.name, balance: w.balance || 0, is_main: w.is_main, live: w.balance_source === 'LENCO_LIVE', liveUnavailable: w.live_unavailable })),
         ...(masterFeesLencoTile ? [{ kind: 'masterfees' as const, name: masterFeesLencoTile.name, balance: externalBalances['MASTERFEES'] || 0 }] : []),
         ...(lipilaTile ? [{ kind: 'lipila' as const, name: lipilaTile.name, balance: lipilaBalance }] : []),
     ];
@@ -1313,6 +1313,9 @@ Status: VERIFIED`;
                                 K {formatCurrency(balance).replace('K', '')}
                                 {wallets.find((w: any) => w.id === key)?.balance_source === 'LENCO_LIVE' && (
                                     <span className="ml-2 align-middle text-[10px] font-bold uppercase tracking-wider text-white/70">Live from Lenco</span>
+                                )}
+                                {wallets.find((w: any) => w.id === key)?.live_unavailable && (
+                                    <span className="ml-2 align-middle text-[10px] font-bold uppercase tracking-wider text-amber-200" title={wallets.find((w: any) => w.id === key)?.live_unavailable}>Books only</span>
                                 )}
                             </div>
                             <div className="flex items-end gap-2">
@@ -1795,7 +1798,7 @@ Status: VERIFIED`;
                             {moneywiseCards.map((card) => card.kind === 'wallet' ? (
                                 <DesktopWalletCard
                                     key={card.id}
-                                    label={`${card.name}${card.is_main ? ' (Main)' : ''}${card.live ? ' · Live' : ''}`}
+                                    label={`${card.name}${card.is_main ? ' (Main)' : ''}${card.live ? ' · Live' : card.liveUnavailable ? ' · Books only' : ''}`}
                                     amount={`K ${formatCurrency(card.balance).replace('K', '')}`}
                                     orgName={organizationName || 'MoneyWise'}
                                     isActive={selectedAccountType === 'MONEYWISE_WALLET' && selectedWalletId === card.id}
