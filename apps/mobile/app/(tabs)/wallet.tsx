@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-    Search, ArrowUpDown, X, ArrowDownToLine, ArrowLeftRight, Link2, FileSpreadsheet, AlertCircle, Mail,
+    Search, ArrowUpDown, X, ArrowDownToLine, ArrowLeftRight, Link2, FileSpreadsheet, AlertCircle, Mail, CreditCard,
 } from 'lucide-react-native';
 import { cashbookService, lencoService, groupByDate, isRequestorRole, isPersonalOrgName, onboardingService } from 'core';
 import type { CashbookEntry } from 'core';
@@ -21,6 +21,7 @@ import { OfflineNotice } from '../../src/components/OfflineNotice';
 import { AnimatedSegmented, AnimatedTabContent } from '../../src/components/AnimatedTabs';
 import { PiggyBankIcon } from '../../src/components/icons/PiggyBankIcon';
 import { colors, fonts, radius } from '../../src/theme/tokens';
+import { CardWalletPanel } from '../../src/components/wallet/CardWalletPanel';
 
 type Group = 'MONEYWISE' | 'EXTERNAL';
 
@@ -90,7 +91,8 @@ export default function WalletScreen() {
             }
             return wallets.map((w: any) => ({
                 id: String(w.id),
-                name: w.name ?? 'Wallet',
+                // The Main Wallet shows Lenco's live figure when it can be had; say so, and say when it falls back to the books.
+                name: `${w.name ?? 'Wallet'}${w.balance_source === 'LENCO_LIVE' ? ' · Live' : w.live_unavailable ? ' · Books only' : ''}`,
                 balance: Number(w.balance ?? 0),
             }));
         }
@@ -236,7 +238,16 @@ export default function WalletScreen() {
                                     </View>
                                 )}
 
-                                {!isRequestor && group === 'EXTERNAL' && cards.length > 0 && (
+                                {!isRequestor && group === 'EXTERNAL' && cards[Math.min(slide, Math.max(cards.length - 1, 0))]?.id === 'LIPILA_WALLET' && (
+                                    <>
+                                        <View style={styles.actionBar}>
+                                            <Action icon={CreditCard} label="Deposit by card" onPress={() => router.push('/wallet/deposit?method=card')} />
+                                        </View>
+                                        <CardWalletPanel organizationId={organizationId} />
+                                    </>
+                                )}
+
+                                {!isRequestor && group === 'EXTERNAL' && cards.length > 0 && cards[Math.min(slide, Math.max(cards.length - 1, 0))]?.id !== 'LIPILA_WALLET' && (
                                     <View style={styles.actionBar}>
                                         <Action
                                             icon={ArrowLeftRight}

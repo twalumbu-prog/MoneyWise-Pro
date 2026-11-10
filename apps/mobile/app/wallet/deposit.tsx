@@ -34,7 +34,8 @@ export default function DepositScreen() {
     const qc = useQueryClient();
     const { organizationId } = useAuth();
 
-    const [method, setMethod] = useState<'MOBILE_MONEY' | 'CARD'>('MOBILE_MONEY');
+    const startParams = useLocalSearchParams<{ method?: string }>();
+    const [method, setMethod] = useState<'MOBILE_MONEY' | 'CARD'>(startParams.method === 'card' ? 'CARD' : 'MOBILE_MONEY');
     // Arriving from "Insufficient funds" on the send screen pre-fills the shortfall and the wallet to top up.
     const params = useLocalSearchParams<{ amount?: string; walletId?: string }>();
     const [amount, setAmount] = useState(params.amount && Number(params.amount) > 0 ? String(params.amount) : '');

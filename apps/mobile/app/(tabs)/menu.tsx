@@ -79,7 +79,7 @@ export default function MenuScreen() {
         { icon: LayoutGrid, label: 'Apps', go: () => router.push('/apps'), proOnly: true },
         { icon: TrendingUp, label: 'Invest', go: () => router.push('/apps/invest'), proOnly: false },
         { icon: Landmark, label: 'Loans', go: () => soon('Loans'), proOnly: false },
-        { icon: Store, label: 'Marketplace', go: () => soon('Marketplace'), proOnly: false },
+        { icon: Store, label: 'Marketplace', go: () => router.push('/marketplace' as any), proOnly: false },
     ];
 
     const services = isPersonal ? allServices.filter((s) => !s.proOnly) : allServices;

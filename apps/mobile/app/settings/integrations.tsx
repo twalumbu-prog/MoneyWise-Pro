@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator, Linking, Alert } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, ExternalLink, Unplug } from 'lucide-react-native';
-import { integrationService } from 'core';
+import { CheckCircle2, ExternalLink, Unplug, CreditCard, ChevronRight } from 'lucide-react-native';
+import { integrationService, lipilaService } from 'core';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
@@ -18,6 +18,9 @@ import { colors, fonts, radius } from '../../src/theme/tokens';
  */
 export default function IntegrationsScreen() {
     const qc = useQueryClient();
+    const router = useRouter();
+    // Card payments through Lipila are switched on business by business; the card only shows for those that have it.
+    const { data: lipila } = useQuery({ queryKey: ['lipila', 'settings-summary'], queryFn: () => lipilaService.settings(), retry: false, staleTime: 300_000 });
     const [connecting, setConnecting] = useState(false);
     const [disconnecting, setDisconnecting] = useState(false);
 
@@ -118,6 +121,21 @@ export default function IntegrationsScreen() {
                         </Pressable>
                     </View>
                 )}
+
+                {lipila?.available ? (
+                    <Pressable style={styles.card} onPress={() => router.push('/settings/lipila')}>
+                        <View style={styles.cardTop}>
+                            <View style={[styles.qbIcon, { backgroundColor: colors.blue }]}><CreditCard size={22} color="#FFFFFF" /></View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.cardTitle}>Card payments (Lipila)</Text>
+                                <Text style={styles.cardSub}>Let customers pay you by card</Text>
+                            </View>
+                            {lipila.configured && lipila.enabled ? (
+                                <View style={styles.connectedPill}><CheckCircle2 size={12} color="#059669" /><Text style={styles.connectedPillText}>On</Text></View>
+                            ) : <ChevronRight size={18} color={colors.textFaint} />}
+                        </View>
+                    </Pressable>
+                ) : null}
 
                 <Text style={styles.footnote}>
                     Account mapping and QuickBooks statement viewing are available on the web app.
