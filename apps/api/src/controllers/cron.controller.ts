@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { emailService } from '../services/email.service';
-import { healMissingPlatformFeesWithinBudget } from '../services/reconciliation.service';
+import { healMissingPlatformFeesWithinBudget, runDailyBalanceCheck, RECON_TOLERANCE } from '../services/reconciliation.service';
 import { autoCompleteRequisition, sendAutoCategorizationReminder } from './requisition.controller';
 
 /**
@@ -163,5 +163,59 @@ export const getCronHealth = async (_req: any, res: any) => {
         return res.json({ jobs: await fetchCronHealth() });
     } catch (e: any) {
         return res.status(500).json({ error: 'Failed to load scheduler health', details: e.message });
+    }
+};
+
+// POST /cron/daily-recon — every morning: MoneyWise wallet totals vs live Lenco balance for every linked org.
+// Stores the snapshot (app_settings.daily_recon_last, with the previous run kept for trend) and emails super-admins
+// a single digest: all-clear, or exactly which organisations differ and by how much.
+const kw = (v: number | null) => v === null ? '—' : `K${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+export const dailyReconCron = async (req: any, res: any) => {
+    if (!isCronCall(req)) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+        const { rows, checked, skipped } = await runDailyBalanceCheck();
+        const diffs = rows.filter(r => r.flag === 'DIFFERENCE');
+        const errors = rows.filter(r => r.flag === 'ERROR');
+        const ranAt = new Date().toISOString();
+
+        const { data: prev } = await supabase.from('app_settings').select('value').eq('key', 'daily_recon_last').maybeSingle();
+        const prevDiff: Record<string, number> = {};
+        for (const r of (prev?.value?.rows || [])) if (r.flag === 'DIFFERENCE' && r.difference !== null) prevDiff[r.orgId] = r.difference;
+
+        await supabase.from('app_settings').upsert({
+            key: 'daily_recon_last',
+            value: { ranAt, checked, skipped, differences: diffs.length, errors: errors.length, rows: rows.filter(r => r.flag !== 'BALANCED') , balanced: rows.filter(r => r.flag === 'BALANCED').length, previous: prev?.value ? { ranAt: prev.value.ranAt, differences: prev.value.differences } : null },
+            description: 'Latest daily MoneyWise-vs-Lenco balance reconciliation',
+            updated_at: ranAt,
+        }, { onConflict: 'key' });
+
+        const to = String(process.env.SUPER_ADMIN_EMAILS || '').split(',').map(s => s.trim()).filter(Boolean);
+        const clean = diffs.length === 0 && errors.length === 0;
+        if (to.length > 0) {
+            const trend = (r: any) => {
+                const p = prevDiff[r.orgId];
+                if (p === undefined) return '<b>NEW</b>';
+                const d = Math.abs(r.difference) - Math.abs(p);
+                return Math.abs(d) < 0.01 ? 'unchanged' : d > 0 ? `worse (+${kw(d)})` : `better (${kw(d)})`;
+            };
+            const diffRows = diffs.map(r => `<tr><td>${r.name}</td><td align="right">${kw(r.moneywise)}</td><td align="right">${kw(r.lenco)}</td><td align="right"><b>${kw(r.difference)}</b></td><td align="right">${kw(r.lencoHold)}</td><td align="right">${kw(r.unexplained)}</td><td>${trend(r)}</td><td>${r.note || ''}</td></tr>`).join('');
+            const errRows = errors.map(r => `<li>${r.name}: ${r.note}</li>`).join('');
+            await emailService.sendEmail({
+                to,
+                subject: clean
+                    ? `✅ MoneyWise vs Lenco: all ${checked} wallets balanced`
+                    : `⚠️ MoneyWise vs Lenco: ${diffs.length} difference(s)${errors.length ? `, ${errors.length} check error(s)` : ''}`,
+                html: `<p>Daily reconciliation of MoneyWise wallet totals against live Lenco balances (${checked} organisations checked${skipped ? `, ${skipped} not reached in time` : ''}). Tolerance K${RECON_TOLERANCE.toFixed(2)}.</p>`
+                    + (clean ? '<p><b>No differences.</b></p>' : '')
+                    + (diffs.length ? `<table border="1" cellpadding="6" style="border-collapse:collapse"><tr><th>Organisation</th><th>MoneyWise</th><th>Lenco</th><th>Difference</th><th>Lenco hold</th><th>After hold</th><th>vs yesterday</th><th>Note</th></tr>${diffRows}</table>` : '')
+                    + (errors.length ? `<p>Could not check:</p><ul>${errRows}</ul>` : '')
+                    + '<p>Investigate in the admin dashboard → Reconciliation.</p>',
+            }).catch((e: any) => console.error('[Cron] daily-recon email failed:', e?.message));
+        }
+        return res.json({ checked, skipped, differences: diffs.map(d => ({ name: d.name, difference: d.difference, unexplained: d.unexplained })), errors: errors.length, emailed: to.length > 0 });
+    } catch (e: any) {
+        console.error('[Cron] daily-recon failed:', e.message);
+        return res.status(500).json({ error: e.message });
     }
 };

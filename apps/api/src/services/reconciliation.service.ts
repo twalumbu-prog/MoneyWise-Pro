@@ -952,3 +952,69 @@ export async function healMissingPlatformFeesForAllOrgs(): Promise<FeeHealResult
     }
     return results;
 }
+
+// ---------------------------------------------------------------------------
+// Daily balance check (scheduled) — lean: MoneyWise wallet totals vs LIVE Lenco available balance.
+// No transaction download, so it fits the serverless time limit for every organisation. The full drill-down
+// (admin dashboard) is the place to investigate anything this flags.
+// ---------------------------------------------------------------------------
+export type DailyReconFlag = 'BALANCED' | 'DIFFERENCE' | 'ERROR' | 'UNCHECKED';
+
+export interface DailyReconRow {
+    orgId: string;
+    name: string;
+    flag: DailyReconFlag;
+    /** Σ ledger (cashbook) closing across the org's wallets. */
+    moneywise: number | null;
+    /** Σ the balance the app displays on the wallets. */
+    walletsDisplayed: number | null;
+    /** Live Lenco availableBalance. */
+    lenco: number | null;
+    /** moneywise − lenco. */
+    difference: number | null;
+    /** Funds Lenco holds back (ledgerBalance − availableBalance). */
+    lencoHold: number;
+    /** Difference left after allowing for the Lenco hold — what genuinely needs investigating. */
+    unexplained: number | null;
+    walletDrift: number;
+    note?: string;
+}
+
+/** Throwaway fixtures (e.g. "ZZ MWPay sender …") have no valid Lenco key by design — never worth an alert. */
+const isTestFixtureOrg = (name: string) => /^ZZ\s/i.test(name);
+
+export async function runDailyBalanceCheck(budgetMs = 38_000): Promise<{ rows: DailyReconRow[]; checked: number; skipped: number }> {
+    const deadline = Date.now() + budgetMs;
+    const orgs = (await fetchOrgRows()).filter(o => !!o.lenco_subaccount_id && !isTestFixtureOrg(o.name));
+
+    const rows = await mapWithConcurrency(orgs, 4, async (org): Promise<DailyReconRow> => {
+        const row: DailyReconRow = {
+            orgId: org.id, name: org.name, flag: 'UNCHECKED', moneywise: null, walletsDisplayed: null,
+            lenco: null, difference: null, lencoHold: 0, unexplained: null, walletDrift: 0,
+        };
+        if (Date.now() > deadline) { row.note = 'Not checked — time budget used up; will be covered tomorrow'; return row; }
+        try {
+            const mw = await getMoneyWiseTotals(org.id);
+            row.moneywise = round2(mw.closing);
+            row.walletsDisplayed = round2(mw.displayed);
+            row.walletDrift = round2(mw.displayed - mw.closing);
+            const bal = await LencoService.getAccountBalance(org.lenco_subaccount_id!, org.lenco_secret_key || undefined);
+            const available = n(bal?.availableBalance ?? bal?.balance);
+            row.lenco = round2(available);
+            row.lencoHold = Math.max(0, round2(n(bal?.ledgerBalance ?? available) - available));
+            row.difference = round2(mw.closing - available);
+            // A hold explains a MoneyWise-higher difference (funds Lenco has not released yet) up to its size.
+            row.unexplained = round2(row.difference > 0 ? row.difference - Math.min(row.difference, row.lencoHold) : row.difference);
+            const off = Math.abs(row.difference) >= RECON_TOLERANCE || Math.abs(row.walletDrift) > 0.01;
+            row.flag = off ? 'DIFFERENCE' : 'BALANCED';
+            if (Math.abs(row.walletDrift) > 0.01) row.note = `Wallet balance shown in the app is off the ledger by K${row.walletDrift.toFixed(2)}`;
+        } catch (err: any) {
+            row.flag = 'ERROR';
+            row.note = err?.message || 'Check failed';
+        }
+        return row;
+    });
+
+    const skipped = rows.filter(r => r.flag === 'UNCHECKED').length;
+    return { rows, checked: rows.length - skipped, skipped };
+}
