@@ -491,6 +491,24 @@ export const ledgerService = {
                 if (acct && acct === cashAcct) acct = null; // an item pointing at the wallet's own account would net the cash leg to nothing: treat as unclassified
                 add(acct, contraSign * amt);
             }
+
+            // A batch payout row's cash out is its own line item PLUS its share of the batch's withdrawal fee. Scoping to the one
+            // line item leaves that fee share as a residual, which used to fall into Suspense; every other disbursement books its
+            // fee to the requisition's fee line item (Bank charges), so do the same here. Only a plausible fee is treated this way.
+            if (scopedLineItemIds && !cashIsDebit) {
+                const scoped = (lis || []).reduce((sum, li: any) => sum + (Number(li.actual_amount ?? li.estimated_amount ?? 0) > 0 ? Number(li.actual_amount ?? li.estimated_amount) : 0), 0);
+                const feeShare = Number((amount - scoped).toFixed(2));
+                if (feeShare > TOLERANCE && feeShare <= 100) {
+                    const { data: feeItems } = await supabase
+                        .from('line_items')
+                        .select('id, account_id, qb_account_id')
+                        .eq('requisition_id', ce.requisition_id)
+                        .ilike('description', '%fee%');
+                    const feeItem = (feeItems || []).find((f: any) => !scopedLineItemIds!.has(f.id));
+                    const feeAcct = feeItem ? await resolveLineItemAccount(orgId, feeItem) : null;
+                    if (feeAcct && feeAcct !== cashAcct) add(feeAcct, contraSign * feeShare);
+                }
+            }
         } else if (ce.account_id && ce.account_id !== cashAcct) {
             // (A category equal to the wallet's own account would cancel the cash leg to nothing and the entry would never post —
             // treat it as unclassified instead.)
