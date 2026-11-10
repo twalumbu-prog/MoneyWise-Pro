@@ -73,7 +73,7 @@ import pool from './db';
 // each cold Vercel instance otherwise opened a fresh direct connection and reran
 // ~15 sequential DDL statements just to find out they were all no-ops, which is
 // what was exhausting Postgres's connection limit under concurrent traffic.
-const MIGRATION_VERSION = 33;
+const MIGRATION_VERSION = 34;
 
 const runMigration = async () => {
     const directUrl = process.env.DIRECT_DATABASE_URL;
@@ -1610,6 +1610,29 @@ REVOKE ALL ON public.org_gateway_credentials, public.lipila_card_sessions FROM a
 GRANT ALL ON public.org_gateway_credentials, public.lipila_card_sessions TO service_role;
         `);
 
+        // Import an invoice into a request: invoice reference on the requisition, locked prices on its lines.
+        await migrationPool.query(`
+ALTER TABLE public.requisitions
+    ADD COLUMN IF NOT EXISTS invoice_url text,
+    ADD COLUMN IF NOT EXISTS invoice_number text,
+    ADD COLUMN IF NOT EXISTS invoice_supplier text,
+    ADD COLUMN IF NOT EXISTS invoice_date date,
+    ADD COLUMN IF NOT EXISTS invoice_total numeric(14,2),
+    ADD COLUMN IF NOT EXISTS invoice_currency text,
+    ADD COLUMN IF NOT EXISTS invoice_ocr_data jsonb;
+ALTER TABLE public.line_items ADD COLUMN IF NOT EXISTS price_locked boolean NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS public.requisition_invoice_scans (
+    path text PRIMARY KEY,
+    organization_id uuid NOT NULL,
+    scanned_by uuid NOT NULL,
+    data jsonb NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.requisition_invoice_scans ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.requisition_invoice_scans FROM anon, authenticated;
+GRANT ALL ON public.requisition_invoice_scans TO service_role;
+        `);
+
         // Refresh PostgREST schema cache
         console.log('[Migration] Reloading PostgREST schema cache...');
         await migrationPool.query("NOTIFY pgrst, 'reload config';");
@@ -1655,6 +1678,8 @@ app.use('/webhooks', express.raw({ type: '*/*', limit: '5mb' }), webhooksRoutes)
 // A photo search sends a (downsized) picture, which is bigger than the default body limit.
 app.use('/marketplace/image-search', express.json({ limit: '2mb' }));
 app.use('/accounting/import', express.json({ limit: '25mb' }));
+// A scanned supplier invoice (photo or PDF, up to 10 MB) arrives as base64.
+app.use('/requisitions/scan-invoice', express.json({ limit: '15mb' }));
 // Uploaded HTML email designs (CRM campaigns) are bigger than the default 100kb JSON limit.
 // express.json skips bodies that are already parsed, so this runs instead of the global parser here.
 app.use(['/crm/campaigns/send', '/crm/email-designs'], express.json({ limit: '2mb' }));

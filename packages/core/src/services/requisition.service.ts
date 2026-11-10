@@ -3,7 +3,7 @@ import { getCore } from '../platform';
 
 
 
-interface LineItem {
+export interface LineItem {
     id?: string;
     description: string;
     quantity: number;
@@ -14,9 +14,10 @@ interface LineItem {
     receipt_url?: string;
     receipt_ocr_data?: any;
     receipt_ocr_status?: 'NONE' | 'PENDING' | 'DONE' | 'FAILED';
+    price_locked?: boolean;
 }
 
-interface CreateRequisitionData {
+export interface CreateRequisitionData {
     description: string;
     estimated_total: number;
     items?: LineItem[];
@@ -32,6 +33,34 @@ interface CreateRequisitionData {
     recipient_account?: string;
     recipient_bank_code?: string;
     recipient_name?: string;
+    invoice_path?: string;
+    invoice_lines_keep?: number[];
+}
+
+export interface ScannedInvoiceLine {
+    description: string;
+    quantity: number;
+    unit_price: number;
+    amount: number;
+    original_total?: number;
+}
+
+export interface ScannedInvoice {
+    path: string;
+    file_name: string | null;
+    supplier: string | null;
+    invoice_number: string | null;
+    invoice_date: string | null;
+    due_date: string | null;
+    currency: string;
+    exchange_rate: number;
+    invoice_total: number | null;
+    total_zmw: number;
+    lines: ScannedInvoiceLine[];
+    warnings: string[];
+    confidence: number | null;
+    scanned_by: string;
+    organization_id: string;
 }
 
 /** What a personal payment did to the books: the account it was filed under, this month's spend there, and the budget left. */
@@ -78,6 +107,14 @@ export interface Requisition {
         accuracy: number;
     };
     accounted_at?: string;
+
+    invoice_url?: string;
+    invoice_number?: string;
+    invoice_supplier?: string;
+    invoice_date?: string;
+    invoice_total?: number;
+    invoice_currency?: string;
+    invoice_ocr_data?: any;
 
     organization?: {
         id: string;
@@ -639,6 +676,32 @@ export const requisitionService = {
             throw new Error(data.error || data.message || 'Failed to delete requisition');
         }
         return data;
+    },
+
+    async scanInvoice(payload: { fileBase64: string; fileName?: string }): Promise<ScannedInvoice> {
+        const response = await apiFetch('/requisitions/scan-invoice', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            const errorMessage = err.details ? `${err.error}\nDetails: ${err.details}` : (err.error || 'Failed to scan invoice');
+            throw new Error(errorMessage);
+        }
+
+        return response.json();
+    },
+
+    async getInvoiceUrl(requisitionId: string): Promise<string | null> {
+        try {
+            const response = await apiFetch(`/requisitions/${requisitionId}/invoice-url`);
+            if (!response.ok) return null;
+            const data = await response.json();
+            return data.url || null;
+        } catch {
+            return null;
+        }
     }
 };
 

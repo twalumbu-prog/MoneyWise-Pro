@@ -37,6 +37,59 @@ export interface ReceiptOcrData {
     error?: string | null;
 }
 
+export interface InvoiceOcrData {
+    supplier?: string | null;
+    supplier_address?: string | null;
+    supplier_tax_id?: string | null;
+    invoice_number?: string | null;
+    invoice_date?: string | null;   // YYYY-MM-DD
+    due_date?: string | null;
+    currency?: string | null;
+    subtotal?: number | null;
+    vat_amount?: number | null;
+    vat_rate?: number | null;
+    discount?: number | null;
+    total_amount?: number | null;
+    amount_due?: number | null;
+    exchange_rate?: number | null;
+    exchange_rate_source?: string | null;
+    exchange_rate_date?: string | null;
+    line_items?: Array<{ description: string; quantity?: number; unit_price?: number; total?: number }>;
+    notes?: string | null;
+    confidence?: number;
+    error?: string | null;
+}
+
+const INVOICE_ANALYSIS_PROMPT = `You are a supplier-invoice data extraction specialist. Read this invoice (or pro-forma invoice / quotation) and extract it exactly as printed.
+
+Return ONLY a JSON object (use null for anything not printed):
+{
+  "supplier": "Name of the business that issued the invoice",
+  "supplier_address": "Its address",
+  "supplier_tax_id": "TPIN / VAT / tax number if printed",
+  "invoice_number": "Invoice / pro-forma / quotation number",
+  "invoice_date": "YYYY-MM-DD",
+  "due_date": "YYYY-MM-DD",
+  "currency": "ISO 4217 code of the currency the amounts are printed in, e.g. ZMW, USD, ZAR",
+  "subtotal": 0.00,
+  "vat_amount": 0.00,
+  "vat_rate": 0,
+  "discount": 0.00,
+  "total_amount": 0.00,
+  "amount_due": 0.00,
+  "line_items": [ { "description": "Item or service exactly as written", "quantity": 1, "unit_price": 0.00, "total": 0.00 } ],
+  "notes": "Payment terms, bank details or anything else useful",
+  "confidence": 0.95
+}
+
+RULES:
+- Copy every line of the table, in order, with the quantity, unit price and line total EXACTLY as printed. Do not round, merge, reorder or invent lines.
+- "unit_price" is the price of one unit as printed; "total" is the printed line total. If only one of them is printed, work out the other (total = quantity x unit price).
+- Do not put VAT, delivery, discount or totals rows into line_items unless the invoice itself lists them as a charged line (for example "Delivery" or "Installation" are real lines; "VAT 16%" and "Total" are not).
+- "total_amount" is the final amount payable including VAT.
+- "$" or "US$" is USD unless the invoice says otherwise; "K", "ZK" or "Kwacha" is ZMW.
+- Return numbers as plain numbers, no currency symbols or thousands separators.`;
+
 const RECEIPT_ANALYSIS_PROMPT = `You are a receipt data extraction specialist. Analyze this receipt image and extract as much structured information as possible.
 
 Return a JSON object with the following fields (use null for fields not found):
@@ -261,6 +314,44 @@ export const ocrService = {
                 message: error.message,
                 stack: error.stack
             });
+            return { error: `Analysis failed: ${error.message}`, confidence: 0 };
+        }
+    },
+
+    /**
+     * Reads a supplier invoice. Same vision providers as receipts, a prompt built for invoices, and the same currency handling:
+     * amounts are returned as printed, with the rate to kwacha alongside so the caller can convert.
+     */
+    async analyzeInvoice(imageData: Buffer | Uint8Array): Promise<InvoiceOcrData> {
+        if (!process.env.OPENROUTER_API_KEY) return { error: 'AI analysis not configured', confidence: 0 };
+        try {
+            const buf = Buffer.from(imageData);
+            const base64Data = buf.toString('base64');
+            const headerHex = buf.subarray(0, 12).toString('hex');
+            let mimeType = 'image/jpeg';
+            if (headerHex.startsWith('25504446')) mimeType = 'application/pdf';
+            else if (headerHex.startsWith('89504e47')) mimeType = 'image/png';
+            else if (headerHex.startsWith('52494646') && headerHex.substring(16, 24) === '57454250') mimeType = 'image/webp';
+
+            const responses = await callAllOcrProviders(INVOICE_ANALYSIS_PROMPT, base64Data, mimeType);
+            if (responses.length === 0) throw new Error('All OCR providers failed to respond');
+
+            let lastErr = '';
+            for (const resp of responses) {
+                try {
+                    const parsed: InvoiceOcrData = JSON.parse(resp.text.replace(/```json\n?|\n?```/g, '').trim());
+                    parsed.currency = normalizeCurrency(parsed.currency);
+                    if (parsed.currency && parsed.currency !== 'ZMW') {
+                        const fx = await fetchZmwRate(parsed.currency);
+                        if (fx) { parsed.exchange_rate = fx.rate; parsed.exchange_rate_source = fx.source; parsed.exchange_rate_date = fx.date; }
+                    }
+                    console.log(`[OCR Service] Invoice read via ${resp.provider}. Supplier: ${parsed.supplier}, No: ${parsed.invoice_number}, Total: ${parsed.total_amount} ${parsed.currency}`);
+                    return parsed;
+                } catch (e: any) { lastErr = e.message; }
+            }
+            throw new Error(`No provider returned valid JSON: ${lastErr}`);
+        } catch (error: any) {
+            console.error('[OCR Service] Invoice analysis failed:', error.message);
             return { error: `Analysis failed: ${error.message}`, confidence: 0 };
         }
     },

@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { SegmentedControl, AnimatedTabContent, TabPillGroup } from '../AnimatedTabs';
-import { ArrowRight, ArrowLeft, X, Plus, Trash2, User, List, AlertCircle, RotateCcw, CheckCircle, Smartphone, Building2, Mail, Zap } from 'lucide-react';
+import { ArrowRight, ArrowLeft, X, Plus, Trash2, User, List, AlertCircle, RotateCcw, CheckCircle, Smartphone, Building2, Mail, Zap, FileText, Upload, Lock } from 'lucide-react';
 import { requisitionService } from '../../services/requisition.service';
 import { lencoService } from '../../services/lenco.service';
 import { cashbookService } from '../../services/cashbook.service';
@@ -17,6 +17,7 @@ interface LineItem {
     quantity: number;
     unit_price: number;
     estimated_amount: number;
+    price_locked?: boolean;
 }
 
 interface MobileRequisitionWizardProps {
@@ -103,6 +104,12 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
     const [department, setDepartment] = useState('');
     const [useMyAccount, setUseMyAccount] = useState(true);
     const [makeExpenseList, setMakeExpenseList] = useState(true);
+    // Invoice import: the scanned invoice's lines replace the item list, with their prices locked.
+    const [importInvoice, setImportInvoice] = useState(false);
+    const [scannedInvoice, setScannedInvoice] = useState<any | null>(null);
+    const [invoiceScanLoading, setInvoiceScanLoading] = useState(false);
+    const [invoiceScanError, setInvoiceScanError] = useState<string | null>(null);
+    const invoiceFileRef = useRef<HTMLInputElement>(null);
 
     // Stage 2: Expense List
     const [lineItems, setLineItems] = useState<LineItem[]>([
@@ -149,6 +156,9 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
             setDepartment('');
             setUseMyAccount(prefs.useMyAccount);
             setMakeExpenseList(prefs.makeExpenseList);
+            setImportInvoice(false);
+            setScannedInvoice(null);
+            setInvoiceScanError(null);
             setLineItems([{ id: '1', description: '', quantity: 1, unit_price: 0, estimated_amount: 0 }]);
             setManualAmount('');
             setPaymentMethod('mobile');
@@ -286,9 +296,42 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
         selectedWalletBalance !== null &&
         getTotal() > selectedWalletBalance;
 
+    const handleScanInvoice = async (file: File) => {
+        setInvoiceScanLoading(true);
+        setInvoiceScanError(null);
+        setScannedInvoice(null);
+        try {
+            const fileBase64 = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+            const result = await requisitionService.scanInvoice({ fileBase64, fileName: file.name });
+            setScannedInvoice(result);
+            if (!description.trim() && (result.supplier || result.invoice_number)) {
+                setDescription(`Invoice${result.invoice_number ? ` ${result.invoice_number}` : ''}${result.supplier ? ` — ${result.supplier}` : ''}`);
+            }
+            setMakeExpenseList(true);
+            setLineItems(result.lines.map((line: any, idx: number) => ({
+                id: `inv-${idx}`,
+                description: line.description,
+                quantity: line.quantity,
+                unit_price: line.unit_price,
+                estimated_amount: line.amount,
+                price_locked: true,
+            })));
+        } catch (err: any) {
+            setInvoiceScanError(err.message || 'Could not read that invoice. Try again or add the items by hand.');
+        } finally {
+            setInvoiceScanLoading(false);
+        }
+    };
+
     const updateLineItem = (id: string, field: keyof LineItem, value: any) => {
         setLineItems(prev => prev.map(item => {
             if (item.id !== id) return item;
+            if (item.price_locked) return item; // locked to the invoice
             const updated = { ...item, [field]: value };
             if (field === 'quantity' || field === 'unit_price') {
                 const qty = field === 'quantity' ? Number(value) : Number(updated.quantity);
@@ -302,6 +345,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
     const addLineItem = () => setLineItems(prev => [...prev, { id: Date.now().toString(), description: '', quantity: 1, unit_price: 0, estimated_amount: 0 }]);
     
     const removeLineItem = (id: string) => {
+        if (lineItems.length === 1 && lineItems[0].price_locked) return; // keep at least one invoice line
         if (lineItems.length === 1) {
             setLineItems([{ id: Date.now().toString(), description: '', quantity: 1, unit_price: 0, estimated_amount: 0 }]);
             return;
@@ -325,6 +369,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
         if (stage === 1) {
             if (!description.trim()) { setError('Please describe the purpose.'); return; }
             if (useDepartments && !department) { setError('Please select a department.'); return; }
+            if (importInvoice && !scannedInvoice) { setError('Upload your invoice first, or switch off Import invoice.'); return; }
         } else if (stage === 5) {
             if (!manualAmount || Number(manualAmount) <= 0) { setError('Please enter an amount greater than zero.'); return; }
         } else if (stage === 3) {
@@ -375,6 +420,10 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                     ? (paymentInfo?.mobile_money_name || paymentInfo?.bank_account_name || userName)
                     : resolvedName
             };
+            if (importInvoice && scannedInvoice) {
+                data.invoice_path = scannedInvoice.path;
+                data.invoice_lines_keep = lineItems.filter(i => String(i.id).startsWith('inv-')).map(i => Number(String(i.id).slice(4)));
+            }
             const created = await requisitionService.create(data);
 
             // Remember the toggle choices for next time (auto-fill).
@@ -562,7 +611,32 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                             )}
                                         </div>
 
-                                        <button onClick={() => { const v = !makeExpenseList; setMakeExpenseList(v); saveTogglePrefs({ useMyAccount, makeExpenseList: v, autoAuthorize }); }} className="w-full flex items-center justify-between p-4 rounded-2xl bg-gray-50 border border-gray-100 active:scale-[0.98] transition-all">
+                                        <input ref={invoiceFileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleScanInvoice(f); e.target.value = ''; }} />
+                                        <button onClick={() => { const v = !importInvoice; setImportInvoice(v); if (v) { setMakeExpenseList(true); if (!scannedInvoice) setLineItems([{ id: '1', description: '', quantity: 1, unit_price: 0, estimated_amount: 0 }]); } else { setScannedInvoice(null); setInvoiceScanError(null); setLineItems([{ id: '1', description: '', quantity: 1, unit_price: 0, estimated_amount: 0 }]); } }} className="w-full flex items-center justify-between p-4 rounded-2xl bg-[#F8FAFD] border border-gray-100">
+                                            <div className="flex items-center gap-3 text-left">
+                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${importInvoice ? 'bg-[#0B57D0]/10 text-[#0B57D0]' : 'bg-gray-200 text-gray-400'}`}><FileText size={20} /></div>
+                                                <div><p className="text-sm font-bold text-[#1F1F1F]">Import invoice</p><p className="text-[11px] text-gray-400">Scan it, prices are filled in and locked</p></div>
+                                            </div>
+                                            <div className={`w-12 h-6 rounded-full transition-all relative ${importInvoice ? 'bg-[#0B57D0]' : 'bg-gray-300'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${importInvoice ? 'right-1' : 'left-1'}`} /></div>
+                                        </button>
+                                        {importInvoice && (
+                                            <div className="rounded-2xl border border-blue-100 bg-white p-4">
+                                                {invoiceScanLoading ? (
+                                                    <div className="flex items-center gap-3 text-sm font-semibold text-gray-600"><RotateCcw size={18} className="animate-spin text-[#0B57D0]" /> Reading your invoice…</div>
+                                                ) : scannedInvoice ? (
+                                                    <div className="space-y-2">
+                                                        <p className="text-sm font-bold text-[#1F1F1F]">{scannedInvoice.supplier || 'Invoice'}{scannedInvoice.invoice_number ? ` · ${scannedInvoice.invoice_number}` : ''}</p>
+                                                        <p className="text-xs text-gray-500 flex items-center gap-1"><Lock size={12} /> {scannedInvoice.lines.length} lines, K{Number(scannedInvoice.total_zmw).toLocaleString(undefined, { minimumFractionDigits: 2 })} · prices locked</p>
+                                                        {(scannedInvoice.warnings || []).map((w: string, i: number) => <p key={i} className="text-[11px] font-semibold text-amber-700 bg-amber-50 rounded-lg px-2 py-1">{w}</p>)}
+                                                        <button onClick={() => invoiceFileRef.current?.click()} className="text-xs font-bold text-[#0B57D0]">Use a different invoice</button>
+                                                    </div>
+                                                ) : (
+                                                    <button onClick={() => invoiceFileRef.current?.click()} className="w-full flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-gray-200 py-6 text-sm font-bold text-gray-600"><Upload size={22} className="text-[#0B57D0]" />Take a photo or choose the invoice<span className="text-[11px] font-medium text-gray-400">PDF, JPG, PNG or WebP · up to 10 MB</span></button>
+                                                )}
+                                                {invoiceScanError && <p className="mt-2 text-xs font-semibold text-red-600">{invoiceScanError}</p>}
+                                            </div>
+                                        )}
+                                        <button onClick={() => { const v = !makeExpenseList; if (v) { setImportInvoice(false); setScannedInvoice(null); } setMakeExpenseList(v); saveTogglePrefs({ useMyAccount, makeExpenseList: v, autoAuthorize }); }} className="w-full flex items-center justify-between p-4 rounded-2xl bg-gray-50 border border-gray-100 active:scale-[0.98] transition-all">
                                             <div className="flex items-center gap-3 text-left">
                                                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${makeExpenseList ? 'bg-[#0B57D0]/10 text-[#0B57D0]' : 'bg-gray-200 text-gray-400'}`}><List size={20} /></div>
                                                 <div><p className="text-sm font-bold text-[#1F1F1F]">Create item list</p><p className="text-[11px] text-gray-400">Add specific items and prices</p></div>
@@ -582,12 +656,12 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                         <div key={item.id} className="relative pb-6 border-b border-gray-100 last:border-0">
                                             <div className="flex items-center gap-3 mb-3">
                                                 <div className="w-8 shrink-0 flex items-center justify-center"><div className="w-8 h-8 rounded-full bg-[#E8F0FE] text-[#0B57D0] flex items-center justify-center font-bold text-sm">{idx + 1}</div></div>
-                                                <input type="text" value={item.description} onChange={e => updateLineItem(item.id, 'description', e.target.value)} placeholder="Item Description" className="flex-1 text-base font-bold text-[#1F1F1F] border-none p-0 focus:ring-0 bg-transparent min-w-0" />
+                                                <input type="text" value={item.description} onChange={e => updateLineItem(item.id, 'description', e.target.value)} readOnly={!!item.price_locked} placeholder="Item Description" className="flex-1 text-base font-bold text-[#1F1F1F] border-none p-0 focus:ring-0 bg-transparent min-w-0" />
                                                 <span className="text-sm font-black text-[#1F1F1F] min-w-[32px] text-right">{item.estimated_amount > 0 ? `K${item.estimated_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-'}</span>
                                                 <div className="w-8 shrink-0 flex items-center justify-end"><button onClick={() => removeLineItem(item.id)} className="text-gray-300 hover:text-red-500"><Trash2 size={20} /></button></div>
                                             </div>
                                             <div className="flex items-center gap-3"><div className="w-8 shrink-0" />
-                                                <div className="flex-[1.5] relative"><input type="number" value={item.unit_price || ''} onChange={e => updateLineItem(item.id, 'unit_price', e.target.value)} placeholder="0.00" className="w-full h-12 border border-gray-200 rounded-full px-5 text-right font-bold text-gray-800 focus:ring-2 focus:ring-[#0B57D0]/10 focus:border-[#0B57D0] pr-10" /><span className="absolute left-5 top-1/2 -translate-y-1/2 font-bold text-gray-300">K</span></div>
+                                                <div className="flex-[1.5] relative"><input type="number" value={item.unit_price || ''} readOnly={!!item.price_locked} onChange={e => updateLineItem(item.id, 'unit_price', e.target.value)} placeholder="0.00" className="w-full h-12 border border-gray-200 rounded-full px-5 text-right font-bold text-gray-800 focus:ring-2 focus:ring-[#0B57D0]/10 focus:border-[#0B57D0] pr-10" /><span className="absolute left-5 top-1/2 -translate-y-1/2 font-bold text-gray-300">K</span></div>
                                                 <div className="flex items-center bg-gray-50 rounded-full p-1 border border-gray-100 min-w-[110px]">
                                                     <button 
                                                         onClick={() => updateLineItem(item.id, 'quantity', Math.max(1, (Number(item.quantity) || 1) - 1))} 

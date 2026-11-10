@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, ArrowRight, Plus, Trash2, User, List, AlertCircle, RotateCcw, CheckCircle, Smartphone, Building2, Zap } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, ArrowRight, Plus, Trash2, User, List, AlertCircle, RotateCcw, CheckCircle, Smartphone, Building2, Zap, FileText, Lock, Upload, XCircle } from 'lucide-react';
 import { requisitionService } from '../../services/requisition.service';
 import { lencoService } from '../../services/lenco.service';
 import { cashbookService } from '../../services/cashbook.service';
@@ -25,6 +25,7 @@ interface LineItem {
     quantity: number;
     unit_price: number;
     estimated_amount: number;
+    price_locked?: boolean;
 }
 
 interface DesktopRequisitionWorkspaceProps {
@@ -96,6 +97,14 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
     const [department, setDepartment] = useState('');
     const [useMyAccount, setUseMyAccount] = useState(true);
     const [makeExpenseList, setMakeExpenseList] = useState(true);
+    const [importInvoice, setImportInvoice] = useState(false);
+
+    // Invoice import state
+    const [scannedInvoice, setScannedInvoice] = useState<any | null>(null);
+    const [invoiceScanLoading, setInvoiceScanLoading] = useState(false);
+    const [invoiceScanError, setInvoiceScanError] = useState<string | null>(null);
+    const [invoiceDropActive, setInvoiceDropActive] = useState(false);
+    const invoiceFileRef = useRef<HTMLInputElement>(null);
 
     // Stage 2
     const [lineItems, setLineItems] = useState<LineItem[]>([
@@ -138,6 +147,10 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
         setUseMyAccount(prefs.useMyAccount);
         setMakeExpenseList(prefs.makeExpenseList);
         setAutoAuthorize(prefs.autoAuthorize);
+        setImportInvoice(false);
+        setScannedInvoice(null);
+        setInvoiceScanLoading(false);
+        setInvoiceScanError(null);
         setLineItems([{ id: '1', description: '', quantity: 1, unit_price: 0, estimated_amount: 0 }]);
         setManualAmount('');
         setPaymentMethod('mobile');
@@ -215,6 +228,56 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
             console.error('Failed to fetch banks:', err);
         }
     };
+
+    const handleScanInvoice = async (file: File) => {
+        setInvoiceScanLoading(true);
+        setInvoiceScanError(null);
+        setScannedInvoice(null);
+        try {
+            const reader = new FileReader();
+            const fileBase64 = await new Promise<string>((resolve, reject) => {
+                reader.onload = () => resolve((reader.result as string).split(',')[1]);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+            const result = await requisitionService.scanInvoice({ fileBase64, fileName: file.name });
+            setScannedInvoice(result);
+            // Auto-populate description if empty
+            if (!description.trim() && (result.supplier || result.invoice_number)) {
+                setDescription(`Invoice${result.invoice_number ? ` ${result.invoice_number}` : ''}${result.supplier ? ` — ${result.supplier}` : ''}`);
+            }
+            // Replace line items with locked invoice lines
+            setMakeExpenseList(true);
+            setLineItems(result.lines.map((line: any, idx: number) => ({
+                id: `inv-${idx}`,
+                description: line.description,
+                quantity: line.quantity,
+                unit_price: line.unit_price,
+                estimated_amount: line.amount,
+                price_locked: true,
+            })));
+        } catch (err: any) {
+            setInvoiceScanError(err.message || 'Could not read that invoice. Please try again or enter items manually.');
+        } finally {
+            setInvoiceScanLoading(false);
+        }
+    };
+
+    const handleInvoiceFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) handleScanInvoice(file);
+        // Reset input so the same file can be re-selected
+        e.target.value = '';
+    };
+
+    const handleInvoiceDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        setInvoiceDropActive(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file) handleScanInvoice(file);
+    };
+
+
 
     const handleResolveName = async () => {
         if (paymentMethod === 'mobile') {
@@ -306,6 +369,7 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
         if (stage === 1) {
             if (!description.trim()) { setError('Please describe the purpose.'); return; }
             if (useDepartments && !department) { setError('Please select a department.'); return; }
+            if (importInvoice && !scannedInvoice) { setError('Please upload and scan your invoice before continuing.'); return; }
         } else if (stage === 5) {
             if (!manualAmount || Number(manualAmount) <= 0) { setError('Please enter an amount greater than zero.'); return; }
         } else if (stage === 3) {
@@ -337,11 +401,12 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
                 description,
                 department,
                 estimated_total: getTotal(),
-                items: makeExpenseList ? lineItems.map(({ description, quantity, unit_price, estimated_amount }) => ({
+                items: makeExpenseList ? lineItems.map(({ description, quantity, unit_price, estimated_amount, price_locked }) => ({
                     description,
                     quantity: Number(quantity),
                     unit_price: Number(unit_price),
-                    estimated_amount: Number(estimated_amount)
+                    estimated_amount: Number(estimated_amount),
+                    price_locked: price_locked === true,
                 })) : undefined,
                 payment_method: useMyAccount 
                     ? (paymentInfo?.mobile_money_number ? paymentInfo.mobile_money_provider : (paymentInfo?.bank_account_number ? 'BANK' : undefined))
@@ -354,7 +419,12 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
                     : (paymentMethod === 'bank' ? bankId : (paymentMethod === 'mobile' ? momoOperator : undefined)),
                 recipient_name: useMyAccount 
                     ? (paymentInfo?.mobile_money_name || paymentInfo?.bank_account_name || userName)
-                    : resolvedName
+                    : resolvedName,
+                // Invoice import: tell backend to load line items from the saved scan
+                ...(importInvoice && scannedInvoice ? {
+                    invoice_path: scannedInvoice.path,
+                    invoice_lines_keep: lineItems.filter(i => String(i.id).startsWith('inv-')).map(i => Number(String(i.id).slice(4))),
+                } : {}),
             };
             const created = await requisitionService.create(data);
 
@@ -490,7 +560,7 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
                                         </select>
                                     </div>
                                     )}
-                                    <div className="pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="pt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
                                         <button onClick={() => { const v = !useMyAccount; setUseMyAccount(v); saveTogglePrefs({ useMyAccount: v, makeExpenseList, autoAuthorize }); }} className={`w-full flex flex-col p-4 rounded-xl border text-left transition-all ${useMyAccount ? 'bg-[#F8FAFD] border-[#0B57D0]/30 shadow-sm' : 'bg-white border-gray-200 hover:border-gray-300'}`}>
                                             <div className="flex items-center justify-between mb-3">
                                                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${useMyAccount ? 'bg-[#0B57D0] text-white' : 'bg-gray-100 text-gray-400'}`}><User size={16} /></div>
@@ -500,16 +570,101 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
                                             <p className="text-[11px] text-gray-500 mt-0.5">Use details from your profile</p>
                                         </button>
 
-                                        <button onClick={() => { const v = !makeExpenseList; setMakeExpenseList(v); saveTogglePrefs({ useMyAccount, makeExpenseList: v, autoAuthorize }); }} className={`w-full flex flex-col p-4 rounded-xl border text-left transition-all ${makeExpenseList ? 'bg-[#F8FAFD] border-[#0B57D0]/30 shadow-sm' : 'bg-white border-gray-200 hover:border-gray-300'}`}>
+                                        <button onClick={() => { const v = !makeExpenseList; if (v) setImportInvoice(false); setMakeExpenseList(v); saveTogglePrefs({ useMyAccount, makeExpenseList: v, autoAuthorize }); }} className={`w-full flex flex-col p-4 rounded-xl border text-left transition-all ${makeExpenseList && !importInvoice ? 'bg-[#F8FAFD] border-[#0B57D0]/30 shadow-sm' : 'bg-white border-gray-200 hover:border-gray-300'}`}>
                                             <div className="flex items-center justify-between mb-3">
-                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${makeExpenseList ? 'bg-[#0B57D0] text-white' : 'bg-gray-100 text-gray-400'}`}><List size={16} /></div>
-                                                <div className={`w-10 h-5 rounded-full transition-all relative ${makeExpenseList ? 'bg-[#0B57D0]' : 'bg-gray-200'}`}><div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${makeExpenseList ? 'right-0.5' : 'left-0.5'}`} /></div>
+                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${makeExpenseList && !importInvoice ? 'bg-[#0B57D0] text-white' : 'bg-gray-100 text-gray-400'}`}><List size={16} /></div>
+                                                <div className={`w-10 h-5 rounded-full transition-all relative ${makeExpenseList && !importInvoice ? 'bg-[#0B57D0]' : 'bg-gray-200'}`}><div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${makeExpenseList && !importInvoice ? 'right-0.5' : 'left-0.5'}`} /></div>
                                             </div>
                                             <p className="text-sm font-bold text-gray-900">Create item list</p>
                                             <p className="text-[11px] text-gray-500 mt-0.5">Add specific items and prices</p>
                                         </button>
+
+                                        <button onClick={() => { const v = !importInvoice; setImportInvoice(v); if (v) { setMakeExpenseList(true); if (!scannedInvoice) { setLineItems([{ id: '1', description: '', quantity: 1, unit_price: 0, estimated_amount: 0 }]); } } }} className={`w-full flex flex-col p-4 rounded-xl border text-left transition-all ${importInvoice ? 'bg-[#F8FAFD] border-[#0B57D0]/30 shadow-sm' : 'bg-white border-gray-200 hover:border-gray-300'}`}>
+                                            <div className="flex items-center justify-between mb-3">
+                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${importInvoice ? 'bg-[#0B57D0] text-white' : 'bg-gray-100 text-gray-400'}`}><FileText size={16} /></div>
+                                                <div className={`w-10 h-5 rounded-full transition-all relative ${importInvoice ? 'bg-[#0B57D0]' : 'bg-gray-200'}`}><div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${importInvoice ? 'right-0.5' : 'left-0.5'}`} /></div>
+                                            </div>
+                                            <p className="text-sm font-bold text-gray-900">Import invoice</p>
+                                            <p className="text-[11px] text-gray-500 mt-0.5">Upload & auto-fill from invoice</p>
+                                        </button>
                                     </div>
-                                    
+
+                                    {/* Invoice upload dropzone */}
+                                    {importInvoice && (
+                                        <div className="mt-4 animate-in fade-in duration-300">
+                                            <input
+                                                ref={invoiceFileRef}
+                                                type="file"
+                                                accept=".pdf,.jpg,.jpeg,.png,.webp"
+                                                className="hidden"
+                                                onChange={handleInvoiceFileChange}
+                                            />
+                                            {!scannedInvoice && !invoiceScanLoading && (
+                                                <div
+                                                    onDragOver={e => { e.preventDefault(); setInvoiceDropActive(true); }}
+                                                    onDragLeave={() => setInvoiceDropActive(false)}
+                                                    onDrop={handleInvoiceDrop}
+                                                    onClick={() => invoiceFileRef.current?.click()}
+                                                    className={`w-full border-2 border-dashed rounded-xl p-8 flex flex-col items-center gap-3 cursor-pointer transition-all ${invoiceDropActive ? 'border-[#0B57D0] bg-[#F0F5FF]' : 'border-gray-200 hover:border-[#0B57D0]/40 hover:bg-[#F8FAFD]'}`}
+                                                >
+                                                    <div className="w-12 h-12 rounded-xl bg-[#F0F5FF] flex items-center justify-center">
+                                                        <Upload size={22} className="text-[#0B57D0]" />
+                                                    </div>
+                                                    <div className="text-center">
+                                                        <p className="text-sm font-bold text-gray-700">Drop invoice here or click to upload</p>
+                                                        <p className="text-xs text-gray-400 mt-1">PDF, JPG, PNG or WebP · Max 10 MB</p>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {invoiceScanLoading && (
+                                                <div className="w-full border border-gray-100 bg-[#F8FAFD] rounded-xl p-8 flex flex-col items-center gap-3">
+                                                    <RotateCcw size={22} className="text-[#0B57D0] animate-spin" />
+                                                    <p className="text-sm font-bold text-gray-600">Reading your invoice…</p>
+                                                    <p className="text-xs text-gray-400">AI is extracting line items and prices</p>
+                                                </div>
+                                            )}
+
+                                            {invoiceScanError && (
+                                                <div className="mt-2 p-3 bg-red-50 border border-red-100 rounded-xl flex items-start gap-2">
+                                                    <XCircle size={15} className="text-red-500 mt-0.5 shrink-0" />
+                                                    <div>
+                                                        <p className="text-xs font-bold text-red-700">{invoiceScanError}</p>
+                                                        <button onClick={() => invoiceFileRef.current?.click()} className="text-xs text-[#0B57D0] font-bold mt-1 hover:underline">Try another file</button>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {scannedInvoice && (
+                                                <div className="border border-emerald-100 bg-emerald-50 rounded-xl p-4 space-y-3">
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex items-center gap-2">
+                                                            <CheckCircle size={16} className="text-emerald-500" />
+                                                            <span className="text-xs font-bold text-emerald-700 uppercase tracking-wide">Invoice Read Successfully</span>
+                                                        </div>
+                                                        <button onClick={() => { setScannedInvoice(null); setInvoiceScanError(null); setLineItems([{ id: '1', description: '', quantity: 1, unit_price: 0, estimated_amount: 0 }]); invoiceFileRef.current?.click(); }} className="text-xs text-gray-500 hover:text-gray-700 font-medium underline">Replace</button>
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                                                        {scannedInvoice.supplier && <div><span className="text-gray-500">Supplier: </span><span className="font-semibold text-gray-800">{scannedInvoice.supplier}</span></div>}
+                                                        {scannedInvoice.invoice_number && <div><span className="text-gray-500">Invoice #: </span><span className="font-semibold text-gray-800">{scannedInvoice.invoice_number}</span></div>}
+                                                        {scannedInvoice.invoice_date && <div><span className="text-gray-500">Date: </span><span className="font-semibold text-gray-800">{scannedInvoice.invoice_date}</span></div>}
+                                                        {scannedInvoice.currency && <div><span className="text-gray-500">Currency: </span><span className="font-semibold text-gray-800">{scannedInvoice.currency}</span></div>}
+                                                    </div>
+                                                    <div className="pt-1 border-t border-emerald-100">
+                                                        <p className="text-xs text-emerald-700 font-medium">{scannedInvoice.lines?.length} line item{scannedInvoice.lines?.length !== 1 ? 's' : ''} extracted · prices locked <span className="inline-flex items-center gap-0.5">🔒</span></p>
+                                                    </div>
+                                                    {scannedInvoice.warnings?.length > 0 && (
+                                                        <div className="pt-1 border-t border-emerald-100 space-y-1">
+                                                            {scannedInvoice.warnings.map((w: string, i: number) => (
+                                                                <p key={i} className="text-[11px] text-amber-700">⚠ {w}</p>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
                                     {useMyAccount && (
                                         <div className="mt-4 p-4 bg-gray-50 border border-gray-100 rounded-xl animate-in fade-in duration-300">
                                             {loadingProfile ? (
@@ -565,23 +720,38 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
                                 </div>
                                 
                                 <div className="space-y-4">
+                                    {importInvoice && scannedInvoice && (
+                                        <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
+                                            <FileText size={14} className="text-[#0B57D0] shrink-0" />
+                                            <p className="text-xs text-[#0B57D0] font-medium">Prices are locked from the imported invoice. You can remove lines you don't need, but prices cannot be changed.</p>
+                                        </div>
+                                    )}
                                     {lineItems.map((item) => (
-                                        <div key={item.id} className="flex gap-4 items-start p-4 bg-gray-50 rounded-xl border border-gray-100">
+                                        <div key={item.id} className={`flex gap-4 items-start p-4 rounded-xl border ${item.price_locked ? 'bg-blue-50/40 border-blue-100' : 'bg-gray-50 border-gray-100'}`}>
                                             <div className="flex-1 space-y-3">
-                                                <input type="text" value={item.description} onChange={e => updateLineItem(item.id, 'description', e.target.value)} placeholder="Item Description" className="w-full text-sm font-semibold text-gray-900 bg-transparent border-b border-gray-200 focus:border-[#0B57D0] pb-1 placeholder:font-normal focus:outline-none transition-colors" />
+                                                <input type="text" value={item.description} onChange={e => updateLineItem(item.id, 'description', e.target.value)} readOnly={!!item.price_locked} placeholder="Item Description" className={`w-full text-sm font-semibold text-gray-900 bg-transparent border-b pb-1 placeholder:font-normal focus:outline-none transition-colors ${item.price_locked ? 'border-gray-100 cursor-default text-gray-700' : 'border-gray-200 focus:border-[#0B57D0]'}`} />
                                                 <div className="flex gap-4">
                                                     <div className="flex-1 relative">
                                                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-bold">K</span>
-                                                        <input type="number" value={item.unit_price || ''} onChange={e => updateLineItem(item.id, 'unit_price', e.target.value)} placeholder="0.00" className="w-full h-9 pl-7 pr-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0]" />
+                                                        {item.price_locked ? (
+                                                            <div className="w-full h-9 pl-7 pr-8 bg-gray-100 border border-gray-200 rounded-lg text-sm text-gray-700 font-semibold flex items-center">
+                                                                {Number(item.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                            </div>
+                                                        ) : (
+                                                            <input type="number" value={item.unit_price || ''} onChange={e => updateLineItem(item.id, 'unit_price', e.target.value)} placeholder="0.00" className="w-full h-9 pl-7 pr-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0]" />
+                                                        )}
+                                                        {item.price_locked && (
+                                                            <Lock size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#0B57D0]" />
+                                                        )}
                                                     </div>
                                                     <div className="w-24 relative">
                                                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">Qty:</span>
-                                                        <input type="number" value={item.quantity} onChange={e => updateLineItem(item.id, 'quantity', e.target.value)} className="w-full h-9 pl-9 pr-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0]" />
+                                                        <input type="number" value={item.quantity} onChange={e => !item.price_locked && updateLineItem(item.id, 'quantity', e.target.value)} readOnly={!!item.price_locked} className={`w-full h-9 pl-9 pr-3 border rounded-lg text-sm text-gray-900 focus:outline-none ${item.price_locked ? 'bg-gray-100 border-gray-200 cursor-default' : 'bg-white border-gray-200 focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0]'}`} />
                                                     </div>
                                                 </div>
                                             </div>
                                             <div className="shrink-0 flex flex-col justify-between items-end h-full pt-1">
-                                                <button onClick={() => removeLineItem(item.id)} className="text-gray-400 hover:text-red-500 transition-colors">
+                                                <button onClick={() => removeLineItem(item.id)} className="text-gray-400 hover:text-red-500 transition-colors" title={item.price_locked ? 'Remove this invoice line' : 'Remove item'}>
                                                     <Trash2 size={16} />
                                                 </button>
                                                 <div className="mt-8 text-sm font-bold text-gray-900">
@@ -591,10 +761,12 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
                                         </div>
                                     ))}
                                     
-                                    <button onClick={addLineItem} className="w-full h-12 border border-dashed border-gray-300 rounded-xl flex items-center justify-center gap-2 text-gray-500 hover:text-[#0B57D0] hover:bg-[#F8FAFD] hover:border-[#0B57D0]/30 transition-all">
-                                        <Plus size={16} />
-                                        <span className="text-xs font-bold">Add Another Item</span>
-                                    </button>
+                                    {!importInvoice && (
+                                        <button onClick={addLineItem} className="w-full h-12 border border-dashed border-gray-300 rounded-xl flex items-center justify-center gap-2 text-gray-500 hover:text-[#0B57D0] hover:bg-[#F8FAFD] hover:border-[#0B57D0]/30 transition-all">
+                                            <Plus size={16} />
+                                            <span className="text-xs font-bold">Add Another Item</span>
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         )}

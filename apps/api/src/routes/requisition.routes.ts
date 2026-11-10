@@ -32,6 +32,8 @@ import {
     recordLoanRecovery,
     getSendSummaryHandler,
     getLoanBalance,
+    scanRequisitionInvoice,
+    getRequisitionInvoiceUrl,
 } from '../controllers/requisition.controller';
 import {
     disburseRequisition,
@@ -100,6 +102,10 @@ router.patch('/items/:itemId/details', updateLineItemDetails);
 router.get('/:id/messages', getRequisitionMessages);
 router.post('/:id/messages', sendRequisitionMessage);
 router.delete('/:id/messages/:messageId', deleteRequisitionMessage);
+
+// Invoice routes
+router.post('/scan-invoice', scanRequisitionInvoice);
+router.get('/:id/invoice-url', getRequisitionInvoiceUrl);
 
 // Standard routes
 router.post('/', createRequisition);

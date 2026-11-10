@@ -22,6 +22,15 @@ import { aiService } from '../services/ai/ai.service';
 import { resolveStaffFromFreeText } from '../lib/staffUserMatching';
 import { decisionRouter } from '../services/ai/decision.router';
 import { AuditService } from '../services/audit.service';
+import {
+    scanInvoice,
+    loadScannedInvoice,
+    pickInvoiceLines,
+    invoiceColumns,
+    signedInvoiceUrl,
+    ScannedInvoice,
+    InvoiceError,
+} from '../services/requisitionInvoice.service';
 
 export const markRequisitionRead = async (req: any, res: any): Promise<any> => {
     try {
@@ -93,6 +102,8 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             wallet_id,
             walletId,
             target_organization_id,
+            invoice_path,
+            invoice_lines_keep,
         } = req.body;
         const requestor_id = (req as any).user.id;
         let organization_id = (req as any).user.organization_id;
@@ -142,12 +153,38 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
         // match — is_personal is a real column, set only by ensurePersonalWorkspace.
         const isPersonalOrg = orgData?.is_personal === true;
 
+        // If an invoice was scanned, load the verified data from storage
+        let scannedInvoice: ScannedInvoice | null = null;
+        let invoiceLineItems: any[] | null = null;
+        if (invoice_path) {
+            if (type !== 'EXPENSE') {
+                return res.status(400).json({ error: 'An invoice can only be imported into an expense request.' });
+            }
+            try {
+                scannedInvoice = await loadScannedInvoice(organization_id, requestor_id, invoice_path);
+                const picked = pickInvoiceLines(scannedInvoice, invoice_lines_keep);
+                invoiceLineItems = picked.map((line) => ({
+                    description: line.description,
+                    quantity: line.quantity,
+                    unit_price: line.unit_price,
+                    estimated_amount: line.amount,
+                    price_locked: true,
+                }));
+            } catch (invErr: any) {
+                return res.status(invErr.httpStatus || 400).json({ error: invErr.message || 'Failed to attach invoice' });
+            }
+        }
+
+        const calculatedTotal = invoiceLineItems
+            ? Math.round(invoiceLineItems.reduce((s: number, it: any) => s + (Number(it.estimated_amount) || 0), 0) * 100) / 100
+            : estimated_total;
+
         // 1. Insert Requisition
         const insertData: any = {
             requestor_id,
             organization_id,
-            description,
-            estimated_total,
+            description: description || (scannedInvoice ? `Invoice ${scannedInvoice.invoice_number || ''}${scannedInvoice.supplier ? ` — ${scannedInvoice.supplier}` : ''}`.trim() : ''),
+            estimated_total: calculatedTotal,
             status: isPersonalOrg ? 'AUTHORISED' : 'DRAFT',
             interest_rate,
             monthly_deduction,
@@ -155,6 +192,10 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             department: department || null, // Ensure empty strings are handled as null
             wallet_id: personalPayout ? null : (wallet_id || walletId || null)
         };
+
+        if (scannedInvoice) {
+            Object.assign(insertData, invoiceColumns(scannedInvoice));
+        }
 
         // LOAN/ADVANCE requests are filed by an accountant on the employee's
         // behalf — the requestor is the filer, not the employee, so staff_name/
@@ -221,7 +262,7 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
         }
 
         // 2. Insert Line Items
-        let lineItemsToInsert = items || [];
+        let lineItemsToInsert = invoiceLineItems || items || [];
         
         if (type === 'LOAN' || type === 'ADVANCE') {
             const principalDesc = type === 'LOAN' ? 'Staff Loan Principal' : 'Salary Advance Principal';
@@ -321,7 +362,8 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             recipient_bank_code: item.recipient_bank_code || null,
             verified_name: item.verified_name || null,
             is_valid: item.is_valid !== undefined ? item.is_valid : true,
-            error_message: item.error_message || null
+            error_message: item.error_message || null,
+            price_locked: item.price_locked === true
         }));
 
         const { error: itemsError } = await supabase
@@ -500,9 +542,13 @@ export const updateRequisition = async (req: any, res: any): Promise<any> => {
         const { id } = req.params;
         const { description, estimated_total, wallet_id, walletId } = req.body;
 
+        // A request built from an invoice is for exactly the invoice's lines, so its total cannot be changed here.
+        const { data: existing } = await supabase.from('requisitions').select('invoice_url, estimated_total').eq('id', id).maybeSingle();
+        const fromInvoice = !!(existing as any)?.invoice_url;
+
         const updateData: any = {
             description,
-            estimated_total,
+            estimated_total: fromInvoice ? (existing as any).estimated_total : estimated_total,
             updated_at: new Date().toISOString()
         };
 
@@ -3544,3 +3590,60 @@ export const getSendSummaryHandler = async (req: any, res: any): Promise<any> =>
         res.status(500).json({ error: 'Could not load the payment summary.' });
     }
 };
+
+/** POST /requisitions/scan-invoice — scans an uploaded invoice, stores it, and returns extracted lines & metadata */
+export const scanRequisitionInvoice = async (req: any, res: any): Promise<any> => {
+    try {
+        const { fileBase64, fileName } = req.body;
+        const organization_id = req.user?.organization_id;
+        const user_id = req.user?.id;
+        if (!organization_id) {
+            return res.status(400).json({ error: 'Organization context missing.' });
+        }
+        const scanned = await scanInvoice(organization_id, user_id, { fileBase64, fileName });
+        res.json(scanned);
+    } catch (error: any) {
+        if (error instanceof InvoiceError) {
+            return res.status(error.httpStatus).json({ error: error.message });
+        }
+        console.error('[scanRequisitionInvoice] Error:', error);
+        res.status(500).json({ error: 'Failed to scan invoice', details: error.message });
+    }
+};
+
+/** GET /requisitions/:id/invoice-url — returns a signed URL to view the attached invoice */
+export const getRequisitionInvoiceUrl = async (req: any, res: any): Promise<any> => {
+    try {
+        const { id } = req.params;
+        const organization_id = req.user?.organization_id;
+
+        const { data: requisition, error } = await supabase
+            .from('requisitions')
+            .select('id, organization_id, invoice_url')
+            .eq('id', id)
+            .single();
+
+        if (error || !requisition) {
+            return res.status(404).json({ error: 'Requisition not found' });
+        }
+
+        if (requisition.organization_id !== organization_id) {
+            return res.status(403).json({ error: 'Unauthorized to view this requisition invoice' });
+        }
+
+        if (!requisition.invoice_url) {
+            return res.status(404).json({ error: 'No invoice attached to this requisition' });
+        }
+
+        const url = await signedInvoiceUrl(requisition.invoice_url, 3600);
+        if (!url) {
+            return res.status(404).json({ error: 'Could not generate invoice preview link' });
+        }
+
+        res.json({ url });
+    } catch (error: any) {
+        console.error('[getRequisitionInvoiceUrl] Error:', error);
+        res.status(500).json({ error: 'Failed to get invoice url', details: error.message });
+    }
+};
+

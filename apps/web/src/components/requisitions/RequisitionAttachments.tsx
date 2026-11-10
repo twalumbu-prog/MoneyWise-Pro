@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Requisition, requisitionService } from '../../services/requisition.service';
-import { Lock, FileDown } from 'lucide-react';
+import { Lock, FileDown, FileText, ExternalLink } from 'lucide-react';
 import RequisitionDocumentPreview from './RequisitionDocumentPreview';
 
 interface RequisitionAttachmentsProps {
@@ -16,6 +16,8 @@ const RequisitionAttachments: React.FC<RequisitionAttachmentsProps> = ({
     onAutoOpenDocHandled,
 }) => {
     const [previewDoc, setPreviewDoc] = useState<{ type: string; title: string } | null>(null);
+    const [invoiceUrl, setInvoiceUrl] = useState<string | null>(null);
+    const [loadingInvoice, setLoadingInvoice] = useState(false);
 
     // Auto-open a document when the parent requests it (e.g. "View Request Details" button)
     useEffect(() => {
@@ -24,6 +26,16 @@ const RequisitionAttachments: React.FC<RequisitionAttachmentsProps> = ({
             onAutoOpenDocHandled?.();
         }
     }, [autoOpenDoc]);
+
+    // Fetch invoice signed URL when the requisition has one
+    useEffect(() => {
+        if (!requisition.invoice_url) return;
+        setLoadingInvoice(true);
+        requisitionService.getInvoiceUrl(requisition.id)
+            .then(url => setInvoiceUrl(url))
+            .catch(() => setInvoiceUrl(null))
+            .finally(() => setLoadingInvoice(false));
+    }, [requisition.id, requisition.invoice_url]);
 
     const isLoan = requisition.type === 'LOAN';
     const status = requisition.status || 'DRAFT';
@@ -88,6 +100,30 @@ const RequisitionAttachments: React.FC<RequisitionAttachmentsProps> = ({
                         </button>
                     )}
                 </div>
+
+                {/* ── Imported supplier invoice ───────────────────────────── */}
+                {requisition.invoice_url && (
+                    <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-blue-100 bg-white px-4 py-3 shadow-sm">
+                        <div className="flex min-w-0 items-center gap-3">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[#0B57D0]"><FileText size={16} /></div>
+                            <div className="min-w-0">
+                                <p className="truncate text-sm font-bold text-gray-900">
+                                    Supplier invoice{requisition.invoice_number ? ` ${requisition.invoice_number}` : ''}
+                                </p>
+                                <p className="truncate text-[11px] font-medium text-gray-500">
+                                    {requisition.invoice_supplier || 'Imported invoice'} · prices locked to the invoice
+                                </p>
+                            </div>
+                        </div>
+                        {invoiceUrl ? (
+                            <a href={invoiceUrl} target="_blank" rel="noreferrer" className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#0B57D0] px-4 py-2 text-xs font-bold text-white hover:bg-[#0842A0]">
+                                View invoice <ExternalLink size={12} />
+                            </a>
+                        ) : (
+                            <span className="shrink-0 text-xs font-semibold text-gray-400">{loadingInvoice ? 'Loading…' : 'Unavailable'}</span>
+                        )}
+                    </div>
+                )}
 
                 {/* ── Timeline card ───────────────────────────────────────── */}
                 <div className="bg-white rounded-2xl md:rounded-3xl shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-gray-100 px-4 py-5 sm:px-6 sm:py-6 md:px-10 md:py-10">
