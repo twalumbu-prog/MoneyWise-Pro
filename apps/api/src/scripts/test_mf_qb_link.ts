@@ -62,5 +62,14 @@ const yr = (date: string, desc: string) => inv({ id: 'y' + date, docNumber: 'D' 
   const r = findQbInvoiceForItem('INV-Y', 'KAT10', 1500, [last], buildMfNumberIndex([last]), new Set(), { mfTerm: 3 });
   ok('Y5 callers that pass no year behave exactly as before', r.tier === 'TERM_AMOUNT', JSON.stringify(r)); }
 
+
+// ---- daily lunches must not match on term + amount (Beatrice Mpande, Nov 2026)
+{ const nov = inv({ id: 'L1', docNumber: 'L1', totalAmt: 35, date: '2026-11-09', lines: [{ amount: 35, itemName: 'CANTEEN SERVICES', description: 'Standard Lunch Meal - Thu, 12 Nov 2026' }] } as any);
+  const r = findQbInvoiceForItem('INV-L', 'Standard Lunch Meal - Thu 1st', 35, [nov], buildMfNumberIndex([nov]), new Set(), { mfTerm: 3, mfYear: 2026 });
+  ok('Z1 a different day\'s K35 lunch is NOT the "Thu 1st" lunch', r.tier === 'NONE', JSON.stringify(r)); }
+{ const same = inv({ id: 'L2', docNumber: 'L2', totalAmt: 35, date: '2026-09-11', lines: [{ amount: 35, itemName: 'CANTEEN SERVICES', description: 'Standard Lunch Meal - Thu 1st' }] } as any);
+  const r = findQbInvoiceForItem('INV-L', 'Standard Lunch Meal - Thu 1st', 35, [same], buildMfNumberIndex([same]), new Set(), { mfTerm: 3, mfYear: 2026 });
+  ok('Z2 the same wording still matches (tier 2)', r.tier === 'DESCRIPTION'); }
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

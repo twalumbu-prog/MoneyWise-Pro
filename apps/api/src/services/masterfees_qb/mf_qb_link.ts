@@ -214,7 +214,10 @@ export function findQbInvoiceForItem(
     // rule can bridge that, but term + amount + student pins it down — as long
     // as exactly one candidate qualifies, so a shared amount across two terms
     // can never be guessed at.
-    if (opts.mfTerm != null) {
+    // Daily/weekly canteen items are all the same price, so term + amount cannot tell one day's lunch from another: Beatrice Mpande's "Thu 1st" lunch (K35)
+    // was linked to a QuickBooks lunch invoice for 12 Nov (Nov 2026). Lunch lines only match on their own wording (tier 2), never on term + amount.
+    const isCanteen = (t: string) => /lunch|meal|canteen/i.test(t || '');
+    if (opts.mfTerm != null && !isCanteen(itemDescription)) {
         const termExplicit = termCompatible.filter(q => qbTermOf(q) === opts.mfTerm);
         if (termExplicit.length === 1) {
             const q = termExplicit[0];
