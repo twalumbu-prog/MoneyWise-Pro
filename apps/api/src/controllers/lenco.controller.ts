@@ -884,7 +884,8 @@ export const getPublicWalletContext = async (req: Request, res: Response) => {
                 ]);
 
                 const { data: org, error: orgError } = orgResult;
-                console.log('[Lenco Public Context] Org query result:', { org, orgError });
+                // Never log the organization row: it carries the business's Lenco secret key.
+                console.log('[Lenco Public Context] Org query result:', { found: !!org, orgError: orgError?.message ?? null });
 
                 if (orgError || !org) {
                     throw Object.assign(new Error('Organization not found'), { code: 'ORG_NOT_FOUND' });
