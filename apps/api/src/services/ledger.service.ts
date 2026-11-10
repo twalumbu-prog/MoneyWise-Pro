@@ -86,6 +86,42 @@ async function getAccountIdByCode(orgId: string, code: string): Promise<string |
 }
 
 /**
+ * Like getAccountIdByCode, but only returns an ASSET account. QuickBooks-imported charts number accounts QB-<qbId>, so a
+ * fixed code such as QB-1 means a different account in every org (in Twalumbu QB-1 is the "Bus Fares" INCOME account) —
+ * a cash/wallet lookup that trusts the code alone posts wallet money into whatever account owns that number.
+ */
+async function getAssetAccountIdByCode(orgId: string, code: string): Promise<string | null> {
+    const key = `${orgId}:asset:${code}`;
+    if (accountCodeCache.has(key)) return accountCodeCache.get(key)!;
+    const { data } = await supabase
+        .from('accounts')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('code', code)
+        .eq('type', 'ASSET')
+        .limit(1)
+        .maybeSingle();
+    const id = data?.id ?? null;
+    if (id) accountCodeCache.set(key, id); // a miss is not cached: the account may be created next
+    return id;
+}
+
+/** The org's main-wallet ASSET account: by the standard code, else by name (QuickBooks-imported orgs have an empty code). */
+async function getMainWalletAccountId(orgId: string): Promise<string | null> {
+    const byCode = await getAssetAccountIdByCode(orgId, CODE_MAIN_WALLET);
+    if (byCode) return byCode;
+    const { data } = await supabase
+        .from('accounts')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('type', 'ASSET')
+        .ilike('name', 'MoneyWise Wallet')
+        .limit(1)
+        .maybeSingle();
+    return data?.id ?? null;
+}
+
+/**
  * The per-org "Uncategorised / Suspense" equity account — a holding bucket for cash
  * that has not yet been classified as income, expense, capital or a liability. Created
  * on first use so the balance sheet always balances and the residual is visible.
@@ -163,8 +199,14 @@ export async function resolveCashAccountForEntry(ce: CashbookRow, opts: { create
 
 /** Creates a system ASSET account if the org doesn't have it (some organizations were set up without them). */
 async function ensureAssetAccount(orgId: string, code: string, name: string, subtype: string): Promise<string | null> {
-    const existing = await getAccountIdByCode(orgId, code);
+    const existing = await getAssetAccountIdByCode(orgId, code);
     if (existing) return existing;
+    // The code may be taken by a non-asset account (QB-1 = Bus Fares in Twalumbu): never reuse it, use a system code instead.
+    if (await getAccountIdByCode(orgId, code)) {
+        code = `SYS-${code}`;
+        const sys = await getAssetAccountIdByCode(orgId, code);
+        if (sys) return sys;
+    }
     const { data, error } = await supabase.from('accounts')
         .insert({ organization_id: orgId, code, name, type: 'ASSET', subtype, description: 'Created automatically so wallet and cash movements can be posted to the ledger.' })
         .select('id').single();
@@ -230,13 +272,13 @@ async function resolveCashAccountInner(ce: CashbookRow, create = true): Promise<
             }
         }
         // Main wallet (or a wallet whose account could not be created) → the Main Wallet asset account.
-        return (await getAccountIdByCode(orgId, CODE_MAIN_WALLET))
-            ?? (await getAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
+        return (await getMainWalletAccountId(orgId))
+            ?? (await getAssetAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
     }
 
     if (ce.account_type === 'MASTERFEES') {
         return (await getAccountIdByCode(orgId, CODE_MASTERFEES_COLLECTIONS))
-            ?? (await getAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
+            ?? (await getAssetAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
     }
 
     if (ce.account_type === 'MASTERFEES_MANUAL') {
@@ -265,7 +307,7 @@ async function resolveCashAccountInner(ce: CashbookRow, create = true): Promise<
             if (acct) return acct;
         }
         return (await getAccountIdByCode(orgId, CODE_MASTERFEES_MANUAL_COLLECTIONS))
-            ?? (await getAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
+            ?? (await getAssetAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
     }
 
     // If it's a custom external wallet (where account_type is a UUID)
@@ -277,6 +319,19 @@ async function resolveCashAccountInner(ce: CashbookRow, create = true): Promise<
             .maybeSingle();
 
         if (extWallet) {
+            // external_wallets.qb_account_id is often the linked account's own UUID (set from the app's account picker), not a
+            // QuickBooks number. Matching only by name / QB number missed those wallets, so their journals fell through to the
+            // QB-1 fallback (and, before it was type-checked, landed in Twalumbu's "Bus Fares" income account).
+            if (extWallet.qb_account_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(extWallet.qb_account_id)) {
+                const { data: linked } = await supabase
+                    .from('accounts')
+                    .select('id')
+                    .eq('organization_id', orgId)
+                    .eq('type', 'ASSET')
+                    .eq('id', extWallet.qb_account_id)
+                    .maybeSingle();
+                if (linked) return linked.id;
+            }
             let q = supabase
                 .from('accounts')
                 .select('id')
@@ -299,10 +354,10 @@ async function resolveCashAccountInner(ce: CashbookRow, create = true): Promise<
             .ilike('name', '%cash%')
             .limit(1)
             .maybeSingle();
-        return cashAcct?.id ?? (await getAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
+        return cashAcct?.id ?? (await getAssetAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
     }
 
-    return getAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET);
+    return getAssetAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET);
 }
 
 /** Resolve the account a requisition line item points at (account_id or qb_account_id). */

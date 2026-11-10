@@ -170,6 +170,8 @@ export interface MasterFeesConfig {
     receivableAccountId?: string;
     collectionsAccountId?: string;
     categoryMap?: Record<string, { accountId: string; name: string }>;
+    /** Income account for invoice lines/remainders with no fee category. When set (e.g. after merging the generic bucket into the org's own Tuition account) it is used instead of provisioning a separate "School Fees Income" account. */
+    genericIncomeAccountId?: string;
     schoolName?: string;
     lastSyncedAt?: string;
     /** Timestamp of the most recent routine sync attempt (regardless of whether
@@ -685,6 +687,7 @@ async function getIncomeAccountForCategory(
     const map = config.categoryMap || {};
 
     if (id && map[id]?.accountId) return map[id].accountId;
+    if (!id && config.genericIncomeAccountId) return config.genericIncomeAccountId;
 
     const name = category?.name?.trim();
     const code = id ? codeForCategory(id) : CODE_GENERIC_INCOME;
