@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { emailService } from '../services/email.service';
-import { healMissingPlatformFeesWithinBudget, runDailyBalanceCheck, RECON_TOLERANCE } from '../services/reconciliation.service';
+import { healMissingPlatformFeesWithinBudget, runDailyBalanceCheck, checkUnlinkedLencoAccounts, RECON_TOLERANCE } from '../services/reconciliation.service';
 import { autoCompleteRequisition, sendAutoCategorizationReminder } from './requisition.controller';
 
 /**
@@ -177,6 +177,7 @@ export const dailyReconCron = async (req: any, res: any) => {
         const { rows, checked, skipped } = await runDailyBalanceCheck();
         const diffs = rows.filter(r => r.flag === 'DIFFERENCE');
         const errors = rows.filter(r => r.flag === 'ERROR');
+        const orphans = await checkUnlinkedLencoAccounts().catch(() => [] as any[]);
         const ranAt = new Date().toISOString();
 
         const { data: prev } = await supabase.from('app_settings').select('value').eq('key', 'daily_recon_last').maybeSingle();
@@ -191,7 +192,7 @@ export const dailyReconCron = async (req: any, res: any) => {
         }, { onConflict: 'key' });
 
         const to = String(process.env.SUPER_ADMIN_EMAILS || '').split(',').map(s => s.trim()).filter(Boolean);
-        const clean = diffs.length === 0 && errors.length === 0;
+        const clean = diffs.length === 0 && errors.length === 0 && orphans.length === 0;
         if (to.length > 0) {
             const trend = (r: any) => {
                 const p = prevDiff[r.orgId];
@@ -205,10 +206,11 @@ export const dailyReconCron = async (req: any, res: any) => {
                 to,
                 subject: clean
                     ? `✅ MoneyWise vs Lenco: all ${checked} wallets balanced`
-                    : `⚠️ MoneyWise vs Lenco: ${diffs.length} difference(s)${errors.length ? `, ${errors.length} check error(s)` : ''}`,
+                    : `⚠️ MoneyWise vs Lenco: ${diffs.length} difference(s)${orphans.length ? `, ${orphans.length} orphan account(s)` : ''}${errors.length ? `, ${errors.length} check error(s)` : ''}`,
                 html: `<p>Daily reconciliation of MoneyWise wallet totals against live Lenco balances (${checked} organisations checked${skipped ? `, ${skipped} not reached in time` : ''}). Tolerance K${RECON_TOLERANCE.toFixed(2)}.</p>`
                     + (clean ? '<p><b>No differences.</b></p>' : '')
                     + (diffs.length ? `<table border="1" cellpadding="6" style="border-collapse:collapse"><tr><th>Organisation</th><th>MoneyWise</th><th>Lenco</th><th>Difference</th><th>Lenco hold</th><th>After hold</th><th>vs yesterday</th><th>Note</th></tr>${diffRows}</table>` : '')
+                    + (orphans.length ? `<p><b>Money in Lenco accounts no organisation owns:</b></p><ul>${orphans.map((o: any) => `<li>${o.name} (till ${o.till}) holds ${kw(o.balance)}</li>`).join('')}</ul>` : '')
                     + (errors.length ? `<p>Could not check:</p><ul>${errRows}</ul>` : '')
                     + '<p>Investigate in the admin dashboard → Reconciliation.</p>',
             }).catch((e: any) => console.error('[Cron] daily-recon email failed:', e?.message));

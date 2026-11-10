@@ -1018,3 +1018,35 @@ export async function runDailyBalanceCheck(budgetMs = 38_000): Promise<{ rows: D
     const skipped = rows.filter(r => r.flag === 'UNCHECKED').length;
     return { rows, checked: rows.length - skipped, skipped };
 }
+
+// ---------------------------------------------------------------------------
+// Orphan-account check. Money sitting in a Lenco account that NO organisation points at is invisible to every
+// other check (the 2026-11-09 Blue Opus incident: K404 settled into the "MONEYWISE BLUE OPUS DEMO" account, till
+// 3760162). Lists every account under the master key and reports any unlinked one holding >= the tolerance.
+// Accounts that are meant to be unlinked live in app_settings `recon_expected_unlinked_accounts`:
+// { "<accountId>": null }  = ignore entirely (e.g. the MasterFees collection account)
+// { "<accountId>": 25.5 }  = allow up to that balance.
+// ---------------------------------------------------------------------------
+export interface OrphanAccount { id: string; name: string; till: string | null; balance: number }
+
+export async function checkUnlinkedLencoAccounts(): Promise<OrphanAccount[]> {
+    const accts: any = await LencoService.listAccounts(undefined);
+    const list: any[] = accts?.data ?? accts ?? [];
+    const { data: orgs } = await supabase.from('organizations').select('lenco_subaccount_id');
+    const linked = new Set((orgs || []).map((o: any) => o.lenco_subaccount_id).filter(Boolean));
+    const { data: cfg } = await supabase.from('app_settings').select('value').eq('key', 'recon_expected_unlinked_accounts').maybeSingle();
+    const expected: Record<string, number | null> = (cfg?.value && typeof cfg.value === 'object') ? cfg.value : {};
+
+    const out: OrphanAccount[] = [];
+    for (const a of list) {
+        if (!a?.id || linked.has(a.id)) continue;
+        const balance = round2(n(a.availableBalance));
+        if (a.id in expected) {
+            const allowed = expected[a.id];
+            if (allowed === null || balance <= n(allowed) + RECON_TOLERANCE) continue;
+        }
+        if (balance < RECON_TOLERANCE) continue;
+        out.push({ id: a.id, name: a.details?.accountName || a.name || a.id, till: a.details?.tillNumber ?? null, balance });
+    }
+    return out;
+}

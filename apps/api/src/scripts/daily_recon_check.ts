@@ -4,7 +4,7 @@
  * Prints a report; the last line is `RESULT: ALL BALANCED` or `RESULT: DIFFERENCES FOUND (n)`.
  */
 import 'dotenv/config';
-import { runDailyBalanceCheck, RECON_TOLERANCE } from '../services/reconciliation.service';
+import { runDailyBalanceCheck, checkUnlinkedLencoAccounts, RECON_TOLERANCE } from '../services/reconciliation.service';
 
 const k = (v: number | null) => v === null ? 'n/a' : `K${v.toFixed(2)}`;
 
@@ -17,6 +17,9 @@ const k = (v: number | null) => v === null ? 'n/a' : `K${v.toFixed(2)}`;
         console.log(`DIFF  ${r.name}: MoneyWise ${k(r.moneywise)} vs Lenco ${k(r.lenco)} = ${k(r.difference)} | Lenco hold ${k(r.lencoHold)} | unexplained ${k(r.unexplained)}${r.note ? ' | ' + r.note : ''}`);
     }
     for (const r of errs) console.log(`ERROR ${r.name}: ${r.note}`);
-    console.log(diffs.length || errs.length ? `RESULT: DIFFERENCES FOUND (${diffs.length} diff, ${errs.length} error)` : 'RESULT: ALL BALANCED');
+    let orphans: Awaited<ReturnType<typeof checkUnlinkedLencoAccounts>> = [];
+    try { orphans = await checkUnlinkedLencoAccounts(); } catch (e: any) { console.log(`ERROR orphan-account check failed: ${e?.message}`); }
+    for (const o of orphans) console.log(`ORPHAN Lenco account not linked to any org: ${o.name} (till ${o.till}, ${o.id}) holds ${k(o.balance)}`);
+    console.log(diffs.length || errs.length || orphans.length ? `RESULT: DIFFERENCES FOUND (${diffs.length} diff, ${errs.length} error, ${orphans.length} orphan account)` : 'RESULT: ALL BALANCED');
     process.exit(0);
 })().catch(e => { console.error('RECON FAILED:', e?.message || e); process.exit(1); });
