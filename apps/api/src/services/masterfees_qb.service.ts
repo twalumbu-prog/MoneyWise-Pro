@@ -3,7 +3,7 @@ import { QuickBooksService } from './quickbooks.service';
 import { getMasterFeesIntegration, MasterFeesConfig, acquireMasterFeesLock, releaseMasterFeesLock, touchMasterFeesLock } from './masterfees.service';
 import { NameCandidate } from './masterfees_qb/name_match';
 import { buildCustomerMap, resolveStudentCustomer, CustomerMap } from './masterfees_qb/customer_map';
-import { paymentInScope, bankReconciliationHold } from './masterfees_qb/payment_rules';
+import { paymentInScope, bankReconciliationHold, allocateAcrossPieces } from './masterfees_qb/payment_rules';
 import { possibleSameCharge } from './masterfees_qb/create_guard';
 import { isWalletAccountType } from './ledgerCorrections/core';
 import { buildMfNumberIndex, buildImpDocIndex, findQbInvoiceForItem, normDesc, qbTermOf, QbInvoiceLike } from './masterfees_qb/mf_qb_link';
@@ -266,7 +266,9 @@ export async function runQuickBooksAutoPost(
                 const channel = /^REF-/i.test(String(txn.reference || '')) ? 'LENCO' : (cb.mf_payment_channel || 'OTHER'); const deposit = depositAccounts[channel];
                 if (!deposit) { await park(`No QuickBooks bank account is mapped for channel "${channel}"`); continue; }
                 const qbIds = String(invRec.qb_invoice_id).split(',').filter(x => /^\d+$/.test(x)); const items = (invRec.raw?.items ?? []).filter((i: any) => Number(i.amount) > 0);
-                if (qbIds.length !== items.length) { await park('QuickBooks invoice ids do not line up with the Master Fees fee items'); continue; }
+                // One termly fee can be several monthly QuickBooks invoices (single-item Master Fees invoice, several QuickBooks ids): the payment is spread over them.
+                const pieceMode = items.length === 1 && qbIds.length > 1;
+                if (!pieceMode && qbIds.length !== items.length) { await park('QuickBooks invoice ids do not line up with the Master Fees fee items'); continue; }
                 if (items.length > 1 && Math.abs(amount - Number(invRec.raw?.total_amount)) > 0.01) { await park('Part-payment of a multi-item invoice — which item it paid cannot be told automatically'); continue; }
                 // customer = the customer who owns the linked QuickBooks invoice
                 const roster = await getRoster(organizationId); const m = resolveStudentCustomer(invRec.raw?.student?.student_id, invRec.raw?.student?.full_name || '', roster, await getCustMap());
@@ -291,7 +293,11 @@ export async function runQuickBooksAutoPost(
                     continue;
                 }
                 let bad = '';
-                items.forEach((it: any, idx: number) => { const q = custInvs.find(x => x.id === qbIds[idx]); const amt = items.length > 1 ? Number(it.amount) : amount; if (!q) bad = `QuickBooks invoice ${qbIds[idx]} was not found on ${m.match!.name}`; else if (q.balance + 0.01 < amt) bad = `QuickBooks invoice ${q.docNumber || q.id} has only ${money(q.balance)} open, payment is ${money(amt)}`; else lines.push({ invoiceId: q.id, amount: amt }); });
+                if (pieceMode) {
+                    const parts = qbIds.map(id => custInvs.find(x => x.id === id)); const missing = qbIds.filter((id, i) => !parts[i]);
+                    if (missing.length) bad = `QuickBooks invoice ${missing.join(', ')} was not found on ${m.match!.name}`;
+                    else { const alloc = allocateAcrossPieces(amount, parts.map(q => ({ id: q!.id, balance: q!.balance, date: q!.date }))); if (!alloc) bad = `The ${qbIds.length} QuickBooks invoices for this fee have only ${money(parts.reduce((t, q) => t + Math.max(q!.balance, 0), 0))} open, payment is ${money(amount)}`; else lines.push(...alloc); }
+                } else items.forEach((it: any, idx: number) => { const q = custInvs.find(x => x.id === qbIds[idx]); const amt = items.length > 1 ? Number(it.amount) : amount; if (!q) bad = `QuickBooks invoice ${qbIds[idx]} was not found on ${m.match!.name}`; else if (q.balance + 0.01 < amt) bad = `QuickBooks invoice ${q.docNumber || q.id} has only ${money(q.balance)} open, payment is ${money(amt)}`; else lines.push({ invoiceId: q.id, amount: amt }); });
                 if (bad) { await park(bad); continue; }
                 if (free.length) { await park(`Customer has an unclaimed ${money(amount)} payment in QuickBooks nearby (payment ${free.map((p: any) => p.Id).join(', ')}) but it is not applied to this invoice — it may be this same payment`); continue; }
                 if (dryRun) { result.payments.posted++; result.decisions.push({ kind: 'PAYMENT', id: rec.mf_id, label, outcome: 'WOULD_POST', reason: `deposit ${deposit}, invoices ${lines.map(l => l.invoiceId).join(',')}` }); continue; }

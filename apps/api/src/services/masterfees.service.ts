@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { supabase } from '../lib/supabase';
-import { isUnverified, isWalletAccountType, decideWalletMove, channelChanged } from './ledgerCorrections/core';
+import { isUnverified, isWalletAccountType, decideWalletMove, channelChanged, invoiceLinkChanged } from './ledgerCorrections/core';
 import { hasManualMove, logCorrection } from './ledgerCorrections/ledgerCorrections.service';
 import { collectPages } from './masterfees_paging';
 import { ledgerService } from './ledger.service';
@@ -170,6 +170,8 @@ export interface MasterFeesConfig {
     receivableAccountId?: string;
     collectionsAccountId?: string;
     categoryMap?: Record<string, { accountId: string; name: string }>;
+    /** Income account for invoice lines/remainders with no fee category. When set (e.g. after merging the generic bucket into the org's own Tuition account) it is used instead of provisioning a separate "School Fees Income" account. */
+    genericIncomeAccountId?: string;
     schoolName?: string;
     lastSyncedAt?: string;
     /** Timestamp of the most recent routine sync attempt (regardless of whether
@@ -685,6 +687,7 @@ async function getIncomeAccountForCategory(
     const map = config.categoryMap || {};
 
     if (id && map[id]?.accountId) return map[id].accountId;
+    if (!id && config.genericIncomeAccountId) return config.genericIncomeAccountId;
 
     const name = category?.name?.trim();
     const code = id ? codeForCategory(id) : CODE_GENERIC_INCOME;
@@ -801,9 +804,9 @@ async function upsertRecord(organizationId: string, integrationId: string, rec: 
 const VOID_STATUSES = new Set(['void', 'voided', 'cancelled', 'canceled', 'deleted', 'draft']);
 
 type PriorInvoiceRecord = { amount: number | string | null; mf_status: string | null; journal_entry_id: string | null; synced_at?: string | null };
-type PriorPaymentRecord = { amount: number | string | null; mf_status: string | null; journal_entry_id: string | null; cashbook_entry_id: string | null; prior_account_name?: string | null; prior_payment_method?: string | null };
+type PriorPaymentRecord = { amount: number | string | null; mf_status: string | null; journal_entry_id: string | null; cashbook_entry_id: string | null; prior_account_name?: string | null; prior_payment_method?: string | null; prior_invoice_id?: string | null };
 // Columns loaded for every already-synced payment. The two aliases are the channel Master Fees reported when we last synced it, so a later channel change is noticed.
-const PRIOR_PAYMENT_COLUMNS = 'amount, mf_status, journal_entry_id, cashbook_entry_id, prior_account_name:raw->>account_name, prior_payment_method:raw->>payment_method';
+const PRIOR_PAYMENT_COLUMNS = 'amount, mf_status, journal_entry_id, cashbook_entry_id, prior_account_name:raw->>account_name, prior_payment_method:raw->>payment_method, prior_invoice_id:mf_invoice_id';
 
 /**
  * Batch-preload every already-synced record of a given type for an org into a
@@ -1063,6 +1066,13 @@ async function postPayment(
 
     if (status && !['completed', 'complete', 'success', 'successful', 'paid'].includes(status)) return 'skipped';
 
+    // The invoice link was changed at Master Fees after we synced this payment: keep MoneyWise's copy (mf_invoice_id + raw) in step. Record metadata only — the
+    // cashbook entry and ledger are untouched, and anything already posted to QuickBooks stays as posted (the reconcile reports it if it now disagrees).
+    if (prior && invoiceLinkChanged(prior, txn)) {
+        await supabase.from('masterfees_records').update({ mf_invoice_id: txn.invoice_id ?? null, raw: txn, updated_at: new Date().toISOString() })
+            .eq('organization_id', organizationId).eq('record_type', 'PAYMENT').eq('mf_id', txn.transaction_id);
+        prior.prior_invoice_id = txn.invoice_id ?? null;
+    }
     const unchanged = prior && Math.abs(num(prior.amount) - amount) < TOLERANCE;
 
     // Payment amount was edited in Master Fees — update the existing cashbook row in
@@ -1749,6 +1759,7 @@ export async function syncMasterfeesPayments(
             if (liveVoid) return !priorVoid && !!(p.cashbook_entry_id || p.journal_entry_id);
             if (priorVoid) return true;
             if (channelChanged(p, t)) return true;   // e.g. Finance moved a payment from Natsave to Zanaco at Master Fees
+            if (invoiceLinkChanged(p, t)) return true;   // Finance linked / re-linked / unlinked it to an invoice at Master Fees
             return num(t.amount) > 0 && Math.abs(num(p.amount) - num(t.amount)) >= TOLERANCE;
         };
         let queue = opts.onlyMissing

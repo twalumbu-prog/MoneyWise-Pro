@@ -952,3 +952,101 @@ export async function healMissingPlatformFeesForAllOrgs(): Promise<FeeHealResult
     }
     return results;
 }
+
+// ---------------------------------------------------------------------------
+// Daily balance check (scheduled) — lean: MoneyWise wallet totals vs LIVE Lenco available balance.
+// No transaction download, so it fits the serverless time limit for every organisation. The full drill-down
+// (admin dashboard) is the place to investigate anything this flags.
+// ---------------------------------------------------------------------------
+export type DailyReconFlag = 'BALANCED' | 'DIFFERENCE' | 'ERROR' | 'UNCHECKED';
+
+export interface DailyReconRow {
+    orgId: string;
+    name: string;
+    flag: DailyReconFlag;
+    /** Σ ledger (cashbook) closing across the org's wallets. */
+    moneywise: number | null;
+    /** Σ the balance the app displays on the wallets. */
+    walletsDisplayed: number | null;
+    /** Live Lenco availableBalance. */
+    lenco: number | null;
+    /** moneywise − lenco. */
+    difference: number | null;
+    /** Funds Lenco holds back (ledgerBalance − availableBalance). */
+    lencoHold: number;
+    /** Difference left after allowing for the Lenco hold — what genuinely needs investigating. */
+    unexplained: number | null;
+    walletDrift: number;
+    note?: string;
+}
+
+/** Throwaway fixtures (e.g. "ZZ MWPay sender …") have no valid Lenco key by design — never worth an alert. */
+const isTestFixtureOrg = (name: string) => /^ZZ\s/i.test(name);
+
+export async function runDailyBalanceCheck(budgetMs = 38_000): Promise<{ rows: DailyReconRow[]; checked: number; skipped: number }> {
+    const deadline = Date.now() + budgetMs;
+    const orgs = (await fetchOrgRows()).filter(o => !!o.lenco_subaccount_id && !isTestFixtureOrg(o.name));
+
+    const rows = await mapWithConcurrency(orgs, 4, async (org): Promise<DailyReconRow> => {
+        const row: DailyReconRow = {
+            orgId: org.id, name: org.name, flag: 'UNCHECKED', moneywise: null, walletsDisplayed: null,
+            lenco: null, difference: null, lencoHold: 0, unexplained: null, walletDrift: 0,
+        };
+        if (Date.now() > deadline) { row.note = 'Not checked — time budget used up; will be covered tomorrow'; return row; }
+        try {
+            const mw = await getMoneyWiseTotals(org.id);
+            row.moneywise = round2(mw.closing);
+            row.walletsDisplayed = round2(mw.displayed);
+            row.walletDrift = round2(mw.displayed - mw.closing);
+            const bal = await LencoService.getAccountBalance(org.lenco_subaccount_id!, org.lenco_secret_key || undefined);
+            const available = n(bal?.availableBalance ?? bal?.balance);
+            row.lenco = round2(available);
+            row.lencoHold = Math.max(0, round2(n(bal?.ledgerBalance ?? available) - available));
+            row.difference = round2(mw.closing - available);
+            // A hold explains a MoneyWise-higher difference (funds Lenco has not released yet) up to its size.
+            row.unexplained = round2(row.difference > 0 ? row.difference - Math.min(row.difference, row.lencoHold) : row.difference);
+            const off = Math.abs(row.difference) >= RECON_TOLERANCE || Math.abs(row.walletDrift) > 0.01;
+            row.flag = off ? 'DIFFERENCE' : 'BALANCED';
+            if (Math.abs(row.walletDrift) > 0.01) row.note = `Wallet balance shown in the app is off the ledger by K${row.walletDrift.toFixed(2)}`;
+        } catch (err: any) {
+            row.flag = 'ERROR';
+            row.note = err?.message || 'Check failed';
+        }
+        return row;
+    });
+
+    const skipped = rows.filter(r => r.flag === 'UNCHECKED').length;
+    return { rows, checked: rows.length - skipped, skipped };
+}
+
+// ---------------------------------------------------------------------------
+// Orphan-account check. Money sitting in a Lenco account that NO organisation points at is invisible to every
+// other check (the 2026-11-09 Blue Opus incident: K404 settled into the "MONEYWISE BLUE OPUS DEMO" account, till
+// 3760162). Lists every account under the master key and reports any unlinked one holding >= the tolerance.
+// Accounts that are meant to be unlinked live in app_settings `recon_expected_unlinked_accounts`:
+// { "<accountId>": null }  = ignore entirely (e.g. the MasterFees collection account)
+// { "<accountId>": 25.5 }  = allow up to that balance.
+// ---------------------------------------------------------------------------
+export interface OrphanAccount { id: string; name: string; till: string | null; balance: number }
+
+export async function checkUnlinkedLencoAccounts(): Promise<OrphanAccount[]> {
+    const accts: any = await LencoService.listAccounts(undefined);
+    const list: any[] = accts?.data ?? accts ?? [];
+    const { data: orgs } = await supabase.from('organizations').select('lenco_subaccount_id');
+    const linked = new Set((orgs || []).map((o: any) => o.lenco_subaccount_id).filter(Boolean));
+    const { data: cfg } = await supabase.from('app_settings').select('value').eq('key', 'recon_expected_unlinked_accounts').maybeSingle();
+    const expected: Record<string, number | null> = (cfg?.value && typeof cfg.value === 'object') ? cfg.value : {};
+
+    const out: OrphanAccount[] = [];
+    for (const a of list) {
+        if (!a?.id || linked.has(a.id)) continue;
+        const balance = round2(n(a.availableBalance));
+        if (a.id in expected) {
+            const allowed = expected[a.id];
+            if (allowed === null || balance <= n(allowed) + RECON_TOLERANCE) continue;
+        }
+        if (balance < RECON_TOLERANCE) continue;
+        out.push({ id: a.id, name: a.details?.accountName || a.name || a.id, till: a.details?.tillNumber ?? null, balance });
+    }
+    return out;
+}

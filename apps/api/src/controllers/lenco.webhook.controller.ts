@@ -245,6 +245,51 @@ export const handleLencoWebhook = async (req: Request, res: Response) => {
  * Handles 'collection.successful' event
  * Logs an inflow into the MoneyWise Wallet
  */
+
+/**
+ * Settlement guard. A collection must settle into the organisation's OWN Lenco account. If Lenco reports it settled
+ * elsewhere (the 2026-11-09 Blue Opus incident: master-key collections landed in the "MONEYWISE BLUE OPUS DEMO"
+ * account, till 3760162) crediting the wallet would book money that is not in the account the ledger is reconciled
+ * against. We refuse to credit, record the case once and email super-admins so the money can be moved/sorted out.
+ * Only acts when the payload names a settlement account AND the org has a linked account to compare with.
+ * Kill switch: SETTLEMENT_GUARD=off.
+ */
+async function settlementMismatch(data: any, organizationId: string, reference: string | undefined): Promise<boolean> {
+    if (process.env.SETTLEMENT_GUARD === 'off') return false;
+    const settledTo: string | undefined = data?.settlement?.accountId || data?.settlement?.account_id;
+    if (!settledTo) return false;
+    try {
+        const { data: org } = await supabase.from('organizations').select('name, lenco_subaccount_id').eq('id', organizationId).maybeSingle();
+        if (!org?.lenco_subaccount_id || org.lenco_subaccount_id === settledTo) return false;
+
+        const key = `misrouted_collection:${reference || settledTo}`;
+        const { data: seen } = await supabase.from('app_settings').select('key').eq('key', key).maybeSingle();
+        console.error(`[Lenco Webhook] SETTLEMENT MISMATCH ${reference}: settled to ${settledTo}, ${org.name} account is ${org.lenco_subaccount_id} — NOT credited`);
+        if (!seen) {
+            await supabase.from('app_settings').upsert({
+                key, value: { reference, amount: data.amount, organizationId, organization: org.name, settledTo, expected: org.lenco_subaccount_id, at: new Date().toISOString() },
+                description: 'Collection that settled outside the org account — not credited', updated_at: new Date().toISOString(),
+            }, { onConflict: 'key' });
+            const to = String(process.env.SUPER_ADMIN_EMAILS || '').split(',').map(s => s.trim()).filter(Boolean);
+            if (to.length) {
+                await emailService.sendEmail({
+                    to,
+                    subject: `⚠️ Misrouted collection K${data.amount} for ${org.name}`,
+                    html: `<p>A customer payment (<b>${reference}</b>, K${data.amount}) settled into Lenco account <code>${settledTo}</code>, not ${org.name}'s account <code>${org.lenco_subaccount_id}</code>.</p>
+                           <p>It was <b>not credited</b> to the wallet. Move the funds to the correct account, then re-run finalisation for this reference.</p>`,
+                }).catch((e: any) => console.error('[Lenco Webhook] misroute email failed:', e?.message));
+            }
+        }
+        captureEvent('payment_collection_settlement_mismatch', {
+            feature: 'payment_collection', workflow_id: reference || 'unknown', organization_id: organizationId, user_id: 'system', status: 'blocked',
+        });
+        return true;
+    } catch (err: any) {
+        console.error('[Lenco Webhook] settlement guard check failed (not blocking):', err?.message);
+        return false;
+    }
+}
+
 export async function handleCollectionSuccessful(data: any, forcedOrganizationId: string | null = null) {
     if (!data) {
         console.warn('[Lenco Webhook] handleCollectionSuccessful called with null data');
@@ -398,6 +443,8 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
         }
         return true;
     }
+
+    if (await settlementMismatch(data, organizationId, reference)) return false;
 
     try {
         return await withTiming(

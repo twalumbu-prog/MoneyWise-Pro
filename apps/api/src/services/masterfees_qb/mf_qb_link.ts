@@ -193,6 +193,7 @@ export function findQbInvoiceForItem(
         return qt === opts.mfTerm;
     });
 
+    const isCanteen = (t: string) => /lunch|meal|canteen/i.test(t || '');   // daily lunches: exact wording only ("Thu 1st" is a prefix of "Thu 12 Nov")
     // ---- Tier 2: fee description + amount, within this student and term ----
     const target = normDesc(itemDescription);
     if (target) {
@@ -200,7 +201,7 @@ export function findQbInvoiceForItem(
         if (exactDesc.length > 0) {
             return { tier: 'DESCRIPTION', invoice: exactDesc[0], detail: `Matched on identical fee description "${itemDescription}" at K${itemAmount.toFixed(2)}${opts.mfTerm ? ` (term ${opts.mfTerm})` : ''}.` };
         }
-        const partial = termCompatible.filter(q => q.lines.some(l => {
+        const partial = isCanteen(itemDescription) ? [] : termCompatible.filter(q => q.lines.some(l => {
             const d = normDesc(l.description);
             return d.length >= 6 && target.length >= 6 && (d.includes(target) || target.includes(d));
         }));
@@ -214,7 +215,9 @@ export function findQbInvoiceForItem(
     // rule can bridge that, but term + amount + student pins it down — as long
     // as exactly one candidate qualifies, so a shared amount across two terms
     // can never be guessed at.
-    if (opts.mfTerm != null) {
+    // Daily/weekly canteen items are all the same price, so term + amount cannot tell one day's lunch from another: Beatrice Mpande's "Thu 1st" lunch (K35)
+    // was linked to a QuickBooks lunch invoice for 12 Nov (Nov 2026). Lunch lines only match on their own wording (tier 2), never on term + amount.
+    if (opts.mfTerm != null && !isCanteen(itemDescription)) {
         const termExplicit = termCompatible.filter(q => qbTermOf(q) === opts.mfTerm);
         if (termExplicit.length === 1) {
             const q = termExplicit[0];

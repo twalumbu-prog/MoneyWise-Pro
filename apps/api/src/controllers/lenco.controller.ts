@@ -1433,6 +1433,10 @@ export const initiatePublicMobileMoneyCollection = async (req: Request, res: Res
         if (!resolved) return res.status(404).json({ error: 'Wallet not found' });
         // Never charge a customer through the master key: the money would settle
         // into the master's default account, not this merchant's (see collectionsApiEnabledFor).
+        // This includes Blue Opus: the master key's default settlement account is the Lenco "BLUE OPUS- MONEYWISE
+        // BLUE OPUS DEMO" account (till 3760162), NOT Blue Opus's own account (till 9838830) — exempting it
+        // misrouted K404 on 2026-11-09/10. Blue Opus needs its own secret key (organizations.lenco_secret_key)
+        // for the merchant behind c567f569 before it can use direct checkout.
         if (!resolved.hasOwnKey) {
             return res.status(409).json({ error: 'Direct mobile money checkout is not available for this business. Please pay with the standard checkout.' });
         }

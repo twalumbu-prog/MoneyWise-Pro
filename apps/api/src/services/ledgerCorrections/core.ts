@@ -83,3 +83,15 @@ export function channelChanged(
     if (prior.prior_account_name == null && prior.prior_payment_method == null) return false;
     return norm(prior.prior_account_name) !== norm(live.account_name) || norm(prior.prior_payment_method) !== norm(live.payment_method);
 }
+
+/**
+ * Did the INVOICE a Master Fees payment is applied to change since we last synced it? Finance links, re-links or unlinks payments at Master Fees after the fact
+ * (Nov 2026: 40 of 4,426 Twalumbu payments disagreed with live Master Fees — 17 linked there but not here, 14 the reverse, 9 pointing at a different invoice),
+ * and the sync used to look only at amount and channel, so the link in MoneyWise stayed whatever it was on the first day.
+ * `priorInvoiceId` is the stored mf_invoice_id. A record we hold with no link and a live payment with none are the same (null == '').
+ */
+export function invoiceLinkChanged(prior: { prior_invoice_id?: string | null } | undefined, live: { invoice_id?: string | null }): boolean {
+    if (!prior) return false;
+    const norm = (v: unknown) => String(v ?? '').trim().toLowerCase();
+    return norm(prior.prior_invoice_id) !== norm(live.invoice_id);
+}
