@@ -1516,12 +1516,45 @@ export const initiatePublicMobileMoneyCollection = async (req: Request, res: Res
             return res.status(409).json({ error: 'Direct mobile money checkout is not available for this business. Please pay with the standard checkout.' });
         }
 
-        const collection = await LencoService.initiateMobileMoneyCollection({
-            amount: Number(amount),
-            reference,
-            phone,
-            operator
-        }, resolved.secretKey);
+        let collection: any;
+        try {
+            collection = await LencoService.initiateMobileMoneyCollection({
+                amount: Number(amount),
+                reference,
+                phone,
+                operator
+            }, resolved.secretKey);
+        } catch (initError: any) {
+            if (!initError?.outcomeUnknown) throw initError;
+            // Lenco didn't answer in time (or 5xx) — the charge may exist and the prompt may
+            // already be on the customer's phone. Re-check by reference; only treat it as a
+            // failure when Lenco confirms it. Otherwise hand the client a pending collection so
+            // it polls verify-status like any other prompt.
+            let rechecked: any = null;
+            try {
+                // Capped: the initiate call already spent up to 25s of the 45s function budget.
+                rechecked = await Promise.race([
+                    LencoService.getCollectionStatus(reference, resolved.secretKey),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('re-check timed out after 8s')), 8000)),
+                ]);
+            } catch (checkError: any) {
+                console.error('[Lenco Public Collection] Re-check after timeout failed:', checkError.message);
+            }
+            if (rechecked?.status === 'failed') {
+                throw new Error(rechecked.reasonForFailure || 'Mobile money payment could not be started');
+            }
+            console.warn(`[Lenco Public Collection] Initiate outcome unknown for ${reference}; re-check status=${rechecked?.status || 'not found yet'} — returning pending`);
+            captureEvent('payment_link_collection_initiated', {
+                feature: 'payment_link_checkout', workflow_id: reference, organization_id: resolved.organizationId,
+                user_id: 'anonymous', status: 'started', amount: Number(amount), payment_method: 'mobile-money',
+                outcome_unknown: true,
+            });
+            return res.status(202).json({
+                success: true,
+                outcomeUnknown: true,
+                data: rechecked && rechecked.status ? rechecked : { status: 'pending', reference },
+            });
+        }
 
         captureEvent('payment_link_collection_initiated', {
             feature: 'payment_link_checkout', workflow_id: reference, organization_id: resolved.organizationId,
