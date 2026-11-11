@@ -33,7 +33,30 @@ const cases: { text: string; sender?: string; expect: Expect }[] = [
         expect: { provider: 'ZAMTEL', direction: 'OUT', amount: 500, balanceAfter: 20, reference: '99887766' },
     },
     { text: 'BANDA JOHN has sent you ZMW 40.00. Ref ABC123456', sender: 'MoMo', expect: { direction: 'IN', amount: 40 } },
+    // A promo or help line after a real confirmation must not hide it.
+    {
+        text: 'You have received ZMW 250.00 from JOHN BANDA 260971234567. Your new balance is ZMW 1,320.50. Transaction ID: 12345678901. Dial *115# to check your balance.',
+        sender: 'MoMo',
+        expect: { direction: 'IN', amount: 250, balanceAfter: 1320.5, reference: '12345678901' },
+    },
+    {
+        text: 'Txn ID: CO261027.1402.B123. You have withdrawn ZMW 200.00 from agent 123456 KABWE STORES. Fee ZMW 5.00. Bal ZMW 10.00. Transact and win big!',
+        sender: 'AirtelMoney',
+        expect: { provider: 'AIRTEL', direction: 'OUT', amount: 200, fee: 5, balanceAfter: 10, reference: 'CO261027.1402.B123' },
+    },
+    {
+        text: 'Txn. ID : PP261027.1402.A12345. You have received ZMW 50.00 from 971234567 JOHN BANDA. Your available balance is ZMW 60.00.',
+        sender: 'AirtelMoney',
+        expect: { direction: 'IN', amount: 50, balanceAfter: 60, reference: 'PP261027.1402.A12345' },
+    },
+    {
+        text: 'You have deposited ZMW 500.00 into your account via agent LUSAKA KIOSK. New balance ZMW 512.00. Txn ID 11223344556',
+        sender: 'MoMo',
+        expect: { direction: 'IN', amount: 500, balanceAfter: 512, reference: '11223344556' },
+    },
     // Not transactions — must be ignored.
+    { text: 'Y\'ello! You have received a bonus offer. Dial *117# to buy bundles from K5.', sender: 'MoMo', expect: null },
+    { text: 'Enter PIN to approve the payment of ZMW 50.00 to SHOP X.', sender: 'MoMo', expect: null },
     { text: 'Your MoMo OTP is 482911. Do not share it with anyone.', expect: null },
     { text: 'Transaction of ZMW 300.00 to MARY PHIRI failed due to insufficient funds.', expect: null },
     { text: 'JOHN BANDA has requested ZMW 200.00 from you. Dial *115# to approve.', expect: null },

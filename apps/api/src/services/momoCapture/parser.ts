@@ -30,10 +30,14 @@ export function detectProvider(text: string, sender?: string | null): MomoProvid
     return 'OTHER';
 }
 
-// Messages that mention money but don't move it: failures, OTPs, payment *requests*, promos.
-const NOT_A_TRANSACTION = /\b(fail(ed|ure)?|unsuccessful|declined|cancel(l)?ed|insufficient|otp|one[- ]time|verification code|has requested|requests? (you|payment)|wants you to pay|approve the|dial \*|win |bonus offer|bundle offer)\b/i;
+// Messages that mention money but don't move it: failures, OTPs, payment *requests*.
+const NOT_A_TRANSACTION = /\b(fail(ed|ure)?|unsuccessful|declined|cancel(l)?ed|insufficient|otp|one[- ]time|verification code|has requested|requests? (you|payment)|wants you to pay|approve the)\b/i;
+// Promo / help lines. Operators tack these onto real confirmations ("… Dial *115# to check your balance"), so they
+// only remove their own sentence; a message that is nothing but promo has no transaction left to parse.
+const PROMO_SENTENCE = /(\bdial \*|\bwin\b|\bbonus offer\b|\bbundle offer\b)/i;
+const withoutPromo = (text: string) => text.split(/(?<=[.!?])\s+/).filter((s) => !PROMO_SENTENCE.test(s)).join(' ');
 
-const IN_WORDS = /\b(you have received|you received|received|has sent you|sent you|deposit(ed)? (to|into) your|credited|cash[- ]?in|reversal|refund(ed)?)\b/i;
+const IN_WORDS = /\b(you have received|you received|received|has sent you|sent you|deposit(ed)?|credited|cash[- ]?in|reversal|refund(ed)?)\b/i;
 const OUT_WORDS = /\b(you have sent|you sent|sent|paid|payment (of|to)|you have paid|withdr[ae]wn?|withdrawal|debited|cash[- ]?out|transferred|transfer of|purchase[ds]?|bought|airtime)\b/i;
 
 const NUM = '([0-9]{1,3}(?:,[0-9]{3})+(?:\\.[0-9]{1,2})?|[0-9]+(?:\\.[0-9]{1,2})?)';
@@ -74,8 +78,10 @@ function counterpartyAfter(text: string, word: 'from' | 'to'): string | null {
 const REFERENCE = /\b(?:financial transaction id|transaction id|trans(?:action)?\.?\s*id|txn\.?\s*id|txn|tid|ref(?:erence)?(?:\s*no)?\.?)\s*[:#.]?\s*([A-Z0-9][A-Z0-9.\-]{5,})/i;
 
 export function parseMomoMessage(rawText: string, sender?: string | null): ParsedMomoMessage | null {
-    const text = clean(rawText || '');
-    if (text.length < 12 || text.length > 1200) return null;
+    const full = clean(rawText || '');
+    if (full.length > 1200) return null;
+    const text = withoutPromo(full);
+    if (text.length < 12) return null;
     if (NOT_A_TRANSACTION.test(text)) return null;
 
     const hits = moneyHits(text);

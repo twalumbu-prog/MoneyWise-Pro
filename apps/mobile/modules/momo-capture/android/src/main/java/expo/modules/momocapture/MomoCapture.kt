@@ -22,7 +22,8 @@ import java.util.concurrent.Executors
 object MomoCapture {
     private const val TAG = "MomoCapture"
     private const val PREFS = "moneywise_momo_capture"
-    private const val MAX_QUEUE = 200
+    // Must hold a whole SMS history import (up to 500 messages, queued faster than they send).
+    private const val MAX_QUEUE = 600
     private val io = Executors.newSingleThreadExecutor()
 
     private val DEFAULT_SENDERS = Regex("(?i)(momo|mtn|airtel|zamtel|kwacha)")

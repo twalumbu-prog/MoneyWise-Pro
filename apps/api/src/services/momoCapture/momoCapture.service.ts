@@ -190,12 +190,18 @@ export async function post(userId: string, orgId: string, id: string, overrides:
         const accountId = typeof overrides.accountId === 'string' ? overrides.accountId : null;
 
         const entry = await recordManualEntry({ orgId, userId, direction, amount, description, date, externalWalletId: wallet.id, accountId });
-        // The operator's charge leaves the same wallet, so it's booked beside the movement it belongs to.
-        if (claimed.fee && Number(claimed.fee) > 0) {
-            await recordManualEntry({ orgId, userId, direction: 'OUT', amount: Number(claimed.fee), description: `${description} · fee`, date, externalWalletId: wallet.id });
-        }
+        // From here the movement is in the ledger, so nothing below may send the capture back to PENDING (the catch
+        // would, and a second tap would then book it twice).
         const { data: done } = await supabase.from('momo_captures')
             .update({ cashbook_entry_id: entry.entryId, updated_at: new Date().toISOString() }).eq('id', id).select('*').single();
+        // The operator's charge leaves the same wallet, so it's booked beside the movement it belongs to.
+        if (claimed.fee && Number(claimed.fee) > 0) {
+            try {
+                await recordManualEntry({ orgId, userId, direction: 'OUT', amount: Number(claimed.fee), description: `${description} · fee`, date, externalWalletId: wallet.id });
+            } catch (e: any) {
+                console.error(`[MoMo capture] fee of ${claimed.fee} for capture ${id} was not booked:`, e.message);
+            }
+        }
         await mirrorMomoCapture(done, mirror);
         return { ...done, entry };
     } catch (e: any) {
