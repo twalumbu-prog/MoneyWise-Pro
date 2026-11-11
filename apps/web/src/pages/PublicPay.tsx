@@ -50,7 +50,12 @@ import { savePendingPayment, loadPendingPayment, clearPendingPayment } from '../
 import BookingCalendar from '../components/BookingCalendar';
 import { StoreMoneyWisePay } from '../components/StoreMoneyWisePay';
 import { StoreRewardsSection } from '../components/rewards/StoreRewardsSection';
-import { BookingRange, isBookingProductType, getBookingTerminology } from '../services/product.service';
+import { BookingRange, isBookingProductType, isAppointmentProductType, formatSlotTime, getBookingTerminology } from '../services/product.service';
+import AppointmentPicker from '../components/AppointmentPicker';
+
+/** Date-range stays AND time-slot appointments both open a picker instead of a qty stepper. */
+const isReservable = (t?: string | null) => isBookingProductType(t) || isAppointmentProductType(t);
+const reservableUnit = (t?: string | null) => (isAppointmentProductType(t) ? 'appointment' : getBookingTerminology(t).unit);
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
@@ -119,7 +124,7 @@ interface Product {
     price: number;
     is_active: boolean;
     image_url?: string | null;
-    product_type?: 'PRODUCT' | 'SERVICE_FIXED' | 'SERVICE_VARIABLE' | 'DONATION' | 'SERVICE_BOOKING' | 'SERVICE_BOOKING_DAILY' | 'DIGITAL';
+    product_type?: 'PRODUCT' | 'SERVICE_FIXED' | 'SERVICE_VARIABLE' | 'DONATION' | 'SERVICE_BOOKING' | 'SERVICE_BOOKING_DAILY' | 'DIGITAL' | 'SERVICE_APPOINTMENT';
     category?: string | null;
     requires_delivery?: boolean;
     allow_external_delivery?: boolean;
@@ -275,11 +280,13 @@ export const PublicPay: React.FC = () => {
     const [donationAmounts, setDonationAmounts] = useState<Record<string, number>>({});
     // Chosen stay for SERVICE_BOOKING products (keyed by product id). `nights` doubles
     // as the cart quantity for that line, so total = nights × nightly price.
-    const [bookingDates, setBookingDates] = useState<Record<string, { checkIn: string; checkOut: string; nights: number }>>({});
+    const [bookingDates, setBookingDates] = useState<Record<string, { checkIn: string; checkOut: string; nights: number; time?: string; endTime?: string }>>({});
     // Booking calendar overlay state.
     const [calendarProduct, setCalendarProduct] = useState<Product | null>(null);
     const [calendarAvailability, setCalendarAvailability] = useState<BookingRange[]>([]);
     const [calendarLoading, setCalendarLoading] = useState(false);
+    // Appointment (day + time-slot) picker overlay.
+    const [appointmentProduct, setAppointmentProduct] = useState<Product | null>(null);
 
     // Delivery details captured on the DELIVERY step.
     const [deliveryMode, setDeliveryMode] = useState<'deliver' | 'pickup'>('deliver');
@@ -586,6 +593,10 @@ export const PublicPay: React.FC = () => {
 
     // Open the booking calendar for a product, loading its confirmed (blocked) dates.
     const openBookingCalendar = async (product: Product) => {
+        if (isAppointmentProductType(product.product_type)) {
+            setAppointmentProduct(product);
+            return;
+        }
         setCalendarProduct(product);
         setCalendarAvailability([]);
         setCalendarLoading(true);
@@ -607,6 +618,23 @@ export const PublicPay: React.FC = () => {
         setCalendarProduct(null);
     };
 
+    // Confirm a chosen appointment slot → one unit in the cart, date/time kept alongside.
+    const handleConfirmAppointment = (productId: string, date: string, time: string, endTime: string) => {
+        setBookingDates(prev => ({ ...prev, [productId]: { checkIn: date, checkOut: date, nights: 1, time, endTime } }));
+        setSelectedQuantities(prev => ({ ...prev, [productId]: 1 }));
+        setAppointmentProduct(null);
+    };
+
+    // "Fri 14 Nov · 2:30 PM" for appointments, "12 Jul – 15 Jul · 3 nights" for stays.
+    const stayLabel = (product: Product, stay: { checkIn: string; checkOut: string; nights: number; time?: string }) => {
+        if (isAppointmentProductType(product.product_type) && stay.time) {
+            const [y, m, d] = stay.checkIn.split('-').map(Number);
+            const day = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+            return `${day} · ${formatSlotTime(stay.time)}`;
+        }
+        return `${formatStayRange(stay.checkIn, stay.checkOut)} · ${stay.nights} ${reservableUnit(product.product_type)}${stay.nights === 1 ? '' : 's'}`;
+    };
+
     // Remove a booking from the cart (clear its dates + quantity).
     const removeBooking = (productId: string) => {
         setSelectedQuantities(prev => ({ ...prev, [productId]: 0 }));
@@ -625,7 +653,7 @@ export const PublicPay: React.FC = () => {
     const lineItems = catalogProducts
         .map(p => {
             const isDonation = p.product_type === 'DONATION';
-            const isBooking = isBookingProductType(p.product_type);
+            const isBooking = isReservable(p.product_type);
             // For bookings, the stored quantity is the number of nights/days.
             const quantity = selectedQuantities[p.id] || 0;
             const unitPrice = isDonation ? (donationAmounts[p.id] || 0) : p.price;
@@ -853,7 +881,9 @@ export const PublicPay: React.FC = () => {
                     price: li.unitPrice,
                     // Booking lines carry their stay so the server can hold/confirm the dates.
                     ...(li.isBooking && li.booking
-                        ? { check_in: li.booking.checkIn, check_out: li.booking.checkOut }
+                        ? (isAppointmentProductType(li.product.product_type)
+                            ? { appointment_date: li.booking.checkIn, appointment_time: li.booking.time }
+                            : { check_in: li.booking.checkIn, check_out: li.booking.checkOut })
                         : {}),
                     ...responsesFor(li.product.id),
                 })),
@@ -1161,7 +1191,9 @@ export const PublicPay: React.FC = () => {
                     quantity: li.quantity,
                     price: li.unitPrice,
                     ...(li.isBooking && li.booking
-                        ? { check_in: li.booking.checkIn, check_out: li.booking.checkOut }
+                        ? (isAppointmentProductType(li.product.product_type)
+                            ? { appointment_date: li.booking.checkIn, appointment_time: li.booking.time }
+                            : { check_in: li.booking.checkIn, check_out: li.booking.checkOut })
                         : {}),
                     ...responsesFor(li.product.id),
                 })),
@@ -1895,8 +1927,8 @@ Status: VERIFIED`;
     // A single selectable product/service row, shown inside the Add Products sheet.
     const renderProductCard = (product: Product) => {
         const isDonation = product.product_type === 'DONATION';
-        const isBooking = isBookingProductType(product.product_type);
-        const bookingUnit = getBookingTerminology(product.product_type).unit;
+        const isBooking = isReservable(product.product_type);
+        const bookingUnit = reservableUnit(product.product_type);
         const qty = selectedQuantities[product.id] || 0;
         const isInCart = qty > 0;
         const stay = bookingDates[product.id];
@@ -1967,7 +1999,7 @@ Status: VERIFIED`;
                             className="inline-flex items-center gap-1.5 self-start px-3 py-1.5 bg-teal-50 text-teal-700 rounded-full text-[11px] font-bold hover:bg-teal-100 transition-colors"
                         >
                             <CalendarDays size={12} />
-                            {formatStayRange(stay.checkIn, stay.checkOut)} · {stay.nights} {bookingUnit}{stay.nights === 1 ? '' : 's'}
+                            {stayLabel(product, stay)}
                         </button>
                     )}
 
@@ -2074,8 +2106,8 @@ Status: VERIFIED`;
     // A single catalogue grid card (image on top, name + price, add control).
     const renderGridCard = (product: Product) => {
         const isDonation = product.product_type === 'DONATION';
-        const isBooking = isBookingProductType(product.product_type);
-        const bookingUnit = getBookingTerminology(product.product_type).unit;
+        const isBooking = isReservable(product.product_type);
+        const bookingUnit = reservableUnit(product.product_type);
         const qty = selectedQuantities[product.id] || 0;
         const isInCart = qty > 0;
         const stay = bookingDates[product.id];
@@ -2146,7 +2178,7 @@ Status: VERIFIED`;
                         </span>
                         {isBooking && isInCart && stay && (
                             <span className="text-[10px] font-semibold text-teal-700 truncate">
-                                {formatStayRange(stay.checkIn, stay.checkOut)} · {stay.nights} {bookingUnit}{stay.nights === 1 ? '' : 's'}
+                                {stayLabel(product, stay)}
                             </span>
                         )}
                     </div>
@@ -2162,7 +2194,7 @@ Status: VERIFIED`;
                             }`}
                         >
                             {isInCart ? <Check size={13} strokeWidth={2.5} /> : <CalendarDays size={13} />}
-                            <span>{isInCart ? 'Reserved · Edit' : 'Reserve'}</span>
+                            <span>{isAppointmentProductType(product.product_type) ? (isInCart ? 'Booked · Edit' : 'Book now') : (isInCart ? 'Reserved · Edit' : 'Reserve')}</span>
                         </button>
                     ) : (
                         // Action area — pulse flash + pop persist across the button↔stepper swap
@@ -2554,8 +2586,8 @@ Status: VERIFIED`;
                     const hasImages = allImages.length > 0;
                     const clampedIdx = Math.max(0, Math.min(detailImageIndex, allImages.length - 1));
                     const isDonation = p.product_type === 'DONATION';
-                    const isBooking = isBookingProductType(p.product_type);
-                    const bookingUnit = getBookingTerminology(p.product_type).unit;
+                    const isBooking = isReservable(p.product_type);
+                    const bookingUnit = reservableUnit(p.product_type);
                     const qty = selectedQuantities[p.id] || 0;
                     const isInCart = qty > 0;
                     const salesCount = p.sales_count ?? 0;
@@ -2900,8 +2932,8 @@ Status: VERIFIED`;
                                     {lineItems.map((li) => {
                                         const product = li.product;
                                         const isDonation = product.product_type === 'DONATION';
-                                        const isBooking = isBookingProductType(product.product_type);
-                                        const bookingUnit = getBookingTerminology(product.product_type).unit;
+                                        const isBooking = isReservable(product.product_type);
+                                        const bookingUnit = reservableUnit(product.product_type);
                                         const qty = selectedQuantities[product.id] || 0;
                                         const isInCart = qty > 0;
                                         const stay = bookingDates[product.id];
@@ -2950,7 +2982,7 @@ Status: VERIFIED`;
                                                                 className="inline-flex items-center gap-1.5 self-start px-3 py-1.5 bg-teal-50 text-teal-700 rounded-full text-[11px] font-bold hover:bg-teal-100 transition-colors mt-1"
                                                             >
                                                                 <CalendarDays size={12} />
-                                                                {formatStayRange(stay.checkIn, stay.checkOut)} · {stay.nights} {bookingUnit}{stay.nights === 1 ? '' : 's'}
+                                                                {stayLabel(product, stay)}
                                                             </button>
                                                         )}
                                                     </div>
@@ -3926,7 +3958,7 @@ Status: VERIFIED`;
                                             <span className="text-xs text-zinc-600 truncate">
                                                 {li.product.name}
                                                 {li.isBooking && li.booking
-                                                    ? ` · ${formatStayRange(li.booking.checkIn, li.booking.checkOut)} (${li.quantity} ${getBookingTerminology(li.product.product_type).unit}${li.quantity === 1 ? '' : 's'})`
+                                                    ? ` · ${stayLabel(li.product, li.booking)}`
                                                     : !li.isDonation && li.quantity > 1 ? ` (x${li.quantity})` : ''}
                                             </span>
                                             <span className="text-xs text-zinc-600 flex-shrink-0">
@@ -4134,6 +4166,20 @@ Status: VERIFIED`;
             </div>
             )}
         </div>
+        )}
+
+        {/* Appointment day + time-slot picker */}
+        {appointmentProduct && (
+            <AppointmentPicker
+                productId={appointmentProduct.id}
+                productName={appointmentProduct.name}
+                price={appointmentProduct.price}
+                initial={bookingDates[appointmentProduct.id]?.time
+                    ? { date: bookingDates[appointmentProduct.id].checkIn, time: bookingDates[appointmentProduct.id].time! }
+                    : null}
+                onClose={() => setAppointmentProduct(null)}
+                onConfirm={(d, t, e) => handleConfirmAppointment(appointmentProduct.id, d, t, e)}
+            />
         )}
 
         {/* Booking date calendar — shared across desktop + mobile */}

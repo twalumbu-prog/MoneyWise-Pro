@@ -13,6 +13,7 @@ import { handleCollectionSuccessful } from './lenco.webhook.controller';
 import { cashbookService } from '../services/cashbook.service';
 import { ledgerService } from '../services/ledger.service';
 import { applyProductRevenueRouting, markPaymentLinkPaid, confirmBookingsForReference } from '../services/product_routing.service';
+import { resolveConfig, computeSlots, fetchConfirmedForDate, isSlotAvailable, nowInTz } from '../services/appointment.service';
 import { calculatePlatformFee } from '../utils/platformFee';
 import { QuickBooksService } from '../services/quickbooks.service';
 import { captureEvent, withTiming } from '../utils/analytics';
@@ -365,6 +366,7 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
                     await supabase.from('product_sales').delete().eq('reference', reference).eq('status', 'PENDING');
                     // Release any held booking reservation (PENDING never blocked dates).
                     await supabase.from('product_bookings').delete().eq('reference', reference).eq('status', 'PENDING');
+                    await supabase.from('product_appointments').delete().eq('reference', reference).eq('status', 'PENDING');
                     return res.json({
                         verified: false,
                         status: 'DELETED',
@@ -1088,6 +1090,57 @@ export const getProductAvailability = async (req: Request, res: Response) => {
 };
 
 /**
+ * Public: calendar-level info for a SERVICE_APPOINTMENT product — which weekdays
+ * are open, the bookable date window, closed dates and the service duration — so
+ * the portal calendar can grey out days. Slots for a chosen day come from
+ * `getProductSlots`.
+ */
+export const getAppointmentInfo = async (req: Request, res: Response) => {
+    try {
+        const { productId } = req.params;
+        const { data: p } = await supabase.from('products')
+            .select('id, product_type, is_active, appointment_config').eq('id', productId).maybeSingle();
+        if (!p || p.product_type !== 'SERVICE_APPOINTMENT' || !p.is_active) {
+            return res.status(404).json({ error: 'Appointment service not found' });
+        }
+        const cfg = resolveConfig(p.appointment_config);
+        const today = nowInTz(cfg.timezone).date;
+        const last = new Date(Date.parse(`${today}T00:00:00Z`) + cfg.max_advance_days * 86400000).toISOString().slice(0, 10);
+        res.json({
+            duration_minutes: cfg.duration_minutes,
+            open_weekdays: Object.keys(cfg.hours).map(Number),
+            closed_dates: cfg.closed_dates,
+            min_date: today,
+            max_date: last,
+            timezone: cfg.timezone,
+        });
+    } catch (error: any) {
+        console.error('[Lenco Public Appointment Info] Error:', error);
+        res.status(500).json({ error: 'Failed to fetch appointment info', details: error.message });
+    }
+};
+
+/** Public: bookable time slots for one day (`?date=YYYY-MM-DD`) of an appointment product. */
+export const getProductSlots = async (req: Request, res: Response) => {
+    try {
+        const { productId } = req.params;
+        const date = String(req.query.date || '');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'date (YYYY-MM-DD) is required' });
+        const { data: p } = await supabase.from('products')
+            .select('id, product_type, is_active, appointment_config').eq('id', productId).maybeSingle();
+        if (!p || p.product_type !== 'SERVICE_APPOINTMENT' || !p.is_active) {
+            return res.status(404).json({ error: 'Appointment service not found' });
+        }
+        const cfg = resolveConfig(p.appointment_config);
+        const slots = computeSlots(cfg, date, await fetchConfirmedForDate(productId, date));
+        res.json({ date, slots: slots.map(s => ({ start: s.start, end: s.end })) });
+    } catch (error: any) {
+        console.error('[Lenco Public Slots] Error:', error);
+        res.status(500).json({ error: 'Failed to fetch slots', details: error.message });
+    }
+};
+
+/**
  * Shared core for logging a wallet-deposit intent (PENDING cashbook entry +
  * PENDING product_sales/product_bookings) ahead of a Lenco checkout.
  *
@@ -1175,6 +1228,26 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
             }
         }
 
+        // --- Appointment pre-validation -----------------------------------------
+        // Appointment lines carry appointment_date + appointment_time. The slot must
+        // still be offered (open hours, notice, capacity); price is server-side.
+        const apptItems: any[] = Array.isArray(items) ? items.filter((it: any) => it?.appointment_date && it?.appointment_time) : [];
+        const apptInfo: Record<string, { price: number; duration: number; cfg: any }> = {};
+        if (apptItems.length > 0) {
+            const ids = [...new Set(apptItems.map((a: any) => a.id))];
+            const { data: prods } = await supabase.from('products')
+                .select('id, price, product_type, is_active, appointment_config').in('id', ids).eq('organization_id', wallet.organization_id);
+            for (const p of (prods || []) as any[]) {
+                if (p.product_type !== 'SERVICE_APPOINTMENT' || !p.is_active) continue;
+                apptInfo[p.id] = { price: Number(p.price) || 0, duration: resolveConfig(p.appointment_config).duration_minutes, cfg: p.appointment_config };
+            }
+            for (const a of apptItems) {
+                if (!apptInfo[a.id]) return res.status(400).json({ error: 'This service is not available for appointments.' });
+                const slot = await isSlotAvailable(a.id, apptInfo[a.id].cfg, String(a.appointment_date), String(a.appointment_time));
+                if (!slot) return res.status(409).json({ error: 'Sorry, that time slot is no longer available. Please choose another.' });
+            }
+        }
+
         // Buyer answers to each product's checkout_fields. Validated against the stored field
         // definitions (never trusted from the client) before any intent is written.
         const responsesByProduct: Record<string, { id: string; label: string; value: string }[]> = {};
@@ -1240,8 +1313,9 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
             // Booking lines store nights as quantity and a server-recomputed amount.
             const salesData = items.map((item: any) => {
                 const isBooking = !!(item.check_in && item.check_out);
-                const qty = isBooking ? nightsOf(String(item.check_in), String(item.check_out)) : Number(item.quantity);
-                const unit = isBooking ? (bookingPrices[item.id] ?? (Number(item.price) || 0)) : Number(item.price);
+                const isAppt = !isBooking && !!apptInfo[item.id] && !!(item.appointment_date && item.appointment_time);
+                const qty = isBooking ? nightsOf(String(item.check_in), String(item.check_out)) : isAppt ? 1 : Number(item.quantity);
+                const unit = isBooking ? (bookingPrices[item.id] ?? (Number(item.price) || 0)) : isAppt ? apptInfo[item.id].price : Number(item.price);
                 return {
                     organization_id: wallet.organization_id,
                     product_id: item.id,
@@ -1292,6 +1366,29 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
                 if (bookingErr) {
                     console.error('[Lenco Public Intent] Error logging product bookings:', bookingErr);
                 }
+            }
+
+            // Hold appointment slots as PENDING (nothing is blocked until paid).
+            if (apptItems.length > 0) {
+                const minToTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+                const apptData = apptItems.map((a: any) => {
+                    const [h, m] = String(a.appointment_time).split(':').map(Number);
+                    const startMin = h * 60 + m;
+                    return {
+                        organization_id: wallet.organization_id,
+                        product_id: a.id,
+                        reference,
+                        customer_name: customerName || 'Anonymous',
+                        customer_phone: customerPhone || 'N/A',
+                        appointment_date: a.appointment_date,
+                        start_time: minToTime(startMin),
+                        end_time: minToTime(startMin + apptInfo[a.id].duration),
+                        amount: apptInfo[a.id].price,
+                        status: 'PENDING',
+                    };
+                });
+                const { error: apptErr } = await supabase.from('product_appointments').insert(apptData);
+                if (apptErr) console.error('[Lenco Public Intent] Error logging product appointments:', apptErr);
             }
         }
 

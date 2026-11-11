@@ -1,7 +1,8 @@
 import { Response } from 'express';
 import { supabase } from '../lib/supabase';
+import { sanitizeAppointmentConfig } from '../services/appointment.service';
 
-const VALID_PRODUCT_TYPES = ['PRODUCT', 'SERVICE_FIXED', 'SERVICE_VARIABLE', 'DONATION', 'SERVICE_BOOKING', 'SERVICE_BOOKING_DAILY', 'DIGITAL'];
+const VALID_PRODUCT_TYPES = ['PRODUCT', 'SERVICE_FIXED', 'SERVICE_VARIABLE', 'DONATION', 'SERVICE_BOOKING', 'SERVICE_BOOKING_DAILY', 'DIGITAL', 'SERVICE_APPOINTMENT'];
 
 /**
  * Normalise the digital_assets payload into a clean snapshot array. Each asset
@@ -107,7 +108,7 @@ export const createProduct = async (req: any, res: Response): Promise<any> => {
 
         const { name, description, price, image_url, product_type, wallet_id, income_account_id, category, digital_assets,
                 requires_delivery, allow_external_delivery, own_delivery_charge,
-                additional_images, whats_included, checkout_fields } = req.body;
+                additional_images, whats_included, checkout_fields, appointment_config } = req.body;
 
         if (!name || name.trim() === '') {
             return res.status(400).json({ error: 'Product name is required' });
@@ -156,6 +157,7 @@ export const createProduct = async (req: any, res: Response): Promise<any> => {
                 additional_images: Array.isArray(additional_images) ? additional_images.filter((u: any) => typeof u === 'string' && u.trim()) : [],
                 whats_included: Array.isArray(whats_included) ? whats_included.filter((s: any) => typeof s === 'string' && s.trim()) : [],
                 checkout_fields: sanitizeCheckoutFields(checkout_fields),
+                appointment_config: productType === 'SERVICE_APPOINTMENT' ? sanitizeAppointmentConfig(appointment_config) : null,
             })
             .select()
             .single();
@@ -199,7 +201,7 @@ export const updateProduct = async (req: any, res: Response): Promise<any> => {
 
         const { name, description, price, is_active, image_url, product_type, wallet_id, income_account_id, category, digital_assets,
                 requires_delivery, allow_external_delivery, own_delivery_charge,
-                additional_images, whats_included, checkout_fields } = req.body;
+                additional_images, whats_included, checkout_fields, appointment_config } = req.body;
         const updateData: any = {};
 
         if (name !== undefined) {
@@ -270,6 +272,11 @@ export const updateProduct = async (req: any, res: Response): Promise<any> => {
         if (additional_images !== undefined) updateData.additional_images = Array.isArray(additional_images) ? additional_images.filter((u: any) => typeof u === 'string' && u.trim()) : [];
         if (whats_included !== undefined) updateData.whats_included = Array.isArray(whats_included) ? whats_included.filter((s: any) => typeof s === 'string' && s.trim()) : [];
         if (checkout_fields !== undefined) updateData.checkout_fields = sanitizeCheckoutFields(checkout_fields);
+        if (effectiveType === 'SERVICE_APPOINTMENT') {
+            if (appointment_config !== undefined) updateData.appointment_config = sanitizeAppointmentConfig(appointment_config);
+        } else if (product_type !== undefined) {
+            updateData.appointment_config = null;
+        }
         updateData.updated_at = new Date().toISOString();
 
         const { data, error } = await supabase

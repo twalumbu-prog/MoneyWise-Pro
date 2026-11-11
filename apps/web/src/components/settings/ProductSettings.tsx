@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { productService, Product, ProductType, PRODUCT_TYPE_OPTIONS, isBookingProductType, DigitalAsset, CheckoutField } from '../../services/product.service';
+import { productService, Product, ProductType, PRODUCT_TYPE_OPTIONS, isBookingProductType, DigitalAsset, CheckoutField, AppointmentConfig, DEFAULT_APPOINTMENT_CONFIG } from '../../services/product.service';
 import { accountService } from '../../services/account.service';
 import { cashbookService } from '../../services/cashbook.service';
 import { masterFeesService, MasterFeesStatus, MasterFeesCategory } from '../../services/integration.service';
@@ -39,6 +39,7 @@ const typeBadgeClass = (t?: ProductType) => {
         case 'SERVICE_VARIABLE': return 'bg-amber-100 text-amber-800';
         case 'SERVICE_BOOKING': return 'bg-teal-100 text-teal-800';
         case 'SERVICE_BOOKING_DAILY': return 'bg-cyan-100 text-cyan-800';
+        case 'SERVICE_APPOINTMENT': return 'bg-pink-100 text-pink-800';
         case 'DIGITAL': return 'bg-violet-100 text-violet-800';
         case 'DONATION': return 'bg-pink-100 text-pink-800';
         default: return 'bg-slate-100 text-slate-700';
@@ -93,6 +94,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
     type UiCheckoutField = CheckoutField & { optionsText?: string };
     const [checkoutFields, setCheckoutFields] = useState<UiCheckoutField[]>([]);
     const [collectInfo, setCollectInfo] = useState(false);
+    const [apptConfig, setApptConfig] = useState<AppointmentConfig>(DEFAULT_APPOINTMENT_CONFIG);
     const newFieldId = () => `f_${Math.random().toString(36).slice(2, 9)}`;
     const addCheckoutField = (preset: 'name' | 'email' | 'size' | 'custom') => {
         const f: UiCheckoutField =
@@ -232,6 +234,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
             own_delivery_charge: '',
         });
         setDigitalAssets([]);
+        setApptConfig(DEFAULT_APPOINTMENT_CONFIG);
         setError(null);
         setIsModalOpen(true);
     };
@@ -250,6 +253,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
         const existingFields = Array.isArray(product.checkout_fields) ? product.checkout_fields : [];
         setCheckoutFields(existingFields.map(f => ({ ...f, optionsText: (f.options || []).join(', ') })));
         setCollectInfo(existingFields.length > 0);
+        setApptConfig(product.appointment_config ? { ...DEFAULT_APPOINTMENT_CONFIG, ...product.appointment_config } : DEFAULT_APPOINTMENT_CONFIG);
         setFormData({
             name: product.name,
             description: product.description || '',
@@ -387,6 +391,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
     const isDigital = formData.product_type === 'DIGITAL';
     const isBooking = isBookingProductType(formData.product_type);
     const isDailyBooking = formData.product_type === 'SERVICE_BOOKING_DAILY';
+    const isAppointment = formData.product_type === 'SERVICE_APPOINTMENT';
     const priceRequired = !isDonation && !isVariable;
     // Delivery only makes sense for tangible physical products
     const canHaveDelivery = formData.product_type === 'PRODUCT';
@@ -445,6 +450,14 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
             }
         }
 
+        if (isAppointment) {
+            const open = Object.entries(apptConfig.hours);
+            if (open.length === 0) { setError('Choose at least one opening day for appointments.'); return; }
+            const bad = open.find(([, h]) => !h.start || !h.end || h.end <= h.start);
+            if (bad) { setError('Each opening day needs a closing time after its opening time.'); return; }
+            if (apptConfig.slot_interval_minutes < 5 || apptConfig.duration_minutes < 5) { setError('Service length and slot spacing must be at least 5 minutes.'); return; }
+        }
+
         try {
             setSubmitting(true);
             setError(null);
@@ -467,6 +480,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                 additional_images: additionalImages,
                 whats_included: whatsIncluded.filter(s => s.trim()),
                 checkout_fields: collectInfo ? cleanedCheckoutFields : [],
+                appointment_config: isAppointment ? apptConfig : null,
             };
 
             if (editingProduct) {
@@ -1096,11 +1110,98 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                     </div>
                                 )}
 
+                                {/* Appointment scheduling */}
+                                {isAppointment && (() => {
+                                    const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                                    const setCfg = (patch: Partial<AppointmentConfig>) => setApptConfig(c => ({ ...c, ...patch }));
+                                    const setDay = (d: number, patch: { start?: string; end?: string } | null) =>
+                                        setApptConfig(c => {
+                                            const hours = { ...c.hours };
+                                            if (patch === null) delete hours[String(d)];
+                                            else hours[String(d)] = { ...(hours[String(d)] || { start: '09:00', end: '17:00' }), ...patch };
+                                            return { ...c, hours };
+                                        });
+                                    const num = (label: string, key: 'duration_minutes' | 'slot_interval_minutes' | 'capacity' | 'min_notice_hours' | 'max_advance_days', hint?: string) => (
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-700 mb-1">{label}</label>
+                                            <input
+                                                type="number" min={1} value={apptConfig[key]} disabled={submitting}
+                                                onChange={(e) => setCfg({ [key]: Math.max(key === 'min_notice_hours' ? 0 : 1, Number(e.target.value) || 0) } as Partial<AppointmentConfig>)}
+                                                className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none"
+                                            />
+                                            {hint && <p className="text-[11px] text-gray-400 mt-1">{hint}</p>}
+                                        </div>
+                                    );
+                                    return (
+                                        <div className="space-y-4 p-4 bg-pink-50/50 border border-pink-100 rounded-2xl">
+                                            <div>
+                                                <p className="text-sm font-bold text-gray-800">Appointment scheduling</p>
+                                                <p className="text-xs text-gray-500 mt-0.5">Customers pick a day, then one of the time slots generated from these rules. A slot is held only once it's paid.</p>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                {num('Service length (minutes)', 'duration_minutes')}
+                                                {num('Slot every (minutes)', 'slot_interval_minutes', 'Gap between start times offered.')}
+                                                {num('Clients per slot', 'capacity', 'E.g. 3 if you have 3 stylists.')}
+                                                {num('Minimum notice (hours)', 'min_notice_hours')}
+                                                {num('Bookable up to (days ahead)', 'max_advance_days')}
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-bold text-gray-700 mb-2">Opening hours</p>
+                                                <div className="space-y-2">
+                                                    {[1, 2, 3, 4, 5, 6, 0].map(d => {
+                                                        const h = apptConfig.hours[String(d)];
+                                                        return (
+                                                            <div key={d} className="flex items-center gap-2">
+                                                                <label className="flex items-center gap-2 w-28 text-sm text-gray-700">
+                                                                    <input type="checkbox" checked={!!h} disabled={submitting} onChange={(e) => setDay(d, e.target.checked ? {} : null)} />
+                                                                    {DAYS[d]}
+                                                                </label>
+                                                                {h ? (
+                                                                    <>
+                                                                        <input type="time" value={h.start} disabled={submitting} onChange={(e) => setDay(d, { start: e.target.value })} className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm" />
+                                                                        <span className="text-gray-400 text-xs">to</span>
+                                                                        <input type="time" value={h.end} disabled={submitting} onChange={(e) => setDay(d, { end: e.target.value })} className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm" />
+                                                                    </>
+                                                                ) : <span className="text-xs text-gray-400">Closed</span>}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-gray-700 mb-1">Days off (holidays)</label>
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="date" disabled={submitting}
+                                                        onChange={(e) => {
+                                                            const v = e.target.value;
+                                                            if (v && !apptConfig.closed_dates.includes(v)) setCfg({ closed_dates: [...apptConfig.closed_dates, v].sort() });
+                                                            e.target.value = '';
+                                                        }}
+                                                        className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+                                                    />
+                                                    <span className="text-[11px] text-gray-400">Pick a date to block it out.</span>
+                                                </div>
+                                                {apptConfig.closed_dates.length > 0 && (
+                                                    <div className="flex flex-wrap gap-1.5 mt-2">
+                                                        {apptConfig.closed_dates.map(d => (
+                                                            <button key={d} type="button" onClick={() => setCfg({ closed_dates: apptConfig.closed_dates.filter(x => x !== d) })}
+                                                                className="px-2.5 py-1 bg-white border border-pink-200 text-pink-700 rounded-full text-xs font-semibold hover:bg-pink-50">
+                                                                {d} ✕
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+
                                 {/* Price */}
                                 {!isDonation && (
                                     <div>
                                         <label className="block text-sm font-bold text-gray-800 mb-1.5">
-                                            {isBooking ? `Price per ${isDailyBooking ? 'day' : 'night'}` : isVariable ? 'Default / quoted price' : 'Selling price'}
+                                            {isBooking ? `Price per ${isDailyBooking ? 'day' : 'night'}` : isAppointment ? 'Price per appointment' : isVariable ? 'Default / quoted price' : 'Selling price'}
                                             {priceRequired && <span className="text-red-500"> *</span>}
                                         </label>
                                         <div className="relative">

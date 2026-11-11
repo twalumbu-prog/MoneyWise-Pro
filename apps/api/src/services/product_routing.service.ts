@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { cashbookService } from './cashbook.service';
 import { ledgerService } from './ledger.service';
+import { confirmAppointment } from './appointment.service';
 import { withTiming } from '../utils/analytics';
 import { QuickBooksService } from './quickbooks.service';
 import { settleCreditInvoiceByReference } from './customerInvoice.service';
@@ -76,6 +77,27 @@ export async function markPaymentLinkPaid(orgId: string, reference: string): Pro
  */
 export async function confirmBookingsForReference(orgId: string, reference: string): Promise<void> {
     try {
+        // Time-slot appointments confirm through an advisory-locked RPC (capacity-aware).
+        const { data: pendingAppts } = await supabase
+            .from('product_appointments')
+            .select('id, product_id, appointment_date, start_time')
+            .eq('organization_id', orgId)
+            .eq('reference', reference)
+            .eq('status', 'PENDING');
+        for (const a of (pendingAppts || []) as any[]) {
+            try {
+                const result = await confirmAppointment(a.id);
+                if (result === 'CONFLICT') {
+                    console.warn(
+                        `[ProductRouting] APPOINTMENT CONFLICT ref ${reference}: product ${a.product_id} ` +
+                        `${a.appointment_date} ${a.start_time} was already taken. Payment succeeded — flagged CONFLICT for merchant review.`
+                    );
+                }
+            } catch (e: any) {
+                console.error(`[ProductRouting] Failed to confirm appointment ${a.id} for ref ${reference}:`, e.message);
+            }
+        }
+
         const { data: pending } = await supabase
             .from('product_bookings')
             .select('id, product_id, check_in, check_out')
