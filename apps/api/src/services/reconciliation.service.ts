@@ -1004,7 +1004,8 @@ export async function runDailyBalanceCheck(budgetMs = 38_000): Promise<{ rows: D
             row.lencoHold = Math.max(0, round2(n(bal?.ledgerBalance ?? available) - available));
             row.difference = round2(mw.closing - available);
             // A hold explains a MoneyWise-higher difference (funds Lenco has not released yet) up to its size.
-            row.unexplained = round2(row.difference > 0 ? row.difference - Math.min(row.difference, row.lencoHold) : row.difference);
+            // Signed: a negative value means the ledger is BELOW Lenco's ledger balance even after allowing for the hold (over-explained).
+            row.unexplained = round2(row.difference - row.lencoHold);
             const off = Math.abs(row.difference) >= RECON_TOLERANCE || Math.abs(row.walletDrift) > 0.01;
             row.flag = off ? 'DIFFERENCE' : 'BALANCED';
             if (Math.abs(row.walletDrift) > 0.01) row.note = `Wallet balance shown in the app is off the ledger by K${row.walletDrift.toFixed(2)}`;
