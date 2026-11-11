@@ -243,25 +243,47 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                             payout = statusCheck;
                         } else {
                             console.log(`[Lenco] Creating new transfer with reference: ${resolvedRef}`);
-                            const mobileOps = ['mtn', 'airtel', 'zamtel'];
-                            const isMobile = mobileOps.includes(recipient_bank_code?.toLowerCase() || '');
-                            if (isMobile) {
-                                payout = await LencoService.createMobileMoneyPayout({
-                                    amount: total_prepared,
-                                    reference: resolvedRef,
-                                    phone: recipient_account,
-                                    operator: (recipient_bank_code || '').toLowerCase(),
-                                    narration: payoutNarration
-                                }, org.lenco_subaccount_id, org.lenco_secret_key);
-                            } else {
-                                const bankId = await LencoService.findBankId(recipient_bank_code || '', org.lenco_secret_key);
-                                payout = await LencoService.createBankPayout({
-                                    amount: total_prepared,
-                                    reference: resolvedRef,
-                                    accountNumber: recipient_account,
-                                    bankId,
-                                    narration: payoutNarration
-                                }, org.lenco_subaccount_id, org.lenco_secret_key);
+                            try {
+                                const mobileOps = ['mtn', 'airtel', 'zamtel'];
+                                const isMobile = mobileOps.includes(recipient_bank_code?.toLowerCase() || '');
+                                if (isMobile) {
+                                    payout = await LencoService.createMobileMoneyPayout({
+                                        amount: total_prepared,
+                                        reference: resolvedRef,
+                                        phone: recipient_account,
+                                        operator: (recipient_bank_code || '').toLowerCase(),
+                                        narration: payoutNarration
+                                    }, org.lenco_subaccount_id, org.lenco_secret_key);
+                                } else {
+                                    const bankId = await LencoService.findBankId(recipient_bank_code || '', org.lenco_secret_key);
+                                    payout = await LencoService.createBankPayout({
+                                        amount: total_prepared,
+                                        reference: resolvedRef,
+                                        accountNumber: recipient_account,
+                                        bankId,
+                                        narration: payoutNarration
+                                    }, org.lenco_subaccount_id, org.lenco_secret_key);
+                                }
+                            } catch (createErr: any) {
+                                if (!createErr?.outcomeUnknown) throw createErr;
+                                // Lenco did not answer (timeout / network / 5xx). The money may already be on its
+                                // way — 2026-11-11 Blue Opus K30 went out while the user was told it failed.
+                                // Ask Lenco by reference before deciding anything.
+                                console.warn(`[Lenco] Payout ${resolvedRef} outcome unknown (${createErr.message}); re-checking status`);
+                                let recheck: any = undefined;
+                                for (const waitMs of [2000, 4000]) {
+                                    await new Promise(r => setTimeout(r, waitMs));
+                                    try { recheck = await LencoService.getTransferStatus(resolvedRef, org.lenco_secret_key); } catch { recheck = undefined; }
+                                    if (recheck) break;
+                                }
+                                if (recheck && recheck.status === 'failed') {
+                                    payout = recheck; // a real, terminal failure — handled below
+                                } else {
+                                    // Found (pending/successful), or still unknown: never report "failed" on a guess.
+                                    // Treat as pending → requisition goes to PROCESSING and the poller settles it,
+                                    // reverting to AUTHORISED only if Lenco says the transfer does not exist.
+                                    payout = recheck || { reference: resolvedRef, status: 'pending' };
+                                }
                             }
                         }
                         

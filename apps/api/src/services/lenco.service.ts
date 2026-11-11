@@ -140,7 +140,12 @@ export class LencoService {
             return response.data.data;
         } catch (error: any) {
             console.error('Lenco payout creation failed:', error.response?.data || error.message);
-            throw new Error(error.response?.data?.message || 'Failed to initiate transfer');
+            const payoutError: any = new Error(error.response?.data?.message || 'Failed to initiate transfer');
+            // No HTTP response (timeout / dropped connection) or a 5xx: Lenco may well have
+            // accepted the transfer. Callers must treat this as "unknown", not "failed".
+            payoutError.upstreamStatus = error.response?.status;
+            payoutError.outcomeUnknown = !error.response || error.response.status >= 500;
+            throw payoutError;
         }
     }
 
@@ -173,7 +178,12 @@ export class LencoService {
             return response.data.data;
         } catch (error: any) {
             console.error('Lenco bank payout creation failed:', error.response?.data || error.message);
-            throw new Error(error.response?.data?.message || 'Failed to initiate bank transfer');
+            const payoutError: any = new Error(error.response?.data?.message || 'Failed to initiate bank transfer');
+            // No HTTP response (timeout / dropped connection) or a 5xx: Lenco may well have
+            // accepted the transfer. Callers must treat this as "unknown", not "failed".
+            payoutError.upstreamStatus = error.response?.status;
+            payoutError.outcomeUnknown = !error.response || error.response.status >= 500;
+            throw payoutError;
         }
     }
 
