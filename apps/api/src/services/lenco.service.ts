@@ -140,7 +140,12 @@ export class LencoService {
             return response.data.data;
         } catch (error: any) {
             console.error('Lenco payout creation failed:', error.response?.data || error.message);
-            throw new Error(error.response?.data?.message || 'Failed to initiate transfer');
+            const payoutError: any = new Error(error.response?.data?.message || 'Failed to initiate transfer');
+            // No HTTP response (timeout / dropped connection) or a 5xx: Lenco may well have
+            // accepted the transfer. Callers must treat this as "unknown", not "failed".
+            payoutError.upstreamStatus = error.response?.status;
+            payoutError.outcomeUnknown = !error.response || error.response.status >= 500;
+            throw payoutError;
         }
     }
 
@@ -173,7 +178,12 @@ export class LencoService {
             return response.data.data;
         } catch (error: any) {
             console.error('Lenco bank payout creation failed:', error.response?.data || error.message);
-            throw new Error(error.response?.data?.message || 'Failed to initiate bank transfer');
+            const payoutError: any = new Error(error.response?.data?.message || 'Failed to initiate bank transfer');
+            // No HTTP response (timeout / dropped connection) or a 5xx: Lenco may well have
+            // accepted the transfer. Callers must treat this as "unknown", not "failed".
+            payoutError.upstreamStatus = error.response?.status;
+            payoutError.outcomeUnknown = !error.response || error.response.status >= 500;
+            throw payoutError;
         }
     }
 
@@ -415,12 +425,19 @@ export class LencoService {
 
             const response = await axios.post(`${this.BASE_URL}/collections/mobile-money`, body, {
                 headers: this.getHeaders(secretKey),
-                timeout: 20000
+                timeout: 25000
             });
             return response.data.data;
         } catch (error: any) {
             console.error('Lenco mobile money collection failed:', error.response?.data || error.message);
-            throw new Error(error.response?.data?.message || 'Failed to initiate mobile money collection');
+            const collectionError: any = new Error(error.response?.data?.message || 'Failed to initiate mobile money collection');
+            // No HTTP response (timeout / dropped connection) or a 5xx: Lenco may well have
+            // created the charge and sent the prompt (2026-11-11: three Wing'in collections
+            // timed out at 20s yet sat at pay-offline on Lenco). Callers must treat this as
+            // "unknown", not "failed".
+            collectionError.upstreamStatus = error.response?.status;
+            collectionError.outcomeUnknown = !error.response || error.response.status >= 500;
+            throw collectionError;
         }
     }
 

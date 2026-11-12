@@ -4,11 +4,7 @@
       {
         "appIDs": ["9VM62949TC.cloud.blueopus.moneywise"],
         "components": [
-          { "/": "/paid", "exclude": true, "comment": "The return page after paying from the app opens in Safari, not back in the app" },
-          { "/": "/*/store", "exclude": true, "comment": "Store links (/<business>/store) are a website to browse and pay on; never hand them to the app" },
-          { "/": "/*/store/*", "exclude": true, "comment": "Same, for a specific wallet's store (/<business>/store/<wallet>)" },
-          { "/": "/pay/????????-????-????-????-????????????", "exclude": true, "comment": "Long store link (/pay/<wallet-uuid>) is the store website too; Quick Pay usernames never contain hyphens so they still open the app" },
-          { "/": "/*" }
+          { "/": "/*", "exclude": true, "comment": "TEMPORARY: universal links switched off so every web link opens in the browser. Restore the previous rules (git show 098168a~1:apps/web/public/.well-known/apple-app-site-association plus the store exclusions) to re-enable app opening." }
         ]
       }
     ]

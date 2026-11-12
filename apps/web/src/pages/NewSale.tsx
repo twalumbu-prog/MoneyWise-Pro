@@ -267,7 +267,8 @@ export const NewSale: React.FC = () => {
         });
     };
 
-    const catalog = products.filter(p => p.product_type !== 'SERVICE_VARIABLE');
+    // Appointment (time-slot) services are booked from the public store, where the customer picks a slot.
+    const catalog = products.filter(p => p.product_type !== 'SERVICE_VARIABLE' && p.product_type !== 'SERVICE_APPOINTMENT');
 
     const lineItems = catalog
         .map(p => {

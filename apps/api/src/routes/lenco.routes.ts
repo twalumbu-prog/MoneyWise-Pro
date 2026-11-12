@@ -16,6 +16,8 @@ import {
     getPaymentLinkContext,
     resolveInvoiceShortLink,
     getProductAvailability,
+    getAppointmentInfo,
+    getProductSlots,
     logPublicWalletDepositIntent,
     logInternalWalletDepositIntent,
     initiatePublicMobileMoneyCollection,
@@ -56,6 +58,8 @@ router.get('/public-context/:wallet_id', getPublicWalletContext);
 router.get('/public-payment-link/:token', getPaymentLinkContext);
 router.get('/public-invoice-link/:code/:no', resolveInvoiceShortLink);
 router.get('/public-product-availability/:productId', getProductAvailability);
+router.get('/public-product-appointment-info/:productId', getAppointmentInfo);
+router.get('/public-product-slots/:productId', getProductSlots);
 router.post('/public-wallet-deposit-intent', logPublicWalletDepositIntent);
 router.post('/public-collection/mobile-money', initiatePublicMobileMoneyCollection);
 router.post('/public-collection/resolve-momo', resolvePublicMobileMoneyName);
