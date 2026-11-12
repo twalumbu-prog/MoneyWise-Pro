@@ -11,6 +11,10 @@ Books MTN MoMo / Airtel Money / Zamtel Kwacha transactions from the confirmation
 | App wrapper | `apps/mobile/src/lib/momoCapture.ts` |
 | Screens | Preferences → Mobile money capture (`app/settings/momo-capture.tsx`), setup walkthroughs (`app/settings/momo-capture-setup.tsx`), review queue (`app/momo-captures.tsx`) |
 
+## Who can use it
+
+Every plan, personal and business accounts alike. `/momo-capture` has no plan check, and booking goes through the ordinary manual-entry path. Only the combined **Captured** queue (`/captures`, AI Transaction Capture) is Premium: on other plans the MoMo row is simply not mirrored into it, and the app hides the "All captured transactions" row.
+
 ## Flow
 
 1. A source sends the raw text to `POST /momo-capture/ingest` with header `X-Capture-Token: mwc_…`. The token is per user, only its SHA-256 is stored, it can only *add* messages, and "Turn off capture" revokes it. Captures go to the org that was active when the token was issued.

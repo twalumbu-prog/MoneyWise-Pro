@@ -3,7 +3,7 @@ import { View, Text, Pressable, ScrollView, StyleSheet, Switch, Alert, Platform,
 import { Stack, router, useFocusEffect } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, MessageSquare, Workflow, Inbox, ChevronRight, Check, ClipboardPaste, Unplug, ScanLine } from 'lucide-react-native';
-import { momoCaptureService } from 'core';
+import { captureService, momoCaptureService } from 'core';
 import type { MomoCaptureSettings } from 'core';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../../src/theme/tokens';
@@ -32,6 +32,10 @@ const ago = (iso: string | null) => {
 export default function MomoCaptureSettingsScreen() {
     const qc = useQueryClient();
     const settings = useQuery({ queryKey: MOMO_SETTINGS_KEY, queryFn: () => momoCaptureService.getSettings() });
+    // Mobile money capture is open to every plan. The combined "All captured transactions" list is Premium-only, so
+    // its row is shown only to accounts that can open it; a failed lookup just hides the row.
+    const captureSettings = useQuery({ queryKey: ['captures', 'settings'], queryFn: () => captureService.settings(), retry: false });
+    const allCapturesAvailable = !!captureSettings.data?.planEligible;
     const [android, setAndroid] = useState(getAndroidStatus());
     const [iosDone, setIosDone] = useState(false);
 
@@ -128,12 +132,14 @@ export default function MomoCaptureSettingsScreen() {
 
                 <Text style={[styles.sectionLabel, { marginTop: 24 }]}>CAPTURED TRANSACTIONS</Text>
                 <View style={styles.card}>
-                    <Row
-                        icon={<ScanLine size={18} color={colors.blue} />} label="All captured transactions"
-                        sub="Receipts and messages in one list" onPress={() => router.push('/captures')}
-                        right={<ChevronRight size={18} color={colors.textFaint} />}
-                    />
-                    <Row border
+                    {allCapturesAvailable && (
+                        <Row
+                            icon={<ScanLine size={18} color={colors.blue} />} label="All captured transactions"
+                            sub="Receipts and messages in one list" onPress={() => router.push('/captures')}
+                            right={<ChevronRight size={18} color={colors.textFaint} />}
+                        />
+                    )}
+                    <Row border={allCapturesAvailable}
                         icon={<Inbox size={18} color={colors.blue} />} label="Review captured" onPress={() => router.push('/momo-captures')}
                         sub={s ? (s.pendingCount ? `${s.pendingCount} waiting for you to confirm` : 'Nothing waiting') : ' '}
                         right={<ChevronRight size={18} color={colors.textFaint} />}
