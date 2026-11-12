@@ -26,6 +26,15 @@ async function invokeHandler(handler: (req: any, res: any) => any, req: any): Pr
     return out;
 }
 
+/** Reads the MTN callbacks the Supabase function stored and re-checks open MoMo payouts with MTN. Called every minute. */
+export const mtnPayoutsCron = async (req: any, res: any) => {
+    if (!isCronCall(req)) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+        const { processCallbacks, refreshOpenPayouts } = await import('../services/mtnPayout.service');
+        res.json({ ok: true, ...(await processCallbacks()), ...(await refreshOpenPayouts()) });
+    } catch (e: any) { console.error('[Cron] mtn payouts failed:', e); res.status(500).json({ error: e?.message ?? 'mtn payouts failed' }); }
+};
+
 /** Reads the fund prices Longhorn publishes. Called a few times a day; the API also does it itself while it is running. */
 export const fundFeeds = async (req: any, res: any) => {
     if (!isCronCall(req)) return res.status(401).json({ error: 'Unauthorized' });

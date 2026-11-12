@@ -50,7 +50,7 @@ export default function ImportedHome() {
     return (
         <View style={styles.root}>
             <Stack.Screen options={{ headerShown: false }} />
-            <ScreenHeader title="Imported" />
+            <ScreenHeader title="International" />
             {isPending ? <Loading /> : isError ? <ErrorNote text={(error as any)?.message || 'Couldn’t load the products.'} onRetry={() => refetch()} /> : (
                 <FlatList
                     data={items}
@@ -61,8 +61,8 @@ export default function ImportedHome() {
                     keyboardShouldPersistTaps="handled"
                     ListHeaderComponent={<>
                         {header}
-                        {first && !first.enabled ? <Empty text="Imports aren’t switched on yet." /> : null}
-                        {first?.needsMigration ? <Empty text="Imports aren’t set up yet." /> : null}
+                        {first && !first.enabled ? <Empty text="International orders aren’t switched on yet." /> : null}
+                        {first?.needsMigration ? <Empty text="International orders aren’t set up yet." /> : null}
                     </>}
                     ListEmptyComponent={first?.enabled ? <Empty text="Nothing matches that. Try another word, or another store." /> : null}
                     renderItem={({ item }) => <Tile p={item} size={cell} onPress={() => router.push(`/marketplace/imported/${item.id}` as any)} />}
@@ -71,7 +71,7 @@ export default function ImportedHome() {
                     ListFooterComponent={isFetchingNextPage ? <ActivityIndicator color={colors.blue} style={{ margin: 16 }} /> : <View style={{ height: 40 }} />}
                 />
             )}
-            <View style={styles.orders}><Btn label="My import orders" kind="tonal" onPress={() => router.push('/marketplace/imported/orders' as any)} /></View>
+            <View style={styles.orders}><Btn label="My international orders" kind="tonal" onPress={() => router.push('/marketplace/imported/orders' as any)} /></View>
         </View>
     );
 }

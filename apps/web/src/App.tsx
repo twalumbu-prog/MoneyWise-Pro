@@ -75,6 +75,9 @@ const InvestHome = React.lazy(() => import('./pages/invest/InvestHome').then(m =
 const InvestCompany = React.lazy(() => import('./pages/invest/InvestCompany').then(m => ({ default: m.InvestCompany })));
 const InvestProductDetail = React.lazy(() => import('./pages/invest/InvestProductDetail').then(m => ({ default: m.InvestProductDetail })));
 const Rewards = React.lazy(() => import('./pages/Rewards').then(m => ({ default: m.Rewards })));
+const PayRequest = React.lazy(() => import('./pages/PayRequest').then(m => ({ default: m.PayRequest })));
+/** A tap-to-pay link opened while signed out: remembered so the person lands on it after signing in. */
+const TAP_RETURN_KEY = 'mw_tap_return';
 const ApiDocs = React.lazy(() => import('./pages/ApiDocs').then(m => ({ default: m.ApiDocs })));
 import { CompleteProfile } from './pages/CompleteProfile';
 import { OAuthAuthorize, OAUTH_RETURN_KEY } from './pages/OAuthAuthorize';
@@ -101,6 +104,9 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
         // A connecting app sent the user here: resume the consent screen after login.
         if (location.pathname === '/oauth/authorize') {
             try { sessionStorage.setItem(OAUTH_RETURN_KEY, location.pathname + location.search); } catch { /* storage unavailable */ }
+        }
+        if (location.pathname.startsWith('/r/')) {
+            try { sessionStorage.setItem(TAP_RETURN_KEY, location.pathname); } catch { /* storage unavailable */ }
         }
         return <Navigate to="/login" />;
     }
@@ -186,6 +192,14 @@ const HomeRedirect = () => {
     } catch { /* storage unavailable */ }
 
     try {
+        const pendingTap = sessionStorage.getItem(TAP_RETURN_KEY);
+        if (pendingTap && /^\/r\/[A-Za-z0-9]{10}$/.test(pendingTap)) {
+            sessionStorage.removeItem(TAP_RETURN_KEY);
+            return <Navigate to={pendingTap} replace />;
+        }
+    } catch { /* storage unavailable */ }
+
+    try {
         const pendingOAuth = sessionStorage.getItem(OAUTH_RETURN_KEY);
         if (pendingOAuth && pendingOAuth.startsWith('/oauth/authorize')) {
             return <Navigate to={pendingOAuth} replace />;
@@ -257,6 +271,7 @@ function App() {
                         <Route path="/disconnect" element={<Disconnect />} />
                         <Route path="/paid" element={<PaidReturn />} />
                         <Route path="/pay/:wallet_id" element={<PayEntry />} />
+                        <Route path="/r/:code" element={<ProtectedRoute><PayRequest /></ProtectedRoute>} />
                         {/* Friendly store link: /<business-username>/store → that org's Main wallet catalogue */}
                         <Route path="/:username/store" element={<PublicStore />} />
                         <Route path="/:username/store/:walletSlug" element={<PublicStore />} />

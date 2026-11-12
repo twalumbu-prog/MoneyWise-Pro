@@ -32,6 +32,35 @@ import {
     InvoiceError,
 } from '../services/requisitionInvoice.service';
 
+/**
+ * POST /requisitions/mark-all-read: clears the "new" flag on everything in the person's inbox in one go.
+ * Same rule as opening each one: your own requests, and (for finance and admin roles) any request in your organization.
+ * Only requests that are actually flagged are touched, and the answer says how many.
+ */
+export const markAllRequisitionsRead = async (req: any, res: any): Promise<any> => {
+    try {
+        const user_id = (req as any).user.id;
+        const organization_id = (req as any).user.organization_id;
+        const userRole = (req as any).user.role;
+        if (!organization_id) return res.status(400).json({ error: 'Organization context missing.' });
+        const isPrivileged = ['ADMIN', 'ACCOUNTANT', 'MANAGER', 'CASHIER'].includes(userRole);
+
+        let q = supabase
+            .from('requisitions')
+            .update({ has_unread_updates: false }, { count: 'exact' })
+            .eq('organization_id', organization_id)
+            .eq('has_unread_updates', true);
+        if (!isPrivileged) q = q.eq('requestor_id', user_id);
+        const { error, count } = await q;
+        if (error) throw error;
+
+        res.json({ message: 'All marked as read', updated: count ?? 0 });
+    } catch (error: any) {
+        console.error('Error marking all requisitions as read:', error);
+        res.status(500).json({ error: 'Failed to mark all as read', details: error.message });
+    }
+};
+
 export const markRequisitionRead = async (req: any, res: any): Promise<any> => {
     try {
         const { id } = req.params;

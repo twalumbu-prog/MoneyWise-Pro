@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
     ShieldCheck, ShoppingBag, LayoutGrid, TrendingUp, Landmark, Store,
-    User, Settings as SettingsIcon, Users, LogOut, Plug, FolderTree, FileText, Lock, UserX, SlidersHorizontal,
+    User, Settings as SettingsIcon, Users, LogOut, Plug, FolderTree, FileText, Lock, UserX, SlidersHorizontal, Nfc,
     MessageSquareText, Trophy, Gift,
 } from 'lucide-react-native';
 import { userService, investmentService, rewardsService } from 'core';
@@ -78,15 +78,11 @@ export default function MenuScreen() {
         { icon: ShoppingBag, label: 'Products', go: () => router.push('/products'), proOnly: true },
         { icon: LayoutGrid, label: 'Apps', go: () => router.push('/apps'), proOnly: true },
         { icon: TrendingUp, label: 'Invest', go: () => router.push('/apps/invest'), proOnly: false },
-        { icon: Landmark, label: 'Loans', go: () => soon('Loans'), proOnly: false },
+        { icon: Landmark, label: 'Loans', go: () => router.push('/loans' as any), proOnly: false },
         { icon: Store, label: 'Marketplace', go: () => router.push('/marketplace' as any), proOnly: false },
     ];
 
     const services = isPersonal ? allServices.filter((s) => !s.proOnly) : allServices;
-
-    function soon(name: string) {
-        Alert.alert(name, 'This lands in a later phase of the app rollout. It’s available on the web app now.');
-    }
 
     return (
         <ScrollView style={styles.root} contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 12 }]}>
@@ -159,6 +155,16 @@ export default function MenuScreen() {
                     <View style={styles.rowMain}>
                         <Text style={styles.rowLabel}>My Profile</Text>
                         <Text style={styles.rowSub}>Your account & disbursement details</Text>
+                    </View>
+                </Pressable>
+                <Pressable
+                    onPress={() => router.push('/tap' as any)}
+                    style={({ pressed }) => [styles.row, styles.rowBorder, pressed && { opacity: 0.6 }]}
+                >
+                    <Nfc size={18} color={colors.blue} />
+                    <View style={styles.rowMain}>
+                        <Text style={styles.rowLabel}>Tap to pay</Text>
+                        <Text style={styles.rowSub}>Pay or get paid by other MoneyWise users</Text>
                     </View>
                 </Pressable>
                 {isPersonal && (

@@ -18,7 +18,7 @@ import { DesktopStaffLoanWorkspace } from '../components/requisitions/DesktopSta
 import { DesktopSalaryAdvanceWorkspace } from '../components/requisitions/DesktopSalaryAdvanceWorkspace';
 import { DesktopPayrollWorkspace } from '../components/requisitions/DesktopPayrollWorkspace';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Plus, Clock, CheckCircle2, Check, AlertCircle, RotateCcw, ArrowUpDown, ListFilter, ShoppingBag } from 'lucide-react';
+import { Search, Plus, Clock, CheckCircle2, Check, CheckCheck, AlertCircle, RotateCcw, ArrowUpDown, ListFilter, ShoppingBag } from 'lucide-react';
 import { Requisition as RequisitionType, REQUISITION_STATUS_CONFIG, getStatusConfig } from '../services/requisition.service';
 import { departmentService } from '../services/department.service';
 import { SegmentedControl } from '../components/AnimatedTabs';
@@ -88,6 +88,23 @@ export const RequisitionList: React.FC = () => {
         queryFn: () => requisitionService.getAll(),
         enabled: !!organizationId,
     });
+    // "Mark all read": clears the new-flag on every request in one call, and the list and badges follow.
+    const [markingAll, setMarkingAll] = useState(false);
+    const unreadCount = requisitions.filter((r) => r.has_unread_updates).length;
+    const markAllRead = async () => {
+        if (markingAll || unreadCount === 0) return;
+        setMarkingAll(true);
+        queryClient.setQueryData<Requisition[]>(requisitionsKey, (prev) => prev?.map((r) => ({ ...r, has_unread_updates: false })));
+        try {
+            await requisitionService.markAllRead();
+        } catch (e) {
+            console.error(e);
+            await queryClient.invalidateQueries({ queryKey: requisitionsKey });
+        } finally {
+            setMarkingAll(false);
+            refreshNotifications();
+        }
+    };
     // Cached data paints instantly; only block on the true first-ever load.
     const loading = requisitionsLoading || !organizationId;
     const error = requisitionsError ? 'Failed to load requisitions' : null;
@@ -603,6 +620,16 @@ export const RequisitionList: React.FC = () => {
                                     >
                                         <ArrowUpDown size={16} />
                                     </button>
+                                    {inboxMode === 'outflows' && unreadCount > 0 && (
+                                        <button
+                                            onClick={markAllRead}
+                                            disabled={markingAll}
+                                            className="w-10 h-10 rounded-full transition-all flex-shrink-0 flex items-center justify-center text-[#0B57D0] disabled:opacity-50"
+                                            title="Mark all as read"
+                                        >
+                                            <CheckCheck size={16} />
+                                        </button>
+                                    )}
                                     {inboxMode === 'outflows' && (<>
                                     <div className="w-[1px] h-5 bg-slate-200 flex-shrink-0" />
                                     <button
@@ -744,6 +771,8 @@ export const RequisitionList: React.FC = () => {
                             onOpenFilters={() => setIsFilterSheetOpen(true)}
                             onRefresh={() => inboxMode === 'inflows' ? (loadInflows(), refetchCreditInvoices()) : loadRequisitions()}
                             hasActiveFilters={hasActiveDesktopFilters}
+                            onMarkAllRead={inboxMode === 'outflows' && unreadCount > 0 ? markAllRead : undefined}
+                            markAllReadBusy={markingAll}
                             leftContent={inboxMode === 'inflows' && !isRequestor ? (
                                 <div className="flex items-center gap-1 p-1 bg-[#F8FAFD] md:bg-[#F8FAFD] rounded-[10px]">
                                     {([

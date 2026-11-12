@@ -421,6 +421,17 @@ export const requisitionService = {
         return response.json();
     },
 
+    /** Clears the "new" flag on everything in the inbox. Resolves with how many were flagged. */
+    markAllRead: async (): Promise<number> => {
+        const response = await apiFetch('/requisitions/mark-all-read', { method: 'POST' });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || 'Could not mark everything as read');
+        }
+        const data = await response.json().catch(() => ({}));
+        return Number(data.updated ?? 0);
+    },
+
     markRead: async (id: string) => {
         const response = await apiFetch(`/requisitions/${id}/mark-read`, {
             method: 'POST',

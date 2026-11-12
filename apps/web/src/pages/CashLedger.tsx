@@ -54,6 +54,7 @@ import ExportLedgerModal from '../components/ExportLedgerModal';
 import { ApplyPaymentModal, ReceivableAllocationPanel, isReceivableAccount } from '../components/accounting/ApplyPaymentModal';
 import { exportToCSV, exportToExcel, exportToPDF } from '../utils/export.utils';
 import { SegmentedControl, AnimatedTabContent, TabPillGroup } from '../components/AnimatedTabs';
+import { VirtualCardTab } from '../components/wallets/VirtualCard';
 import { useNewnessTracker, isNewSinceStored } from '../hooks/useNewnessTracker';
 import { formatKwacha, apiJson } from 'core';
 import { LipilaWalletPanel, LIPILA_WALLET_KEY, type LipilaWalletSummary } from '../components/wallets/LipilaWalletPanel';
@@ -289,7 +290,7 @@ const CashLedger: React.FC = () => {
 
     // Wallets & Subwallets State
     const [selectedWalletId, setSelectedWalletId] = useState<string | undefined>(undefined);
-    const [categoryGroup, setCategoryGroup] = useState<'MONEYWISE' | 'EXTERNAL'>('MONEYWISE');
+    const [categoryGroup, setCategoryGroup] = useState<'MONEYWISE' | 'EXTERNAL' | 'VIRTUAL'>('MONEYWISE');
     const [isCreateWalletModalOpen, setIsCreateWalletModalOpen] = useState(false);
     const [isCreateExtWalletOpen, setIsCreateExtWalletOpen] = useState(false);
     const [isImportStatementOpen, setIsImportStatementOpen] = useState(false);
@@ -1170,8 +1171,9 @@ Status: VERIFIED`;
     }
 
     // MoneyWise <-> External toggle, styled & animated like the Reports tabs.
-    const handleCategoryChange = (group: 'MONEYWISE' | 'EXTERNAL') => {
+    const handleCategoryChange = (group: 'MONEYWISE' | 'EXTERNAL' | 'VIRTUAL') => {
         setCategoryGroup(group);
+        if (group === 'VIRTUAL') return; // the virtual card tab has no wallet or account of its own
         if (group === 'MONEYWISE') {
             setSelectedAccountType('MONEYWISE_WALLET');
             if (wallets.length > 0) {
@@ -1254,6 +1256,28 @@ Status: VERIFIED`;
         el.scrollTo({ left: idx * stride, behavior: 'smooth' });
     };
 
+    if (categoryGroup === 'VIRTUAL') {
+        return (
+            <Layout noPadding={true} backgroundColor="bg-[#F8FAFD] md:bg-white">
+                <div className="flex min-h-screen flex-col bg-[#F8FAFD] pb-24 pt-2 md:bg-white md:px-4 md:pb-4 md:pt-0">
+                    <div className="mx-auto mb-1 mt-3 w-full max-w-3xl px-4">
+                        <SegmentedControl
+                            variant="capsule"
+                            value={categoryGroup}
+                            onChange={(v) => handleCategoryChange(v as 'MONEYWISE' | 'EXTERNAL' | 'VIRTUAL')}
+                            options={[
+                                { value: 'MONEYWISE', label: <span className="inline-flex items-center gap-1.5">Main Wallets</span> },
+                                { value: 'EXTERNAL', label: <span className="inline-flex items-center gap-1.5">External Accounts</span> },
+                                { value: 'VIRTUAL', label: <span className="inline-flex items-center gap-1.5">Virtual Card</span> },
+                            ]}
+                        />
+                    </div>
+                    <VirtualCardTab wallets={wallets.map((w: any) => ({ id: String(w.id), name: String(w.name), balance: Number(w.balance) || 0, is_main: !!w.is_main }))} />
+                </div>
+            </Layout>
+        );
+    }
+
     const mobileCanTransfer = categoryGroup === 'MONEYWISE'
         ? wallets.length > 1
         : selectedAccountType === 'CASH' && wallets.length > 0;
@@ -1269,7 +1293,7 @@ Status: VERIFIED`;
                     <SegmentedControl
                         variant="capsule"
                         value={categoryGroup}
-                        onChange={(v) => handleCategoryChange(v as 'MONEYWISE' | 'EXTERNAL')}
+                        onChange={(v) => handleCategoryChange(v as 'MONEYWISE' | 'EXTERNAL' | 'VIRTUAL')}
                         options={[
                             {
                                 value: 'MONEYWISE',
@@ -1289,6 +1313,7 @@ Status: VERIFIED`;
                                     </span>
                                 ),
                             },
+                            { value: 'VIRTUAL', label: <span className="inline-flex items-center gap-1.5">Virtual Card</span> },
                         ]}
                     />
                 </div>
@@ -1717,7 +1742,7 @@ Status: VERIFIED`;
                 <div className="flex items-center justify-between">
                     <TabPillGroup
                         value={categoryGroup}
-                        onChange={(v) => handleCategoryChange(v as 'MONEYWISE' | 'EXTERNAL')}
+                        onChange={(v) => handleCategoryChange(v as 'MONEYWISE' | 'EXTERNAL' | 'VIRTUAL')}
                         trackClassName="h-8 p-1 bg-[#F8FAFD] md:bg-[#F8FAFD] rounded-[10px] flex items-center gap-1"
                         indicatorClassName="bg-white rounded-lg shadow-sm"
                         tabs={[
@@ -1742,6 +1767,12 @@ Status: VERIFIED`;
                                         <span className={categoryGroup === 'EXTERNAL' ? 'text-[#1F1F1F]' : 'text-[#5F6368]'}>External Accounts</span>
                                     </>
                                 ),
+                            },
+                            {
+                                value: 'VIRTUAL',
+                                buttonClassName: 'px-3.5 h-6 text-[10px] font-bold',
+                                activeButtonClassName: 'text-[#1F1F1F]',
+                                label: <span className="text-[#5F6368]">Virtual Card</span>,
                             },
                         ]}
                     />

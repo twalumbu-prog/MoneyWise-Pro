@@ -116,6 +116,8 @@ export type { AccountingRule, AIMetric } from './services/ai.service';
 
 export { cashbookService } from './services/cashbook.service';
 export { lipilaService } from './services/lipila.service';
+export { tapService, parseTapCode } from './services/tap.service';
+export type { TapMode, TapRequest, TapRequestView, TapRequestStatus } from './services/tap.service';
 export type { LipilaCardStart, LipilaCardOutcome, LipilaWalletSummary, LipilaCardPayment, LipilaSettingsView } from './services/lipila.service';
 export type { ManualEntryResult } from './services/cashbook.service';
 export type { CashbookEntry, CashbookSummary } from './services/cashbook.service';

@@ -6,8 +6,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
-import { Search, Plus, User, X, CalendarDays, ArrowDownLeft, ArrowUpRight, Trophy, ChevronLeft } from 'lucide-react-native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Search, Plus, User, X, CalendarDays, ArrowDownLeft, ArrowUpRight, Trophy, ChevronLeft, CheckCheck } from 'lucide-react-native';
 import {
     requisitionService, getStatusConfig, groupByDate, cashbookService, payrollService, isRequestorRole,
 } from 'core';
@@ -51,6 +51,8 @@ export function InboxScreen({ onBack }: { onBack?: () => void }) {
         activeOrgName.toLowerCase().includes('private');
 
     const { employers } = useEmployers();
+    const qc = useQueryClient();
+    const [markingAll, setMarkingAll] = useState(false);
     const [mode, setMode] = useState<InboxMode>('outflows');
     const [tab, setTab] = useState('ALL');
     const [inflowTab, setInflowTab] = useState('ALL');
@@ -155,6 +157,23 @@ export function InboxScreen({ onBack }: { onBack?: () => void }) {
 
     const open = (id: string) => router.push(`/requisition/${id}`);
 
+    // Mark all read: one call clears the new-flag on every request; the list and the badges follow.
+    const unreadCount = rows.filter((r) => r.has_unread_updates).length;
+    const markAllRead = async () => {
+        if (markingAll || unreadCount === 0) return;
+        setMarkingAll(true);
+        qc.setQueryData<RequisitionRowData[]>(['requisitions', organizationId], (prev) => (Array.isArray(prev) ? prev.map((r) => ({ ...r, has_unread_updates: false })) : prev));
+        try {
+            await requisitionService.markAllRead();
+        } catch (e: any) {
+            Alert.alert('Could not mark all as read', e?.message ?? 'Please try again.');
+            await qc.invalidateQueries({ queryKey: ['requisitions', organizationId] });
+        } finally {
+            setMarkingAll(false);
+            void qc.invalidateQueries({ queryKey: ['badge-total'] });
+        }
+    };
+
     return (
         <View style={[styles.root, { paddingTop: insets.top + 12 }]}>
             <View style={styles.header}>
@@ -167,6 +186,11 @@ export function InboxScreen({ onBack }: { onBack?: () => void }) {
                     <Text style={styles.title}>Inbox</Text>
                 </View>
                 <View style={styles.headerActions}>
+                    {mode === 'outflows' && unreadCount > 0 ? (
+                        <Pressable style={styles.iconBtn} onPress={markAllRead} disabled={markingAll} accessibilityLabel="Mark all as read">
+                            <CheckCheck size={18} color={colors.blue} />
+                        </Pressable>
+                    ) : null}
                     <Pressable
                         style={styles.iconBtn}
                         onPress={walkthroughUi.openList}

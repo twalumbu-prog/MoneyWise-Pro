@@ -110,7 +110,8 @@ const config: ExpoConfig = {
     slug: 'moneywise-pro',
     // 0.2.0: adds a native module (expo-local-authentication). runtimeVersion follows this, so OTA updates for 0.1.x binaries stop here.
     // 0.3.0: adds the local momo-capture native module (SMS receiver + notification listener).
-    version: '0.3.0',
+    // 0.4.0: adds the local tap-nfc native module (Android shares a payment request by NFC tap).
+    version: '0.4.0',
     orientation: 'portrait',
     scheme: 'moneywise',
     userInterfaceStyle: 'light',

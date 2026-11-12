@@ -17,7 +17,7 @@ export default function ImportOrders() {
     const orders = data?.orders ?? [];
 
     return (
-        <Screen title="Import orders" onRefresh={() => { void refetch(); }} refreshing={isRefetching}>
+        <Screen title="International orders" onRefresh={() => { void refetch(); }} refreshing={isRefetching}>
             {isPending ? <Loading /> : isError ? <ErrorNote text={(error as any)?.message || 'Couldn’t load your orders.'} onRetry={() => refetch()} />
                 : orders.length === 0 ? <Empty text="You haven’t ordered anything from overseas yet." />
                 : orders.map((o) => {

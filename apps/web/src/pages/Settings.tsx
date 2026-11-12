@@ -8,6 +8,7 @@ import { IntegrationLogo } from '../components/settings/integrations/Integration
 import { SageIntegration } from '../components/settings/integrations/SageIntegration';
 import { GmailIntegration, GmailLogo } from '../components/settings/integrations/GmailIntegration';
 import { LipilaIntegration } from '../components/settings/integrations/LipilaIntegration';
+import { TapToPay } from '../components/settings/TapToPay';
 import { DeveloperAPI } from '../components/settings/DeveloperAPI';
 import { InvestorPayouts } from '../components/settings/InvestorPayouts';
 import { useQuery } from '@tanstack/react-query';
@@ -109,6 +110,7 @@ export const Settings: React.FC = () => {
                                         { id: 'vat', label: 'VAT', icon: <FileText className="w-2.5 h-2.5" /> },
                                         { id: 'import', label: 'Import Data', icon: <FileText className="w-2.5 h-2.5" /> },
                                         { id: 'integrations', label: 'Integrations', icon: <Share2 className="w-2.5 h-2.5" /> },
+                                        { id: 'tap', label: 'Tap to pay', icon: <Share2 className="w-2.5 h-2.5" /> },
                                         { id: 'billing', label: 'Subscription & Billing', icon: <CreditCard className="w-2.5 h-2.5" /> },
                                         { id: 'api', label: 'MoneyWise API', icon: <Code2 className="w-2.5 h-2.5" /> },
                                         ...(payoutInfo?.isInvestmentCompany ? [{ id: 'investor-payouts', label: 'Investor Payouts', icon: <Landmark className="w-2.5 h-2.5" /> }] : []),
@@ -271,6 +273,7 @@ export const Settings: React.FC = () => {
 
                                     {/* Investor payouts (investment companies only) */}
                                     {activeTab === 'investor-payouts' && <InvestorPayouts />}
+                                    {activeTab === 'tap' && <TapToPay />}
 
                                 </div>
                             </div>

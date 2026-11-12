@@ -7,7 +7,7 @@ import {
     Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Smartphone, CreditCard, AlertCircle } from 'lucide-react-native';
 import { cashbookService, lipilaService, formatKwacha } from 'core';
@@ -32,7 +32,8 @@ export default function DepositScreen() {
     const insets = useSafeAreaInsets();
     const safeBack = useGoBack();
     const qc = useQueryClient();
-    const { organizationId } = useAuth();
+    const { organizationId, userRole } = useAuth();
+    const router = useRouter();
 
     const startParams = useLocalSearchParams<{ method?: string }>();
     const [method, setMethod] = useState<'MOBILE_MONEY' | 'CARD'>(startParams.method === 'card' ? 'CARD' : 'MOBILE_MONEY');
@@ -58,7 +59,10 @@ export default function DepositScreen() {
 
     // Card (Lipila): the money lands in the business's Card Wallet. The card page opens in the browser; we ask for the result until it is decided.
     const CARD_RATE = 0.04;
-    const { data: cardAvailable = false } = useQuery({ queryKey: ['lipila-cards-available', organizationId], queryFn: () => lipilaService.cardsAvailable() });
+    // Cards need two things: the business is open for them, and it has saved its own Lipila key and switched them on.
+    const { data: cardSettings } = useQuery({ queryKey: ['lipila-cards-available', organizationId], queryFn: () => lipilaService.settings().catch(() => null) });
+    const cardAvailable = !!(cardSettings && cardSettings.available && cardSettings.enabled);
+    const cardOpenButNotSetUp = !!(cardSettings && cardSettings.available && !cardSettings.enabled);
     const [cardRef, setCardRef] = useState<string | null>(null);
     const [cardBusy, setCardBusy] = useState(false);
     const [cardError, setCardError] = useState<string | null>(null);
@@ -220,7 +224,18 @@ export default function DepositScreen() {
                     <View style={[styles.card, { alignItems: 'center', gap: 8, paddingVertical: 28 }]}>
                         <CreditCard size={26} color={colors.textMuted} />
                         <Text style={styles.soonTitle}>Card isn't set up yet</Text>
-                        <Text style={styles.soonText}>Card payments aren't switched on for this business. Please use Mobile Money for now.</Text>
+                        <Text style={styles.soonText}>
+                            {cardOpenButNotSetUp
+                                ? (cardSettings?.configured
+                                    ? 'Your Lipila key is saved, but card payments are switched off. Turn them on in the card settings.'
+                                    : 'Add your own Lipila key to take card deposits. It only takes a minute in the card settings.')
+                                : 'Card payments aren’t open for this account yet. Please use Mobile Money for now.'}
+                        </Text>
+                        {cardOpenButNotSetUp && userRole === 'ADMIN' ? (
+                            <Pressable style={styles.setupBtn} onPress={() => router.push('/settings/lipila' as any)}><Text style={styles.setupBtnText}>Set up card payments</Text></Pressable>
+                        ) : cardOpenButNotSetUp ? (
+                            <Text style={styles.soonText}>Ask the account holder to set it up.</Text>
+                        ) : null}
                     </View>
                 )}
 
@@ -257,6 +272,8 @@ const styles = StyleSheet.create({
     segItem: { flex: 1, alignItems: 'center', paddingVertical: 9 },
     segInner: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     segText: { fontFamily: fonts.body, fontSize: 12, color: colors.text },
+    setupBtn: { marginTop: 6, backgroundColor: colors.blue, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 11 },
+    setupBtnText: { fontFamily: fonts.bodyBold, fontSize: 13, color: '#FFFFFF' },
     soonTitle: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text },
     soonText: { fontFamily: fonts.body, fontSize: 12, color: colors.textMuted, textAlign: 'center', lineHeight: 17, maxWidth: 240 },
     error: { flexDirection: 'row', gap: 8, alignItems: 'flex-start', padding: 12, borderRadius: radius.md, backgroundColor: '#FEF2F2' },

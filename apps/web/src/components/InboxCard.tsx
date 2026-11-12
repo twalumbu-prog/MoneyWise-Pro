@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, RefreshCw, Plus, ArrowUpDown, ListFilter, LucideIcon } from 'lucide-react';
+import { Search, RefreshCw, Plus, ArrowUpDown, ListFilter, CheckCheck, LucideIcon } from 'lucide-react';
 import { TabPillGroup } from './AnimatedTabs';
 
 interface TabDef {
@@ -41,6 +41,9 @@ interface InboxCardProps {
     onOpenFilters: () => void;
     onRefresh: () => void;
     hasActiveFilters?: boolean;
+    /** When given, a "Mark all read" button is shown (outflows only; the page decides when). */
+    onMarkAllRead?: () => void;
+    markAllReadBusy?: boolean;
 
     /**
      * When provided, renders in the left slot of Row 2 (where the status tab
@@ -80,6 +83,8 @@ export const InboxCard: React.FC<InboxCardProps> = ({
     onOpenFilters,
     onRefresh,
     hasActiveFilters,
+    onMarkAllRead,
+    markAllReadBusy,
     leftContent,
     children,
 }) => {
@@ -234,6 +239,16 @@ export const InboxCard: React.FC<InboxCardProps> = ({
                             title="Filters"
                         >
                             <ListFilter size={14} />
+                        </button>
+                    )}
+                    {onMarkAllRead && (
+                        <button
+                            onClick={onMarkAllRead}
+                            disabled={markAllReadBusy}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[rgba(116,119,117,0.22)] text-xs font-medium text-[#0B57D0] hover:bg-[#E9EEF6] transition-all disabled:opacity-50"
+                            title="Mark every request as read"
+                        >
+                            <CheckCheck size={14} /> Mark all read
                         </button>
                     )}
                     <button

@@ -33,6 +33,7 @@ import {
     getSendSummaryHandler,
     getLoanBalance,
     scanRequisitionInvoice,
+    markAllRequisitionsRead,
     getRequisitionInvoiceUrl,
 } from '../controllers/requisition.controller';
 import {
@@ -109,6 +110,7 @@ router.get('/:id/invoice-url', getRequisitionInvoiceUrl);
 
 // Standard routes
 router.post('/', createRequisition);
+router.post('/mark-all-read', markAllRequisitionsRead);
 router.post('/:id/mark-read', markRequisitionRead);
 router.get('/', getRequisitions);
 router.get('/:id', getRequisitionById);

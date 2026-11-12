@@ -33,8 +33,8 @@ export default function ImportedItem() {
     });
     useEffect(() => { if (q && !walletId && q.wallets.length) setWalletId((q.wallets.find((w) => w.is_main) ?? q.wallets[0]).id); }, [q, walletId]);
 
-    if (isPending) return <Screen title="Imported"><Loading /></Screen>;
-    if (isError || !q) return <Screen title="Imported"><ErrorNote text={(loadError as any)?.message || 'Couldn’t load this product.'} onRetry={() => refetch()} /></Screen>;
+    if (isPending) return <Screen title="International"><Loading /></Screen>;
+    if (isError || !q) return <Screen title="International"><ErrorNote text={(loadError as any)?.message || 'Couldn’t load this product.'} onRetry={() => refetch()} /></Screen>;
 
     const p = q.product;
     const wallet = q.wallets.find((w) => w.id === walletId);
@@ -62,13 +62,13 @@ export default function ImportedItem() {
             <Screen title="Order placed">
                 <Notice tone="ok" text={`We have your order for ${done.title}. ${formatKwacha(done.total_zmw)} was taken from your wallet.`} />
                 <Btn label="Track my order" onPress={() => router.replace('/marketplace/imported/orders' as any)} />
-                <Btn label="Keep shopping" kind="tonal" onPress={() => router.replace('/marketplace/imported' as any)} />
+                <Btn label="Keep shopping" kind="tonal" onPress={() => router.replace('/marketplace' as any)} />
             </Screen>
         );
     }
 
     return (
-        <Screen title="Imported">
+        <Screen title="International">
             {p.images?.length ? (
                 <View style={{ gap: 8 }}>
                     <Image source={{ uri: resized(p.images[Math.min(photo, p.images.length - 1)], 900) }} style={{ width: width - 40, height: width - 40, borderRadius: radius.lg, backgroundColor: '#F1F3F4' }} resizeMode="contain" />
@@ -112,7 +112,7 @@ export default function ImportedItem() {
                 </View>
             ))}
 
-            {blocked ? <Notice tone="warn" text="This car’s price is still an estimate, so it can’t be ordered yet. Ask us for a firm price." /> : !q.enabled ? <Notice tone="warn" text="Ordering imports isn’t switched on yet." /> : (
+            {blocked ? <Notice tone="warn" text="This car’s price is still an estimate, so it can’t be ordered yet. Ask us for a firm price." /> : !q.enabled ? <Notice tone="warn" text="International orders aren’t switched on yet." /> : (
                 <>
                     {error ? <Notice tone="error" text={error} /> : null}
                     <Field label="Note for us (optional)" value={optionNote} onChangeText={setOptionNote} placeholder="Colour, size, anything we should know" />

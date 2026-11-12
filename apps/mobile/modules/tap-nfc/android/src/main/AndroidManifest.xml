@@ -1,0 +1,20 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.NFC" />
+  <!-- Phones without card emulation simply don't offer the tap; the QR code and link still work. -->
+  <uses-feature android:name="android.hardware.nfc.hce" android:required="false" />
+  <application>
+    <!-- While a "pay me" request is showing, this phone answers other phones' NFC reads like a tag holding the request's link. -->
+    <service
+      android:name="expo.modules.tapnfc.TapHceService"
+      android:exported="true"
+      android:permission="android.permission.BIND_NFC_SERVICE">
+      <intent-filter>
+        <action android:name="android.nfc.cardemulation.action.HOST_APDU_SERVICE" />
+        <category android:name="android.intent.category.DEFAULT" />
+      </intent-filter>
+      <meta-data
+        android:name="android.nfc.cardemulation.host_apdu_service"
+        android:resource="@xml/tap_nfc_apdu_service" />
+    </service>
+  </application>
+</manifest>

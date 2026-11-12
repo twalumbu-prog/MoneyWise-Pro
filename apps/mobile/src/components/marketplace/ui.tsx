@@ -34,9 +34,9 @@ export const Chip = ({ label, on, onPress }: { label: string; on?: boolean; onPr
     <Pressable onPress={onPress} style={[s.chip, on && s.chipOn]}><Text style={[s.chipText, on && s.chipTextOn]}>{label}</Text></Pressable>
 );
 
-export const Btn = ({ label, onPress, busy, disabled, kind = 'primary' }: { label: string; onPress: () => void; busy?: boolean; disabled?: boolean; kind?: 'primary' | 'tonal' | 'danger' }) => (
-    <Pressable onPress={onPress} disabled={busy || disabled} style={({ pressed }) => [s.btn, kind === 'tonal' && s.btnTonal, kind === 'danger' && s.btnDanger, (busy || disabled) && { opacity: 0.45 }, pressed && { opacity: 0.8 }]}>
-        {busy ? <ActivityIndicator color={kind === 'primary' ? '#fff' : colors.blue} /> : <Text style={[s.btnText, kind !== 'primary' && { color: kind === 'danger' ? '#B31412' : colors.blue }]}>{label}</Text>}
+export const Btn = ({ label, onPress, busy, disabled, kind = 'primary' }: { label: string; onPress: () => void; busy?: boolean; disabled?: boolean; kind?: 'primary' | 'tonal' | 'danger' | 'dark' }) => (
+    <Pressable onPress={onPress} disabled={busy || disabled} style={({ pressed }) => [s.btn, kind === 'tonal' && s.btnTonal, kind === 'danger' && s.btnDanger, kind === 'dark' && { backgroundColor: '#191919' }, (busy || disabled) && { opacity: 0.45 }, pressed && { opacity: 0.8 }]}>
+        {busy ? <ActivityIndicator color={kind === 'primary' ? '#fff' : colors.blue} /> : <Text style={[s.btnText, kind !== 'primary' && kind !== 'dark' && { color: kind === 'danger' ? '#B31412' : colors.blue }]}>{label}</Text>}
     </Pressable>
 );
 
