@@ -1,6 +1,6 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AlertCircle, CreditCard, RefreshCw } from 'lucide-react';
+import { AlertCircle, ChevronDown, CreditCard, RefreshCw } from 'lucide-react';
 import { apiJson, formatKwacha } from 'core';
 
 export interface LipilaWalletSummary {
@@ -19,8 +19,16 @@ const chip = (p: CardPayment) => {
 };
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
-/** Shown under the Lipila wallet card: Lipila's own balance, what MoneyWise has recorded, and every card payment started on the business's pages. */
+const OPEN_KEY = 'mw:lipila-panel-open';
+const readOpen = (): boolean => { try { return localStorage.getItem(OPEN_KEY) === '1'; } catch { return false; } };
+
+/**
+ * Shown under the Lipila wallet card, as a drop-down: closed it is one line with Lipila's live balance; open it shows what MoneyWise has
+ * recorded and every card payment started on the business's pages. Whether it is open is remembered in the browser.
+ */
 export const LipilaWalletPanel: React.FC<{ organizationId: string | null | undefined }> = ({ organizationId }) => {
+    const [open, setOpen] = React.useState<boolean>(readOpen);
+    const toggle = () => setOpen((v) => { const next = !v; try { localStorage.setItem(OPEN_KEY, next ? '1' : '0'); } catch { /* storage unavailable */ } return next; });
     const wallet = useQuery({ queryKey: LIPILA_WALLET_KEY(organizationId), queryFn: () => apiJson<LipilaWalletSummary>('/lipila/wallet'), enabled: !!organizationId, staleTime: 30_000, retry: false });
     const pays = useQuery({ queryKey: ['lipila', 'card-payments', organizationId], queryFn: () => apiJson<{ payments: CardPayment[] }>('/lipila/card-payments?limit=50'), enabled: !!organizationId, staleTime: 15_000, retry: false, refetchInterval: 30_000 });
     const w = wallet.data;
@@ -29,17 +37,20 @@ export const LipilaWalletPanel: React.FC<{ organizationId: string | null | undef
 
     return (
         <section className="mb-4 rounded-2xl border border-[rgba(116,119,117,0.22)] bg-white p-4 md:p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#E8F0FE] text-[#0B57D0]"><CreditCard size={20} /></div>
-                    <div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <button type="button" onClick={toggle} aria-expanded={open} aria-controls="lipila-panel-body" className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#E8F0FE] text-[#0B57D0]"><CreditCard size={20} /></div>
+                    <div className="min-w-0 flex-1">
                         <p className="text-sm font-bold text-[#1F1F1F]">Lipila wallet</p>
                         <p className="text-xs text-[#5F6368]">Where your customers’ card payments go{w?.env ? ` · ${w.env === 'production' ? 'live' : 'testing'}` : ''}</p>
                     </div>
-                </div>
+                    {!open && <span className="flex-shrink-0 rounded-full bg-[#F8FAFD] px-3 py-1 text-xs font-bold tabular-nums text-[#1F1F1F]">{wallet.isLoading ? '…' : w?.balance != null ? formatKwacha(w.balance) : '—'}</span>}
+                    <ChevronDown size={18} className={`flex-shrink-0 text-[#5F6368] transition-transform ${open ? 'rotate-180' : ''}`} />
+                </button>
                 <button type="button" onClick={refresh} disabled={wallet.isFetching || pays.isFetching} className="inline-flex h-9 items-center gap-1.5 rounded-full px-4 text-xs font-bold text-[#0B57D0] shadow-[inset_0_0_0_1px_#C4C7C5] hover:bg-[#F8FAFD] disabled:opacity-60"><RefreshCw size={13} className={wallet.isFetching || pays.isFetching ? 'animate-spin' : ''} /> Refresh</button>
             </div>
 
+            {open && <div id="lipila-panel-body">
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div className="rounded-xl bg-[#F8FAFD] p-4">
                     <p className="text-[10px] font-bold uppercase tracking-wider text-[#5F6368]">Balance in Lipila</p>
@@ -83,6 +94,7 @@ export const LipilaWalletPanel: React.FC<{ organizationId: string | null | undef
                 </ul>
             )}
             <p className="mt-3 text-[11px] leading-4 text-[#80868B]">Lipila doesn’t give us a statement, so the card payments list is built from payments started on your pages. Withdrawals and settlements you make inside Lipila show only in the balance above.</p>
+            </div>}
         </section>
     );
 };

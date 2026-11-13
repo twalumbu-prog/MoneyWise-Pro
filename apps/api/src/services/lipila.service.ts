@@ -247,7 +247,8 @@ export async function createMobileMoneyPayout(input: { orgId: string; reference:
     if (!res.ok) {
         const detail = data?.message || data?.title || (data?.errors ? JSON.stringify(data.errors).slice(0, 200) : '');
         console.error('[Lipila] payout refused', res.status, JSON.stringify(data)?.slice(0, 300));
-        if (res.status === 401 || res.status === 403) throw new LipilaError('Lipila refused this business’s key for payouts. The owner needs to check the Lipila settings (the key must be active and allowed to send money).', 502, 'BAD_KEY');
+        if (res.status === 401) throw new LipilaError('Lipila answered 401 to this payout: it doesn’t accept this API key for sending money. In the Lipila dashboard, check that the key is the one for this wallet, is allowed to send money (payouts), and matches the environment (live or sandbox). Reading the balance can work while payouts are refused.', 502, 'BAD_KEY');
+        if (res.status === 403) throw new LipilaError('Lipila answered 403 to this payout: the key is inactive, or this server’s IP address isn’t whitelisted on the wallet. In the Lipila dashboard, open the wallet’s Security settings and add this server’s IP address to IP Whitelisting.', 502, 'IP_OR_INACTIVE');
         if (res.status === 429) throw new LipilaError('Lipila is busy. Wait a moment and try again.', 429, 'RATE');
         throw new LipilaError(detail || 'Lipila couldn’t accept this payout. Check the number and amount.', 400, 'REFUSED');
     }

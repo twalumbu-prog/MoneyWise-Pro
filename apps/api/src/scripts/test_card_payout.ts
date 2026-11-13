@@ -93,7 +93,7 @@ const cardBalance = (org: string) => cashbookService.getCurrentBalance(org, lipi
         // ---- a definite refusal leaves nothing behind
         postMode = 'refused403';
         a = await run(r1, org, user, payBody(100));
-        check('Lipila refusing the key (403) fails cleanly', a.statusCode === 400 && /refused|Disbursal error/i.test(a.body?.error ?? ''), a.body?.error?.slice(0, 90));
+        check('Lipila refusing the key (403) fails cleanly', a.statusCode === 400 && /answered 403|Disbursal error/i.test(a.body?.error ?? ''), a.body?.error?.slice(0, 90));
         check('the requisition is back to Authorised with no payout record', (await statusOf(r1)) === 'AUTHORISED' && !(await disbOf(r1)) && (await cardBalance(org)) === 500);
         postMode = 'refused400';
         a = await run(r1, org, user, payBody(100));

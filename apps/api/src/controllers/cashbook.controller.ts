@@ -697,7 +697,14 @@ const fetchOrgWallets = async (organizationId: string): Promise<any[]> => {
         liveLencoStatus(organizationId),
     ]);
     // The Main Wallet shows Lenco's live figure when it can be had, so nobody pays out against a stale books balance.
-    return applyLiveBalance(withBooks, live.live, live.reason);
+    const withLive = applyLiveBalance(withBooks, live.live, live.reason);
+
+    // A wallet that belongs to a savings group (or goal or wishlist) is the savings feature's own money, not a place to spend from, so it
+    // is never listed here (the Wallets page, "send from" pickers, etc.). It is hidden only AFTER the live balance above is worked out,
+    // because the Main Wallet's figure takes out what other wallets hold, savings wallets included. Savings screens read their own wallets.
+    const savings = await supabase.from('savings_goals').select('wallet_id').eq('organization_id', organizationId).not('wallet_id', 'is', null);
+    const savingsIds = new Set<string>((savings.data ?? []).map((g: any) => String(g.wallet_id)));
+    return savingsIds.size ? withLive.filter((w: any) => !savingsIds.has(String(w.id))) : withLive;
 };
 
 export const getWallets = async (req: any, res: any): Promise<any> => {
