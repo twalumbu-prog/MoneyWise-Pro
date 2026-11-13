@@ -26,6 +26,7 @@ const SOURCES: CaptureSource[] = ['ANDROID_SMS', 'ANDROID_NOTIFICATION', 'IOS_SH
 
 const PROVIDER_WALLET: Record<MomoProvider, string> = { MTN: 'MTN MoMo', AIRTEL: 'Airtel Money', ZAMTEL: 'Zamtel Kwacha', OTHER: 'Mobile Money' };
 const LENCO_MATCH_WINDOW_MS = 30 * 60 * 1000;
+const SAME_MESSAGE_WINDOW_MS = 15 * 60 * 1000;
 const hashToken = (t: string) => crypto.createHash('sha256').update(t).digest('hex');
 /** Ledger dates are Zambian calendar days (CAT, UTC+2). */
 const lusakaDate = (iso: string) => new Date(new Date(iso).getTime() + 2 * 3600 * 1000).toISOString().slice(0, 10);
@@ -109,7 +110,8 @@ export interface IngestInput {
 export async function ingest(input: IngestInput) {
     const source = SOURCES.includes(input.source as CaptureSource) ? (input.source as CaptureSource) : null;
     if (!source) throw new MomoCaptureError('Unknown capture source');
-    const text = typeof input.text === 'string' ? input.text.trim() : '';
+    // Postgres rejects a NUL character, which would fail the same message on every retry.
+    const text = typeof input.text === 'string' ? input.text.replace(/\u0000/g, '').trim() : '';
     if (!text) throw new MomoCaptureError('Message text is required');
     const sender = typeof input.sender === 'string' ? input.sender.slice(0, 60) : null;
     const when = typeof input.occurredAt === 'string' || typeof input.occurredAt === 'number' ? new Date(input.occurredAt) : new Date();
@@ -125,16 +127,37 @@ export async function ingest(input: IngestInput) {
     // Already in the ledger: through Lenco, or because a screenshot of this same confirmation was approved first.
     const twin = await findLencoTwin(input.orgId, parsed, occurredAt)
         ?? await findBookedCaptureEntry(input.orgId, dedupeKey(parsed, text));
-    const { data: row, error } = await supabase.from('momo_captures').insert({
+    // A message with no transaction id is recognised by its wording. The same wording within a few minutes is the
+    // same message arriving twice (SMS and its notification); hours or days apart it is another transaction of the
+    // same amount from the same person, which must not be thrown away as a duplicate.
+    let key = dedupeKey(parsed, text);
+    if (!parsed.reference) {
+        const t = new Date(occurredAt).getTime();
+        const { data: near } = await supabase.from('momo_captures').select('id')
+            .eq('organization_id', input.orgId).like('dedupe_key', `${key}%`)
+            .gte('occurred_at', new Date(t - SAME_MESSAGE_WINDOW_MS).toISOString())
+            .lte('occurred_at', new Date(t + SAME_MESSAGE_WINDOW_MS).toISOString()).limit(1);
+        if (near?.length) return { accepted: true as const, duplicate: true };
+        key = `${key}:${Math.floor(t / 60000)}`;
+    }
+    const insert = (dedupe_key: string) => supabase.from('momo_captures').insert({
         organization_id: input.orgId, user_id: input.userId, source, provider: parsed.provider, sender,
         raw_text: text.slice(0, 1200), direction: parsed.direction, amount: parsed.amount, fee: parsed.fee,
         balance_after: parsed.balanceAfter, counterparty: parsed.counterparty, provider_reference: parsed.reference,
-        occurred_at: occurredAt, dedupe_key: dedupeKey(parsed, text),
+        occurred_at: occurredAt, dedupe_key,
         status: twin ? 'MATCHED' : 'PENDING', matched_entry_id: twin,
     }).select('*').single();
-    if (error) {
-        if (error.code === '23505') return { accepted: true as const, duplicate: true };
-        throw new MomoCaptureError(`Could not save the message: ${error.message}`, 500);
+    let { data: row, error } = await insert(key);
+    if (error?.code === '23505' && parsed.reference) {
+        // The same transaction id going the other way is a second movement, not a repeat: a reversal quotes the id
+        // of the payment it undoes, and a transfer between two of your own lines shows the id on both sides.
+        const { data: existing } = await supabase.from('momo_captures').select('direction')
+            .eq('organization_id', input.orgId).eq('dedupe_key', key).limit(1);
+        if (existing?.length && existing[0].direction !== parsed.direction) ({ data: row, error } = await insert(`${key}:${parsed.direction}`));
+    }
+    if (error || !row) {
+        if (error?.code === '23505') return { accepted: true as const, duplicate: true };
+        throw new MomoCaptureError(`Could not save the message: ${error?.message}`, 500);
     }
 
     if (!twin) {
@@ -144,7 +167,9 @@ export async function ingest(input: IngestInput) {
             catch (e: any) { console.error('[MoMo capture] auto-post failed, left for review:', e.message); }
         }
     }
-    await mirrorMomoCapture(row);
+    // The message is saved. Nothing after this may fail the request: the phone would retry, be told "duplicate",
+    // and never show its prompt.
+    try { await mirrorMomoCapture(row); } catch (e: any) { console.error('[MoMo capture] mirror failed:', e?.message); }
     await syncWalletToReportedBalance(input.userId, input.orgId, parsed.provider);
     return { accepted: true as const, capture: row };
 }

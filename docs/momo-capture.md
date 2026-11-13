@@ -74,3 +74,21 @@ the balance the operator last stated. The difference between that figure and the
 balancing entry per account (reference `MOMO-BALANCE-<account id>`, "balance brought forward"), replaced whenever the
 gap changes. Recording a waiting transaction moves its amount out of that entry instead of adding a new correction.
 Nothing is synced when captures are booked to the Cash account.
+
+## What keeps a transaction from being missed
+
+Checked against 117 real MTN and Airtel messages from a test phone (parser cases live in `test_momo_parser.ts`).
+
+- **Parser:** the sender's free-text note is removed before reading (it can say "failed" or quote an amount);
+  a help line run onto the confirmation without a space no longer hides it; currency after the number
+  ("0.36 ZMW"); money-in wordings that use an "out" verb ("Payment received from", "You have been paid");
+  a transaction id must contain a digit; data-bundle notices ("K10: 1GB ... valid until") are not money.
+- **Duplicates:** a message with no id is a repeat only within 15 minutes; later, the same wording is a new
+  transaction. The same id in the opposite direction (a reversal) is kept.
+- **Phone:** only an answer from the capture service settles a queued message (a login page, redirect or 404 keeps
+  it); queued messages are re-sent by a job when the phone is back online; with no capture key, messages are kept
+  and sent after reconnecting, and a notification says capture has stopped; an unknown sender id is accepted when
+  the text names the provider and carries a transaction id.
+
+Not covered: a phone that blocks background apps (some brands need "auto-start" / "no battery restrictions" for
+MoneyWise), bank messages, and Zamtel wording, which has not been seen on a real phone yet.

@@ -14,7 +14,7 @@ class MomoSmsReceiver : BroadcastReceiver() {
         parts.groupBy { it.originatingAddress ?: "" }.forEach { (sender, msgs) ->
             val text = msgs.joinToString("") { it.messageBody ?: "" }
             if (MomoCapture.looksLikeMomo(context, sender, text)) {
-                MomoCapture.note(context, "smsSeen", "Captured from $sender")
+                MomoCapture.note(context, "smsSeen", if (MomoCapture.waitingForKey(context)) "Kept on this phone until capture is reconnected ($sender)" else "Captured from $sender")
                 MomoCapture.capture(context, "ANDROID_SMS", sender, text, msgs.first().timestampMillis)
             } else {
                 MomoCapture.note(context, "smsSeen", "Ignored: not a mobile money message")

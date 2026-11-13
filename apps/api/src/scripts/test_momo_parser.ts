@@ -71,7 +71,35 @@ const cases: { text: string; sender?: string; expect: Expect }[] = [
         sender: 'AirtelMoney',
         expect: { provider: 'AIRTEL', direction: 'IN', amount: 5, balanceAfter: null, counterparty: '970000001 JOHN BANDA', reference: 'PP261113.0858.J46616' },
     },
+    // MTN: currency after the number in the balance, and a sender note that quotes a bundle notice.
+    {
+        text: "Y'ello. Payment of ZMW 10.00 to Mobile Money successful at 2026-10-16 14:53:07.Message:- Y'ello! You have successfully purchased K10: 1GB - 30Days for 260960000001 valid until 2026-11-15. Your new balance: 0.36 ZMW.Financial Transaction ID: 24680135791.",
+        sender: 'MoMo',
+        expect: { provider: 'MTN', direction: 'OUT', amount: 10, balanceAfter: 0.36, reference: '24680135791' },
+    },
+    {
+        text: 'Yello, Payment of ZMW 15.00 to Mobile Money Data Bundle successful at 2026-10-16 14:53:07. Message -: CBP. Your new balance:0.36 ZMW. Financial Transaction ID:13579246801. Thank you',
+        sender: 'MoMo',
+        expect: { direction: 'OUT', amount: 15, balanceAfter: 0.36, counterparty: 'Mobile Money Data Bundle', reference: '13579246801' },
+    },
+    // What the sender typed must not decide anything.
+    {
+        text: 'Yello.You have received ZMW 80.00 from JOHN BANDA on your mobile money account at 2026-10-15 11:42:05. Message from sender: refund for cancelled order, failed delivery. Financial Transaction ID: 11122233344.',
+        sender: 'MoMo',
+        expect: { direction: 'IN', amount: 80, counterparty: 'JOHN BANDA', reference: '11122233344' },
+    },
+    // Money in, worded with an "out" verb.
+    { text: 'Payment of ZMW 20.00 received from MARY PHIRI. Txn ID 55566677788. New balance ZMW 25.00', sender: 'MoMo', expect: { direction: 'IN', amount: 20, balanceAfter: 25 } },
+    { text: 'You have been paid ZMW 500.00 by ACME LTD. Ref 99911122233. Balance ZMW 512.00', sender: 'MoMo', expect: { direction: 'IN', amount: 500, balanceAfter: 512 } },
+    { text: 'JOHN BANDA has transferred ZMW 50.00 to your account. TID: CI261113.1001.A11111', sender: 'AirtelMoney', expect: { direction: 'IN', amount: 50 } },
+    // A note after "Ref" is not a transaction id.
+    { text: 'You have received ZMW 30.00 from JOHN BANDA. Ref: School fees. Balance of ZMW 45.00', sender: 'MoMo', expect: { direction: 'IN', amount: 30, balanceAfter: 45, reference: null } },
+    // Till payment and withdrawal name the other party differently.
+    { text: 'Payment of ZMW 2.00 Till Number CORNER SHOP LUSAKA. Airtel Money bal is ZMW 0.44. TID : MP261113.0725.D88498.', sender: 'AirtelMoney', expect: { direction: 'OUT', amount: 2, balanceAfter: 0.44, counterparty: 'CORNER SHOP LUSAKA' } },
+    { text: 'You have withdrawn ZMW 50.00 from 123456 JANE PHIRI. Bal is ZMW 83.81. TID: CO261017.1047.E96746.', sender: 'AirtelMoney', expect: { direction: 'OUT', amount: 50, balanceAfter: 83.81, counterparty: '123456 JANE PHIRI' } },
     // Not transactions — must be ignored.
+    { text: "Y'ello! You have received K10: 1GB - 30Days from 260960000001 valid until 2026-11-15 14:53:07.123.", sender: 'MTN-ZM', expect: null },
+    { text: "Y'ello! You have successfully purchased K10: 1GB - 30Days for 260960000001 valid until 2026-11-15 14:53:07.123.", sender: 'MTN-ZM', expect: null },
     { text: 'Did you know you can get 50Mbps uncapped data at K1,000 for 30 days and a FREE 5G Router? Call 111 or visit https://home.mtn.zm/ to purchase today!', sender: 'MTNHome', expect: null },
     { text: 'Y\'ello! You have received a bonus offer. Dial *117# to buy bundles from K5.', sender: 'MoMo', expect: null },
     { text: 'Enter PIN to approve the payment of ZMW 50.00 to SHOP X.', sender: 'MoMo', expect: null },

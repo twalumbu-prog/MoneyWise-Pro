@@ -94,6 +94,24 @@ object MomoPrompt {
             .onFailure { MomoCapture.note(ctx, "prompt", "Not shown: ${it.message}") }
     }
 
+    /** A plain heads-up that opens the capture screen, e.g. when capture has stopped and needs the app. */
+    fun notice(ctx: Context, title: String, text: String) {
+        if (!canPost(ctx)) return
+        ensureChannel(ctx)
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("moneywise://settings/momo-capture")).setPackage(ctx.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val open = PendingIntent.getActivity(ctx, 7001, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val n = NotificationCompat.Builder(ctx, CHANNEL)
+            .setSmallIcon(smallIcon(ctx))
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setOnlyAlertOnce(true)
+            .setAutoCancel(true)
+            .setContentIntent(open)
+            .build()
+        runCatching { NotificationManagerCompat.from(ctx).notify(7001, n) }
+    }
+
     /** Replaces the prompt with the outcome (or with a way back into the app when the server could not be reached). */
     fun result(ctx: Context, captureId: String, title: String, record: Boolean, ok: Boolean) {
         val nm = NotificationManagerCompat.from(ctx)

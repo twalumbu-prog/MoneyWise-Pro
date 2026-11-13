@@ -70,7 +70,7 @@ class MomoCaptureModule : Module() {
         }
 
         AsyncFunction("flush") { promise: Promise ->
-            MomoCapture.flushAsync(context) { sent -> promise.resolve(sent) }
+            MomoCapture.flushAsync(context) { sent: Int -> promise.resolve(sent) }
         }
 
         /** Queues matching inbox messages received since [sinceMs] (newest first, up to [max]); returns how many. */

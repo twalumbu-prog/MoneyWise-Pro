@@ -37,7 +37,7 @@ class MomoNotificationListener : NotificationListenerService() {
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
         val text = (extras.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras.getCharSequence(Notification.EXTRA_TEXT))?.toString() ?: return
         if (MomoCapture.looksLikeMomo(ctx, title, text, fromProviderApp)) {
-            MomoCapture.note(ctx, "notifSeen", "Captured from $title")
+            MomoCapture.note(ctx, "notifSeen", if (MomoCapture.waitingForKey(ctx)) "Kept on this phone until capture is reconnected ($title)" else "Captured from $title")
             MomoCapture.capture(ctx, "ANDROID_NOTIFICATION", title, text, sbn.postTime)
         } else {
             MomoCapture.note(ctx, "notifSeen", "Ignored: not a mobile money message")
