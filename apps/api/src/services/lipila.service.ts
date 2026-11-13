@@ -233,12 +233,13 @@ export async function createMobileMoneyPayout(input: { orgId: string; reference:
     if (!input.reference.startsWith(PAYOUT_REF_PREFIX)) throw new LipilaError('Invalid payout reference.', 400, 'REFERENCE');
     const creds = await getCredentials(input.orgId);
     if (!creds || !(await isInRollout(input.orgId))) throw new LipilaError('The Card Wallet isn’t connected for this business.', 403, 'NOT_ENABLED');
-    const callbackUrl = input.apiBase ? `${input.apiBase.replace(/\/$/, '')}/webhooks/lipila` : '';
-    const body = { referenceId: input.reference, amount: round2(input.amount), accountNumber: payoutNumber(input.phone), currency: 'ZMW', narration: input.narration.slice(0, 100), referenceData: input.reference };
+    // Exactly the request shape Master Fees uses successfully in production: no callback header and no extra body fields. Lipila has no
+    // reliable payout callback, so the outcome is confirmed by polling check-status with this reference.
+    const body = { referenceId: input.reference, amount: round2(input.amount), accountNumber: payoutNumber(input.phone), currency: 'ZMW', narration: input.narration.slice(0, 100) };
     let res: Response;
     try {
         res = await fetch(`${baseUrl(creds.env)}/api/v1/disbursements/mobile-money`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json', accept: 'application/json', 'x-api-key': creds.apiKey, ...(callbackUrl ? { callbackUrl } : {}) },
+            method: 'POST', headers: { 'Content-Type': 'application/json', accept: 'application/json', 'x-api-key': creds.apiKey },
             body: JSON.stringify(body), signal: AbortSignal.timeout(20_000),
         });
     } catch (e: any) { throw new PayoutUnknownError(`Lipila didn’t answer (${e?.name === 'TimeoutError' ? 'timed out' : e?.message ?? e}).`); }
