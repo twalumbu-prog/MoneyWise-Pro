@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Check, Copy, Link2, ExternalLink, User, Smartphone, DollarSign, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { paymentLinkService, Product } from '../services/product.service';
+import { apiJson } from 'core';
 
 interface ShareProductLinkModalProps {
     isOpen: boolean;
@@ -16,6 +17,8 @@ const ShareProductLinkModal: React.FC<ShareProductLinkModalProps> = ({ isOpen, o
     const [error, setError] = useState<string | null>(null);
     const [shareUrl, setShareUrl] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
+    const [usd, setUsd] = useState(false);
+    React.useEffect(() => { if (isOpen) apiJson<{ cardCurrency?: string }>('/lipila/settings').then((v) => setUsd(v?.cardCurrency === 'USD')).catch(() => setUsd(false)); }, [isOpen]);
 
     // Reset internal state whenever the modal is (re)opened for a product.
     React.useEffect(() => {
@@ -127,7 +130,7 @@ const ShareProductLinkModal: React.FC<ShareProductLinkModalProps> = ({ isOpen, o
                         </div>
 
                         <div>
-                            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Amount (K)</label>
+                            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Amount ({usd ? '$' : 'K'})</label>
                             <div className="relative">
                                 <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                                 <input
@@ -162,7 +165,7 @@ const ShareProductLinkModal: React.FC<ShareProductLinkModalProps> = ({ isOpen, o
                 ) : (
                     <div className="p-6 space-y-4">
                         <p className="text-xs font-semibold text-slate-500 leading-relaxed">
-                            Share this single-use link with <span className="font-bold text-slate-700">{customerName}</span>. It will deactivate automatically once they complete payment of <span className="font-bold text-slate-700">K{Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>.
+                            Share this single-use link with <span className="font-bold text-slate-700">{customerName}</span>. It will deactivate automatically once they complete payment of <span className="font-bold text-slate-700">{usd ? '$' : 'K'}{Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>.
                         </p>
 
                         <div className="relative flex items-center">

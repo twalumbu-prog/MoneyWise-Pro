@@ -82,6 +82,9 @@ interface LinkContext {
     customer_name: string;
     customer_phone: string;
     amount: number;
+    /** Set when the business priced this in US dollars: the kwacha `amount` is that price at today's rate. */
+    usd_price?: number | null;
+    usd_rate?: number | null;
     collections_api_enabled?: boolean;
     card_enabled?: boolean;
 }
@@ -975,6 +978,7 @@ export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenO
                                 <span className="text-4xl font-bold text-black text-center">
                                     K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                 </span>
+                                {ctx?.usd_price ? <span className="text-xs font-bold text-zinc-600 text-center">Priced at ${ctx.usd_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}{ctx.usd_rate ? ` · K${ctx.usd_rate.toFixed(2)} to $1 today` : ''}</span> : null}
                             </div>
                             <p className="text-xs text-zinc-600 text-center">View Invoice and Payment Details</p>
                         </div>

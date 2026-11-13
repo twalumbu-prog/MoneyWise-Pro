@@ -10,6 +10,7 @@ export interface LipilaCardPayment {
 }
 export interface LipilaSettingsView {
     available: boolean; encryptionReady: boolean; configured: boolean; enabled: boolean; env: 'sandbox' | 'production';
+    cardCurrency?: 'ZMW' | 'USD'; dollarRate?: number | null;
     keyHint: string | null; hasWebhookSecret: boolean; updatedAt: string | null; webhookUrl: string | null; feeNote: string;
 }
 export interface LipilaCardOutcome { verified: boolean; status: string; message?: string; referenceNumber?: string | null }
@@ -31,7 +32,7 @@ export const lipilaService = {
         return apiJson('/lipila/settings');
     },
 
-    saveSettings(input: { apiKey?: string; webhookSecret?: string; env?: 'sandbox' | 'production'; enabled?: boolean }): Promise<LipilaSettingsView> {
+    saveSettings(input: { apiKey?: string; webhookSecret?: string; env?: 'sandbox' | 'production'; enabled?: boolean; cardCurrency?: 'ZMW' | 'USD' }): Promise<LipilaSettingsView> {
         return apiJson('/lipila/settings', { method: 'PUT', body: JSON.stringify(input) });
     },
 

@@ -13,6 +13,7 @@ import { confirmBookingsForReference, markPaymentLinkPaid } from './product_rout
 import { whatsappService } from './whatsapp.service';
 import { emailService } from './email.service';
 import { pushService } from './push.service';
+import { loadSettings } from './imports.service';
 
 export class LipilaError extends Error {
     constructor(message: string, public httpStatus = 400, public code = 'LIPILA') { super(message); }
@@ -34,6 +35,27 @@ export const grossUp = (net: number) => {
     const charged = round2(net / (1 - LIPILA_CARD_RATE));
     return { charged, fee: round2(charged - net) };
 };
+
+/* ───────────── Pricing in US dollars ───────────── */
+
+/**
+ * A business can price in US dollars. Lipila is always charged in kwacha and the books stay in kwacha: the dollar price is turned into
+ * kwacha at charge time with the admin-set dollar rate (the same one overseas ordering uses), and the card fee is added on top of that.
+ */
+export async function dollarRate(): Promise<number> {
+    const { settings } = await loadSettings();
+    const r = Number((settings.fx as Record<string, number>)?.USD);
+    if (!(r > 0)) throw new LipilaError('The dollar rate isn’t set yet, so dollar prices can’t be charged. Please try again later.', 503, 'NO_RATE');
+    return r;
+}
+export const usdToZmw = (usd: number, rate: number) => round2(num(usd) * rate);
+
+/** The currency this business prices in, and the dollar rate when it is USD. (Public: customers need it to see the price.) */
+export async function cardPricing(orgId: string): Promise<{ currency: 'ZMW' | 'USD'; rate: number | null }> {
+    const { data } = await supabase.from('organizations').select('card_currency').eq('id', orgId).maybeSingle();
+    if (data?.card_currency !== 'USD') return { currency: 'ZMW', rate: null };
+    try { return { currency: 'USD', rate: await dollarRate() }; } catch { return { currency: 'ZMW', rate: null }; }
+}
 
 const baseUrl = (env: string) => (env === 'production' ? 'https://blz.lipila.io' : 'https://api.lipila.dev');
 
@@ -101,15 +123,18 @@ export async function cardsEnabledFor(orgId: string): Promise<boolean> {
 
 export async function settingsView(orgId: string, apiBase: string | null) {
     const available = await isInRollout(orgId);
+    const pricing = await cardPricing(orgId);
+    const { data: orgRow } = await supabase.from('organizations').select('card_currency').eq('id', orgId).maybeSingle();
     const { data } = await supabase.from('org_gateway_credentials').select('lipila_api_key_enc, lipila_webhook_secret_enc, lipila_env, lipila_enabled, key_hint, updated_at').eq('organization_id', orgId).maybeSingle();
     return {
+        cardCurrency: (orgRow?.card_currency === 'USD' ? 'USD' : 'ZMW') as 'ZMW' | 'USD', dollarRate: pricing.rate,
         available, encryptionReady: encryptionReady(), configured: !!data?.lipila_api_key_enc, enabled: data?.lipila_enabled === true, env: (data?.lipila_env ?? 'sandbox') as 'sandbox' | 'production',
         keyHint: data?.key_hint ?? null, hasWebhookSecret: !!data?.lipila_webhook_secret_enc, updatedAt: data?.updated_at ?? null,
         webhookUrl: apiBase ? `${apiBase.replace(/\/$/, '')}/webhooks/lipila` : null, feeNote: `Lipila keeps ${LIPILA_CARD_RATE * 100}% of each card payment. Customers are charged a little more so you receive the full price.`,
     };
 }
 
-export interface SaveInput { apiKey?: string; webhookSecret?: string; env?: string; enabled?: boolean }
+export interface SaveInput { apiKey?: string; webhookSecret?: string; env?: string; enabled?: boolean; cardCurrency?: string }
 
 export async function saveCredentials(orgId: string, userId: string, input: SaveInput, apiBase: string | null) {
     if (!(await isInRollout(orgId))) throw new LipilaError('Card payments aren’t available for this account yet.', 403, 'NOT_AVAILABLE');
@@ -132,6 +157,12 @@ export async function saveCredentials(orgId: string, userId: string, input: Save
     row.lipila_enabled = input.enabled === true;
     const { error } = await supabase.from('org_gateway_credentials').upsert(row, { onConflict: 'organization_id' });
     if (error) throw error;
+    if (input.cardCurrency !== undefined) {
+        const cur = input.cardCurrency === 'USD' ? 'USD' : 'ZMW';
+        if (cur === 'USD') await dollarRate(); // refuse to switch to dollars while there is no rate to convert with
+        const { error: e2 } = await supabase.from('organizations').update({ card_currency: cur }).eq('id', orgId);
+        if (e2) throw e2;
+    }
     return settingsView(orgId, apiBase);
 }
 
@@ -351,10 +382,14 @@ async function pendingNet(orgId: string, reference: string): Promise<{ net: numb
 async function assertAmountIsRight(orgId: string, reference: string, net: number, ctx?: Record<string, unknown>): Promise<void> {
     const wrong = () => new LipilaError('The amount doesn’t match this order. Please go back and try again.', 409, 'AMOUNT');
     if (ctx?.kind === 'payment_link' && ctx?.token) {
-        const { data: link } = await supabase.from('payment_links').select('amount, status, organization_id').eq('token', String(ctx.token)).maybeSingle();
+        const { data: link } = await supabase.from('payment_links').select('amount, status, organization_id, currency, foreign_amount').eq('token', String(ctx.token)).maybeSingle();
         if (!link || link.organization_id !== orgId) throw new LipilaError('That payment link can’t be found.', 404, 'LINK');
         if (link.status && link.status !== 'ACTIVE') throw new LipilaError('This payment link has already been paid or is closed.', 409, 'LINK_CLOSED');
-        if (Math.abs(num(link.amount) - net) > 0.01) throw wrong();
+        if (link.currency === 'USD' && num(link.foreign_amount) > 0) {
+            // Priced in dollars: the sale must be the dollar price at today's rate, give or take 2% for a rate that moved since the page opened.
+            const expected = usdToZmw(num(link.foreign_amount), await dollarRate());
+            if (Math.abs(expected - net) > Math.max(0.5, expected * 0.02)) throw wrong();
+        } else if (Math.abs(num(link.amount) - net) > 0.01) throw wrong();
     }
     const { data: lines } = await supabase.from('product_sales').select('product_id, quantity, amount_paid').eq('organization_id', orgId).eq('reference', reference);
     if (lines?.length) {

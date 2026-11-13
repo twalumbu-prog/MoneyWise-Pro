@@ -6,6 +6,7 @@ const router = Router();
 
 // Customers paying by card: no sign-in. The sale was recorded by the checkout; these only start the card payment and read its outcome.
 router.post('/public/card', c.initiate);
+router.get('/public/pricing', c.pricing);
 router.get('/public/status/:reference', c.status);
 
 // The owner's settings.

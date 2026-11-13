@@ -21,13 +21,14 @@ export default function LipilaSettingsScreen() {
     const [secret, setSecret] = useState('');
     const [clearSecret, setClearSecret] = useState(false);
     const [enabled, setEnabled] = useState(false);
+    const [currency, setCurrency] = useState<'ZMW' | 'USD'>('ZMW');
     const [busy, setBusy] = useState(false);
     const [testing, setTesting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
     const [test, setTest] = useState<{ ok: boolean; message: string } | null>(null);
 
-    const apply = (v: LipilaSettingsView) => { setView(v); setEnv(v.env); setEnabled(v.enabled); };
+    const apply = (v: LipilaSettingsView) => { setView(v); setEnv(v.env); setEnabled(v.enabled); setCurrency(v.cardCurrency === 'USD' ? 'USD' : 'ZMW'); };
     const load = useCallback(async () => {
         try { setError(null); apply(await lipilaService.settings()); } catch (e: any) { setError(e?.message || 'Could not load the card settings.'); }
     }, []);
@@ -39,7 +40,7 @@ export default function LipilaSettingsScreen() {
             const v = await lipilaService.saveSettings({
                 apiKey: apiKey.trim() || undefined,
                 webhookSecret: clearSecret ? '' : secret.trim() ? secret.trim() : undefined,
-                env, enabled,
+                env, enabled, cardCurrency: currency,
             });
             apply(v); setApiKey(''); setSecret(''); setClearSecret(false);
             setNotice(v.enabled ? 'Saved. Card payments are on.' : 'Saved. Card payments are off.');
@@ -114,6 +115,18 @@ export default function LipilaSettingsScreen() {
                                     <View style={[styles.box, clearSecret && styles.boxOn]} /><Text style={styles.hint}>Remove the saved signing secret</Text>
                                 </Pressable>
                             ) : null}
+
+                            <Text style={styles.label}>Charge customers in</Text>
+                            <View style={styles.seg}>
+                                {(['ZMW', 'USD'] as const).map((c) => (
+                                    <Pressable key={c} style={[styles.segItem, currency === c && styles.segOn]} onPress={() => setCurrency(c)} disabled={!isAdmin || busy}>
+                                        <Text style={[styles.segText, currency === c && styles.segTextOn]}>{c === 'ZMW' ? 'Kwacha (K)' : 'US dollars ($)'}</Text>
+                                    </Pressable>
+                                ))}
+                            </View>
+                            <Text style={styles.hint}>{currency === 'USD'
+                                ? `Prices are in dollars. Customers are charged the kwacha equivalent at today's rate${view.dollarRate ? ` (about K${view.dollarRate.toFixed(2)} to $1)` : ''}, and the money lands in your wallet in kwacha.`
+                                : 'Prices are in kwacha.'}</Text>
 
                             <View style={styles.switchRow}>
                                 <Text style={styles.switchText}>Accept card payments on my payment links, quick pay and store</Text>

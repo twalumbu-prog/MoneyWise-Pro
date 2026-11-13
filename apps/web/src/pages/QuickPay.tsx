@@ -131,7 +131,17 @@ export const QuickPay: React.FC = () => {
     // input, so the on-screen keypad fully controls formatting (matches the
     // Figma calculator-style entry; no native numeric keyboard involved).
     const [amountStr, setAmountStr] = useState('');
-    const amount = parseFloat(amountStr) || 0;
+    // A business that prices in US dollars: the keypad takes dollars and everything below works in the kwacha they come to today.
+    const [usdRate, setUsdRate] = useState<number | null>(null);
+    useEffect(() => {
+        if (!org?.id) return;
+        axios.get(`${API_URL}/lipila/public/pricing`, { params: { organizationId: org.id }, timeout: 15000 })
+            .then((r) => setUsdRate(r.data?.currency === 'USD' && Number(r.data?.rate) > 0 ? Number(r.data.rate) : null))
+            .catch(() => setUsdRate(null));
+    }, [org?.id]);
+    const typedAmount = parseFloat(amountStr) || 0;
+    const amount = usdRate ? Math.round(typedAmount * usdRate * 100) / 100 : typedAmount;
+    const quickAmounts = usdRate ? [10, 25, 50] : QUICK_AMOUNTS;
 
     // PURPOSE step
     const [purposes, setPurposes] = useState<QuickLinkPurpose[]>([]);
@@ -716,7 +726,7 @@ export const QuickPay: React.FC = () => {
 
                     <div className="w-full max-w-xs mx-auto mt-3">
                         <div className="flex items-center justify-between gap-1.5">
-                            <span className="text-4xl sm:text-5xl font-bold text-black">K</span>
+                            <span className="text-4xl sm:text-5xl font-bold text-black">{usdRate ? '$' : 'K'}</span>
                             <div className="flex items-center gap-1.5">
                                 <span className="text-4xl sm:text-5xl font-bold text-black">{amountStr}</span>
                                 <span className="mw-blink-cursor inline-block w-1 h-9 sm:h-11 bg-black" />
@@ -737,14 +747,14 @@ export const QuickPay: React.FC = () => {
                         fills the extra space on taller screens. */}
                     <div className="w-full flex flex-col" style={{ gap: vhGrow(14, 0.07, 34) }}>
                         <div className="w-full flex gap-3 sm:gap-4">
-                            {QUICK_AMOUNTS.map(a => (
+                            {quickAmounts.map(a => (
                                 <button
                                     key={a}
                                     onClick={() => setAmountStr(String(a))}
                                     className="flex-1 bg-zinc-100 hover:bg-zinc-200 rounded-xl flex items-center justify-center transition-colors"
                                     style={{ height: vhGrow(38, 0.1, 58) }}
                                 >
-                                    <span className="text-xs font-bold text-black">K{a.toLocaleString()}</span>
+                                    <span className="text-xs font-bold text-black">{usdRate ? '$' : 'K'}{a.toLocaleString()}</span>
                                 </button>
                             ))}
                         </div>
@@ -971,6 +981,7 @@ export const QuickPay: React.FC = () => {
                                     </div>
                                 </div>
                                 <div className="mt-4 space-y-1 text-xs text-gray-600">
+                                    {usdRate ? <div className="flex justify-between"><span>Priced at</span><span>${typedAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })} (K{usdRate.toFixed(2)} to $1)</span></div> : null}
                                     <div className="flex justify-between"><span>Amount</span><span>K{amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
                                     <div className="flex justify-between"><span>Card fee</span><span>K{cardFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
                                     <div className="flex justify-between border-t border-slate-100 pt-1 font-bold text-gray-800"><span>You pay</span><span>K{cardCharged.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>

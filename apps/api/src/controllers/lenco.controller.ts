@@ -19,7 +19,7 @@ import { QuickBooksService } from '../services/quickbooks.service';
 import { captureEvent, withTiming } from '../utils/analytics';
 import { ensureWalletTransferConfirmed } from './disbursement.controller';
 import { getCachedOrgSecretKey } from '../lib/orgSecretKeyCache';
-import { CARD_REF_PREFIX, cardsEnabledFor, finalizeCard } from '../services/lipila.service';
+import { CARD_REF_PREFIX, cardsEnabledFor, finalizeCard, dollarRate, usdToZmw } from '../services/lipila.service';
 import { status as lipilaCardStatus } from './lipila.controller';
 import { sanitizeCheckoutFields } from './product.controller';
 
@@ -1062,7 +1062,10 @@ export const getPaymentLinkContext = async (req: Request, res: Response) => {
             items,
             customer_name: link.customer_name,
             customer_phone: link.customer_phone,
-            amount: Number(link.amount),
+            // A dollar link is charged in kwacha at today's rate (the dollar price is shown beside it).
+            amount: await (async () => { try { return link.currency === 'USD' && Number(link.foreign_amount) > 0 ? usdToZmw(Number(link.foreign_amount), await dollarRate()) : Number(link.amount); } catch { return Number(link.amount); } })(),
+            usd_price: link.currency === 'USD' && Number(link.foreign_amount) > 0 ? Number(link.foreign_amount) : null,
+            usd_rate: link.currency === 'USD' ? await dollarRate().catch(() => null) : null,
             // Kill-switch for the own-UX mobile money checkout. When false/unset the
             // frontend uses the existing LencoPay widget. Flip LENCO_COLLECTIONS_API_ENABLED
             // on the API to switch every client instantly (no frontend redeploy).

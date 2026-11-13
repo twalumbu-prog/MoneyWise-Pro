@@ -5,6 +5,7 @@ import { useAuth } from '../../../context/AuthContext';
 
 interface View {
     available: boolean; encryptionReady: boolean; configured: boolean; enabled: boolean; env: 'sandbox' | 'production';
+    cardCurrency?: 'ZMW' | 'USD'; dollarRate?: number | null;
     keyHint: string | null; hasWebhookSecret: boolean; updatedAt: string | null; webhookUrl: string | null; feeNote: string;
 }
 
@@ -20,6 +21,7 @@ export const LipilaIntegration: React.FC<{ onBack: () => void }> = ({ onBack }) 
     const [secret, setSecret] = useState('');
     const [clearSecret, setClearSecret] = useState(false);
     const [enabled, setEnabled] = useState(false);
+    const [currency, setCurrency] = useState<'ZMW' | 'USD'>('ZMW');
     const [busy, setBusy] = useState(false);
     const [testing, setTesting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -27,7 +29,7 @@ export const LipilaIntegration: React.FC<{ onBack: () => void }> = ({ onBack }) 
     const [test, setTest] = useState<{ ok: boolean; message: string } | null>(null);
     const [copied, setCopied] = useState(false);
 
-    const apply = (v: View) => { setView(v); setEnv(v.env); setEnabled(v.enabled); };
+    const apply = (v: View) => { setView(v); setEnv(v.env); setEnabled(v.enabled); setCurrency(v.cardCurrency === 'USD' ? 'USD' : 'ZMW'); };
     const load = useCallback(async () => {
         try { setError(null); apply(await apiJson<View>('/lipila/settings')); } catch (e: any) { setError(e?.message || 'Could not load the card settings.'); }
     }, []);
@@ -36,7 +38,7 @@ export const LipilaIntegration: React.FC<{ onBack: () => void }> = ({ onBack }) 
     const save = async () => {
         setBusy(true); setError(null); setNotice(null); setTest(null);
         try {
-            const v = await apiJson<View>('/lipila/settings', { method: 'PUT', body: JSON.stringify({ apiKey: apiKey.trim() || undefined, webhookSecret: clearSecret ? '' : secret.trim() ? secret.trim() : undefined, env, enabled }) });
+            const v = await apiJson<View>('/lipila/settings', { method: 'PUT', body: JSON.stringify({ apiKey: apiKey.trim() || undefined, webhookSecret: clearSecret ? '' : secret.trim() ? secret.trim() : undefined, env, enabled, cardCurrency: currency }) });
             apply(v); setApiKey(''); setSecret(''); setClearSecret(false);
             setNotice(v.enabled ? 'Saved. Card payments are on.' : 'Saved. Card payments are off.');
         } catch (e: any) { setError(e?.message || 'Could not save.'); } finally { setBusy(false); }
@@ -102,6 +104,16 @@ export const LipilaIntegration: React.FC<{ onBack: () => void }> = ({ onBack }) 
                             <label className="mb-1.5 block text-xs font-bold text-gray-700">Webhook signing secret <span className="font-normal text-gray-400">(needed so Lipila can tell us a payment finished)</span></label>
                             <input type="password" autoComplete="off" className={field} value={secret} onChange={(e) => { setSecret(e.target.value); setClearSecret(false); }} placeholder={view.hasWebhookSecret ? 'Saved. Paste a new one to replace it' : 'Paste the signing secret'} disabled={!isAdmin || busy || !view.encryptionReady} />
                             {view.hasWebhookSecret && <label className="mt-1.5 flex items-center gap-2 text-[11px] text-gray-500"><input type="checkbox" checked={clearSecret} onChange={(e) => setClearSecret(e.target.checked)} /> Remove the saved secret</label>}
+                        </div>
+                        <div>
+                            <label className="mb-1.5 block text-xs font-bold text-gray-700">Charge customers in</label>
+                            <select className={field} value={currency} onChange={(e) => setCurrency(e.target.value as 'ZMW' | 'USD')} disabled={!isAdmin || busy}>
+                                <option value="ZMW">Kwacha (K)</option>
+                                <option value="USD">US dollars ($)</option>
+                            </select>
+                            <p className="mt-1 text-[11px] text-gray-500">{currency === 'USD'
+                                ? `Prices you enter are in dollars. Customers are charged the kwacha equivalent at today's rate${view.dollarRate ? ` (about K${view.dollarRate.toFixed(2)} to $1)` : ''}, and the money lands in your wallet in kwacha.`
+                                : 'Prices are in kwacha.'}</p>
                         </div>
                         <label className="flex items-center gap-3 rounded-xl bg-gray-50 p-3 text-sm text-gray-800">
                             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} disabled={!isAdmin || busy} /> Accept card payments on my payment links, quick pay page and store

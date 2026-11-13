@@ -5,6 +5,7 @@ import { emailService } from '../services/email.service';
 import { getFrontendUrl } from '../utils/frontendUrl';
 import { cashbookService } from '../services/cashbook.service';
 import { assignShortLink } from '../services/invoiceShortLink.service';
+import { cardPricing, usdToZmw } from '../services/lipila.service';
 import { isValidZambiaMobile, normalizeZambiaPhone, INVALID_PHONE_MESSAGE } from '../utils/zambiaPhone';
 
 /**
@@ -68,6 +69,11 @@ export const createPaymentLink = async (req: any, res: Response): Promise<any> =
 
         const token = generateToken();
 
+        // A business that prices in US dollars: the amount typed is dollars. The link keeps the dollar price; `amount` holds today's kwacha
+        // equivalent (for lists and reports), and the customer's page works the kwacha out again at the rate of the day they pay.
+        const pricing = await cardPricing(organization_id);
+        const inDollars = pricing.currency === 'USD' && !!pricing.rate;
+
         const { data, error } = await supabase
             .from('payment_links')
             .insert({
@@ -76,7 +82,8 @@ export const createPaymentLink = async (req: any, res: Response): Promise<any> =
                 token,
                 customer_name: customer_name.trim(),
                 customer_phone: normalizeZambiaPhone(customer_phone),
-                amount: amountNum,
+                amount: inDollars ? usdToZmw(amountNum, pricing.rate as number) : amountNum,
+                ...(inDollars ? { currency: 'USD', foreign_amount: amountNum } : {}),
                 wallet_id: walletId,
                 status: 'ACTIVE',
                 created_by

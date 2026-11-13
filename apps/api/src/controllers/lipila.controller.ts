@@ -28,6 +28,11 @@ export const initiate = async (req: Request, res: Response) => {
     } catch (e) { fail(res, e, 'start the card payment'); }
 };
 
+/** GET /lipila/public/pricing?organizationId=  The currency this business prices in and, for dollars, today's rate to kwacha. */
+export const pricing = async (req: Request, res: Response) => {
+    try { res.json(await lipila.cardPricing(String(req.query.organizationId ?? ''))); } catch (e) { fail(res, e, 'load the pricing'); }
+};
+
 /** POST /lipila/deposit  A signed-in member tops up the business's card wallet by card. Returns the card page to open. */
 export const deposit = async (req: any, res: Response) => {
     try {
