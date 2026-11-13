@@ -183,26 +183,53 @@ export async function list(userId: string, orgId: string, status?: unknown) {
     return data ?? [];
 }
 
-async function reportedBalances(orgId: string, userId?: string) {
+/**
+ * What each wallet holds now, worked out the way a person checking their messages by hand would: find the most
+ * recent message that states a balance (MTN only states one on money OUT; Airtel states one both ways), then add or
+ * subtract every later message's amount in order, even the ones that never stated a balance themselves. Without this,
+ * an MTN deposit — which never carries "new balance" — would leave the figure unmoved until the next withdrawal.
+ *
+ * Every captured message counts, including one later dismissed: the money still moved in the provider's own system
+ * regardless of how it ended up booked here. The ONE exception is a message the CURRENT parser no longer reads as a
+ * transaction at all (an advert captured before a parser fix, say) — those never moved money and are left out, so a
+ * parser fix cleans up old noise here too, not just for new messages. A provider with no message ever stating a
+ * balance has nothing to anchor to and is left out rather than guessed.
+ */
+async function runningBalances(orgId: string, userId?: string) {
     let q = supabase.from('momo_captures')
-        .select('provider, sender, raw_text, balance_after, occurred_at')
+        .select('provider, sender, raw_text, occurred_at')
         .eq('organization_id', orgId)
-        .order('occurred_at', { ascending: false }).limit(400);
+        .order('occurred_at', { ascending: true }).limit(1000);
     if (userId) q = q.eq('user_id', userId);
     const { data, error } = await q;
     if (error) throw new MomoCaptureError(error.message, 500);
-    const out: { provider: MomoProvider; name: string; balance: number; asOf: string }[] = [];
+
+    const byProvider = new Map<MomoProvider, { parsed: ParsedMomoMessage; occurredAt: string }[]>();
     for (const row of data ?? []) {
-        if (out.some((b) => b.provider === row.provider)) continue;
-        const balance = row.balance_after ?? parseMomoMessage(row.raw_text, row.sender)?.balanceAfter ?? null;
-        if (balance === null) continue;
-        out.push({ provider: row.provider, name: PROVIDER_WALLET[row.provider as MomoProvider], balance: Number(balance), asOf: row.occurred_at });
+        const parsed = parseMomoMessage(row.raw_text, row.sender);
+        if (!parsed) continue; // today's parser says this never moved money
+        const list = byProvider.get(row.provider as MomoProvider) ?? [];
+        list.push({ parsed, occurredAt: row.occurred_at });
+        byProvider.set(row.provider as MomoProvider, list);
+    }
+
+    const out: { provider: MomoProvider; name: string; balance: number; asOf: string }[] = [];
+    for (const [provider, rows] of byProvider) {
+        let anchor = -1;
+        for (let i = rows.length - 1; i >= 0; i--) if (rows[i].parsed.balanceAfter !== null) { anchor = i; break; }
+        if (anchor === -1) continue; // never stated a balance — nothing to anchor to
+        let balance = Number(rows[anchor].parsed.balanceAfter);
+        for (let i = anchor + 1; i < rows.length; i++) {
+            const p = rows[i].parsed;
+            balance += (p.direction === 'IN' ? 1 : -1) * p.amount - (p.direction === 'OUT' ? (p.fee || 0) : 0);
+        }
+        out.push({ provider, name: PROVIDER_WALLET[provider], balance: Math.round(balance * 100) / 100, asOf: rows[rows.length - 1].occurredAt });
     }
     return out;
 }
 
 export async function balances(userId: string, orgId: string) {
-    return reportedBalances(orgId, userId);
+    return runningBalances(orgId, userId);
 }
 
 const balanceRef = (walletId: string) => `MOMO-BALANCE-${walletId}`;
@@ -222,7 +249,7 @@ async function syncWalletToReportedBalance(userId: string, orgId: string, provid
     try {
         const settings = await settingsRow(userId, orgId);
         if (settings.destination !== 'PROVIDER') return;
-        const reported = (await reportedBalances(orgId)).find((b) => b.provider === provider);
+        const reported = (await runningBalances(orgId)).find((b) => b.provider === provider);
         if (!reported) return;
         const wallet = await walletFor(orgId, provider, 'PROVIDER');
         const ledger = await cashbookService.getCurrentBalance(orgId, wallet.id);
