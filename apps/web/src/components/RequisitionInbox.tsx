@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Check, Clock, AlertCircle, CheckCircle2, RotateCcw, MoreVertical, Trash2 } from 'lucide-react';
+import { Search, Check, Clock, AlertCircle, CheckCircle2, RotateCcw, MoreVertical, Trash2, Loader2 } from 'lucide-react';
 import { getStatusConfig } from '../services/requisition.service';
 
 interface Requisition {
@@ -18,9 +18,12 @@ interface RequisitionInboxProps {
     requisitions: Requisition[];
     onRowClick: (id: string) => void;
     onDelete?: (id: string) => void;
+    /** Admin only: delete every ticked request at once. Shows the bar when something is ticked. */
+    onDeleteMany?: (ids: string[]) => Promise<void>;
 }
 
-export const RequisitionInbox: React.FC<RequisitionInboxProps> = ({ requisitions, onRowClick, onDelete }) => {
+export const RequisitionInbox: React.FC<RequisitionInboxProps> = ({ requisitions, onRowClick, onDelete, onDeleteMany }) => {
+    const [deleting, setDeleting] = useState(false);
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
     const [selected, setSelected] = useState<Set<string>>(new Set());
     const menuRef = useRef<HTMLDivElement | null>(null);
@@ -34,6 +37,21 @@ export const RequisitionInbox: React.FC<RequisitionInboxProps> = ({ requisitions
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
+
+    // A ticked request that has left the list (deleted, filtered out) is no longer ticked.
+    useEffect(() => {
+        setSelected((prev) => {
+            const here = new Set(requisitions.map((r) => r.id));
+            const next = new Set([...prev].filter((id) => here.has(id)));
+            return next.size === prev.size ? prev : next;
+        });
+    }, [requisitions]);
+
+    const deleteSelected = async () => {
+        if (!onDeleteMany || selected.size === 0 || deleting) return;
+        setDeleting(true);
+        try { await onDeleteMany([...selected]); setSelected(new Set()); } finally { setDeleting(false); }
+    };
 
     const toggleSelected = (id: string) => {
         setSelected(prev => {
@@ -60,6 +78,19 @@ export const RequisitionInbox: React.FC<RequisitionInboxProps> = ({ requisitions
 
     return (
         <div className="bg-white rounded-2xl p-3 flex flex-col gap-2">
+            {selected.size > 0 && (
+                <div className="flex flex-wrap items-center gap-3 rounded-xl bg-[#E8F0FE] px-4 py-2.5 text-xs">
+                    <span className="font-bold text-[#041E49]">{selected.size} selected</span>
+                    <button type="button" onClick={() => setSelected(new Set(requisitions.map((r) => r.id)))} className="font-medium text-[#0B57D0] hover:underline">Select all {requisitions.length}</button>
+                    <button type="button" onClick={() => setSelected(new Set())} className="font-medium text-[#5F6368] hover:underline">Clear</button>
+                    {onDeleteMany && (
+                        <button type="button" onClick={deleteSelected} disabled={deleting}
+                            className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 font-bold text-white hover:bg-red-700 disabled:opacity-50">
+                            {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Delete {selected.size}
+                        </button>
+                    )}
+                </div>
+            )}
             <div className="flex flex-col divide-y divide-[rgba(116,119,117,0.22)]">
                 {requisitions.map((req) => (
                     <div

@@ -3400,6 +3400,74 @@ export const backfillAuditScores = async (req: any, res: any): Promise<any> => {
     }
 };
 
+/**
+ * Deletes a requisition and everything hanging off it. Every step is error-checked and the requisition itself is deleted last: if a ledger
+ * row failed to delete and the requisition went anyway, that row would survive as an invisible orphan (it once orphaned a K71,354.03 payroll
+ * outflow). The caller has already decided this requisition may be deleted.
+ */
+async function removeRequisitionAndChildren(id: string): Promise<void> {
+    const { data: relatedVouchers } = await supabase.from('vouchers').select('id').eq('requisition_id', id);
+    if (relatedVouchers && relatedVouchers.length > 0) {
+        const voucherIds = relatedVouchers.map((v: any) => v.id);
+        await supabase.from('voucher_lines').delete().in('voucher_id', voucherIds);
+        await supabase.from('vouchers').delete().in('id', voucherIds);
+    }
+    const steps: [string, () => PromiseLike<{ error: any }>][] = [
+        ['requisition messages', () => supabase.from('requisition_messages').delete().eq('requisition_id', id)],
+        ['disbursements', () => supabase.from('disbursements').delete().eq('requisition_id', id)],
+        ['line items', () => supabase.from('line_items').delete().eq('requisition_id', id)],
+        ['audit logs', () => supabase.from('audit_logs').delete().eq('entity_id', id)],
+        ['cashbook entries', () => supabase.from('cashbook_entries').delete().eq('requisition_id', id)],
+    ];
+    for (const [what, run] of steps) {
+        const { error } = await run();
+        if (error) throw new Error(`Failed to delete ${what}: ${error.message}`);
+    }
+    const { error: deleteError } = await supabase.from('requisitions').delete().eq('id', id);
+    if (deleteError) throw deleteError;
+}
+
+/**
+ * POST /requisitions/batch/delete  { ids: string[] }  Admin only. Clears out several requests at once (test requests, mostly).
+ * Allowed: anything a single delete allows (draft, pending approval, rejected, change submitted) and also an Authorised request that has
+ * never been paid: no payout, no ledger entry. Anything else is skipped with the reason, and the rest still go.
+ */
+export const batchDeleteRequisitions = async (req: AuthRequest, res: Response): Promise<any> => {
+    try {
+        const user = (req as any).user;
+        if (user.role !== 'ADMIN') return res.status(403).json({ error: 'Only an admin can delete several requests at once.' });
+        const ids: string[] = Array.isArray(req.body?.ids) ? [...new Set<string>(req.body.ids.map(String))].slice(0, 200) : [];
+        if (!ids.length) return res.status(400).json({ error: 'Choose at least one request.' });
+
+        const { data: rows, error } = await supabase.from('requisitions').select('id, status, organization_id, description').in('id', ids);
+        if (error) throw error;
+        const byId = new Map<string, any>((rows ?? []).map((r: any) => [r.id, r]));
+        const plainly = ['DRAFT', 'PENDING_APPROVAL', 'REJECTED', 'CHANGE_SUBMITTED'];
+
+        let deleted = 0;
+        const skipped: { id: string; description?: string; reason: string }[] = [];
+        for (const id of ids) {
+            const r = byId.get(id);
+            if (!r || r.organization_id !== user.organization_id) { skipped.push({ id, reason: 'Not found.' }); continue; }
+            if (!plainly.includes(r.status)) {
+                if (r.status !== 'AUTHORISED') { skipped.push({ id, description: r.description, reason: `It is ${String(r.status).toLowerCase().replace(/_/g, ' ')}, so it can’t be deleted.` }); continue; }
+                // Authorised: only if no money has been moved for it.
+                const [{ count: payouts }, { count: entries }] = await Promise.all([
+                    supabase.from('disbursements').select('id', { count: 'exact', head: true }).eq('requisition_id', id),
+                    supabase.from('cashbook_entries').select('id', { count: 'exact', head: true }).eq('requisition_id', id),
+                ]);
+                if ((payouts ?? 0) > 0 || (entries ?? 0) > 0) { skipped.push({ id, description: r.description, reason: 'A payment has been started or recorded for it.' }); continue; }
+            }
+            try { await removeRequisitionAndChildren(id); deleted++; } catch (e: any) { skipped.push({ id, description: r.description, reason: e?.message || 'Could not delete it.' }); }
+        }
+        console.log(`[Batch Delete Requisitions] ${user.id} deleted ${deleted}, skipped ${skipped.length}`);
+        res.json({ deleted, skipped });
+    } catch (e: any) {
+        console.error('[Batch Delete Requisitions] Error:', e);
+        res.status(500).json({ error: 'Failed to delete the requests', details: e.message });
+    }
+};
+
 export const deleteRequisition = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const { id } = req.params;
@@ -3430,74 +3498,7 @@ export const deleteRequisition = async (req: AuthRequest, res: Response): Promis
         }
 
         console.log(`[Delete Requisition] Deleting requisition ${id}...`);
-
-        // 4. Delete related records
-        // 4.1 Delete related vouchers & voucher lines to avoid foreign key constraints
-        const { data: relatedVouchers } = await supabase
-            .from('vouchers')
-            .select('id')
-            .eq('requisition_id', id);
-
-        if (relatedVouchers && relatedVouchers.length > 0) {
-            const voucherIds = relatedVouchers.map(v => v.id);
-            await supabase
-                .from('voucher_lines')
-                .delete()
-                .in('voucher_id', voucherIds);
-            
-            await supabase
-                .from('vouchers')
-                .delete()
-                .in('id', voucherIds);
-        }
-
-        // 4.2 Delete messages
-        const { error: msgDelErr } = await supabase
-            .from('requisition_messages')
-            .delete()
-            .eq('requisition_id', id);
-        if (msgDelErr) throw new Error(`Failed to delete requisition messages: ${msgDelErr.message}`);
-
-        // 4.3 Delete disbursements
-        const { error: disbDelErr } = await supabase
-            .from('disbursements')
-            .delete()
-            .eq('requisition_id', id);
-        if (disbDelErr) throw new Error(`Failed to delete disbursements: ${disbDelErr.message}`);
-
-        // 4.4 Delete line items
-        const { error: liDelErr } = await supabase
-            .from('line_items')
-            .delete()
-            .eq('requisition_id', id);
-        if (liDelErr) throw new Error(`Failed to delete line items: ${liDelErr.message}`);
-
-        // 4.5 Delete audit logs
-        const { error: auditDelErr } = await supabase
-            .from('audit_logs')
-            .delete()
-            .eq('entity_id', id);
-        if (auditDelErr) throw new Error(`Failed to delete audit logs: ${auditDelErr.message}`);
-
-        // 4.6 Delete cashbook entries.
-        // IMPORTANT: if this fails we MUST abort before deleting the requisition —
-        // otherwise a ledger row survives with a dangling requisition_id and becomes an
-        // invisible orphan (wallet views miss it, but org-level reconciliation counts it).
-        // That exact silent failure orphaned a duplicate K71,354.03 payroll outflow on
-        // Twalumbu (fixed 2026-07-11). All child deletes above are error-checked too.
-        const { error: cbDelErr } = await supabase
-            .from('cashbook_entries')
-            .delete()
-            .eq('requisition_id', id);
-        if (cbDelErr) throw new Error(`Failed to delete cashbook entries: ${cbDelErr.message}`);
-
-        // 5. Delete requisition (only after ALL child cleanup verifiably succeeded)
-        const { error: deleteError } = await supabase
-            .from('requisitions')
-            .delete()
-            .eq('id', id);
-
-        if (deleteError) throw deleteError;
+        await removeRequisitionAndChildren(id);
 
         console.log(`[Delete Requisition] Requisition ${id} deleted successfully.`);
         res.json({ success: true, message: 'Requisition deleted successfully' });

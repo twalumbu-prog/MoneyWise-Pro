@@ -725,7 +725,7 @@ export const getWallets = async (req: any, res: any): Promise<any> => {
                 cashbookService.getCurrentBalance(organizationId, CARD_ACCOUNT_TYPE),
                 liveCardBalance(organizationId, { waitMs: 6000 }),
             ]);
-            return res.json([...list, { id: 'CARD_WALLET', name: 'Card Wallet', balance: live ?? booked, ledger_balance: booked, balance_source: live !== null ? 'LIPILA_LIVE' : 'BOOKS', is_main: false, is_card_wallet: true, mobile_money_only: true }]);
+            return res.json([...list, { id: 'CARD_WALLET', name: 'Card Wallet', balance: live ?? booked, ledger_balance: booked, balance_source: live !== null ? 'LIPILA_LIVE' : 'BOOKS', is_main: false, is_card_wallet: true }]);
         }
         res.json(list);
     } catch (error: any) {

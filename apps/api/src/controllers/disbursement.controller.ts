@@ -30,16 +30,26 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
 
         if (!organizationId) throw new Error("Missing organization context");
 
+        // The Card Wallet pays to a mobile money number, or to a bank account (which needs the bank's SWIFT code, the holder's name and a phone).
+        const cardBankCode = String(recipient_bank_code || '').toLowerCase();
+        const cardBankRail = fromCard && !!cardBankCode && !lipila.PAYOUT_NETWORKS.includes(cardBankCode) && !['moneywise', 'moneywise_pay'].includes(cardBankCode);
+        const cardSwift = lipila.normalizeSwift(req.body.recipient_swift_code);
+        const cardHolderPhone = String(req.body.recipient_phone || '');
         if (fromCard) {
-            const bank = String(recipient_bank_code || '').toLowerCase();
-            if (!isDigital || !lipila.PAYOUT_NETWORKS.includes(bank)) {
-                return res.status(400).json({ error: 'The Card Wallet pays out to mobile money numbers (MTN, Airtel or Zamtel). Choose a mobile money recipient, or pay from a MoneyWise wallet.' });
+            const bank = cardBankCode;
+            if (!isDigital || (!cardBankRail && !lipila.PAYOUT_NETWORKS.includes(bank))) {
+                return res.status(400).json({ error: 'The Card Wallet pays out to mobile money numbers (MTN, Airtel or Zamtel) or to a bank account. Choose one of those, or pay from a MoneyWise wallet.' });
             }
             if (!(await lipila.payoutsReady(organizationId))) {
                 return res.status(400).json({ error: 'The Card Wallet isn’t connected for this business. Choose a MoneyWise wallet.' });
             }
             // The destination is checked here, before Lipila is called.
-            if (!lipila.isPayableNumber(String(recipient_account || ''))) {
+            if (cardBankRail) {
+                if (!lipila.isSwiftCode(cardSwift)) return res.status(400).json({ error: 'Enter the bank’s SWIFT code (8 or 11 letters and digits, for example SCBLZMLX). A bank transfer from the Card Wallet needs it.' });
+                if (!lipila.isBankAccountNumber(recipient_account)) return res.status(400).json({ error: 'That doesn’t look like a bank account number (at least 6 digits). Check it and try again.' });
+                if (!String(recipient_account_name || '').trim()) return res.status(400).json({ error: 'Enter the account holder’s name. A bank transfer from the Card Wallet needs it.' });
+                if (!lipila.isPayableNumber(cardHolderPhone)) return res.status(400).json({ error: 'Enter the account holder’s phone number (260 and nine digits). A bank transfer from the Card Wallet needs it.' });
+            } else if (!lipila.isPayableNumber(String(recipient_account || ''))) {
                 return res.status(400).json({ error: 'That doesn’t look like a Zambian mobile money number (260 and nine digits). Check it and try again.' });
             }
             // One payout that is still unconfirmed blocks the next from the same wallet, so an uncertain one can never be doubled up.
@@ -248,7 +258,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                 } else if (fromCard) {
                     // Paying from the Card Wallet: Lipila, not Lenco. The same safeguards as a Lenco payout: a stable reference so a retry can
                     // never pay twice, an unclear answer is re-checked (never reported as failed), and a refusal reverts the requisition.
-                    if (!recipient_account) throw new Error('Enter the mobile money number to pay.');
+                    if (!recipient_account) throw new Error(cardBankRail ? 'Enter the bank account number to pay.' : 'Enter the mobile money number to pay.');
                     const stableCard = `${lipila.PAYOUT_REF_PREFIX}${id.slice(0, 8)}-${estimatedTotal.toFixed(0)}`;
                     let cardRef = stableCard;
                     let existing: Awaited<ReturnType<typeof lipila.checkPayoutStatus>> | null = null;
@@ -276,7 +286,9 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                         const host = req.get?.('x-forwarded-host') || req.get?.('host');
                         const apiBase = process.env.API_PUBLIC_URL || (host ? `${req.get('x-forwarded-proto') || req.protocol}://${host}` : null);
                         try {
-                            cardPayout = await lipila.createMobileMoneyPayout({ orgId: targetOrgId, reference: cardRef, amount: totalPreparedNum, phone: recipient_account, narration: payoutNarration, apiBase });
+                            cardPayout = cardBankRail
+                                ? await lipila.createBankPayout({ orgId: targetOrgId, reference: cardRef, amount: totalPreparedNum, accountNumber: recipient_account, swiftCode: cardSwift, accountName: String(recipient_account_name || ''), phone: cardHolderPhone, narration: payoutNarration })
+                                : await lipila.createMobileMoneyPayout({ orgId: targetOrgId, reference: cardRef, amount: totalPreparedNum, phone: recipient_account, narration: payoutNarration, apiBase });
                         } catch (createErr: any) {
                             if (!createErr?.outcomeUnknown) throw createErr;
                             console.warn(`[Lipila] Payout ${cardRef} outcome unknown (${createErr.message}); re-checking status`);

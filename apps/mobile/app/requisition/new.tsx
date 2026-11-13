@@ -185,6 +185,9 @@ export default function NewRequisitionScreen() {
     const [confirmingName, setConfirmingName] = useState(false);
     const [autoAuthorize] = useState(true);
     const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
+    // A bank transfer from the Card Wallet (Lipila) needs the bank's SWIFT code and the account holder's phone number.
+    const [swiftCode, setSwiftCode] = useState('');
+    const [holderPhone, setHolderPhone] = useState('');
     const [selectedWalletBalance, setSelectedWalletBalance] = useState<number | null>(null);
     const [walletPickerOpen, setWalletPickerOpen] = useState(false);
 
@@ -220,10 +223,10 @@ export default function NewRequisitionScreen() {
     });
     const paymentInfo: PaymentInfo | null | undefined = profile?.payment_info;
 
-    // forDisbursement also lists the Card Wallet (Lipila), which can pay mobile money numbers only.
+    // forDisbursement also lists the Card Wallet (Lipila), which pays mobile money numbers and bank accounts (not MoneyWise accounts).
     const { data: walletsRaw } = useQuery({ queryKey: ['wallets', 'forDisbursement'], queryFn: () => cashbookService.getWallets({ forDisbursement: true }) });
     const allWallets: any[] = Array.isArray(walletsRaw) ? walletsRaw : (walletsRaw?.data || []);
-    const wallets: any[] = paymentMethod === 'mobile' ? allWallets : allWallets.filter((w: any) => !w.is_card_wallet);
+    const wallets: any[] = paymentMethod !== 'moneywise' ? allWallets : allWallets.filter((w: any) => !w.is_card_wallet);
 
     useEffect(() => {
         if (wallets.length > 0 && (!selectedWalletId || !wallets.some((w: any) => w.id === selectedWalletId))) {
@@ -491,6 +494,11 @@ export default function NewRequisitionScreen() {
     };
 
     const handleSubmit = async () => {
+        const cardBank = !!selectedWalletRow?.is_card_wallet && paymentMethod === 'bank';
+        if (cardBank) {
+            if (!/^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(swiftCode.replace(/\s/g, '').toUpperCase())) { setError('Enter the bank\u2019s SWIFT code (8 or 11 letters and digits, for example SCBLZMLX). A bank transfer from the Card Wallet needs it.'); return; }
+            if (holderPhone.replace(/\D/g, '').length < 9) { setError('Enter the account holder\u2019s phone number. A bank transfer from the Card Wallet needs it.'); return; }
+        }
         if (isWalletBalanceInsufficient) {
             setError(`This wallet only has ${formatKwacha(selectedWalletBalance || 0)} available, but ${formatKwacha(getTotal())} is needed. Choose another wallet or top it up first.`);
             return;
@@ -554,6 +562,7 @@ export default function NewRequisitionScreen() {
                         recipient_bank_code: recipientBankCode,
                         recipient_account_name: recipientNameToUse || undefined,
                         recipient_organization_id: paymentMethod === 'moneywise' ? (selectedRecipient?.organization_id || undefined) : undefined,
+                        ...(cardBank ? { recipient_swift_code: swiftCode.replace(/\s/g, '').toUpperCase(), recipient_phone: holderPhone } : {}),
                         wallet_id: selectedWalletId || undefined,
                     });
 
@@ -1164,6 +1173,14 @@ export default function NewRequisitionScreen() {
                                             </View>
                                             <ChevronDown size={16} color={colors.textFaint} />
                                         </Pressable>
+                                        {!!selectedWalletRow?.is_card_wallet && paymentMethod === 'bank' && (
+                                            <View style={{ marginTop: 12, gap: 8 }}>
+                                                <Text style={styles.label}>Bank SWIFT code</Text>
+                                                <TextInput style={styles.input} value={swiftCode} onChangeText={(t) => setSwiftCode(t.toUpperCase())} autoCapitalize="characters" autoCorrect={false} maxLength={11} placeholder="e.g. SCBLZMLX" placeholderTextColor={colors.textFaint} />
+                                                <Text style={styles.label}>Account holder’s phone number</Text>
+                                                <TextInput style={styles.input} value={holderPhone} onChangeText={setHolderPhone} keyboardType="phone-pad" placeholder="097…" placeholderTextColor={colors.textFaint} />
+                                            </View>
+                                        )}
                                     </View>
                                 )}
 

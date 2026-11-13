@@ -731,11 +731,25 @@ export const getReconciliationSummary = async (req: Request, res: Response) => {
 /**
  * Fetch list of banks for a specific country (Zambia default)
  */
+// The list of banks is the same for everyone, so it is kept for six hours instead of asking Lenco on every screen open.
+let banksCache: { at: number; list: any[] } | null = null;
 export const getBanks = async (req: Request, res: Response) => {
+    if (banksCache && Date.now() - banksCache.at < 6 * 3_600_000) return res.json(banksCache.list);
     try {
-        const banks = await LencoService.getBanks();
+        let banks: any[];
+        try {
+            banks = await LencoService.getBanks();
+        } catch (platformErr: any) {
+            // The platform key was refused (or isn't set on this server): ask with the business's own connected Lenco key instead.
+            const orgId = (req as any).user?.organization_id;
+            const { data: org } = orgId ? await supabase.from('organizations').select('lenco_secret_key').eq('id', orgId).maybeSingle() : { data: null as any };
+            if (!org?.lenco_secret_key) throw platformErr;
+            banks = await LencoService.getBanks(org.lenco_secret_key);
+        }
+        banksCache = { at: Date.now(), list: banks };
         res.json(banks);
     } catch (error: any) {
+        if (banksCache) return res.json(banksCache.list); // Lenco is down or refusing: an older list is better than none
         res.status(500).json({ error: error.message });
     }
 };

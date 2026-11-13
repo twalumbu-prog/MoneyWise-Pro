@@ -170,6 +170,9 @@ export const requisitionService = {
         recipient_account?: string;
         recipient_bank_code?: string;
         recipient_account_name?: string;
+        /** Card Wallet bank transfers only: the bank's SWIFT code and the account holder's phone number (Lipila needs both). */
+        recipient_swift_code?: string;
+        recipient_phone?: string;
         wallet_id?: string;
     }) {
         const response = await apiFetch(`/requisitions/${id}/auto-disburse`, {
@@ -186,12 +189,22 @@ export const requisitionService = {
         return data;
     },
 
+    /** Admin only: delete several requests at once. Requests that can't be deleted are skipped and reported. */
+    async deleteMany(ids: string[]): Promise<{ deleted: number; skipped: { id: string; description?: string; reason: string }[] }> {
+        const response = await apiFetch('/requisitions/batch/delete', { method: 'POST', body: JSON.stringify({ ids }) });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || data.message || 'Failed to delete the requests');
+        return data;
+    },
+
     async disburse(id: string, payload: {
         payment_method: string;
         total_prepared: number;
         recipient_account?: string;
         recipient_bank_code?: string;
         recipient_account_name?: string;
+        recipient_swift_code?: string;
+        recipient_phone?: string;
         wallet_id?: string;
         walletId?: string;
     }) {

@@ -25,6 +25,7 @@ import {
     backfillAuditScores,
     updateLineItemDetails,
     deleteRequisition,
+    batchDeleteRequisitions,
     autoCompleteRequisition,
     sendAutoCategorizationReminder,
     resolveRecipientName,
@@ -116,6 +117,7 @@ router.get('/', getRequisitions);
 router.get('/:id', getRequisitionById);
 router.get('/:id/resolve-recipient', resolveRecipientName);
 router.put('/:id', updateRequisition);
+router.post('/batch/delete', batchDeleteRequisitions);
 router.delete('/:id', deleteRequisition);
 
 export default router;

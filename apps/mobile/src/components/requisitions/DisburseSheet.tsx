@@ -97,6 +97,9 @@ export const DisburseSheet: React.FC<{
     const [lookupName, setLookupName] = useState<string | null>(recipientName ?? null);
     const [looking, setLooking] = useState(false);
     const [walletId, setWalletId] = useState<string | null>(null);
+    // A bank transfer from the Card Wallet (Lipila) needs the bank's SWIFT code and the account holder's phone number.
+    const [swift, setSwift] = useState('');
+    const [holderPhone, setHolderPhone] = useState('');
     const [status, setStatus] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const failedAt = useRef(0);
@@ -112,9 +115,9 @@ export const DisburseSheet: React.FC<{
     const { data: banksRaw } = useQuery({ queryKey: ['lenco-banks'], queryFn: () => lencoService.getBanks(), staleTime: 60 * 60_000, enabled: route === 'WALLET' && rail === 'BANK' });
     const banks: any[] = Array.isArray(banksRaw) ? banksRaw : (banksRaw?.data || []);
 
-    // The Card Wallet only pays out to mobile money numbers (not banks, not MoneyWise accounts).
+    // The Card Wallet pays out to mobile money numbers and bank accounts (not MoneyWise accounts).
     const isMoneyWisePayEarly = (savedMethod || '').toUpperCase() === 'MONEYWISE_PAY' || savedCode === 'MONEYWISE';
-    const usable = (rail === 'MOBILE_MONEY' && !isMoneyWisePayEarly) ? wallets : wallets.filter((w: any) => !w.isCard);
+    const usable = !isMoneyWisePayEarly ? wallets : wallets.filter((w: any) => !w.isCard);
 
     useEffect(() => {
         if (usable.length > 0 && (!walletId || !usable.some((w: any) => w.id === walletId))) setWalletId((usable.find((w: any) => w.isMain) || usable[0]).id);
@@ -161,8 +164,12 @@ export const DisburseSheet: React.FC<{
         setRail(r); setProvider(null); setLookupName(null); setRecipient(''); setError(null);
     };
 
+    const cardBank = selectedIsCard && rail === 'BANK' && !isMoneyWisePay;
+    const swiftOk = /^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(swift.replace(/\s/g, '').toUpperCase());
+    const holderPhoneOk = holderPhone.replace(/\D/g, '').length >= 9;
     const walletReady = route === 'WALLET'
         && (usable.length === 0 || !!walletId)
+        && (!cardBank || (swiftOk && holderPhoneOk))
         && !insufficient
         && (isMoneyWisePay
             ? amount > 0 && !!recipientAccount
@@ -190,6 +197,7 @@ export const DisburseSheet: React.FC<{
                 recipient_account: rail === 'MOBILE_MONEY' ? phone : recipient.trim(),
                 recipient_bank_code: (provider || '').toLowerCase(),
                 recipient_account_name: lookupName && lookupName !== 'Name not found' ? lookupName : undefined,
+                ...(cardBank ? { recipient_swift_code: swift.replace(/\s/g, '').toUpperCase(), recipient_phone: holderPhone } : {}),
                 wallet_id: walletId || undefined,
             };
             const result: any = isExcess
@@ -305,6 +313,15 @@ export const DisburseSheet: React.FC<{
                                 onSelect={(i) => setWalletId(i.id)}
                             />
                             {selectedIsCard && <Text style={styles.feeText}>Paid from your Lipila Card Wallet. Lipila’s charge of {formatKwacha(fee)} is added and taken from the wallet.</Text>}
+                            {cardBank && (
+                                <>
+                                    <Text style={[styles.label, styles.spaced]}>Bank SWIFT code</Text>
+                                    <TextInput style={styles.input} value={swift} onChangeText={(t) => setSwift(t.toUpperCase())} autoCapitalize="characters" autoCorrect={false} maxLength={11} placeholder="e.g. SCBLZMLX" placeholderTextColor={colors.textFaint} />
+                                    <Text style={styles.feeText}>Lipila needs the bank’s SWIFT code for a bank transfer. Ask the recipient or their bank.</Text>
+                                    <Text style={[styles.label, styles.spaced]}>Account holder’s phone number</Text>
+                                    <TextInput style={styles.input} value={holderPhone} onChangeText={setHolderPhone} keyboardType="phone-pad" placeholder="097…" placeholderTextColor={colors.textFaint} />
+                                </>
+                            )}
                             {insufficient && (
                                 <View style={styles.warn}>
                                     <AlertTriangle size={14} color="#B45309" />

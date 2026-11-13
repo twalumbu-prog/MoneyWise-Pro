@@ -835,6 +835,16 @@ export const RequisitionList: React.FC = () => {
                                                     console.error('Failed to fetch requisition details:', err);
                                                 }
                                             }}
+                                            onDeleteMany={userRole === 'ADMIN' ? async (ids) => {
+                                                if (!window.confirm(`Delete ${ids.length} request${ids.length === 1 ? '' : 's'}? This can't be undone. Only requests that haven't been paid can be deleted; any others are skipped.`)) return;
+                                                try {
+                                                    const r = await requisitionService.deleteMany(ids);
+                                                    await loadRequisitions();
+                                                    if (r.skipped.length) alert(`Deleted ${r.deleted}. Skipped ${r.skipped.length}:\n\n` + r.skipped.slice(0, 8).map((x) => `• ${x.description || x.id}: ${x.reason}`).join('\n'));
+                                                } catch (err: any) {
+                                                    alert(err.message || 'Failed to delete the requests');
+                                                }
+                                            } : undefined}
                                             onDelete={async (id) => {
                                                 if (window.confirm('Are you sure you want to delete this requisition? This action cannot be undone.')) {
                                                     try {

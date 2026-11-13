@@ -203,7 +203,7 @@ export async function testKey(orgId: string) {
 
 /* ───────────── Paying out from the Card Wallet ───────────── */
 
-/** The mobile networks Lipila pays to. Payouts to banks need a SWIFT code and more details, so they are not offered from the Card Wallet. */
+/** The mobile networks Lipila pays to. (A bank payout is the other rail: it needs the bank's SWIFT code, the holder's names and a phone number.) */
 export const PAYOUT_NETWORKS = ['mtn', 'airtel', 'zamtel'];
 
 /** Lipila's payout charge is 1.5% of the amount, taken from the wallet on top of it. */
@@ -218,6 +218,15 @@ export function payoutFee(amount: number): number {
 
 /** A Zambian mobile number Lipila can pay: 260 and nine digits. */
 export const isPayableNumber = (phone: string): boolean => /^260\d{9}$/.test(payoutNumber(phone));
+
+/**
+ * A bank's SWIFT/BIC code: 8 or 11 characters, 4 letters (bank), 2 letters (country), 2 letters or digits (place), optional 3 (branch).
+ * The same bank's code is written more than one way (Standard Chartered Zambia: SCBLZMLX or SCBLZML1), so nothing guesses it: the person types it.
+ */
+export const normalizeSwift = (v: unknown): string => String(v ?? '').replace(/\s/g, '').toUpperCase();
+export const isSwiftCode = (v: unknown): boolean => /^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(normalizeSwift(v));
+/** A plausible bank account number: at least 6 digits. */
+export const isBankAccountNumber = (v: unknown): boolean => String(v ?? '').replace(/\D/g, '').length >= 6;
 
 /** 0971234567 / +260971234567 / 260971234567 → 260971234567, the form Lipila expects. */
 export function payoutNumber(phone: string): string {
@@ -261,15 +270,36 @@ export class PayoutUnknownError extends Error { outcomeUnknown = true; construct
  * may be on its way, so the caller must ask Lipila by reference before deciding anything.
  */
 export async function createMobileMoneyPayout(input: { orgId: string; reference: string; amount: number; phone: string; narration: string; apiBase?: string | null }): Promise<PayoutAnswer> {
-    if (!input.reference.startsWith(PAYOUT_REF_PREFIX)) throw new LipilaError('Invalid payout reference.', 400, 'REFERENCE');
-    const creds = await getCredentials(input.orgId);
-    if (!creds || !(await isInRollout(input.orgId))) throw new LipilaError('The Card Wallet isn’t connected for this business.', 403, 'NOT_ENABLED');
     // Exactly the request shape Master Fees uses successfully in production: no callback header and no extra body fields. Lipila has no
     // reliable payout callback, so the outcome is confirmed by polling check-status with this reference.
-    const body = { referenceId: input.reference, amount: round2(input.amount), accountNumber: payoutNumber(input.phone), currency: 'ZMW', narration: input.narration.slice(0, 100) };
+    return sendPayout(input.orgId, input.reference, 'mobile-money', { referenceId: input.reference, amount: round2(input.amount), accountNumber: payoutNumber(input.phone), currency: 'ZMW', narration: input.narration.slice(0, 100) });
+}
+
+/**
+ * Sends money from the business's Lipila wallet to a bank account (POST /disbursements/bank). Needs the bank's SWIFT code, the holder's first
+ * and last name and a phone number. Refused here, before Lipila is called, when any of them is missing or malformed. Same outcome rules as above.
+ */
+export async function createBankPayout(input: { orgId: string; reference: string; amount: number; accountNumber: string; swiftCode: string; accountName: string; phone: string; narration: string }): Promise<PayoutAnswer> {
+    if (!isSwiftCode(input.swiftCode)) throw new LipilaError('Enter the bank’s SWIFT code (8 or 11 letters and digits, for example SCBLZMLX). Lipila needs it for a bank transfer.', 400, 'SWIFT');
+    if (!isBankAccountNumber(input.accountNumber)) throw new LipilaError('That doesn’t look like a bank account number (at least 6 digits).', 400, 'ACCOUNT');
+    const name = String(input.accountName ?? '').trim().replace(/\s+/g, ' ');
+    if (!name) throw new LipilaError('Enter the account holder’s name. Lipila needs it for a bank transfer.', 400, 'HOLDER');
+    if (!isPayableNumber(input.phone)) throw new LipilaError('Enter the account holder’s phone number (260 and nine digits). Lipila needs it for a bank transfer.', 400, 'PHONE');
+    const [first, ...rest] = name.split(' ');
+    return sendPayout(input.orgId, input.reference, 'bank', {
+        referenceId: input.reference, amount: round2(input.amount), currency: 'ZMW', narration: input.narration.slice(0, 100),
+        accountNumber: String(input.accountNumber).replace(/\s/g, ''), swiftCode: normalizeSwift(input.swiftCode),
+        firstName: first, lastName: rest.join(' ') || first, accountHolderName: name, phoneNumber: payoutNumber(input.phone),
+    });
+}
+
+async function sendPayout(orgId: string, reference: string, rail: 'mobile-money' | 'bank', body: Record<string, unknown>): Promise<PayoutAnswer> {
+    if (!reference.startsWith(PAYOUT_REF_PREFIX)) throw new LipilaError('Invalid payout reference.', 400, 'REFERENCE');
+    const creds = await getCredentials(orgId);
+    if (!creds || !(await isInRollout(orgId))) throw new LipilaError('The Card Wallet isn’t connected for this business.', 403, 'NOT_ENABLED');
     let res: Response;
     try {
-        res = await fetch(`${baseUrl(creds.env)}/api/v1/disbursements/mobile-money`, {
+        res = await fetch(`${baseUrl(creds.env)}/api/v1/disbursements/${rail}`, {
             method: 'POST', headers: { 'Content-Type': 'application/json', accept: 'application/json', 'x-api-key': creds.apiKey },
             body: JSON.stringify(body), signal: AbortSignal.timeout(20_000),
         });
@@ -277,12 +307,14 @@ export async function createMobileMoneyPayout(input: { orgId: string; reference:
     const data: any = await res.json().catch(() => null);
     if (res.status >= 500) throw new PayoutUnknownError(`Lipila had a problem (${res.status}).`);
     if (!res.ok) {
-        const detail = data?.message || data?.title || (data?.errors ? JSON.stringify(data.errors).slice(0, 200) : '');
+        // A 400 names the field that is wrong in `errors`: show that, not just the headline.
+        const fieldErrors = data?.errors && typeof data.errors === 'object' ? Object.entries(data.errors).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('; ').slice(0, 240) : '';
+        const detail = [data?.message || data?.title, fieldErrors].filter(Boolean).join(' — ');
         console.error('[Lipila] payout refused', res.status, JSON.stringify(data)?.slice(0, 300));
         if (res.status === 401) throw new LipilaError('Lipila answered 401 to this payout: it doesn’t accept this API key for sending money. In the Lipila dashboard, check that the key is the one for this wallet, is allowed to send money (payouts), and matches the environment (live or sandbox). Reading the balance can work while payouts are refused.', 502, 'BAD_KEY');
         if (res.status === 403) throw new LipilaError('Lipila answered 403 to this payout: the key is inactive, or this server’s IP address isn’t whitelisted on the wallet. In the Lipila dashboard, open the wallet’s Security settings and add this server’s IP address to IP Whitelisting.', 502, 'IP_OR_INACTIVE');
         if (res.status === 429) throw new LipilaError('Lipila is busy. Wait a moment and try again.', 429, 'RATE');
-        throw new LipilaError(detail || 'Lipila couldn’t accept this payout. Check the number and amount.', 400, 'REFUSED');
+        throw new LipilaError(detail || `Lipila couldn’t accept this payout. Check the ${rail === 'bank' ? 'account, SWIFT code' : 'number'} and amount.`, 400, 'REFUSED');
     }
     return { status: payoutStatusOf(data), identifier: data?.identifier ?? null, message: data?.message ?? null };
 }

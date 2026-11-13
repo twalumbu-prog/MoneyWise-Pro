@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     AlertCircle, ArrowDownToLine, ArrowLeft, ArrowRight, Building2, Check, CheckCircle, ChevronDown, Loader2, Mail, Minus, Plus, Search,
-    ShieldCheck, Smartphone, Star, Trash2, X,
+    Clock, ShieldCheck, Smartphone, Star, Trash2, X,
 } from 'lucide-react';
 import {
     cashbookService, departmentService, formatKwacha, lencoService, requisitionService, userService,
@@ -15,6 +15,7 @@ import WalletSelect from '../components/WalletSelect';
 import { useAuth } from '../context/AuthContext';
 import { useFavoriteRecipients } from '../hooks/useFavoriteRecipients';
 import type { FavoriteRecipient } from '../hooks/useFavoriteRecipients';
+import { useRecentRecipients } from '../hooks/useRecentRecipients';
 
 interface LineItem {
     id: string;
@@ -42,6 +43,43 @@ const readPref = (key: string): string | null => { try { return localStorage.get
 const writePref = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* storage unavailable */ } };
 
 const initialsOf = (name: string) => (name || 'M').split(' ').map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
+
+/** A row of small round avatars (favourites, recents): the person's first name underneath, the way they are paid as a small badge. One tap fills the form in. */
+const RecipientBubbles: React.FC<{
+    title: React.ReactNode; hint?: string; items: FavoriteRecipient[];
+    isActive: (f: FavoriteRecipient) => boolean; onPick: (f: FavoriteRecipient) => void; onRemove?: (f: FavoriteRecipient) => void;
+}> = ({ title, hint, items, isActive, onPick, onRemove }) => (
+    <div>
+        <div className="mb-1 flex items-center justify-between">
+            <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[#5F6368]">{title}</p>
+            {hint && <p className="text-[11px] text-[#80868B]">{hint}</p>}
+        </div>
+        <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1 pt-2">
+            {items.map((f) => {
+                const active = isActive(f);
+                const MethodIcon = f.method === 'mobile' ? Smartphone : f.method === 'bank' ? Building2 : ShieldCheck;
+                const tone = f.method === 'mobile' ? 'bg-[#FBBC04]' : f.method === 'bank' ? 'bg-slate-600' : 'bg-[#34A853]';
+                return (
+                    <div key={f.id} className="group relative w-[60px] flex-shrink-0">
+                        <button type="button" onClick={() => onPick(f)} title={`${f.name} · ${f.subtitle}`} aria-pressed={active} className="flex w-full flex-col items-center gap-1 text-center">
+                            <span className={`relative rounded-full p-[3px] transition ${active ? 'bg-[#0B57D0]' : 'bg-transparent group-hover:bg-[#0B57D0]/25'}`}>
+                                <span className="block rounded-full bg-white p-[2px]"><RecipientAvatar name={f.name} logoUrl={f.logoUrl} size={40} /></span>
+                                <span className={`absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white text-white ${tone}`}>
+                                    <MethodIcon size={8} strokeWidth={2.5} />
+                                </span>
+                            </span>
+                            <span className={`block w-full truncate text-[11px] leading-tight ${active ? 'font-bold text-[#0B57D0]' : 'font-medium text-[#1F1F1F]'}`}>{(f.name || '').trim().split(/\s+/)[0] || f.name}</span>
+                        </button>
+                        {onRemove && (
+                            <button type="button" onClick={() => onRemove(f)} aria-label={`Remove ${f.name} from favourites`} title="Remove from favourites"
+                                className="absolute -right-0.5 top-0 hidden h-4 w-4 items-center justify-center rounded-full bg-gray-800 text-white shadow group-hover:flex"><X size={9} /></button>
+                        )}
+                    </div>
+                );
+            })}
+        </div>
+    </div>
+);
 
 const RecipientAvatar: React.FC<{ name: string; logoUrl?: string | null; size?: number }> = ({ name, logoUrl, size = 40 }) => {
     const [broken, setBroken] = useState(false);
@@ -187,6 +225,9 @@ export const PersonalSend: React.FC = () => {
     const [momoOperator, setMomoOperator] = useState('');
     const [bankId, setBankId] = useState('');
     const [accountNumber, setAccountNumber] = useState('');
+    // A bank transfer from the Card Wallet (Lipila) needs the bank's SWIFT code and the account holder's phone number.
+    const [swiftCode, setSwiftCode] = useState('');
+    const [holderPhone, setHolderPhone] = useState('');
     const [resolvedName, setResolvedName] = useState('');
     const [confirmingName, setConfirmingName] = useState(false);
 
@@ -212,10 +253,10 @@ export const PersonalSend: React.FC = () => {
     const { data: banksRaw } = useQuery({ queryKey: ['lenco-banks'], queryFn: () => lencoService.getBanks() });
     const banks: any[] = Array.isArray(banksRaw) ? banksRaw : (banksRaw?.data || []);
 
-    // forDisbursement also lists the Card Wallet (Lipila), which can pay mobile money numbers only.
+    // forDisbursement also lists the Card Wallet (Lipila), which pays mobile money numbers and bank accounts (not MoneyWise accounts).
     const { data: walletsRaw } = useQuery({ queryKey: ['wallets', 'forDisbursement'], queryFn: () => cashbookService.getWallets({ forDisbursement: true }) });
     const allWallets: any[] = Array.isArray(walletsRaw) ? walletsRaw : (walletsRaw?.data || []);
-    const wallets: any[] = method === 'mobile' ? allWallets : allWallets.filter((w: any) => !w.is_card_wallet);
+    const wallets: any[] = method !== 'moneywise' ? allWallets : allWallets.filter((w: any) => !w.is_card_wallet);
     const walletIsCard = !!wallets.find((w: any) => w.id === walletId && w.is_card_wallet);
 
     useEffect(() => {
@@ -279,6 +320,7 @@ export const PersonalSend: React.FC = () => {
     }, [method, phone, momoOperator, accountNumber, bankId, organizationId]);
 
     const { favorites, isFavorite, toggleFavorite, removeFavorite } = useFavoriteRecipients(organizationId);
+    const { recents, addRecent } = useRecentRecipients(organizationId);
 
     /** What would be saved for whoever is currently filled in, or null while the details are not yet confirmed. */
     const currentFavorite = (): Omit<FavoriteRecipient, 'savedAt'> | null => {
@@ -299,6 +341,11 @@ export const PersonalSend: React.FC = () => {
         return null;
     };
     const currentFav = currentFavorite();
+    const currentFavRef = useRef(currentFav);
+    currentFavRef.current = currentFav;
+    const isPicked = (f: FavoriteRecipient) => (f.method === 'moneywise' && recipient?.id === f.recipient?.id)
+        || (f.method === 'mobile' && method === 'mobile' && phone === f.phone)
+        || (f.method === 'bank' && method === 'bank' && accountNumber === f.accountNumber && bankId === f.bankId);
 
     /** One tap on a favourite fills in the method and the details, so nothing has to be typed again. */
     const applyFavorite = (f: FavoriteRecipient) => {
@@ -366,6 +413,12 @@ export const PersonalSend: React.FC = () => {
     const recipientName = method === 'moneywise' ? (recipient?.name ?? '') : resolvedName;
 
     const submit = useCallback(async () => {
+        const cardBank = walletIsCard && method === 'bank';
+        if (cardBank) {
+            if (!/^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(swiftCode.replace(/\s/g, '').toUpperCase())) { setError('Enter the bank\u2019s SWIFT code (8 or 11 letters and digits, for example SCBLZMLX). A bank transfer from the Card Wallet needs it.'); return; }
+            if (!resolvedName || resolvedName === 'Name not confirmed' || /^Session|^Can\u2019t/.test(resolvedName)) { setError('The account holder\u2019s name couldn\u2019t be confirmed. Check the account number and bank first.'); return; }
+            if (holderPhone.replace(/\D/g, '').length < 9) { setError('Enter the account holder\u2019s phone number. A bank transfer from the Card Wallet needs it.'); return; }
+        }
         if (insufficient) {
             setError(`This wallet only has ${formatKwacha(walletBalance || 0)} available, but ${formatKwacha(total)} is needed. Choose another wallet or add money first.`);
             return;
@@ -398,6 +451,7 @@ export const PersonalSend: React.FC = () => {
                         recipient_bank_code: method === 'moneywise' ? 'moneywise' : (method === 'mobile' ? momoOperator : bankId).toLowerCase(),
                         recipient_account_name: recipientName || undefined,
                         recipient_organization_id: method === 'moneywise' ? (recipient?.organization_id || undefined) : undefined,
+                        ...(cardBank ? { recipient_swift_code: swiftCode.replace(/\s/g, '').toUpperCase(), recipient_phone: holderPhone } : {}),
                         wallet_id: walletId || undefined,
                     });
                     if (result.lencoStatus === 'pending') {
@@ -418,6 +472,7 @@ export const PersonalSend: React.FC = () => {
             qc.invalidateQueries({ queryKey: ['requisitions'] });
             qc.invalidateQueries({ queryKey: ['wallets'] });
             qc.invalidateQueries({ queryKey: ['cashbook-entries'] });
+            if (currentFavRef.current) addRecent(currentFavRef.current);
             setSent({ requisitionId: created.id, amount: total, recipient: recipientName || null });
         } catch (e: any) {
             setError(e?.message ?? 'Submission failed. Please try again.');
@@ -426,7 +481,7 @@ export const PersonalSend: React.FC = () => {
             setSubmitting(false);
         }
     }, [insufficient, walletBalance, total, description, department, makeList, lineItems, method, momoOperator, recipient, mwQuery, phone, accountNumber, bankId,
-        recipientName, userRole, walletId, qc]);
+        recipientName, userRole, walletId, qc, addRecent]);
 
     const steps = sequence();
     const stepIndex = Math.max(0, steps.indexOf(stage));
@@ -607,61 +662,13 @@ export const PersonalSend: React.FC = () => {
                                 <div className="flex flex-col gap-5">
                                     <h2 className="text-lg font-bold text-[#1F1F1F]">Who are you paying?</h2>
                                     {favorites.length > 0 && (
-                                        <div>
-                                            <div className="mb-2 flex items-center justify-between">
-                                                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[#5F6368]">
-                                                    <Star size={12} className="fill-[#FBBC04] text-[#FBBC04]" /> Favourites
-                                                </p>
-                                                <p className="text-[11px] text-[#80868B]">Tap to fill in the details</p>
-                                            </div>
-                                            <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-2 pt-1">
-                                                {favorites.map((f) => {
-                                                    const active = (f.method === 'moneywise' && recipient?.id === f.recipient?.id)
-                                                        || (f.method === 'mobile' && method === 'mobile' && phone === f.phone)
-                                                        || (f.method === 'bank' && method === 'bank' && accountNumber === f.accountNumber && bankId === f.bankId);
-                                                    const MethodIcon = f.method === 'mobile' ? Smartphone : f.method === 'bank' ? Building2 : ShieldCheck;
-                                                    const methodTone = f.method === 'mobile' ? 'bg-[#FBBC04]' : f.method === 'bank' ? 'bg-slate-600' : 'bg-[#34A853]';
-                                                    return (
-                                                        <div key={f.id} className="group relative flex-shrink-0">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => applyFavorite(f)}
-                                                                title={`${f.name} · ${f.subtitle}`}
-                                                                aria-pressed={active}
-                                                                className={`flex w-[208px] items-center gap-3 rounded-2xl border p-3 pr-4 text-left transition ${active
-                                                                    ? 'border-[#0B57D0] bg-[#E8F0FE] shadow-[0_0_0_3px_rgba(11,87,208,0.12)]'
-                                                                    : 'border-[rgba(116,119,117,0.22)] bg-white hover:border-[#0B57D0]/40 hover:shadow-sm'}`}
-                                                            >
-                                                                <span className="relative flex-shrink-0">
-                                                                    <RecipientAvatar name={f.name} logoUrl={f.logoUrl} size={44} />
-                                                                    <span className={`absolute -bottom-0.5 -right-0.5 flex h-[18px] w-[18px] items-center justify-center rounded-full border-2 border-white text-white ${methodTone}`}>
-                                                                        <MethodIcon size={9} strokeWidth={2.5} />
-                                                                    </span>
-                                                                </span>
-                                                                <span className="min-w-0 flex-1">
-                                                                    <span className="block truncate text-sm font-semibold text-[#1F1F1F]">{f.name}</span>
-                                                                    <span className="mt-0.5 block truncate text-xs text-[#5F6368]">{f.subtitle}</span>
-                                                                </span>
-                                                                {active && (
-                                                                    <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-[#0B57D0] text-white">
-                                                                        <Check size={12} strokeWidth={3} />
-                                                                    </span>
-                                                                )}
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => removeFavorite(f.id)}
-                                                                aria-label={`Remove ${f.name} from favourites`}
-                                                                title="Remove from favourites"
-                                                                className="absolute -right-1.5 -top-1.5 hidden h-5 w-5 items-center justify-center rounded-full bg-gray-800 text-white shadow group-hover:flex"
-                                                            >
-                                                                <X size={11} />
-                                                            </button>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
+                                        <RecipientBubbles
+                                            title={<><Star size={12} className="fill-[#FBBC04] text-[#FBBC04]" /> Favourites</>}
+                                            hint="Tap to fill in the details" items={favorites} isActive={isPicked} onPick={applyFavorite} onRemove={(f) => removeFavorite(f.id)}
+                                        />
+                                    )}
+                                    {recents.length > 0 && (
+                                        <RecipientBubbles title={<><Clock size={12} /> Recent</>} items={recents} isActive={isPicked} onPick={applyFavorite} />
                                     )}
                                     <div className="flex rounded-full p-[3px] shadow-[inset_0_0_0_1px_#C4C7C5]">
                                         {([['moneywise', 'MoneyWise'], ['mobile', 'Mobile Money'], ['bank', 'Bank Account']] as [Method, string][]).map(([value, label]) => (
@@ -853,7 +860,20 @@ export const PersonalSend: React.FC = () => {
                                                 triggerClassName="w-full h-12 rounded-xl border border-[rgba(116,119,117,0.22)] bg-white px-4 text-sm flex items-center justify-between"
                                             />
                                             {walletBalance !== null && <p className="mt-1.5 text-xs text-[#80868B]">{formatKwacha(walletBalance)} available</p>}
-                                            {walletIsCard && <p className="mt-1 text-xs text-[#80868B]">Paid from your Lipila Card Wallet to the mobile money number. Lipila's charge of {formatKwacha(cardFee)} is added and taken from the wallet.</p>}
+                                            {walletIsCard && <p className="mt-1 text-xs text-[#80868B]">Paid from your Lipila Card Wallet to the {method === 'bank' ? 'bank account' : 'mobile money number'}. Lipila's charge of {formatKwacha(cardFee)} is added and taken from the wallet.</p>}
+                                            {walletIsCard && method === 'bank' && (
+                                                <div className="mt-3 flex flex-col gap-3">
+                                                    <div>
+                                                        <label className={labelClass} htmlFor="ps-swift">Bank SWIFT code</label>
+                                                        <input id="ps-swift" className={fieldClass} value={swiftCode} onChange={(e) => setSwiftCode(e.target.value.toUpperCase())} maxLength={11} placeholder="e.g. SCBLZMLX" />
+                                                        <p className="mt-1 text-xs text-[#80868B]">Lipila needs the bank&rsquo;s SWIFT code for a bank transfer. Ask the recipient or their bank.</p>
+                                                    </div>
+                                                    <div>
+                                                        <label className={labelClass} htmlFor="ps-holder-phone">Account holder&rsquo;s phone number</label>
+                                                        <input id="ps-holder-phone" className={fieldClass} inputMode="tel" value={holderPhone} onChange={(e) => setHolderPhone(e.target.value)} placeholder="097..." />
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                     {insufficient && (

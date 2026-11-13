@@ -159,6 +159,9 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     const [recipientValue, setRecipientValue] = useState('');
     const [recipientProvider, setRecipientProvider] = useState<string | null>(null);
     const [lookupName, setLookupName] = useState<string | null>(null);
+    // A bank transfer from the Card Wallet (Lipila) also needs the bank's SWIFT code and the account holder's phone number.
+    const [swiftCode, setSwiftCode] = useState('');
+    const [holderPhone, setHolderPhone] = useState('');
     const [isLookingUp, setIsLookingUp] = useState(false);
     const [banks, setBanks] = useState<any[]>([]);
     const [isFetchingBanks, setIsFetchingBanks] = useState(false);
@@ -748,9 +751,12 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             return;
         }
 
-        if (isLencoTransfer && selectedIsCard && paymentType !== 'MOBILE_MONEY') {
-            setDisburseError('The Card Wallet pays out to mobile money numbers only (MTN, Airtel or Zamtel). Choose a mobile money recipient, or pay from a MoneyWise wallet.');
-            return;
+        const cardBank = isLencoTransfer && selectedIsCard && paymentType === 'BANK';
+        const cardHolder = (lookupName && lookupName !== 'Name not found' ? lookupName : requisitionData?.recipient_name) || '';
+        if (cardBank) {
+            if (!/^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(swiftCode.replace(/\s/g, '').toUpperCase())) { setDisburseError('Enter the bank\u2019s SWIFT code (8 or 11 letters and digits, for example SCBLZMLX). A bank transfer from the Card Wallet needs it.'); return; }
+            if (!cardHolder) { setDisburseError('The account holder\u2019s name couldn\u2019t be confirmed. Check the account number and bank first.'); return; }
+            if (holderPhone.replace(/\D/g, '').length < 9) { setDisburseError('Enter the account holder\u2019s phone number. A bank transfer from the Card Wallet needs it.'); return; }
         }
 
         setIsProcessing(true);
@@ -782,6 +788,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                 recipient_account: normalizedPhone || recipientValue || undefined,
                 recipient_bank_code: recipientBankCode,
                 recipient_account_name: lookupName || undefined,
+                ...(cardBank ? { recipient_account_name: cardHolder, recipient_swift_code: swiftCode.replace(/\s/g, '').toUpperCase(), recipient_phone: holderPhone } : {}),
                 wallet_id: selectedWalletId || undefined,
             });
 
@@ -2076,9 +2083,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                         </div>
                                                                         {selectedIsCard && (
                                                                             <p className="px-4 text-[11px] font-medium text-slate-500 leading-relaxed">
-                                                                                {paymentType === 'MOBILE_MONEY'
-                                                                                    ? `Paid from your Lipila Card Wallet to the mobile money number. Lipila's charge of K${lencoService.calculateLipilaPayoutFee(Number(requisitionData?.estimated_total || 0)).toFixed(2)} is added and taken from the wallet.`
-                                                                                    : 'The Card Wallet pays out to mobile money numbers only. Choose a mobile money recipient, or pick a MoneyWise wallet.'}
+                                                                                {`Paid from your Lipila Card Wallet to the ${paymentType === 'MOBILE_MONEY' ? 'mobile money number' : 'bank account'}. Lipila's charge of K${lencoService.calculateLipilaPayoutFee(Number(requisitionData?.estimated_total || 0)).toFixed(2)} is added and taken from the wallet.`}
                                                                             </p>
                                                                         )}
                                                                         {isWalletBalanceInsufficient && (
@@ -2115,6 +2120,14 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                                 placeholder={isFetchingBanks ? 'Loading banks...' : 'Select Destination Bank'}
                                                                                 loading={isFetchingBanks}
                                                                             />
+                                                                        </div>
+                                                                    )}
+                                                                    {paymentType === 'BANK' && selectedIsCard && !isMoneyWisePayReq && (
+                                                                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                                                                            <input type="text" placeholder="Bank SWIFT code (e.g. SCBLZMLX)" value={swiftCode} onChange={(e) => setSwiftCode(e.target.value.toUpperCase())} maxLength={11}
+                                                                                className="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#0B57D0]/20 transition-all shadow-sm" />
+                                                                            <input type="tel" placeholder="Account holder's phone (097...)" value={holderPhone} onChange={(e) => setHolderPhone(e.target.value)}
+                                                                                className="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#0B57D0]/20 transition-all shadow-sm" />
                                                                         </div>
                                                                     )}
                                                                     <div className="relative group">
