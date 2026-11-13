@@ -76,7 +76,7 @@ const cardBalance = (org: string) => cashbookService.getCurrentBalance(org, lipi
         };
         const payBody = (amount: number, extra: Record<string, unknown> = {}) => ({ payment_method: 'MOBILE_MONEY', total_prepared: amount, recipient_account: '0971234567', recipient_bank_code: 'mtn', recipient_account_name: 'Test Person', wallet_id: 'CARD_WALLET', ...extra });
 
-        check('Lipila’s charge follows the published table', lipila.payoutFee(100) === 5 && lipila.payoutFee(150) === 5 && lipila.payoutFee(151) === 7 && lipila.payoutFee(1000) === 21 && lipila.payoutFee(10001) === 100);
+        check('Lipila’s charge is 1.5% of the amount, to the ngwee', lipila.payoutFee(100) === 1.5 && lipila.payoutFee(60) === 0.9 && lipila.payoutFee(333.33) === 5 && lipila.payoutFee(1000) === 15 && lipila.payoutFee(0) === 0, JSON.stringify([lipila.payoutFee(100), lipila.payoutFee(60), lipila.payoutFee(333.33)]));
         check('numbers are checked before Lipila is called', lipila.isPayableNumber('0971234567') && lipila.isPayableNumber('+260971234567') && !lipila.isPayableNumber('12345') && !lipila.isPayableNumber('0971'));
 
         // ---- refusals send nothing
@@ -85,7 +85,7 @@ const cardBalance = (org: string) => cashbookService.getCurrentBalance(org, lipi
         check('a bank recipient is refused for the Card Wallet', a.statusCode === 400 && /mobile money/i.test(a.body?.error ?? '') && sent.length === 0 && (await statusOf(r1)) === 'AUTHORISED');
         a = await run(r1, org, user, payBody(100, { recipient_account: '0971' }));
         check('a bad number is refused before Lipila is called', a.statusCode === 400 && /mobile money number/i.test(a.body?.error ?? '') && sent.length === 0);
-        liveBalance = 90; // the books say 500, Lipila says 90: the smaller one rules, and 100 + the 5 charge needs 105
+        liveBalance = 90; // the books say 500, Lipila says 90: Lipila's figure rules, and 100 + the 1.50 charge needs 101.50
         a = await run(r1, org, user, payBody(100));
         check('not enough in the wallet is refused, naming what is short', a.statusCode === 400 && /Insufficient Card Wallet balance/.test(a.body?.error ?? '') && sent.length === 0 && (await statusOf(r1)) === 'AUTHORISED', a.body?.error);
         liveBalance = 1000;
@@ -104,7 +104,7 @@ const cardBalance = (org: string) => cashbookService.getCurrentBalance(org, lipi
         a = await run(r1, org, user, payBody(100));
         const d1 = await disbOf(r1);
         check('no answer from Lipila is not reported as failed', a.statusCode === 200 && a.body?.lencoStatus === 'pending', JSON.stringify(a.body)?.slice(0, 120));
-        check('it waits as Processing, with a record Lipila can be asked about', (await statusOf(r1)) === 'PROCESSING' && !!d1 && d1.external_reference.startsWith(lipila.PAYOUT_REF_PREFIX) && Number(d1.total_prepared) === 105, JSON.stringify([d1?.external_reference, d1?.total_prepared]));
+        check('it waits as Processing, with a record Lipila can be asked about', (await statusOf(r1)) === 'PROCESSING' && !!d1 && d1.external_reference.startsWith(lipila.PAYOUT_REF_PREFIX) && Number(d1.total_prepared) === 101.5, JSON.stringify([d1?.external_reference, d1?.total_prepared]));
         check('nothing is booked on a guess', (await cardBalance(org)) === 500 && sent.length === 0);
 
         // ---- one unconfirmed payout blocks the next
@@ -123,13 +123,13 @@ const cardBalance = (org: string) => cashbookService.getCurrentBalance(org, lipi
         known[ref1] = 'Successful';
         s = await settleCardPayout(ref1);
         check('Lipila saying Successful moves it to Received', s.state === 'successful' && (await statusOf(r1)) === 'RECEIVED');
-        check('the Card Wallet is debited the amount plus the charge, once', (await cardBalance(org)) === 395, `balance ${await cardBalance(org)}`);
+        check('the Card Wallet is debited the amount plus the charge, once', (await cardBalance(org)) === 398.5, `balance ${await cardBalance(org)}`);
         await settleCardPayout(ref1); await settleCardPayout(ref1);
-        check('asking again never books it twice', (await cardBalance(org)) === 395);
+        check('asking again never books it twice', (await cardBalance(org)) === 398.5);
         const { data: ents } = await supabase.from('cashbook_entries').select('account_type, credit').eq('requisition_id', r1).eq('entry_type', 'DISBURSEMENT');
-        check('it is on the Card Wallet account, not a MoneyWise wallet', (ents ?? []).length === 1 && ents![0].account_type === lipila.CARD_ACCOUNT_TYPE && Number(ents![0].credit) === 105);
+        check('it is on the Card Wallet account, not a MoneyWise wallet', (ents ?? []).length === 1 && ents![0].account_type === lipila.CARD_ACCOUNT_TYPE && Number(ents![0].credit) === 101.5);
         const { data: fee } = await supabase.from('line_items').select('estimated_amount').eq('requisition_id', r1).ilike('description', '%Withdrawal Fee%');
-        check('Lipila’s charge is booked once as a transaction charge', (fee ?? []).length === 1 && Number(fee![0].estimated_amount) === 5);
+        check('Lipila’s charge is booked once as a transaction charge', (fee ?? []).length === 1 && Number(fee![0].estimated_amount) === 1.5);
 
         // ---- a double click is stopped
         const r3 = await newReq(100);
@@ -145,7 +145,7 @@ const cardBalance = (org: string) => cashbookService.getCurrentBalance(org, lipi
         known[d4.external_reference] = 'Failed';
         s = await settleCardPayout(d4.external_reference);
         check('Lipila saying Failed reverses it', s.state === 'failed' && (await statusOf(r4)) === 'AUTHORISED' && !(await disbOf(r4)));
-        check('a failed payout books nothing', (await cardBalance(org)) === 395);
+        check('a failed payout books nothing', (await cardBalance(org)) === 398.5);
         a = await run(r4, org, user, payBody(60));
         check('the retry is sent under a new reference, never the old one', a.statusCode === 200 && sent.length === 2 && sent[1].reference === `${d4.external_reference}-R1`, sent[1]?.reference);
         const reqWithDisb = await disbOf(r4);
@@ -153,7 +153,7 @@ const cardBalance = (org: string) => cashbookService.getCurrentBalance(org, lipi
         if (!reqWithDisb) throw new Error('no record after the retry');
         known[reqWithDisb.external_reference] = 'Successful';
         await settleCardPayout(reqWithDisb.external_reference);
-        check('the retry settles and the wallet is debited 60 + 7', (await statusOf(r4)) === 'RECEIVED' && (await cardBalance(org)) === 395 - 67, `balance ${await cardBalance(org)}`);
+        check('the retry settles and the wallet is debited 60 + 0.90', (await statusOf(r4)) === 'RECEIVED' && (await cardBalance(org)) === 398.5 - 60.9, `balance ${await cardBalance(org)}`);
     } catch (e: any) {
         console.log('ERROR:', e?.stack ?? e?.message ?? JSON.stringify(e)); failed++;
     } finally {

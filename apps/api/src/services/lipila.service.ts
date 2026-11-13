@@ -175,22 +175,14 @@ export async function testKey(orgId: string) {
 /** The mobile networks Lipila pays to. Payouts to banks need a SWIFT code and more details, so they are not offered from the Card Wallet. */
 export const PAYOUT_NETWORKS = ['mtn', 'airtel', 'zamtel'];
 
+/** Lipila's payout charge is 1.5% of the amount, taken from the wallet on top of it. */
+export const PAYOUT_FEE_RATE = 0.015;
 /**
- * Lipila's payout charge, taken from the wallet on top of the amount (its published settlement table). Only the first row was confirmed
- * by a real answer ("Insufficient balance ... Required total is 7.00 (including fees)" for a ZMW 2 payout); whether mobile money uses the
- * same table is not confirmed. Kept in this one place (and mirrored in core's lencoService) so it is easy to correct.
+ * The charge for a payout of this amount, to the ngwee. Kept in this one place (and mirrored in core's lencoService) so it is easy to
+ * correct if Lipila changes it. Lipila gave the rate as 1.5%; its docs' table of fixed charges is no longer used.
  */
 export function payoutFee(amount: number): number {
-    if (amount <= 150) return 5;
-    if (amount <= 300) return 7;
-    if (amount <= 500) return 14;
-    if (amount <= 1000) return 21;
-    if (amount <= 3000) return 30;
-    if (amount <= 5000) return 42;
-    if (amount <= 10000) return 70;
-    if (amount <= 499999) return 100;
-    if (amount <= 1500000) return 150;
-    return 200;
+    return Math.round(Number(amount) * PAYOUT_FEE_RATE * 100) / 100;
 }
 
 /** A Zambian mobile number Lipila can pay: 260 and nine digits. */

@@ -152,20 +152,8 @@ export const lencoService = {
         return 20.00;
     },
 
-    /**
-     * Lipila's payout charge, taken from the Card Wallet on top of the amount (Lipila's published settlement table; mirrors the API's
-     * payoutFee). Only the first row was confirmed by a real answer; whether mobile money uses the same table is not confirmed.
-     */
+    /** Lipila's payout charge: 1.5% of the amount, taken from the Card Wallet on top of it, to the ngwee. Mirrors the API's payoutFee. */
     calculateLipilaPayoutFee(amount: number): number {
-        if (amount <= 150) return 5;
-        if (amount <= 300) return 7;
-        if (amount <= 500) return 14;
-        if (amount <= 1000) return 21;
-        if (amount <= 3000) return 30;
-        if (amount <= 5000) return 42;
-        if (amount <= 10000) return 70;
-        if (amount <= 499999) return 100;
-        if (amount <= 1500000) return 150;
-        return 200;
+        return Math.round(Number(amount) * 0.015 * 100) / 100;
     },
 };
