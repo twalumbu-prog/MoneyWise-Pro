@@ -212,27 +212,35 @@ export const PersonalSend: React.FC = () => {
     const { data: banksRaw } = useQuery({ queryKey: ['lenco-banks'], queryFn: () => lencoService.getBanks() });
     const banks: any[] = Array.isArray(banksRaw) ? banksRaw : (banksRaw?.data || []);
 
-    const { data: walletsRaw } = useQuery({ queryKey: ['wallets'], queryFn: () => cashbookService.getWallets() });
-    const wallets: any[] = Array.isArray(walletsRaw) ? walletsRaw : (walletsRaw?.data || []);
+    // forDisbursement also lists the Card Wallet (Lipila), which can pay mobile money numbers only.
+    const { data: walletsRaw } = useQuery({ queryKey: ['wallets', 'forDisbursement'], queryFn: () => cashbookService.getWallets({ forDisbursement: true }) });
+    const allWallets: any[] = Array.isArray(walletsRaw) ? walletsRaw : (walletsRaw?.data || []);
+    const wallets: any[] = method === 'mobile' ? allWallets : allWallets.filter((w: any) => !w.is_card_wallet);
+    const walletIsCard = !!wallets.find((w: any) => w.id === walletId && w.is_card_wallet);
 
     useEffect(() => {
-        if (wallets.length > 0 && !walletId) setWalletId((wallets.find((w: any) => w.is_main) || wallets[0]).id);
+        if (wallets.length > 0 && (!walletId || !wallets.some((w: any) => w.id === walletId))) setWalletId((wallets.find((w: any) => w.is_main) || wallets[0]).id);
     }, [wallets, walletId]);
 
     useEffect(() => {
         if (!walletId) { setWalletBalance(null); return; }
+        // The Card Wallet isn't a MoneyWise wallet: its balance came with the wallet list.
+        const card = wallets.find((w: any) => w.id === walletId && w.is_card_wallet);
+        if (card) { setWalletBalance(Number(card.balance) || 0); return; }
         let cancelled = false;
         cashbookService.getBalance('MONEYWISE_WALLET', undefined, walletId)
             .then((b: any) => { if (!cancelled) setWalletBalance(Number(b) || 0); })
             .catch(() => { if (!cancelled) setWalletBalance(null); });
         return () => { cancelled = true; };
-    }, [walletId]);
+    }, [walletId, walletsRaw]);
 
     const total = useMemo(
         () => (makeList ? lineItems.reduce((s, i) => s + Number(i.estimated_amount), 0) : Number(manualAmount) || 0),
         [makeList, lineItems, manualAmount],
     );
-    const insufficient = !!walletId && walletBalance !== null && total > walletBalance;
+    // Lipila's charge is added on top for a Card Wallet payout.
+    const cardFee = walletIsCard ? lencoService.calculateLipilaPayoutFee(total) : 0;
+    const insufficient = !!walletId && walletBalance !== null && total + cardFee > walletBalance;
 
     // MoneyWise recipient search, as you type.
     const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -845,6 +853,7 @@ export const PersonalSend: React.FC = () => {
                                                 triggerClassName="w-full h-12 rounded-xl border border-[rgba(116,119,117,0.22)] bg-white px-4 text-sm flex items-center justify-between"
                                             />
                                             {walletBalance !== null && <p className="mt-1.5 text-xs text-[#80868B]">{formatKwacha(walletBalance)} available</p>}
+                                            {walletIsCard && <p className="mt-1 text-xs text-[#80868B]">Paid from your Lipila Card Wallet to the mobile money number. Lipila's charge of {formatKwacha(cardFee)} is added and taken from the wallet.</p>}
                                         </div>
                                     )}
                                     {insufficient && (

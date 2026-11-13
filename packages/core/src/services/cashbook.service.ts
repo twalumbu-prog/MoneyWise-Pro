@@ -255,8 +255,9 @@ export const cashbookService = {
         return response.json();
     },
 
-    async getWallets() {
-        const response = await apiFetch('/cashbook/wallets');
+    /** `forDisbursement` also lists the business's Card Wallet (id "CARD_WALLET"), which pays out to mobile money numbers only. */
+    async getWallets(opts?: { forDisbursement?: boolean }) {
+        const response = await apiFetch(`/cashbook/wallets${opts?.forDisbursement ? '?for=disbursement' : ''}`);
         return response.json();
     },
 

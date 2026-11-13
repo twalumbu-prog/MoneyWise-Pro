@@ -62,7 +62,11 @@ export const webhook = async (req: Request, res: Response) => {
         if (!v.ok) return res.status(401).send('Invalid signature');
         if (v.reference) {
             // Awaited before the answer: a serverless function may be stopped once it has replied.
-            await lipila.finalizeCard(v.reference).catch((e) => console.error('[Lipila] webhook finalize failed:', e?.message));
+            // A payout from the Card Wallet is settled by asking Lipila about that payout; everything else is a card payment.
+            const settle = lipila.isCardPayoutRef(v.reference)
+                ? (await import('./disbursement.controller')).settleCardPayout(v.reference)
+                : lipila.finalizeCard(v.reference);
+            await Promise.resolve(settle).catch((e) => console.error('[Lipila] webhook finalize failed:', e?.message));
         }
         return res.json({ received: true });
     } catch (e) { fail(res, e, 'handle the webhook'); }

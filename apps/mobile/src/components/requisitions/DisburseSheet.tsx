@@ -105,21 +105,28 @@ export const DisburseSheet: React.FC<{
     // ── source wallets (with balances) and banks ──
     const { data: wallets = [] } = useQuery({
         queryKey: ['disburse-wallets'],
-        queryFn: async () => ((await cashbookService.getWallets()) || []).map((w: any) => ({ id: String(w.id), name: String(w.name), balance: Number(w.balance) || 0, isMain: !!w.is_main })),
+        // forDisbursement also lists the Card Wallet (Lipila), which can pay mobile money numbers only.
+        queryFn: async () => ((await cashbookService.getWallets({ forDisbursement: true })) || []).map((w: any) => ({ id: String(w.id), name: String(w.name), balance: Number(w.balance) || 0, isMain: !!w.is_main, isCard: !!w.is_card_wallet })),
         enabled: route === 'WALLET',
     });
     const { data: banksRaw } = useQuery({ queryKey: ['lenco-banks'], queryFn: () => lencoService.getBanks(), staleTime: 60 * 60_000, enabled: route === 'WALLET' && rail === 'BANK' });
     const banks: any[] = Array.isArray(banksRaw) ? banksRaw : (banksRaw?.data || []);
 
-    useEffect(() => {
-        if (!walletId && wallets.length > 0) setWalletId((wallets.find((w: any) => w.isMain) || wallets[0]).id);
-    }, [wallets, walletId]);
+    // The Card Wallet only pays out to mobile money numbers (not banks, not MoneyWise accounts).
+    const isMoneyWisePayEarly = (savedMethod || '').toUpperCase() === 'MONEYWISE_PAY' || savedCode === 'MONEYWISE';
+    const usable = (rail === 'MOBILE_MONEY' && !isMoneyWisePayEarly) ? wallets : wallets.filter((w: any) => !w.isCard);
 
-    const selectedWallet = wallets.find((w: any) => w.id === walletId);
+    useEffect(() => {
+        if (usable.length > 0 && (!walletId || !usable.some((w: any) => w.id === walletId))) setWalletId((usable.find((w: any) => w.isMain) || usable[0]).id);
+    }, [usable.length, walletId, rail]);
+
+    const selectedWallet = usable.find((w: any) => w.id === walletId);
+    const selectedIsCard = !!selectedWallet?.isCard;
     // MoneyWise Pay (wallet-to-wallet) is an on-us transfer: no payout fee, and no bank / mobile-money details to enter or look up
     // (e.g. an approved salary advance or loan going into an employee's personal MoneyWise account).
     const isMoneyWisePay = (savedMethod || '').toUpperCase() === 'MONEYWISE_PAY' || savedCode === 'MONEYWISE';
-    const fee = lencoService.calculatePayoutFee(amount, isMoneyWisePay ? 'MONEYWISE_PAY' : rail);
+    // A Card Wallet payout carries Lipila's own charge, added on top and taken from that wallet.
+    const fee = selectedIsCard ? lencoService.calculateLipilaPayoutFee(amount) : lencoService.calculatePayoutFee(amount, isMoneyWisePay ? 'MONEYWISE_PAY' : rail);
     const totalDue = amount + fee;
     const insufficient = route === 'WALLET' && !!selectedWallet && totalDue > selectedWallet.balance;
 
@@ -147,7 +154,7 @@ export const DisburseSheet: React.FC<{
     }, [route, rail, provider, phone, recipient, lookupName, looking, organizationId, isMoneyWisePay]);
 
     const bankItems = useMemo(() => banks.map((b) => ({ id: String(b.id), label: String(b.name) })), [banks]);
-    const walletItems = useMemo(() => wallets.map((w: any) => ({ id: w.id, label: `${w.name} · ${formatKwacha(w.balance)}` })), [wallets]);
+    const walletItems = useMemo(() => usable.map((w: any) => ({ id: w.id, label: `${w.name} · ${formatKwacha(w.balance)}` })), [usable.length, wallets]);
 
     const switchRail = (r: Rail) => {
         if (r === rail) return;
@@ -155,7 +162,7 @@ export const DisburseSheet: React.FC<{
     };
 
     const walletReady = route === 'WALLET'
-        && (wallets.length === 0 || !!walletId)
+        && (usable.length === 0 || !!walletId)
         && !insufficient
         && (isMoneyWisePay
             ? amount > 0 && !!recipientAccount
@@ -190,7 +197,7 @@ export const DisburseSheet: React.FC<{
                 : await requisitionService.disburse(requisitionId, payload);
 
             if (!isExcess && String(result?.lencoStatus || '').toLowerCase() === 'pending') {
-                setStatus('Transfer initiated — waiting for Lenco to confirm…');
+                setStatus(`Transfer initiated — waiting for ${selectedIsCard ? 'Lipila' : 'Lenco'} to confirm…`);
                 for (let attempt = 0; attempt < 8; attempt++) {
                     await sleep(4000);
                     const poll: any = await requisitionService.verifyDisbursement(requisitionId);
@@ -214,7 +221,7 @@ export const DisburseSheet: React.FC<{
                     ? `${formatKwacha(amount)} recorded as paid out.`
                     : lenco === 'successful'
                         ? `${formatKwacha(amount)} was sent${lookupName && lookupName !== 'Name not found' ? ` to ${lookupName}` : ''}.`
-                        : 'The transfer is still processing at Lenco. It can take a while to settle — the status will update on its own.',
+                        : `The transfer is still processing at ${selectedIsCard ? 'Lipila' : 'Lenco'}. It can take a while to settle — the status will update on its own.`,
             );
             onDone();
         },
@@ -287,7 +294,7 @@ export const DisburseSheet: React.FC<{
                         <Text style={styles.feeText}>Fee {formatKwacha(fee)}</Text>
                     </View>
 
-                    {wallets.length > 0 && (
+                    {usable.length > 0 && (
                         <>
                             <Text style={[styles.label, styles.spaced]}>Source wallet</Text>
                             <InlineSearchSelect
@@ -297,6 +304,7 @@ export const DisburseSheet: React.FC<{
                                 searchPlaceholder="Search wallets…"
                                 onSelect={(i) => setWalletId(i.id)}
                             />
+                            {selectedIsCard && <Text style={styles.feeText}>Paid from your Lipila Card Wallet. Lipila’s charge of {formatKwacha(fee)} is added and taken from the wallet.</Text>}
                             {insufficient && (
                                 <View style={styles.warn}>
                                     <AlertTriangle size={14} color="#B45309" />

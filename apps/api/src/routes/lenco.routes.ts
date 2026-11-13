@@ -37,6 +37,7 @@ import {
     initiateQuickLinkIntent
 } from '../controllers/lenco.controller';
 import { requireAuth, requireRole } from '../middleware/auth';
+import { connectWithKeys, checkConnection, ConnectError } from '../services/lencoKeysConnect.service';
 
 const router = Router();
 
@@ -86,6 +87,27 @@ router.use(requireAuth);
 router.post('/sync-now', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER', 'MANAGER']), syncMyOrganizationLencoTransactions);
 router.get('/accounts', listLencoAccounts);
 router.get('/available-accounts', listAvailableAccounts);
+// Connect the business's own Lenco wallet with its keys (public key, secret key, optional Account ID), like Master Fees. Admin only.
+router.post('/connect', requireRole(['ADMIN']), async (req: any, res: any) => {
+    try {
+        const orgId = req.user?.organization_id;
+        if (!orgId) return res.status(400).json({ error: 'No business on this sign-in.' });
+        res.json(await connectWithKeys({ orgId, publicKey: req.body?.publicKey, secretKey: req.body?.secretKey, accountId: req.body?.accountId }));
+    } catch (e: any) {
+        if (e instanceof ConnectError) return res.status(e.httpStatus).json({ error: e.message, code: e.code, ...e.extra });
+        console.error('[Lenco] connect failed:', e?.message ?? e); res.status(500).json({ error: 'Could not connect Lenco. Please try again.' });
+    }
+});
+router.get('/connection', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER', 'MANAGER']), async (req: any, res: any) => {
+    try {
+        const orgId = req.user?.organization_id;
+        if (!orgId) return res.status(400).json({ error: 'No business on this sign-in.' });
+        res.json(await checkConnection(orgId));
+    } catch (e: any) {
+        if (e instanceof ConnectError) return res.status(e.httpStatus).json({ error: e.message, code: e.code, ...e.extra });
+        console.error('[Lenco] connection check failed:', e?.message ?? e); res.status(500).json({ error: 'Could not check the connection. Please try again.' });
+    }
+});
 router.post('/organizations/:id/provision', provisionOrganizationLencoAccount);
 router.post('/organizations/:id/link', linkOrganizationLencoAccount);
 router.get('/verify-status/:reference', verifyCollectionStatus);

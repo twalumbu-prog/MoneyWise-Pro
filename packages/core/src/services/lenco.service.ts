@@ -18,6 +18,20 @@ export const lencoService = {
         return apiJson('/lenco/available-accounts');
     },
 
+    /**
+     * Connects the business's own Lenco wallet with its keys, the way Master Fees does: public key, secret key and (optionally) the Account ID.
+     * The server asks Lenco which accounts the secret key can see. When there are several (or none) it answers 409 with `needsAccountId`
+     * and the `accounts` to choose from; read them from the thrown error's `data`.
+     */
+    connectWithKeys(input: { publicKey: string; secretKey: string; accountId?: string }): Promise<{ connected: true; accountId: string; accountName: string | null; balance: number | null; currency: string | null; message: string }> {
+        return apiJson('/lenco/connect', { method: 'POST', body: JSON.stringify(input) });
+    },
+
+    /** Reads the live balance of the saved Lenco link ("Check"). */
+    checkConnection(): Promise<{ connected: true; accountId: string; balance: number | null; currency: string | null; message: string }> {
+        return apiJson('/lenco/connection');
+    },
+
     linkOrganizationSubaccount(organizationId: string, lencoSubaccountId: string): Promise<any> {
         return apiJson(`/lenco/organizations/${organizationId}/link`, {
             method: 'POST',
@@ -136,5 +150,22 @@ export const lencoService = {
         if (amount <= 3000) return 15.00;
         if (amount <= 5000) return 18.00;
         return 20.00;
+    },
+
+    /**
+     * Lipila's payout charge, taken from the Card Wallet on top of the amount (Lipila's published settlement table; mirrors the API's
+     * payoutFee). Only the first row was confirmed by a real answer; whether mobile money uses the same table is not confirmed.
+     */
+    calculateLipilaPayoutFee(amount: number): number {
+        if (amount <= 150) return 5;
+        if (amount <= 300) return 7;
+        if (amount <= 500) return 14;
+        if (amount <= 1000) return 21;
+        if (amount <= 3000) return 30;
+        if (amount <= 5000) return 42;
+        if (amount <= 10000) return 70;
+        if (amount <= 499999) return 100;
+        if (amount <= 1500000) return 150;
+        return 200;
     },
 };

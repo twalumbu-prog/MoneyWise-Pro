@@ -428,7 +428,8 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
         if (activeMethod === 'MONEYWISE_WALLET' && wallets.length === 0) {
             const loadWallets = async () => {
                 try {
-                    const data = await cashbookService.getWallets();
+                    // forDisbursement also lists the Card Wallet (Lipila) as a place to pay from, when the business has one.
+                    const data = await cashbookService.getWallets({ forDisbursement: true });
                     setWallets(data || []);
                     if (data && data.length > 0) {
                         const mainWallet = data.find((w: any) => w.is_main) || data[0];
@@ -447,6 +448,9 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             setSelectedWalletBalance(null);
             return;
         }
+        // The Card Wallet isn't a MoneyWise wallet: its balance came with the wallet list.
+        const cardWallet = wallets.find((w: any) => w.id === selectedWalletId && w.is_card_wallet);
+        if (cardWallet) { setSelectedWalletBalance(Number(cardWallet.balance) || 0); return; }
         let cancelled = false;
         const loadBalance = async () => {
             try {
@@ -459,14 +463,17 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
         };
         loadBalance();
         return () => { cancelled = true; };
-    }, [activeMethod, selectedWalletId]);
+    }, [activeMethod, selectedWalletId, wallets]);
+
+    // Paying from the Card Wallet (Lipila): mobile money numbers only, and no payout fee is added on our side.
+    const selectedIsCard = !!wallets.find((w: any) => w.id === selectedWalletId && w.is_card_wallet);
 
     // MoneyWise Pay (wallet-to-wallet) is an on-us transfer: no payout fee.
     const isMoneyWisePayReq = String(requisitionData?.payment_method || '').toUpperCase() === 'MONEYWISE_PAY' ||
         String(requisitionData?.recipient_bank_code || '').toUpperCase() === 'MONEYWISE';
     const payoutFeeType = isMoneyWisePayReq ? 'MONEYWISE_PAY' : (activeMethod || paymentType);
     const walletTotalDue = Number(requisitionData?.estimated_total || 0) +
-        lencoService.calculatePayoutFee(Number(requisitionData?.estimated_total || 0), payoutFeeType);
+        (selectedIsCard ? lencoService.calculateLipilaPayoutFee(Number(requisitionData?.estimated_total || 0)) : lencoService.calculatePayoutFee(Number(requisitionData?.estimated_total || 0), payoutFeeType));
     const isWalletBalanceInsufficient = activeMethod === 'MONEYWISE_WALLET' &&
         !!selectedWalletId &&
         selectedWalletBalance !== null &&
@@ -741,6 +748,11 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             return;
         }
 
+        if (isLencoTransfer && selectedIsCard && paymentType !== 'MOBILE_MONEY') {
+            setDisburseError('The Card Wallet pays out to mobile money numbers only (MTN, Airtel or Zamtel). Choose a mobile money recipient, or pay from a MoneyWise wallet.');
+            return;
+        }
+
         setIsProcessing(true);
         setDisburseError(null);
         setDisburseStatusMsg(null);
@@ -774,7 +786,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             });
 
             if (activeMethod === 'MONEYWISE_WALLET' && result.lencoStatus === 'pending') {
-                setDisburseStatusMsg('Transfer initiated — waiting for Lenco confirmation...');
+                setDisburseStatusMsg(`Transfer initiated — waiting for ${selectedIsCard ? 'Lipila' : 'Lenco'} confirmation...`);
 
                 let resolved = false;
                 for (let attempt = 0; attempt < 8; attempt++) {
@@ -2062,6 +2074,13 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                                 triggerClassName="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 shadow-sm hover:border-gray-200"
                                                                             />
                                                                         </div>
+                                                                        {selectedIsCard && (
+                                                                            <p className="px-4 text-[11px] font-medium text-slate-500 leading-relaxed">
+                                                                                {paymentType === 'MOBILE_MONEY'
+                                                                                    ? `Paid from your Lipila Card Wallet to the mobile money number. Lipila's charge of K${lencoService.calculateLipilaPayoutFee(Number(requisitionData?.estimated_total || 0)).toFixed(2)} is added and taken from the wallet.`
+                                                                                    : 'The Card Wallet pays out to mobile money numbers only. Choose a mobile money recipient, or pick a MoneyWise wallet.'}
+                                                                            </p>
+                                                                        )}
                                                                         {isWalletBalanceInsufficient && (
                                                                             <div className="flex items-start space-x-2 px-4 py-3 bg-amber-50 border border-amber-100 rounded-2xl animate-in fade-in slide-in-from-top-2 duration-300">
                                                                                 <AlertTriangle size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />

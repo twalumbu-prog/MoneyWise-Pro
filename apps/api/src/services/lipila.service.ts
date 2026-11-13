@@ -23,6 +23,9 @@ export const LIPILA_CARD_RATE = 0.04;
 /** Every card payment reference starts with this, so status checks know which gateway to ask. */
 export const CARD_REF_PREFIX = 'LPL-';
 export const CARD_ACCOUNT_TYPE = 'LIPILA_WALLET';
+/** Every payout sent from the Card Wallet has a reference starting with this, so status checks, webhooks and pollers ask Lipila, not Lenco. */
+export const PAYOUT_REF_PREFIX = 'LPLPAY-';
+export const isCardPayoutRef = (ref: unknown): boolean => typeof ref === 'string' && ref.startsWith(PAYOUT_REF_PREFIX);
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
@@ -165,6 +168,115 @@ export async function testKey(orgId: string) {
         if (res.status >= 500) return { ok: false, message: 'Lipila isn’t answering right now. Try again in a moment.' };
         return { ok: true, message: `Connected to Lipila (${c.env}).` };
     } catch (e: any) { return { ok: false, message: `Couldn’t reach Lipila: ${e?.message ?? e}` }; }
+}
+
+/* ───────────── Paying out from the Card Wallet ───────────── */
+
+/** The mobile networks Lipila pays to. Payouts to banks need a SWIFT code and more details, so they are not offered from the Card Wallet. */
+export const PAYOUT_NETWORKS = ['mtn', 'airtel', 'zamtel'];
+
+/**
+ * Lipila's payout charge, taken from the wallet on top of the amount (its published settlement table). Only the first row was confirmed
+ * by a real answer ("Insufficient balance ... Required total is 7.00 (including fees)" for a ZMW 2 payout); whether mobile money uses the
+ * same table is not confirmed. Kept in this one place (and mirrored in core's lencoService) so it is easy to correct.
+ */
+export function payoutFee(amount: number): number {
+    if (amount <= 150) return 5;
+    if (amount <= 300) return 7;
+    if (amount <= 500) return 14;
+    if (amount <= 1000) return 21;
+    if (amount <= 3000) return 30;
+    if (amount <= 5000) return 42;
+    if (amount <= 10000) return 70;
+    if (amount <= 499999) return 100;
+    if (amount <= 1500000) return 150;
+    return 200;
+}
+
+/** A Zambian mobile number Lipila can pay: 260 and nine digits. */
+export const isPayableNumber = (phone: string): boolean => /^260\d{9}$/.test(payoutNumber(phone));
+
+/** 0971234567 / +260971234567 / 260971234567 → 260971234567, the form Lipila expects. */
+export function payoutNumber(phone: string): string {
+    const d = String(phone ?? '').replace(/\D/g, '');
+    return d.startsWith('260') ? d : d.startsWith('0') ? `260${d.slice(1)}` : `260${d}`;
+}
+
+export interface PayoutAnswer { status: 'pending' | 'successful' | 'failed'; identifier?: string | null; message?: string | null }
+
+/** Lipila's own wording for a payout. Anything that isn't clearly Successful or Failed stays pending. */
+export function payoutStatusOf(data: any): PayoutAnswer['status'] {
+    const s = String(data?.status ?? '').toLowerCase();
+    return s === 'successful' || s === 'success' ? 'successful' : s === 'failed' || s === 'failure' ? 'failed' : 'pending';
+}
+
+const liveCache = new Map<string, { at: number; value: number | null }>();
+/**
+ * What Lipila itself says the Card Wallet holds, asked with this business's key. This (not the books) is what a payout can actually draw on:
+ * money can sit in Lipila that was never recorded here. Cached for 30 seconds so a picker isn't slow; `fresh` skips the cache (used when
+ * a payout is about to be sent). Null means Lipila couldn't be asked, and callers fall back to the books.
+ */
+export async function liveCardBalance(orgId: string, opts: { fresh?: boolean; waitMs?: number } = {}): Promise<number | null> {
+    const hit = liveCache.get(orgId);
+    if (!opts.fresh && hit && Date.now() - hit.at < 30_000) return hit.value;
+    const ask = walletSummary(orgId).then((w) => (typeof w.balance === 'number' && Number.isFinite(w.balance) ? w.balance : null)).catch(() => null);
+    const value = opts.waitMs ? await Promise.race([ask, new Promise<null>((r) => setTimeout(() => r(null), opts.waitMs))]) : await ask;
+    liveCache.set(orgId, { at: Date.now(), value });
+    return value;
+}
+
+/** Can this business pay out from its Card Wallet? It needs its own Lipila key and to be in the rollout. */
+export async function payoutsReady(orgId: string): Promise<boolean> {
+    return walletConnected(orgId);
+}
+
+export class PayoutUnknownError extends Error { outcomeUnknown = true; constructor(message: string) { super(message); } }
+
+/**
+ * Sends money from the business's Lipila wallet to a mobile money number (POST /disbursements/mobile-money). A clear refusal (bad key,
+ * bad request, rate limit) throws a LipilaError: nothing was sent. No answer, or a server error, throws PayoutUnknownError: the money
+ * may be on its way, so the caller must ask Lipila by reference before deciding anything.
+ */
+export async function createMobileMoneyPayout(input: { orgId: string; reference: string; amount: number; phone: string; narration: string; apiBase?: string | null }): Promise<PayoutAnswer> {
+    if (!input.reference.startsWith(PAYOUT_REF_PREFIX)) throw new LipilaError('Invalid payout reference.', 400, 'REFERENCE');
+    const creds = await getCredentials(input.orgId);
+    if (!creds || !(await isInRollout(input.orgId))) throw new LipilaError('The Card Wallet isn’t connected for this business.', 403, 'NOT_ENABLED');
+    const callbackUrl = input.apiBase ? `${input.apiBase.replace(/\/$/, '')}/webhooks/lipila` : '';
+    const body = { referenceId: input.reference, amount: round2(input.amount), accountNumber: payoutNumber(input.phone), currency: 'ZMW', narration: input.narration.slice(0, 100), referenceData: input.reference };
+    let res: Response;
+    try {
+        res = await fetch(`${baseUrl(creds.env)}/api/v1/disbursements/mobile-money`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', accept: 'application/json', 'x-api-key': creds.apiKey, ...(callbackUrl ? { callbackUrl } : {}) },
+            body: JSON.stringify(body), signal: AbortSignal.timeout(20_000),
+        });
+    } catch (e: any) { throw new PayoutUnknownError(`Lipila didn’t answer (${e?.name === 'TimeoutError' ? 'timed out' : e?.message ?? e}).`); }
+    const data: any = await res.json().catch(() => null);
+    if (res.status >= 500) throw new PayoutUnknownError(`Lipila had a problem (${res.status}).`);
+    if (!res.ok) {
+        const detail = data?.message || data?.title || (data?.errors ? JSON.stringify(data.errors).slice(0, 200) : '');
+        console.error('[Lipila] payout refused', res.status, JSON.stringify(data)?.slice(0, 300));
+        if (res.status === 401 || res.status === 403) throw new LipilaError('Lipila refused this business’s key for payouts. The owner needs to check the Lipila settings (the key must be active and allowed to send money).', 502, 'BAD_KEY');
+        if (res.status === 429) throw new LipilaError('Lipila is busy. Wait a moment and try again.', 429, 'RATE');
+        throw new LipilaError(detail || 'Lipila couldn’t accept this payout. Check the number and amount.', 400, 'REFUSED');
+    }
+    return { status: payoutStatusOf(data), identifier: data?.identifier ?? null, message: data?.message ?? null };
+}
+
+/**
+ * Where a payout stands, asked of Lipila by its reference. `notfound` means Lipila has no such payout (a 404): it is reported as such
+ * and never treated as a failure by itself. A check that errors or times out is `pending`.
+ */
+export async function checkPayoutStatus(orgId: string, reference: string): Promise<PayoutAnswer & { notFound?: boolean; exists?: boolean }> {
+    const creds = await getCredentials(orgId);
+    if (!creds) return { status: 'pending', message: 'No Lipila key is saved for this business.' };
+    try {
+        const res = await fetch(`${baseUrl(creds.env)}/api/v1/disbursements/check-status?referenceId=${encodeURIComponent(reference)}`, { headers: { accept: 'application/json', 'x-api-key': creds.apiKey }, signal: AbortSignal.timeout(15_000) });
+        // A reference Lipila has never seen answers 404 or 400: that is "no record", not an error.
+        if (res.status === 404 || res.status === 400) return { status: 'pending', notFound: true, message: 'Lipila has no payout with this reference.' };
+        if (!res.ok) return { status: 'pending', message: `Lipila answered ${res.status}` };
+        const data: any = await res.json().catch(() => null);
+        return { status: payoutStatusOf(data), identifier: data?.identifier ?? null, message: data?.message ?? null, exists: !!data };
+    } catch (e: any) { return { status: 'pending', message: e?.message || String(e) }; }
 }
 
 /* ───────────── The business's Lipila wallet: balance and activity ───────────── */
@@ -366,12 +478,19 @@ export async function verifyWebhook(rawBody: string, headers: Record<string, any
     const candidates = [event?.identifier, event?.referenceId].filter((v) => typeof v === 'string' && v.startsWith(CARD_REF_PREFIX)) as string[];
     let session: any = null;
     if (candidates.length) { const { data } = await supabase.from('lipila_card_sessions').select('reference, organization_id').in('reference', candidates).maybeSingle(); session = data; }
+    // A payout from the Card Wallet is found through its disbursement record instead of a card session.
+    let payout: { reference: string; organization_id: string } | null = null;
+    if (!session) {
+        const payCandidates = [event?.referenceId, event?.identifier].filter((v) => typeof v === 'string' && v.startsWith(PAYOUT_REF_PREFIX)) as string[];
+        if (payCandidates.length) { const { data } = await supabase.from('disbursements').select('external_reference, organization_id').in('external_reference', payCandidates).limit(1).maybeSingle(); if (data) payout = { reference: data.external_reference, organization_id: data.organization_id }; }
+    }
     // A payment for a business with its own secret is verified only with that secret. Anything else falls back to the shared one.
-    const own = session ? (await getCredentials(session.organization_id))?.webhookSecret ?? null : null;
+    const ownerOrg = session?.organization_id ?? payout?.organization_id ?? null;
+    const own = ownerOrg ? (await getCredentials(ownerOrg))?.webhookSecret ?? null : null;
     const secret = own || process.env.LIPILA_WEBHOOK_SECRET || null;
     if (!secret) return { ok: false, reference: null, reason: 'no signing secret' };
     if (!verifySignature(secret, id, ts, rawBody, sig)) return { ok: false, reference: null, reason: 'bad signature' };
-    return { ok: true, reference: session?.reference ?? null };
+    return { ok: true, reference: session?.reference ?? payout?.reference ?? null };
 }
 
 /* ───────────── Deciding the outcome and recording it ───────────── */

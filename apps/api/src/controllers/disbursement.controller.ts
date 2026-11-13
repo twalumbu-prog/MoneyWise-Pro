@@ -12,6 +12,7 @@ import { RequisitionMessageService } from '../services/requisition_message.servi
 import { triggerAIReview } from './requisition.controller';
 import { getAccountabilityBlock } from '../services/accountability.service';
 import { ensureOrgLencoCredentials } from '../services/lencoAccountLink.service';
+import * as lipila from '../services/lipila.service';
 
 export const disburseRequisition = async (req: any, res: any): Promise<any> => {
     try {
@@ -24,8 +25,49 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
             : `Disbursement for Requisition #${id.slice(0, 8)}`;
         const organizationId = (req as any).user.organization_id;
         const isDigital = payment_method !== 'CASH' && payment_method !== 'CASH_PICKUP' && payment_method !== 'OTHER';
+        // Paying from the business's Card Wallet (its Lipila account) instead of a MoneyWise wallet.
+        const fromCard = req.body.source === 'CARD_WALLET' || (req.body.wallet_id || req.body.walletId) === 'CARD_WALLET';
 
         if (!organizationId) throw new Error("Missing organization context");
+
+        if (fromCard) {
+            const bank = String(recipient_bank_code || '').toLowerCase();
+            if (!isDigital || !lipila.PAYOUT_NETWORKS.includes(bank)) {
+                return res.status(400).json({ error: 'The Card Wallet pays out to mobile money numbers (MTN, Airtel or Zamtel). Choose a mobile money recipient, or pay from a MoneyWise wallet.' });
+            }
+            if (!(await lipila.payoutsReady(organizationId))) {
+                return res.status(400).json({ error: 'The Card Wallet isn’t connected for this business. Choose a MoneyWise wallet.' });
+            }
+            // The destination is checked here, before Lipila is called.
+            if (!lipila.isPayableNumber(String(recipient_account || ''))) {
+                return res.status(400).json({ error: 'That doesn’t look like a Zambian mobile money number (260 and nine digits). Check it and try again.' });
+            }
+            // One payout that is still unconfirmed blocks the next from the same wallet, so an uncertain one can never be doubled up.
+            const { data: unconfirmed } = await supabase
+                .from('disbursements')
+                .select('requisition_id, requisitions!inner(status)')
+                .eq('organization_id', organizationId)
+                .like('external_reference', `${lipila.PAYOUT_REF_PREFIX}%`)
+                .eq('requisitions.status', 'PROCESSING')
+                .limit(1);
+            if (unconfirmed && unconfirmed.length > 0) {
+                return res.status(409).json({ error: 'An earlier Card Wallet payout is still being confirmed by Lipila. Wait until it is confirmed, then send this one.' });
+            }
+            // Stop double clicks: the same amount from this wallet in the last two minutes.
+            const asked = Number(total_prepared);
+            const { data: justSent } = await supabase
+                .from('disbursements')
+                .select('id, requisitions!inner(updated_at)')
+                .eq('organization_id', organizationId)
+                .like('external_reference', `${lipila.PAYOUT_REF_PREFIX}%`)
+                .eq('total_prepared', Math.round((asked + lipila.payoutFee(asked)) * 100) / 100)
+                // A disbursement record has no timestamp of its own; its requisition is stamped when it is disbursed.
+                .gte('requisitions.updated_at', new Date(Date.now() - 2 * 60_000).toISOString())
+                .limit(1);
+            if (justSent && justSent.length > 0) {
+                return res.status(409).json({ error: 'A payout of the same amount was just sent from the Card Wallet. If you meant to send it twice, wait two minutes first.' });
+            }
+        }
 
         // 0. Idempotency Check: Does a disbursement record already exist?
         const { data: existingDisb } = await supabase
@@ -49,9 +91,9 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
 
         // 1. Atomic status check and lock
         // We try to update the status to 'DISBURSED' or 'RECEIVED' (for digital)
-        let finalWalletId = req.body.wallet_id || req.body.walletId;
+        let finalWalletId = fromCard ? undefined : (req.body.wallet_id || req.body.walletId);
 
-        if (isDigital && !finalWalletId) {
+        if (isDigital && !finalWalletId && !fromCard) {
             const { data: mainWallet } = await supabase
                 .from('organization_wallets')
                 .select('id')
@@ -98,7 +140,8 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
             String(recipient_bank_code || '').toUpperCase() === 'MONEYWISE_PAY' ||
             payment_method === 'MONEYWISE_PAY' ||
             payment_method === 'MONEYWISE';
-        const fee = isDigital ? (isMoneyWisePay ? 0 : LencoService.calculatePayoutFee(totalPreparedNum, payment_method)) : 0;
+        // A Card Wallet payout carries Lipila's own charge, on top of the amount and taken from the wallet.
+        const fee = fromCard ? lipila.payoutFee(totalPreparedNum) : (isDigital ? (isMoneyWisePay ? 0 : LencoService.calculatePayoutFee(totalPreparedNum, payment_method)) : 0);
         const totalDeduction = totalPreparedNum + fee;
 
         if (totalPreparedNum < estimatedTotal) {
@@ -118,6 +161,17 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                 return res.status(400).json({
                     error: `Insufficient wallet balance. This wallet has K${walletBalance.toFixed(2)} available, but the disbursement requires K${totalDeduction.toFixed(2)}.`
                 });
+            }
+        }
+
+        // 2c. A Card Wallet payout needs the money to be in that wallet. What Lipila itself says it holds rules (money can sit there that was
+        // never booked here); only when Lipila can't be asked do the books stand in.
+        if (fromCard) {
+            const live = await lipila.liveCardBalance(organizationId, { fresh: true });
+            const available = live !== null ? live : await cashbookService.getCurrentBalance(organizationId, lipila.CARD_ACCOUNT_TYPE);
+            if (available < totalDeduction) {
+                await supabase.from('requisitions').update({ status: 'AUTHORISED' }).eq('id', id);
+                return res.status(400).json({ error: `Insufficient Card Wallet balance. It has K${Math.max(0, available).toFixed(2)} available, but the disbursement requires K${totalDeduction.toFixed(2)}.` });
             }
         }
 
@@ -191,6 +245,56 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                     (req as any).resolvedRef = transfer.reference;
                     (req as any).lencoTransactionAt = transfer.at || new Date().toISOString();
                     (req as any).orgLencoKey = transfer.senderKey || process.env.LENCO_SECRET_KEY; // a still-pending transfer is polled to completion
+                } else if (fromCard) {
+                    // Paying from the Card Wallet: Lipila, not Lenco. The same safeguards as a Lenco payout: a stable reference so a retry can
+                    // never pay twice, an unclear answer is re-checked (never reported as failed), and a refusal reverts the requisition.
+                    if (!recipient_account) throw new Error('Enter the mobile money number to pay.');
+                    const stableCard = `${lipila.PAYOUT_REF_PREFIX}${id.slice(0, 8)}-${estimatedTotal.toFixed(0)}`;
+                    let cardRef = stableCard;
+                    let existing: Awaited<ReturnType<typeof lipila.checkPayoutStatus>> | null = null;
+                    for (let i = 0; i < 10; i++) {
+                        cardRef = i === 0 ? stableCard : `${stableCard}-R${i}`;
+                        const st = await lipila.checkPayoutStatus(targetOrgId, cardRef);
+                        if (st.notFound) { existing = null; break; }
+                        if (!st.exists) throw new Error('Couldn’t check with Lipila whether this payout was already sent, so nothing was sent. Please try again in a moment.');
+                        existing = st;
+                        if (st.status !== 'failed') break;
+                    }
+                    // Write before sending: if the server stops right after Lipila is called, there is a record for the poller to settle.
+                    const { data: pre, error: preErr } = await supabase.from('disbursements').insert({
+                        requisition_id: id, cashier_id: cashier_id, total_prepared: totalDeduction, payment_method: payment_method || 'MOBILE_MONEY',
+                        transfer_proof_url: transfer_proof_url, denominations: denominations, organization_id: targetOrgId,
+                        recipient_account, recipient_bank_code, recipient_account_name, external_reference: cardRef,
+                    }).select('id').single();
+                    if (preErr || !pre) throw new Error('Couldn’t record the payout before sending it, so nothing was sent. Please try again.');
+                    (req as any).preWrittenDisbursementId = pre.id;
+
+                    let cardPayout: lipila.PayoutAnswer;
+                    if (existing && existing.status !== 'failed') {
+                        cardPayout = existing; // an earlier attempt for this requisition is already on its way or done
+                    } else {
+                        const host = req.get?.('x-forwarded-host') || req.get?.('host');
+                        const apiBase = process.env.API_PUBLIC_URL || (host ? `${req.get('x-forwarded-proto') || req.protocol}://${host}` : null);
+                        try {
+                            cardPayout = await lipila.createMobileMoneyPayout({ orgId: targetOrgId, reference: cardRef, amount: totalPreparedNum, phone: recipient_account, narration: payoutNarration, apiBase });
+                        } catch (createErr: any) {
+                            if (!createErr?.outcomeUnknown) throw createErr;
+                            console.warn(`[Lipila] Payout ${cardRef} outcome unknown (${createErr.message}); re-checking status`);
+                            let recheck: Awaited<ReturnType<typeof lipila.checkPayoutStatus>> | undefined;
+                            for (const waitMs of [2000, 4000]) {
+                                await new Promise(r => setTimeout(r, waitMs));
+                                const st = await lipila.checkPayoutStatus(targetOrgId, cardRef);
+                                if (st.exists) { recheck = st; break; }
+                            }
+                            // Found, or still unknown: never report "failed" on a guess. It goes to PROCESSING and the poller settles it.
+                            cardPayout = recheck || { status: 'pending' };
+                        }
+                    }
+                    lencoReference = cardRef;
+                    if (cardPayout.status === 'failed') throw new Error(cardPayout.message || 'Rejected by Lipila');
+                    (req as any).lencoStatus = cardPayout.status;       // 'successful' | 'pending'
+                    (req as any).lencoFee = undefined;
+                    (req as any).resolvedRef = cardRef;
                 } else {
                     await ensureOrgLencoCredentials(targetOrgId);
                     const { data: org } = await supabase
@@ -305,6 +409,10 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                 console.error('[Lenco Payout Failed] Error during wallet disbursal:', payoutError);
                 console.error(`[Disbursement] CRITICAL ERROR for req ${id}:`, payoutError.message);
                 
+                // A payout that was written down first but definitely did not go leaves no record behind.
+                if ((req as any).preWrittenDisbursementId) {
+                    await supabase.from('disbursements').delete().eq('id', (req as any).preWrittenDisbursementId);
+                }
                 // REVERT TO AUTHORISED so user can retry.
                 // Our idempotency check at the top of this function will prevent double-spending
                 // if the previous attempt actually succeeded on Lenco but failed to respond.
@@ -323,7 +431,8 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
 
 
         // 4. Create Disbursement Record
-        const { data: disbursementData, error: disbError } = await supabase
+        const preWrittenId = (req as any).preWrittenDisbursementId as string | undefined;
+        const { data: disbursementData, error: disbError } = preWrittenId ? ({ data: { id: preWrittenId }, error: null } as any) : await supabase
             .from('disbursements')
             .insert({
                 requisition_id: id,
@@ -380,7 +489,8 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
             // Extract actual fee and transaction timestamp if returned by Lenco
             const actualFee = (req as any).lencoFee;
             const lencoTxAt = (req as any).lencoTransactionAt;
-            await cashbookService.finalizeWalletDisbursementLedger(id, actualFee, lencoTxAt);
+            if (fromCard) await cashbookService.finalizeCardDisbursementLedger(id, lencoTxAt);
+            else await cashbookService.finalizeWalletDisbursementLedger(id, actualFee, lencoTxAt);
 
             await supabase
                 .from('requisitions')
@@ -468,7 +578,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
         const isAwaitingConfirmation = isDigital && lencoStatus && lencoStatus !== 'successful';
         res.json({
             message: isAwaitingConfirmation
-                ? 'Disbursement initiated. The transfer is being processed by Lenco — you will be notified if it fails.'
+                ? `Disbursement initiated. The transfer is being processed by ${fromCard ? 'Lipila' : 'Lenco'} — you will be notified if it fails.`
                 : 'Requisition disbursed successfully',
             disbursement_id: disbursementData.id,
             lencoStatus: lencoStatus ?? (isDigital ? 'pending' : 'n/a')
@@ -929,7 +1039,8 @@ export const analyzeDisbursementProof = async (req: any, res: Response) => {
 async function revertDisbursementAndCleanup(
     requisitionId: string,
     organizationId: string,
-    paymentMethod: string = 'MONEYWISE_WALLET'
+    paymentMethod: string = 'MONEYWISE_WALLET',
+    provider: string = 'Lenco'
 ): Promise<void> {
     console.warn(`[Revert Disbursement] Starting revert and cleanup for requisition: ${requisitionId}`);
 
@@ -992,7 +1103,7 @@ async function revertDisbursementAndCleanup(
         .from('requisition_messages')
         .insert({
             requisition_id: requisitionId,
-            content: 'Transfer failed. The Lenco payout could not be confirmed and the disbursement has been automatically reversed. The requisition is back to AUTHORISED — please retry the disbursement.',
+            content: `Transfer failed. The ${provider} payout could not be confirmed and the disbursement has been automatically reversed. The requisition is back to AUTHORISED — please retry the disbursement.`,
             type: 'SYSTEM',
             metadata: { stage: 'TRANSFER_FAILED' }
         });
@@ -1011,6 +1122,47 @@ async function revertDisbursementAndCleanup(
 export type TransferConfirmation =
     | { confirmed: true }
     | { confirmed: false; status: 'pending' | 'failed' | 'not_found'; message: string };
+
+/**
+ * Settles a payout sent from the Card Wallet by asking Lipila where it stands. Called from the Lipila webhook, the poller, the "verify"
+ * button and the completion gate, any number of times. Lipila says Successful: the Card Wallet outflow is booked once and the requisition
+ * moves PROCESSING -> RECEIVED. Lipila says Failed: the disbursement is reversed and the requisition goes back to AUTHORISED for a retry.
+ * Anything else (still pending, no answer, not found) changes nothing: only Lipila's own word moves money records.
+ */
+export async function settleCardPayout(reference: string): Promise<{ state: 'successful' | 'failed' | 'pending' | 'unknown'; message?: string }> {
+    const { data: disb } = await supabase
+        .from('disbursements')
+        .select('requisition_id, organization_id, payment_method')
+        .eq('external_reference', reference)
+        .maybeSingle();
+    if (!disb) return { state: 'unknown', message: 'No disbursement has this reference.' };
+    const reqId = disb.requisition_id as string;
+    const orgId = disb.organization_id as string;
+
+    const st = await lipila.checkPayoutStatus(orgId, reference);
+    if (st.status === 'successful') {
+        await cashbookService.finalizeCardDisbursementLedger(reqId);
+        const { data: moved } = await supabase
+            .from('requisitions')
+            .update({ status: 'RECEIVED', updated_at: new Date().toISOString() })
+            .eq('id', reqId)
+            .eq('status', 'PROCESSING')
+            .select('id');
+        if (moved && moved.length > 0) {
+            await maybeAutoCategorizePersonalById(reqId);
+            emailService.maybeFireScheduledPoP(reqId, st.identifier ?? null).catch(err =>
+                console.error('[Lipila payout] Failed to send scheduled PoP email:', err));
+        }
+        return { state: 'successful' };
+    }
+    if (st.status === 'failed') {
+        // Only a requisition still waiting on this payout is reversed; one that moved on is left alone.
+        const { data: cur } = await supabase.from('requisitions').select('status').eq('id', reqId).maybeSingle();
+        if (cur?.status === 'PROCESSING') await revertDisbursementAndCleanup(reqId, orgId, disb.payment_method, 'Lipila');
+        return { state: 'failed', message: st.message || 'Lipila reported the payout as failed.' };
+    }
+    return { state: 'pending', message: st.message || 'Still being processed by Lipila.' };
+}
 
 /**
  * Authoritative gate that confirms a requisition's wallet (digital) disbursement
@@ -1060,6 +1212,14 @@ export async function ensureWalletTransferConfirmed(
         .neq('status', 'PENDING')
         .limit(1);
     if (existingLedger && existingLedger.length > 0) return { confirmed: true };
+
+    // A Card Wallet payout is confirmed with Lipila, never with Lenco (Lenco has no record of it).
+    if (lipila.isCardPayoutRef(disbursement.external_reference)) {
+        const o = await settleCardPayout(disbursement.external_reference);
+        if (o.state === 'successful') return { confirmed: true };
+        if (o.state === 'failed') return { confirmed: false, status: 'failed', message: `The payout failed at Lipila: ${o.message || 'unknown error'}. The disbursement has been reversed and the requisition reset to AUTHORISED — please retry the disbursement.` };
+        return { confirmed: false, status: 'pending', message: 'The payout is still being processed by Lipila. This requisition can be completed once the payment is confirmed — please try again shortly.' };
+    }
 
     const targetOrgId = disbursement.organization_id || organizationId;
     const { data: orgKeys } = await supabase
@@ -1140,6 +1300,13 @@ export const verifyDisbursementStatus = async (req: any, res: any): Promise<any>
 
         const targetOrgId = disbursement.requisitions?.organization_id || disbursement.organization_id;
         if (!targetOrgId) throw new Error("Could not determine organization for this disbursement");
+
+        if (lipila.isCardPayoutRef(disbursement.external_reference)) {
+            const o = await settleCardPayout(disbursement.external_reference);
+            if (o.state === 'successful') return res.json({ status: 'successful', message: 'Transaction verified as successful' });
+            if (o.state === 'failed') return res.status(400).json({ status: 'failed', error: 'Transfer failed at Lipila: ' + (o.message || 'Unknown error') });
+            return res.json({ status: 'pending', message: 'Transaction is still processing', details: { message: o.message } });
+        }
 
         const { data: orgKeys } = await supabase.from('organizations').select('lenco_secret_key').eq('id', targetOrgId).single();
         const secretKey = orgKeys?.lenco_secret_key || process.env.LENCO_SECRET_KEY;
@@ -2661,6 +2828,13 @@ export const pollProcessingDisbursements = async (req: any, res: any): Promise<a
             const orgId = (row.requisitions as any)?.organization_id || row.organization_id;
 
             try {
+                // A Card Wallet payout lives at Lipila: ask Lipila, and never revert on "not found".
+                if (lipila.isCardPayoutRef(ref)) {
+                    const o = await settleCardPayout(ref);
+                    results.push({ requisitionId: reqId, action: o.state === 'successful' ? 'finalized' : o.state === 'failed' ? 'reverted' : 'skipped', provider: 'lipila', state: o.state });
+                    continue;
+                }
+
                 const { data: org } = await supabase
                     .from('organizations')
                     .select('lenco_secret_key')

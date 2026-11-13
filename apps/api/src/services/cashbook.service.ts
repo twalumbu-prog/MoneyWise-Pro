@@ -692,6 +692,54 @@ export const cashbookService = {
     },
 
     /**
+     * Books a payout sent from the business's Lipila Card Wallet once Lipila has confirmed it: one DISBURSEMENT outflow on the Card Wallet
+     * account (not a MoneyWise wallet), then the same journal posting and message repair as a wallet payout. Safe to call any number of
+     * times: an existing disbursement entry stops it. Lipila charges its fee on top of the amount and takes it from the wallet, so the
+     * outflow is the amount plus that fee, and the fee is also booked as a transaction-charge line on the requisition.
+     */
+    async finalizeCardDisbursementLedger(requisitionId: string, transactionAt?: string): Promise<void> {
+        const { data: disbursement } = await supabase
+            .from('disbursements')
+            .select('organization_id, cashier_id, payment_method, total_prepared, requisitions(estimated_total, actual_total)')
+            .eq('requisition_id', requisitionId)
+            .maybeSingle();
+        if (!disbursement) { console.error(`[Card Ledger] Disbursement record not found for requisition ${requisitionId}`); return; }
+
+        const { data: existing } = await supabase
+            .from('cashbook_entries').select('id')
+            .eq('requisition_id', requisitionId).eq('entry_type', 'DISBURSEMENT').neq('status', 'PENDING').limit(1);
+        if (existing && existing.length > 0) return;
+
+        // The disbursement record holds what left the wallet: the amount plus Lipila's charge. The charge is the difference.
+        const net = Number((disbursement as any).requisitions?.estimated_total || 0);
+        const deduction = Number(disbursement.total_prepared || 0) || net;
+        const fee = Math.max(0, Math.round((deduction - net) * 100) / 100);
+        await this.logDisbursement(
+            disbursement.organization_id, requisitionId, deduction, disbursement.cashier_id,
+            `Card Wallet payout (${disbursement.payment_method || 'MOBILE_MONEY'}) for Requisition #${requisitionId.slice(0, 8)}`,
+            'LIPILA_WALLET', undefined, transactionAt,
+        );
+
+        // Lipila's charge is booked once as a transaction-charge line, the same as a Lenco withdrawal fee.
+        if (fee > 0) {
+            const { data: existingFee } = await supabase.from('line_items').select('id').eq('requisition_id', requisitionId).ilike('description', '%Withdrawal Fee%').maybeSingle();
+            if (!existingFee) {
+                const chargesAccountId = await this.getOrCreateTransactionChargesAccount(disbursement.organization_id);
+                await supabase.from('line_items').insert({
+                    requisition_id: requisitionId, description: 'Withdrawal Fee (Card Wallet)', quantity: 1, unit_price: fee,
+                    estimated_amount: fee, actual_amount: fee, account_id: chargesAccountId,
+                });
+                const est = Number((disbursement as any).requisitions?.estimated_total || 0);
+                const act = (disbursement as any).requisitions?.actual_total ? Number((disbursement as any).requisitions.actual_total) : null;
+                await supabase.from('requisitions').update({ estimated_total: est + fee, actual_total: act ? act + fee : null }).eq('id', requisitionId);
+            }
+        }
+        await postJournalForRequisitionAsync(requisitionId, disbursement.organization_id);
+        await RequisitionMessageService.repairLifecycleMessages(requisitionId).catch(err =>
+            console.error(`[Card Ledger] Failed to repair messages for ${requisitionId}:`, err));
+    },
+
+    /**
      * Log cash inflow
      */
     async logInflow(

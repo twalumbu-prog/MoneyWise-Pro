@@ -1,4 +1,4 @@
-import { CARD_ACCOUNT_TYPE, walletConnected } from '../services/lipila.service';
+import { CARD_ACCOUNT_TYPE, walletConnected, liveCardBalance } from '../services/lipila.service';
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { cashbookService } from '../services/cashbook.service';
@@ -708,7 +708,19 @@ export const getWallets = async (req: any, res: any): Promise<any> => {
             return res.status(400).json({ error: 'User organization context missing' });
         }
 
-        res.json(await fetchOrgWallets(organizationId));
+        const list: any = await fetchOrgWallets(organizationId);
+        // For a "pay from" picker only: the business's Card Wallet (its Lipila account) is offered too, flagged so the screen knows it pays
+        // out to mobile money numbers only. Every other caller gets the MoneyWise wallets exactly as before.
+        if (req.query.for === 'disbursement' && Array.isArray(list) && (await walletConnected(organizationId))) {
+            // What can be paid out is what Lipila holds (money can sit there that was never booked here), the same way the Main Wallet
+            // shows Lenco's live figure. Only when Lipila can't be asked in a few seconds does the books figure stand in.
+            const [booked, live] = await Promise.all([
+                cashbookService.getCurrentBalance(organizationId, CARD_ACCOUNT_TYPE),
+                liveCardBalance(organizationId, { waitMs: 6000 }),
+            ]);
+            return res.json([...list, { id: 'CARD_WALLET', name: 'Card Wallet', balance: live ?? booked, ledger_balance: booked, balance_source: live !== null ? 'LIPILA_LIVE' : 'BOOKS', is_main: false, is_card_wallet: true, mobile_money_only: true }]);
+        }
+        res.json(list);
     } catch (error: any) {
         console.error('Error fetching wallets:', error);
         res.status(500).json({ error: 'Failed to fetch wallets', details: error.message });

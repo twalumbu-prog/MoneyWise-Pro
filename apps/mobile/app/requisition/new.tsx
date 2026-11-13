@@ -220,27 +220,32 @@ export default function NewRequisitionScreen() {
     });
     const paymentInfo: PaymentInfo | null | undefined = profile?.payment_info;
 
-    const { data: walletsRaw } = useQuery({ queryKey: ['wallets'], queryFn: () => cashbookService.getWallets() });
-    const wallets: any[] = Array.isArray(walletsRaw) ? walletsRaw : (walletsRaw?.data || []);
+    // forDisbursement also lists the Card Wallet (Lipila), which can pay mobile money numbers only.
+    const { data: walletsRaw } = useQuery({ queryKey: ['wallets', 'forDisbursement'], queryFn: () => cashbookService.getWallets({ forDisbursement: true }) });
+    const allWallets: any[] = Array.isArray(walletsRaw) ? walletsRaw : (walletsRaw?.data || []);
+    const wallets: any[] = paymentMethod === 'mobile' ? allWallets : allWallets.filter((w: any) => !w.is_card_wallet);
 
     useEffect(() => {
-        if (wallets.length > 0 && !selectedWalletId) {
+        if (wallets.length > 0 && (!selectedWalletId || !wallets.some((w: any) => w.id === selectedWalletId))) {
             const main = wallets.find((w: any) => w.is_main) || wallets[0];
             setSelectedWalletId(main.id);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [wallets.length]);
+    }, [wallets.length, paymentMethod]);
 
     // Re-read the balance every time this screen comes back into view, so topping up in the wallet and returning
     // here clears the "insufficient funds" alert straight away.
     useFocusEffect(useCallback(() => {
         if (!autoAuthorize || useMyAccount || !selectedWalletId) { setSelectedWalletBalance(null); return; }
+        // The Card Wallet isn't a MoneyWise wallet: its balance came with the wallet list.
+        const card = wallets.find((w: any) => w.id === selectedWalletId && w.is_card_wallet);
+        if (card) { setSelectedWalletBalance(Number(card.balance) || 0); return; }
         let cancelled = false;
         cashbookService.getBalance('MONEYWISE_WALLET', undefined, selectedWalletId)
             .then((balance: any) => { if (!cancelled) setSelectedWalletBalance(Number(balance) || 0); })
             .catch(() => { if (!cancelled) setSelectedWalletBalance(null); });
         return () => { cancelled = true; };
-    }, [autoAuthorize, useMyAccount, selectedWalletId]));
+    }, [autoAuthorize, useMyAccount, selectedWalletId, walletsRaw]));
 
     // MoneyWise Pay autosuggest search
     useEffect(() => {
@@ -423,8 +428,10 @@ export default function NewRequisitionScreen() {
     const selectedWalletRow = wallets.find((w) => w.id === selectedWalletId);
     const selectedWalletLine = walletBalanceText(selectedWalletBalance ?? selectedWalletRow?.balance);
 
+    // Lipila's charge is added on top for a Card Wallet payout.
+    const cardFee = selectedWalletRow?.is_card_wallet ? lencoService.calculateLipilaPayoutFee(getTotal()) : 0;
     const isWalletBalanceInsufficient = autoAuthorize && !useMyAccount &&
-        !!selectedWalletId && selectedWalletBalance !== null && getTotal() > selectedWalletBalance;
+        !!selectedWalletId && selectedWalletBalance !== null && getTotal() + cardFee > selectedWalletBalance;
 
     const updateLineItem = (id: string, patch: Partial<LineItem>) => {
         setLineItems((prev) => prev.map((item) => {
@@ -1153,6 +1160,7 @@ export default function NewRequisitionScreen() {
                                             <View style={{ flex: 1 }}>
                                                 <Text style={styles.selectInputText}>{wallets.find((w) => w.id === selectedWalletId)?.name || 'Select Wallet'}</Text>
                                                 {!!selectedWalletLine && <Text style={styles.selectInputSub}>{selectedWalletLine}</Text>}
+                                                {!!selectedWalletRow?.is_card_wallet && <Text style={styles.selectInputSub}>Paid from your Lipila Card Wallet. Lipila’s charge of {formatKwacha(cardFee)} is added.</Text>}
                                             </View>
                                             <ChevronDown size={16} color={colors.textFaint} />
                                         </Pressable>
