@@ -65,6 +65,12 @@ const cases: { text: string; sender?: string; expect: Expect }[] = [
         sender: 'AirtelMoney',
         expect: { provider: 'AIRTEL', direction: 'IN', amount: 40, reference: 'CI261112.1720.H05308' },
     },
+    // The help line runs straight on from the confirmation, with no space after the full stop.
+    {
+        text: 'You have received ZMW 5.00 from 970000001 JOHN BANDA.Dial *115# to check your new Bal. TID: PP261113.0858.J46616.',
+        sender: 'AirtelMoney',
+        expect: { provider: 'AIRTEL', direction: 'IN', amount: 5, balanceAfter: null, counterparty: '970000001 JOHN BANDA', reference: 'PP261113.0858.J46616' },
+    },
     // Not transactions — must be ignored.
     { text: 'Did you know you can get 50Mbps uncapped data at K1,000 for 30 days and a FREE 5G Router? Call 111 or visit https://home.mtn.zm/ to purchase today!', sender: 'MTNHome', expect: null },
     { text: 'Y\'ello! You have received a bonus offer. Dial *117# to buy bundles from K5.', sender: 'MoMo', expect: null },

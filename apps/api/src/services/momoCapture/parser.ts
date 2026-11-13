@@ -35,7 +35,11 @@ const NOT_A_TRANSACTION = /\b(fail(ed|ure)?|unsuccessful|declined|cancel(l)?ed|i
 // Promo / help lines. Operators tack these onto real confirmations ("… Dial *115# to check your balance"), so they
 // only remove their own sentence; a message that is nothing but promo has no transaction left to parse.
 const PROMO_SENTENCE = /(\bdial \*|\bwin\b|\bbonus offer\b|\bbundle offer\b|\bdid you know\b|https?:\/\/|\bwww\.)/i;
-const withoutPromo = (text: string) => text.split(/(?<=[.!?])\s+/).filter((s) => !PROMO_SENTENCE.test(s)).join(' ');
+// Sentences end at ". " but operators also run them together ("…Stephen Kapambwe.Dial *115# to check…"), so a full
+// stop straight before a capitalised word is a boundary too. Amounts ("5.00") and ids ("PP261113.0858.J46616") have a
+// digit after the stop and are left whole.
+const withoutPromo = (text: string) => text.split(/(?<=[.!?])\s+|\.(?=[A-Z][a-z])/).filter((s) => !PROMO_SENTENCE.test(s))
+    .map((s) => (/[.!?]$/.test(s) ? s : `${s}.`)).join(' ');
 
 const IN_WORDS = /\b(you have received|you received|received|has sent you|sent you|deposit(ed)?|credited|cash[- ]?in|reversal|refund(ed)?)\b/i;
 const OUT_WORDS = /\b(you have sent|you sent|sent|paid|payment (of|to)|you have paid|withdr[ae]wn?|withdrawal|debited|cash[- ]?out|transferred|transfer of|purchase[ds]?|bought|airtime)\b/i;
