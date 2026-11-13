@@ -530,11 +530,14 @@ export class LencoService {
                 currency,
                 type: 'default' // Or appropriate type based on Lenco V2
             }, {
-                headers: this.getHeaders(secretKey)
+                headers: this.getHeaders(secretKey),
+                // Without a limit a slow Lenco answer outlasts the serverless function (45s), and the app only sees a bare "server had a problem".
+                timeout: 20000
             });
             return response.data.data;
         } catch (error: any) {
             console.error('Lenco account creation failed:', error.response?.data || error.message);
+            if (!error.response) throw new Error(`Lenco didn’t answer in time (${error.code || error.message}). Nothing was created; try again in a moment.`);
             throw new Error(error.response?.data?.message || 'Failed to create Lenco account');
         }
     }

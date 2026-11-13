@@ -96,7 +96,7 @@ export const provisionOrganizationLencoAccount = async (req: Request, res: Respo
         res.json({ success: true, lenco_subaccount_id: lencoAccount.id });
     } catch (error: any) {
         console.error('Provisioning error in controller:', error);
-        res.status(500).json({ error: 'Internal server error during provisioning' });
+        res.status(500).json({ error: `Internal server error during provisioning${error?.message ? `: ${String(error.message).slice(0, 200)}` : ''}` });
     }
 };
 
