@@ -65,7 +65,7 @@ import pool from './db';
 // each cold Vercel instance otherwise opened a fresh direct connection and reran
 // ~15 sequential DDL statements just to find out they were all no-ops, which is
 // what was exhausting Postgres's connection limit under concurrent traffic.
-const MIGRATION_VERSION = 5;
+const MIGRATION_VERSION = 6;
 
 const runMigration = async () => {
     const directUrl = process.env.DIRECT_DATABASE_URL;
@@ -567,6 +567,14 @@ const runMigration = async () => {
         } catch (storageErr: any) {
             console.warn('[Migration] investor-kyc bucket/policy not applied — run the storage section of 20261005120000_investor_accounts.sql in the Supabase SQL editor:', storageErr.message);
         }
+
+        // A plain "what's my balance" message (dial code reply) carries no transaction, but its figure is the most
+        // trustworthy anchor for the running wallet balance momo-capture shows — better than inferring one only from
+        // transaction messages. One per provider per user; momo_capture_settings already exists.
+        await migrationPool.query(`
+            ALTER TABLE momo_capture_settings
+            ADD COLUMN IF NOT EXISTS balance_checks JSONB DEFAULT '{}'::jsonb;
+        `);
 
         // Refresh PostgREST schema cache
         console.log('[Migration] Reloading PostgREST schema cache...');

@@ -5,7 +5,7 @@
  * add it here (with names/numbers changed) before adjusting the parser.
  */
 import assert from 'assert';
-import { parseMomoMessage } from '../services/momoCapture/parser';
+import { parseMomoMessage, parseBalanceOnly } from '../services/momoCapture/parser';
 
 type Expect = Partial<ReturnType<typeof parseMomoMessage> & {}> | null;
 const cases: { text: string; sender?: string; expect: Expect }[] = [
@@ -124,5 +124,25 @@ for (const c of cases) {
         console.log(`✗ ${c.text.slice(0, 60)}\n    ${e.message}\n    got: ${JSON.stringify(got)}`);
     }
 }
+const balanceCases: { text: string; sender?: string; expect: { provider: string; balance: number } | null }[] = [
+    { text: 'Your Mobile Money balance is ZMW 14.28.', sender: 'MoMo', expect: { provider: 'MTN', balance: 14.28 } },
+    { text: 'Your Airtel Money balance is ZMW 62.00. Dial *115# for more options.', sender: 'AirtelMoney', expect: { provider: 'AIRTEL', balance: 62 } },
+    { text: 'Balance: ZMW 14.28', sender: 'MoMo', expect: { provider: 'MTN', balance: 14.28 } },
+    // A real transaction must never be read as a plain balance check.
+    { text: 'You have received ZMW 5.00 from JOHN BANDA. New balance ZMW 20.00. TID 12345678901', sender: 'MoMo', expect: null },
+    { text: 'Your MoMo OTP is 482911. Do not share it with anyone.', expect: null },
+];
+for (const c of balanceCases) {
+    const got = parseBalanceOnly(c.text, c.sender);
+    try {
+        if (c.expect === null) assert.strictEqual(got, null);
+        else assert.deepStrictEqual(got, c.expect);
+        console.log(`✓ [balance-only] ${c.text.slice(0, 60)}`);
+    } catch (e: any) {
+        failed++;
+        console.log(`✗ [balance-only] ${c.text.slice(0, 60)}\n    ${e.message}\n    got: ${JSON.stringify(got)}`);
+    }
+}
+
 console.log(failed ? `\n${failed} failing` : '\nall passed');
 process.exit(failed ? 1 : 0);

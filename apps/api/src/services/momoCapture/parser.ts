@@ -140,6 +140,25 @@ export function parseMomoMessage(rawText: string, sender?: string | null): Parse
     };
 }
 
+/**
+ * A plain "what's my balance" reply (a dial-code check, or MTN/Airtel's own balance SMS) — no money moved, but its
+ * figure is the most trustworthy anchor for the running wallet balance, better than only inferring one from
+ * transaction messages. Must not also look like a transaction: checked after parseMomoMessage returns null.
+ */
+export function parseBalanceOnly(rawText: string, sender?: string | null): { provider: MomoProvider; balance: number } | null {
+    const full = clean(rawText || '');
+    if (full.length > 1200) return null;
+    const text = withoutPromo(full.replace(SENDER_NOTE, ''));
+    if (text.length < 6 || NOT_A_TRANSACTION.test(text)) return null;
+    if (IN_WORDS.test(text) || OUT_WORDS.test(text)) return null; // a real transaction, not a plain enquiry
+
+    const hits = moneyHits(text);
+    if (hits.length === 0) return null;
+    const reading = hits.find((h) => isBalance(h.before)) ?? (hits.length === 1 ? hits[0] : null);
+    if (!reading) return null;
+    return { provider: detectProvider(text, sender), balance: Math.round(reading.value * 100) / 100 };
+}
+
 /** Same message arriving by SMS, by notification, or twice from the Shortcut must collapse to one row. */
 export function dedupeKey(parsed: ParsedMomoMessage, rawText: string): string {
     if (parsed.reference) return `${parsed.provider}:REF:${parsed.reference.toUpperCase()}`;

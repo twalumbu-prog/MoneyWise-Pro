@@ -69,10 +69,16 @@ captured or recorded. The capture screen lists these under "Wallet balances".
 
 ### Balances and the external accounts
 
-What a wallet holds is a *running* balance, not just the newest stated figure: find the most recent message that
-states a balance (MTN only states one on money OUT; Airtel states one either way), then add or subtract every later
-message's amount in order — including the ones, like an MTN deposit, that never state a balance themselves. Without
-this, money received would sit unrecognised until the next message that happens to restate the balance.
+What a wallet holds is a *running* balance, not just the newest stated figure: find the most recent reading of the
+actual balance — a transaction message that stated one (MTN only does on money OUT; Airtel does either way), or a
+plain "what's my balance" check, whichever is more recent — then add or subtract every later transaction's amount in
+order, including ones, like an MTN deposit, that never state a balance themselves. Without this, money received
+would sit unrecognised until the next message that happens to restate the balance.
+
+A plain balance check (a dial-code reply, or the operator's own balance SMS) carries no transaction, but its figure
+is the most trustworthy anchor there is — nothing inferred, no wording to misread — so it is saved (one per provider,
+on the capture settings row) and always wins over an older reading, whichever kind. If it never shows up in the
+review list, that is correct: there is nothing to record.
 
 Every captured message counts toward this, even one later dismissed — the money still moved on the phone regardless
 of how it was booked here — except a message the *current* parser no longer reads as a transaction at all (an advert

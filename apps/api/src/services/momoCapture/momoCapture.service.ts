@@ -14,7 +14,7 @@ import crypto from 'crypto';
 import { supabase } from '../../lib/supabase';
 import { recordManualEntry, ensureCashWallet, listExternalWallets, ManualEntryError } from '../manualEntry.service';
 import { cashbookService } from '../cashbook.service';
-import { parseMomoMessage, dedupeKey, describe, type MomoProvider, type ParsedMomoMessage } from './parser';
+import { parseMomoMessage, parseBalanceOnly, dedupeKey, describe, type MomoProvider, type ParsedMomoMessage } from './parser';
 import { mirrorMomoCapture, findBookedCaptureEntry } from '../capture/capture.momoMirror';
 
 export class MomoCaptureError extends Error {
@@ -122,7 +122,13 @@ export async function ingest(input: IngestInput) {
     const parsed = parseMomoMessage(text, sender);
     await supabase.from('momo_capture_settings')
         .update({ last_capture_at: new Date().toISOString(), last_capture_source: source }).eq('user_id', input.userId);
-    if (!parsed) return { accepted: false as const, reason: 'NOT_A_TRANSACTION' };
+    if (!parsed) {
+        // Not a transaction, but a plain "what's my balance" reply is still worth something: it anchors the
+        // running total better than inferring one only from transaction messages.
+        const reading = parseBalanceOnly(text, sender);
+        if (reading) await recordBalanceCheck(input.userId, input.orgId, reading.provider, reading.balance, occurredAt);
+        return { accepted: false as const, reason: reading ? ('BALANCE_ONLY' as const) : ('NOT_A_TRANSACTION' as const) };
+    }
 
     // Already in the ledger: through Lenco, or because a screenshot of this same confirmation was approved first.
     const twin = await findLencoTwin(input.orgId, parsed, occurredAt)
@@ -184,16 +190,51 @@ export async function list(userId: string, orgId: string, status?: unknown) {
 }
 
 /**
+ * Saves a plain "what's my balance" reading. It is the most trustworthy anchor there is for the running total —
+ * nothing inferred, no transaction wording to misread — so a later check always overwrites an earlier one, kept per
+ * provider on the capture settings row. Never throws: never worth losing the message over.
+ */
+async function recordBalanceCheck(userId: string, orgId: string, provider: MomoProvider, balance: number, occurredAt: string): Promise<void> {
+    try {
+        const row = await settingsRow(userId, orgId);
+        const checks: Record<string, { balance: number; occurredAt: string }> = { ...(row.balance_checks || {}) };
+        const existing = checks[provider];
+        if (existing && new Date(existing.occurredAt) >= new Date(occurredAt)) return;
+        checks[provider] = { balance, occurredAt };
+        await supabase.from('momo_capture_settings').update({ balance_checks: checks, updated_at: new Date().toISOString() }).eq('user_id', userId);
+        await syncWalletToReportedBalance(userId, orgId, provider);
+    } catch (e: any) {
+        console.error(`[MoMo capture] could not save a balance check for ${provider}:`, e?.message);
+    }
+}
+
+/** The most recent plain balance check per provider, merged across every phone capturing for this organisation. */
+async function balanceChecks(orgId: string, userId?: string): Promise<Record<string, { balance: number; occurredAt: string }>> {
+    let q = supabase.from('momo_capture_settings').select('balance_checks').eq('organization_id', orgId);
+    if (userId) q = q.eq('user_id', userId);
+    const { data } = await q;
+    const merged: Record<string, { balance: number; occurredAt: string }> = {};
+    for (const row of data ?? []) {
+        for (const [provider, reading] of Object.entries((row as any).balance_checks || {})) {
+            const r = reading as { balance: number; occurredAt: string };
+            if (!merged[provider] || new Date(r.occurredAt) > new Date(merged[provider].occurredAt)) merged[provider] = r;
+        }
+    }
+    return merged;
+}
+
+/**
  * What each wallet holds now, worked out the way a person checking their messages by hand would: find the most
- * recent message that states a balance (MTN only states one on money OUT; Airtel states one both ways), then add or
- * subtract every later message's amount in order, even the ones that never stated a balance themselves. Without this,
- * an MTN deposit — which never carries "new balance" — would leave the figure unmoved until the next withdrawal.
+ * recent reading of the actual balance — either a transaction message that stated one (MTN only does this on money
+ * OUT; Airtel does it both ways) or a plain balance check, whichever is more recent — then add or subtract every
+ * later transaction's amount in order, even ones that never stated a balance themselves. Without this, an MTN
+ * deposit — which never carries "new balance" — would leave the figure unmoved until the next withdrawal.
  *
- * Every captured message counts, including one later dismissed: the money still moved in the provider's own system
+ * Every captured transaction counts toward this, even one later dismissed: the money still moved on the phone
  * regardless of how it ended up booked here. The ONE exception is a message the CURRENT parser no longer reads as a
  * transaction at all (an advert captured before a parser fix, say) — those never moved money and are left out, so a
- * parser fix cleans up old noise here too, not just for new messages. A provider with no message ever stating a
- * balance has nothing to anchor to and is left out rather than guessed.
+ * parser fix cleans up old noise here too, not just for new messages. A provider with no reading at all, ever, has
+ * nothing to anchor to and is left out rather than guessed.
  */
 async function runningBalances(orgId: string, userId?: string) {
     let q = supabase.from('momo_captures')
@@ -201,27 +242,33 @@ async function runningBalances(orgId: string, userId?: string) {
         .eq('organization_id', orgId)
         .order('occurred_at', { ascending: true }).limit(1000);
     if (userId) q = q.eq('user_id', userId);
-    const { data, error } = await q;
+    const [{ data, error }, checks] = await Promise.all([q, balanceChecks(orgId, userId)]);
     if (error) throw new MomoCaptureError(error.message, 500);
 
-    const byProvider = new Map<MomoProvider, { parsed: ParsedMomoMessage; occurredAt: string }[]>();
+    type Event = { occurredAt: string; balance: number | null; amount: number; direction: 'IN' | 'OUT' | null; fee: number };
+    const byProvider = new Map<MomoProvider, Event[]>();
+    const push = (provider: MomoProvider, e: Event) => byProvider.set(provider, [...(byProvider.get(provider) ?? []), e]);
+
     for (const row of data ?? []) {
         const parsed = parseMomoMessage(row.raw_text, row.sender);
         if (!parsed) continue; // today's parser says this never moved money
-        const list = byProvider.get(row.provider as MomoProvider) ?? [];
-        list.push({ parsed, occurredAt: row.occurred_at });
-        byProvider.set(row.provider as MomoProvider, list);
+        push(row.provider as MomoProvider, { occurredAt: row.occurred_at, balance: parsed.balanceAfter, amount: parsed.amount, direction: parsed.direction, fee: parsed.fee || 0 });
+    }
+    for (const [provider, reading] of Object.entries(checks)) {
+        push(provider as MomoProvider, { occurredAt: reading.occurredAt, balance: reading.balance, amount: 0, direction: null, fee: 0 });
     }
 
     const out: { provider: MomoProvider; name: string; balance: number; asOf: string }[] = [];
-    for (const [provider, rows] of byProvider) {
+    for (const [provider, unsorted] of byProvider) {
+        const rows = [...unsorted].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
         let anchor = -1;
-        for (let i = rows.length - 1; i >= 0; i--) if (rows[i].parsed.balanceAfter !== null) { anchor = i; break; }
-        if (anchor === -1) continue; // never stated a balance — nothing to anchor to
-        let balance = Number(rows[anchor].parsed.balanceAfter);
+        for (let i = rows.length - 1; i >= 0; i--) if (rows[i].balance !== null) { anchor = i; break; }
+        if (anchor === -1) continue; // never had a reading — nothing to anchor to
+        let balance = Number(rows[anchor].balance);
         for (let i = anchor + 1; i < rows.length; i++) {
-            const p = rows[i].parsed;
-            balance += (p.direction === 'IN' ? 1 : -1) * p.amount - (p.direction === 'OUT' ? (p.fee || 0) : 0);
+            const r = rows[i];
+            if (!r.direction) continue; // a balance check contributes no amount of its own
+            balance += (r.direction === 'IN' ? 1 : -1) * r.amount - (r.direction === 'OUT' ? r.fee : 0);
         }
         out.push({ provider, name: PROVIDER_WALLET[provider], balance: Math.round(balance * 100) / 100, asOf: rows[rows.length - 1].occurredAt });
     }
