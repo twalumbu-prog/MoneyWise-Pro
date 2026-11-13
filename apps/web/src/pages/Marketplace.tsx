@@ -1,12 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { BadgeCheck, Camera, Gavel, Heart, Lightbulb, MapPin, Plus, Search, ShoppingBag, SlidersHorizontal, Store } from 'lucide-react';
 import { apiJson } from 'core';
 import { PagePanel } from '../components/ui/PagePanel';
 import { PrimaryButton, TonalButton } from '../components/ui/Dialog';
 import { LISTINGS_KEY, ListingCard, Shelf, ShelfItem, StoreCard, typeGroup } from '../components/marketplace/parts';
 import { buildFeed } from '../components/marketplace/feed';
+import { ImportedCard } from './MarketplaceImported';
+import type { ImportBrowse, ImportCard } from '../components/marketplace/importTypes';
 import type { FeedEntry } from '../components/marketplace/feed';
 import type { Listing, MarketplaceData } from '../components/marketplace/parts';
 import { StoreLocationDialog } from '../components/marketplace/StoreLocationDialog';
@@ -68,6 +70,18 @@ export const Marketplace: React.FC = () => {
         queryFn: () => apiJson<MarketplaceData>('/marketplace/listings'),
         staleTime: 60_000,
     });
+
+    // Items from overseas join the same feed, behind the local ones. They are shown when browsing or searching by words, not when a local-only
+    // filter (category, type, price, verified, place, watchlist, photo search) is on, because those don't apply to them.
+    const [intlTerm, setIntlTerm] = useState('');
+    React.useEffect(() => { const t = setTimeout(() => setIntlTerm(query.trim()), 450); return () => clearTimeout(t); }, [query]);
+    const fuseIntl = category === 'ALL' && type === 'ALL' && !min && !max && !onlySaved && !verifiedOnly && place === 'ALL' && !imageMatch;
+    const intl = useQuery({
+        queryKey: ['marketplace', 'imports', 'fused', intlTerm],
+        queryFn: () => apiJson<ImportBrowse>(`/marketplace/imports?page=0${intlTerm ? `&q=${encodeURIComponent(intlTerm)}` : ''}`),
+        enabled: fuseIntl, staleTime: 60_000, retry: false, placeholderData: keepPreviousData,
+    });
+    const intlItems: ImportCard[] = useMemo(() => (fuseIntl ? (intl.data?.products ?? []) : []), [fuseIntl, intl.data]);
 
     // Food and drink have their own tab, so browsing the rest of the Marketplace leaves them out. A search still finds them.
     const everything = useMemo(() => data?.listings ?? [], [data]);
@@ -199,15 +213,30 @@ export const Marketplace: React.FC = () => {
     const shelfMains = popular.filter((m) => m.subs.some((s) => (counts.sub.get(`${m.id}/${s.id}`) ?? 0) > 0)).slice(0, 2);
     const bandImages = (mainId: string) => all.filter((l) => categorize(l).main === mainId && l.imageUrl).slice(0, 3).map((l) => l.imageUrl);
 
-    const entry = (e: FeedEntry, i: number, compact = false) => e.kind === 'store'
-        ? <StoreCard key={`store-${e.seller.id}`} seller={e.seller} items={e.items} compact={compact} onOpen={() => navigate(`/marketplace/store/${e.seller.id}`)} />
-        : card(e.listing, i, compact);
+    // Every local card says so. (International cards carry their own "International" tag.)
+    const entry = (e: FeedEntry, i: number, compact = false) => (
+        <div className="relative">
+            {e.kind === 'store'
+                ? <StoreCard key={`store-${e.seller.id}`} seller={e.seller} items={e.items} compact={compact} onOpen={() => navigate(`/marketplace/store/${e.seller.id}`)} />
+                : card(e.listing, i, compact)}
+            <span className="pointer-events-none absolute left-2.5 top-2.5 z-10 rounded-full bg-[#CFF1DC] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#0B5D2E] shadow-sm">Local</span>
+        </div>
+    );
+
+    // One feed: local items lead and get the room; one international item is let in after every four, the rest follow once local ones run out.
+    const blended = useMemo(() => {
+        const out: ({ k: 'local'; e: FeedEntry; i: number } | { k: 'intl'; p: ImportCard })[] = [];
+        let j = 0;
+        feed.forEach((e, i) => { out.push({ k: 'local', e, i }); if ((i + 1) % 4 === 0 && j < intlItems.length) out.push({ k: 'intl', p: intlItems[j++] }); });
+        intlItems.slice(j).forEach((p) => out.push({ k: 'intl', p }));
+        return out;
+    }, [feed, intlItems]);
     const entryKey = (e: FeedEntry) => e.kind === 'store' ? `store-${e.seller.id}` : e.listing.id;
 
     return (
         <PagePanel
             title="Marketplace"
-            subtitle="Find what you need from MoneyWise sellers"
+            subtitle="Find what you need from MoneyWise sellers, and from overseas"
             tabs={<MarketplaceTabs active="browse" />}
             actions={<><span className="hidden md:inline-flex"><TonalButton onClick={() => setLocationOpen(true)}><MapPin size={14} /> Store location</TonalButton></span><PrimaryButton onClick={() => navigate('/products')} className="h-10 px-5"><Plus size={16} /> Sell something</PrimaryButton></>}
         >
@@ -425,7 +454,7 @@ export const Marketplace: React.FC = () => {
                         <PromoBand bg="#0B57D0" ink="#FFFFFF" title="Get more with MoneyWise" text="Buyers split orders into four with Pay in 4. Sellers get a store of their own and can advertise to be seen first." cta="Advertise your store" onCta={() => navigate('/marketplace/ads')} images={all.filter((l) => l.imageUrl).slice(0, 3).map((l) => l.imageUrl)} ctaBg="#FFFFFF" ctaInk="#0B57D0" />
                     )}
 
-                    {shown.length === 0 ? (
+                    {shown.length === 0 && intlItems.length === 0 ? (
                         <div className="flex flex-col items-center py-16 text-center">
                             <MapPin size={28} className="text-[#9AA0A6]" />
                             <p className="mt-3 text-sm font-semibold text-[#1F1F1F]">{onlySaved && saved.length === 0 ? 'Your watchlist is empty' : 'No matches'}</p>
@@ -436,10 +465,12 @@ export const Marketplace: React.FC = () => {
                         <section>
                             <div className="mb-3 flex items-baseline justify-between">
                                 <h2 className="text-lg font-bold text-[#1F1F1F]">{browsing ? 'Just listed' : onlySaved ? 'Your watchlist' : 'Results'}</h2>
-                                <p className="text-xs text-[#5F6368]">{feed.length} {feed.length === 1 ? 'result' : 'results'}</p>
+                                <p className="text-xs text-[#5F6368]">{blended.length} {blended.length === 1 ? 'result' : 'results'}</p>
                             </div>
                             <ul className="grid grid-cols-2 gap-x-4 gap-y-7 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-                                {feed.map((e, i) => <li key={entryKey(e)}>{entry(e, i)}</li>)}
+                                {blended.map((b) => b.k === 'local'
+                                    ? <li key={entryKey(b.e)}>{entry(b.e, b.i)}</li>
+                                    : <li key={`intl-${b.p.id}`}><ImportedCard p={b.p} label onOpen={() => navigate(`/marketplace/imported/${b.p.id}`)} /></li>)}
                             </ul>
                         </section>
                     )}

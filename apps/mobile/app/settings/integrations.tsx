@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator, Linking, Alert } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, ExternalLink, Unplug, CreditCard, ChevronRight } from 'lucide-react-native';
+import { CheckCircle2, ExternalLink, Unplug, CreditCard, ChevronRight, Wallet } from 'lucide-react-native';
 import { integrationService, lipilaService } from 'core';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../../src/theme/tokens';
@@ -121,6 +121,17 @@ export default function IntegrationsScreen() {
                         </Pressable>
                     </View>
                 )}
+
+                <Pressable style={styles.card} onPress={() => router.push('/settings/lenco' as any)}>
+                    <View style={styles.cardTop}>
+                        <View style={[styles.qbIcon, { backgroundColor: '#E11D74' }]}><Wallet size={22} color="#FFFFFF" /></View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.cardTitle}>Lenco wallet</Text>
+                            <Text style={styles.cardSub}>Connect your Lenco account with your keys</Text>
+                        </View>
+                        <ChevronRight size={18} color={colors.textFaint} />
+                    </View>
+                </Pressable>
 
                 {lipila?.available ? (
                     <Pressable style={styles.card} onPress={() => router.push('/settings/lipila')}>

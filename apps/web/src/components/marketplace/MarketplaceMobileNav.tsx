@@ -17,7 +17,7 @@ type Section = 'browse' | 'stores' | 'services' | 'food' | 'imported' | 'more';
 /** Which section a Marketplace address belongs to (an item or checkout page counts as Browse). */
 export const marketplaceSection = (p: string): Section => {
     if (p.startsWith('/marketplace/imported/orders')) return 'more';
-    if (p.startsWith('/marketplace/imported')) return 'imported';
+    if (p.startsWith('/marketplace/imported')) return 'more';
     if (p.startsWith('/marketplace/stores') || p.startsWith('/marketplace/store/')) return 'stores';
     if (p.startsWith('/marketplace/services')) return 'services';
     if (p.startsWith('/marketplace/food')) return 'food';
@@ -30,7 +30,6 @@ export const MARKETPLACE_BOTTOM_TABS: { path: string; icon: React.ComponentType<
     { path: '/marketplace/stores', icon: Store, label: 'Stores', section: 'stores' },
     { path: '/marketplace/services', icon: Briefcase, label: 'Services', section: 'services' },
     { path: '/marketplace/food', icon: UtensilsCrossed, label: 'Food', section: 'food' },
-    { path: '/marketplace/imported', icon: Globe, label: 'Imported', section: 'imported' },
 ];
 
 const MORE = [
@@ -38,6 +37,7 @@ const MORE = [
     { to: '/marketplace/plan', label: 'Plan a purchase', hint: 'Find the cheapest place to buy everything you need', icon: ShoppingBasket },
     { to: '/marketplace/requests', label: 'Requests for quote', hint: 'Ask suppliers for a price, or quote a request', icon: ClipboardList },
     { to: '/marketplace/orders', label: 'Orders', hint: 'What you bought and sold', icon: Package },
+    { to: '/marketplace/imported', label: 'Order from overseas', hint: 'Ask for something to be brought in, or paste a link', icon: Globe },
     { to: '/marketplace/imported/orders', label: 'Import orders', hint: 'Follow what you ordered from overseas', icon: PackageCheck },
     { to: '/marketplace/pay-later', label: 'Pay in 4', hint: 'Split a purchase into four payments', icon: CalendarClock },
     { to: '/marketplace/ads', label: 'Advertise', hint: 'Get your items and store seen first', icon: Megaphone },

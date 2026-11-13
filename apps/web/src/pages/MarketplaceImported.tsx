@@ -19,10 +19,12 @@ const CardPhoto: React.FC<{ src?: string; alt: string }> = ({ src, alt }) => {
     return <img src={resized(src, 400, { square: true })} alt={alt} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} className="h-full w-full object-cover transition group-hover:scale-105" />;
 };
 
-const Card: React.FC<{ p: ImportCard; onOpen: () => void }> = ({ p, onOpen }) => (
+/** One item from overseas. `label` adds the "International" tag, used when these sit in the same feed as local items. */
+export const ImportedCard: React.FC<{ p: ImportCard; onOpen: () => void; label?: boolean }> = ({ p, onOpen, label }) => (
     <button type="button" onClick={onOpen} className="group block w-full text-left">
-        <div className="aspect-square overflow-hidden rounded-2xl bg-[#F1F3F4]">
+        <div className="relative aspect-square overflow-hidden rounded-2xl bg-[#F1F3F4]">
             <CardPhoto src={p.images[0]} alt={p.title} />
+            {label && <span className="pointer-events-none absolute left-2.5 top-2.5 rounded-full bg-[#FFE3BD] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#8A4B00] shadow-sm">International</span>}
         </div>
         <div className="flex flex-col px-0.5 pt-2.5">
             <p className="h-10 overflow-hidden text-sm leading-5 text-[#1F1F1F] line-clamp-2">{p.title}</p>
@@ -33,6 +35,8 @@ const Card: React.FC<{ p: ImportCard; onOpen: () => void }> = ({ p, onOpen }) =>
         </div>
     </button>
 );
+
+const Card = ImportedCard;
 
 type Slide = { eyebrow: string; title: string; text: string; cta: string; icon: React.ReactNode; bg: string; category?: string; store?: string };
 const SLIDES: Slide[] = [

@@ -14,13 +14,13 @@ const MAIN: Tab[] = [
     { id: 'services', label: 'Services', to: '/marketplace/services', icon: Briefcase },
     { id: 'food', label: 'Food', to: '/marketplace/food', icon: UtensilsCrossed },
     { id: 'compare', label: 'Compare', to: '/marketplace/compare', icon: Scale },
-    { id: 'imported', label: 'Imported', to: '/marketplace/imported', icon: Globe },
 ];
 /** The sections about your own buying and selling, kept under "More". */
 const MORE: (Tab & { adminOnly?: boolean })[] = [
     { id: 'plan', label: 'Plan a purchase', to: '/marketplace/plan', icon: ShoppingBasket, hint: 'Find the cheapest place to buy everything you need' },
     { id: 'requests', label: 'Requests for quote', to: '/marketplace/requests', icon: ClipboardList, hint: 'Ask suppliers for a price, or quote a request' },
     { id: 'orders', label: 'Orders', to: '/marketplace/orders', icon: Package, hint: 'What you bought and sold' },
+    { id: 'imported', label: 'Order from overseas', to: '/marketplace/imported', icon: Globe, hint: 'Ask for something to be brought in, or paste a link' },
     { id: 'import-orders', label: 'Import orders', to: '/marketplace/imported/orders', icon: PackageCheck, hint: 'Follow what you ordered from overseas' },
     { id: 'import-desk', label: 'Import desk', to: '/marketplace/import-desk', icon: PackageCheck, hint: 'Orders to buy, catalogue and prices (team only)', adminOnly: true },
     { id: 'price-desk', label: 'Price desk', to: '/marketplace/price-desk', icon: Scale, hint: 'Enter prices from suppliers and shops (team only)', adminOnly: true },

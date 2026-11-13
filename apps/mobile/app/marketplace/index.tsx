@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { View, Text, FlatList, Image, Pressable, TextInput, ScrollView, StyleSheet, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { useInfiniteQuery, useQuery, keepPreviousData } from '@tanstack/react-query';
-import { Search, X, Store, Globe, Gavel, LayoutGrid } from 'lucide-react-native';
+import { Search, X, Gavel } from 'lucide-react-native';
 import { apiJson, formatKwacha } from 'core';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { Loading, Empty, ErrorNote } from '../../src/components/marketplace/ui';
@@ -13,7 +13,6 @@ import { listingPrice } from '../../src/lib/listings';
 import { resized } from '../../src/lib/images';
 import { colors, fonts } from '../../src/theme/tokens';
 
-type Source = 'ALL' | 'LOCAL' | 'IMPORTED' | 'AUCTION';
 type Item = { key: string; title: string; price: string; note: string; sub: string; image: string | null; tag: 'Local' | 'International'; category: string | null; auction: boolean; open: string };
 
 const ink = '#191919';
@@ -23,16 +22,28 @@ const fromLocal = (l: LocalListing): Item => {
 };
 const fromImport = (p: ImportCard): Item => ({ key: `i-${p.id}`, title: p.title, price: p.perItemZmw != null ? `${p.estimated || p.vehicleEstimate ? 'about ' : ''}${formatKwacha(p.perItemZmw)}` : 'Price on request', note: `Arrives in ${daysRange(p.deliveryDaysMin, p.deliveryDaysMax)}`, sub: p.store ?? 'Overseas', image: p.images?.[0] ?? null, tag: 'International', category: p.category, auction: false, open: `/marketplace/imported/${p.id}` });
 
+/** Every local item leads; one international item is let in after every few local ones, and the rest follow once the local items run out. */
+const LOCAL_PER_INTERNATIONAL = 4;
+function blend(local: Item[], international: Item[]): Item[] {
+    const out: Item[] = [];
+    let j = 0;
+    local.forEach((l, i) => {
+        out.push(l);
+        if ((i + 1) % LOCAL_PER_INTERNATIONAL === 0 && j < international.length) out.push(international[j++]);
+    });
+    return [...out, ...international.slice(j)];
+}
+
 /**
- * The Marketplace laid out like eBay's Android app: a rounded search bar, a row of outlined chips with icons, round "Popular categories",
- * coloured promo cards with a dark pill button, and rows of item cards with the price and a "Buy It Now" line. Local and international
- * items sit in the same rows; the chips only filter.
+ * The Marketplace laid out like eBay's Android app: a rounded search bar, round "Popular categories", coloured promo cards with a dark pill
+ * button, and item cards with the price and a "Buy It Now" line. Local and international items are ONE feed: local items come first and
+ * get the most room, international ones are mixed in behind them, and every card says which it is ("Local" or "International").
  */
 export default function MarketplaceHome() {
     const router = useRouter();
     const { width } = useWindowDimensions();
     const [query, setQuery] = useState(''); const [term, setTerm] = useState('');
-    const [source, setSource] = useState<Source>('ALL');
+    const [auctionsOnly, setAuctionsOnly] = useState(false);
     const [category, setCategory] = useState('');
     useEffect(() => { const t = setTimeout(() => setTerm(query.trim()), 400); return () => clearTimeout(t); }, [query]);
 
@@ -40,20 +51,19 @@ export default function MarketplaceHome() {
     const imports = useInfiniteQuery({
         queryKey: ['marketplace', 'imports', term, category, ''],
         initialPageParam: 0,
-        enabled: source === 'ALL' || source === 'IMPORTED',
+        enabled: !auctionsOnly,
         queryFn: ({ pageParam }) => apiJson<ImportBrowse>(`/marketplace/imports?page=${pageParam}${term ? `&q=${encodeURIComponent(term)}` : ''}${category ? `&category=${encodeURIComponent(category)}` : ''}`),
         getNextPageParam: (last, all) => (last.hasMore ? all.length : undefined),
         placeholderData: keepPreviousData, staleTime: 60_000, retry: false,
     });
 
     const localItems = useMemo(() => {
-        if (source === 'IMPORTED') return [];
         const q = term.toLowerCase();
         return (local.data?.listings ?? [])
-            .filter((l) => (source !== 'AUCTION' || l.auction?.status === 'OPEN') && (!category || l.category === category) && (!q || `${l.name} ${l.description ?? ''} ${l.category ?? ''} ${l.seller.name}`.toLowerCase().includes(q)))
+            .filter((l) => (!auctionsOnly || l.auction?.status === 'OPEN') && (!category || l.category === category) && (!q || `${l.name} ${l.description ?? ''} ${l.category ?? ''} ${l.seller.name}`.toLowerCase().includes(q)))
             .map(fromLocal);
-    }, [local.data, source, term, category]);
-    const importItems = useMemo(() => (source === 'LOCAL' || source === 'AUCTION' ? [] : (imports.data?.pages.flatMap((p) => p.products) ?? []).map(fromImport)), [imports.data, source]);
+    }, [local.data, auctionsOnly, term, category]);
+    const importItems = useMemo(() => (auctionsOnly ? [] : (imports.data?.pages.flatMap((p) => p.products) ?? []).map(fromImport)), [imports.data, auctionsOnly]);
 
     // Popular categories: the biggest across both, each with a picture taken from an item in it.
     const cats = useMemo(() => {
@@ -64,16 +74,12 @@ export default function MarketplaceHome() {
         return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 14).map(([name]) => ({ name, image: pic.get(name) ?? null }));
     }, [local.data, imports.data, importItems]);
 
-    const browsing = !term && !category && source === 'ALL';
-    const results = useMemo(() => {
-        const out: Item[] = [];
-        for (let i = 0; i < Math.max(localItems.length, importItems.length); i++) { if (localItems[i]) out.push(localItems[i]); if (importItems[i]) out.push(importItems[i]); }
-        return out;
-    }, [localItems, importItems]);
+    const browsing = !term && !category && !auctionsOnly;
+    const results = useMemo(() => blend(localItems, importItems), [localItems, importItems]);
 
-    const wantsImports = source === 'ALL' || source === 'IMPORTED';
-    const loading = source === 'IMPORTED' ? imports.isPending : source === 'ALL' ? local.isPending && imports.isPending : local.isPending;
-    const failed = source === 'IMPORTED' ? imports.isError : source === 'ALL' ? local.isError && imports.isError : local.isError;
+    const wantsImports = !auctionsOnly;
+    const loading = auctionsOnly ? local.isPending : local.isPending && imports.isPending;
+    const failed = auctionsOnly ? local.isError : local.isError && imports.isError;
     const open = (i: Item) => router.push(i.open as any);
     const cell = Math.floor((width - 16 * 2 - 12) / 2);
 
@@ -85,10 +91,7 @@ export default function MarketplaceHome() {
                 {query ? <Pressable onPress={() => setQuery('')} hitSlop={10}><X size={18} color="#707070" /></Pressable> : null}
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingRight: 16 }} style={{ marginHorizontal: -16, paddingLeft: 16 }}>
-                <Chip icon={LayoutGrid} label="All" on={source === 'ALL'} onPress={() => setSource('ALL')} />
-                <Chip icon={Store} label="Local" on={source === 'LOCAL'} onPress={() => setSource('LOCAL')} />
-                <Chip icon={Globe} label="International" on={source === 'IMPORTED'} onPress={() => setSource('IMPORTED')} />
-                <Chip icon={Gavel} label="Auctions" on={source === 'AUCTION'} onPress={() => setSource('AUCTION')} />
+                <Chip icon={Gavel} label="Auctions" on={auctionsOnly} onPress={() => setAuctionsOnly((v) => !v)} />
                 {category ? <Chip icon={X} label={category} on onPress={() => setCategory('')} /> : null}
             </ScrollView>
         </View>
@@ -116,7 +119,7 @@ export default function MarketplaceHome() {
                 <Pressable style={[s.promoBtn, { backgroundColor: '#5B1A0B' }]} onPress={() => router.push('/marketplace/compare' as any)}><Text style={s.promoBtnText}>Compare prices</Text></Pressable>
             </View>
 
-            {localItems.length ? <Row title="Recommended for you" sub="From sellers in Zambia" items={localItems.slice(0, 12)} onOpen={open} onAll={() => setSource('LOCAL')} /> : null}
+            {localItems.length ? <Row title="Local picks" sub="From sellers in Zambia" items={localItems.slice(0, 12)} onOpen={open} /> : null}
 
             <View style={[s.promo, { backgroundColor: '#7FDDD6' }]}>
                 <Text style={s.promoTitle}>Need a supplier to quote you?</Text>
@@ -124,7 +127,6 @@ export default function MarketplaceHome() {
                 <Pressable style={[s.promoBtn, { backgroundColor: '#0B4A6F' }]} onPress={() => router.push('/marketplace/requests' as any)}><Text style={s.promoBtnText}>Ask for quotes</Text></Pressable>
             </View>
 
-            {importItems.length ? <Row title="International" sub="Brought in for you, priced in kwacha with shipping and tax" items={importItems.slice(0, 12)} onOpen={open} onAll={() => setSource('IMPORTED')} /> : null}
 
             <View style={[s.promo, { backgroundColor: '#E9E4FB' }]}>
                 <Text style={s.promoTitle}>Following an international order?</Text>
@@ -132,7 +134,7 @@ export default function MarketplaceHome() {
                 <Pressable style={[s.promoBtn, { backgroundColor: '#2D1B69' }]} onPress={() => router.push('/marketplace/imported/orders' as any)}><Text style={s.promoBtnText}>My orders</Text></Pressable>
             </View>
 
-            {results.length ? <Text style={s.h1}>More to explore</Text> : null}
+            {results.length ? <View><Text style={s.h1}>Everything on the Marketplace</Text><Text style={s.h1Sub}>Local items first, with international ones mixed in</Text></View> : null}
         </View>
     );
 
@@ -169,12 +171,11 @@ function Chip({ icon: Icon, label, on, onPress }: { icon: any; label: string; on
     );
 }
 
-function Row({ title, sub, items, onOpen, onAll }: { title: string; sub: string; items: Item[]; onOpen: (i: Item) => void; onAll: () => void }) {
+function Row({ title, sub, items, onOpen }: { title: string; sub: string; items: Item[]; onOpen: (i: Item) => void }) {
     return (
         <View style={{ gap: 12 }}>
             <View style={s.rowHead}>
                 <View style={{ flex: 1 }}><Text style={s.h1}>{title}</Text><Text style={s.h1Sub}>{sub}</Text></View>
-                <Pressable onPress={onAll}><Text style={s.seeAll}>See all</Text></Pressable>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingRight: 16 }} style={{ marginHorizontal: -16, paddingLeft: 16 }}>
                 {items.map((i) => <Card key={i.key} i={i} w={146} onPress={() => onOpen(i)} />)}
@@ -187,11 +188,14 @@ function Row({ title, sub, items, onOpen, onAll }: { title: string; sub: string;
 function Card({ i, w, onPress }: { i: Item; w: number; onPress: () => void }) {
     return (
         <Pressable onPress={onPress} style={{ width: w, marginBottom: 14 }}>
-            <View style={[s.pic, { width: w, height: w }]}>{i.image ? <Image source={{ uri: resized(i.image, 420, { square: true }) }} style={{ width: w, height: w }} resizeMode="cover" /> : null}</View>
+            <View style={[s.pic, { width: w, height: w }]}>
+                {i.image ? <Image source={{ uri: resized(i.image, 420, { square: true }) }} style={{ width: w, height: w }} resizeMode="cover" /> : null}
+                <View style={[s.label, i.tag === 'Local' ? s.labelLocal : s.labelIntl]}><Text style={[s.labelText, i.tag === 'Local' ? { color: '#0B5D2E' } : { color: '#8A4B00' }]}>{i.tag}</Text></View>
+            </View>
             <Text style={s.title} numberOfLines={2}>{i.title}</Text>
             <Text style={s.price}>{i.price}</Text>
             {i.note ? <Text style={s.note}>{i.note}</Text> : null}
-            <Text style={s.meta} numberOfLines={1}>{i.tag} · {i.sub}</Text>
+            <Text style={s.meta} numberOfLines={1}>{i.sub}</Text>
         </Pressable>
     );
 }
@@ -216,6 +220,10 @@ const s = StyleSheet.create({
     promoBtn: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 24, paddingVertical: 14, marginTop: 4 },
     promoBtnText: { fontFamily: fonts.bodyBold, fontSize: 14, color: '#fff' },
     pic: { backgroundColor: '#F4F4F4', borderRadius: 16, overflow: 'hidden' },
+    label: { position: 'absolute', top: 8, left: 8, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 },
+    labelLocal: { backgroundColor: '#CFF1DC' },
+    labelIntl: { backgroundColor: '#FFE3BD' },
+    labelText: { fontFamily: fonts.bodyBold, fontSize: 10.5 },
     title: { fontFamily: fonts.body, fontSize: 14, color: ink, marginTop: 8, lineHeight: 19 },
     price: { fontFamily: fonts.bodyBold, fontSize: 16, color: ink, marginTop: 4 },
     note: { fontFamily: fonts.body, fontSize: 12.5, color: '#3C3C3C', marginTop: 1 },

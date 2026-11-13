@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { AlertCircle, RefreshCw } from 'lucide-react-native';
+import { AlertCircle, ChevronDown, RefreshCw } from 'lucide-react-native';
 import { lipilaService, formatKwacha } from 'core';
 import { colors, fonts, radius } from '../../theme/tokens';
 
@@ -14,8 +15,13 @@ const chip = (p: { status: string; problem?: string | null }) => {
 };
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
-/** Under the Card Wallet card: Lipila's own balance, what MoneyWise has recorded, and every card payment started for this business. */
+// Open or closed is kept while the app is running, so it doesn't snap shut when you come back to the wallet.
+let remembered = false;
+
+/** Under the Card Wallet card, as a drop-down: closed it is one line with Lipila's live balance; open it shows what MoneyWise has recorded and every card payment. */
 export function CardWalletPanel({ organizationId }: { organizationId: string | null | undefined }) {
+    const [open, setOpenState] = useState(remembered);
+    const setOpen = (v: boolean) => { remembered = v; setOpenState(v); };
     const wallet = useQuery({ queryKey: ['lipila', 'wallet', organizationId], queryFn: () => lipilaService.wallet(), enabled: !!organizationId, staleTime: 30_000 });
     const pays = useQuery({ queryKey: ['lipila', 'card-payments', organizationId], queryFn: () => lipilaService.cardPayments(30), enabled: !!organizationId, staleTime: 30_000 });
     const w = wallet.data;
@@ -25,15 +31,20 @@ export function CardWalletPanel({ organizationId }: { organizationId: string | n
     return (
         <View style={styles.root}>
             <View style={styles.head}>
-                <View style={{ flex: 1 }}>
-                    <Text style={styles.title}>Card Wallet</Text>
-                    <Text style={styles.sub}>Where card payments go{w?.env ? ` · ${w.env === 'production' ? 'live' : 'testing'}` : ''}</Text>
-                </View>
+                <Pressable style={styles.toggle} onPress={() => setOpen(!open)} accessibilityRole="button" accessibilityState={{ expanded: open }}>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.title}>Card Wallet</Text>
+                        <Text style={styles.sub}>Where card payments go{w?.env ? ` · ${w.env === 'production' ? 'live' : 'testing'}` : ''}</Text>
+                    </View>
+                    {!open ? <View style={styles.balChip}><Text style={styles.balChipText}>{wallet.isLoading ? '…' : w?.balance != null ? formatKwacha(w.balance) : '—'}</Text></View> : null}
+                    <View style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}><ChevronDown size={18} color={colors.textMuted} /></View>
+                </Pressable>
                 <Pressable style={styles.refresh} onPress={() => { void wallet.refetch(); void pays.refetch(); }} disabled={busy} accessibilityLabel="Refresh">
                     {busy ? <ActivityIndicator size="small" color={colors.blue} /> : <RefreshCw size={15} color={colors.blue} />}
                 </Pressable>
             </View>
 
+            {open ? <>
             <View style={styles.stats}>
                 <View style={styles.stat}>
                     <Text style={styles.statLabel}>BALANCE IN LIPILA</Text>
@@ -71,6 +82,7 @@ export function CardWalletPanel({ organizationId }: { organizationId: string | n
                     </View>
                 );
             })}
+            </> : null}
         </View>
     );
 }
@@ -78,6 +90,9 @@ export function CardWalletPanel({ organizationId }: { organizationId: string | n
 const styles = StyleSheet.create({
     root: { marginTop: 14, backgroundColor: colors.surface, borderRadius: radius.lg, padding: 14, borderWidth: 1, borderColor: '#E5E7EB' },
     head: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    toggle: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
+    balChip: { backgroundColor: '#F8FAFD', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+    balChipText: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.text },
     title: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text },
     sub: { fontFamily: fonts.body, fontSize: 11, color: colors.textMuted, marginTop: 1 },
     refresh: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#EAF1FF', alignItems: 'center', justifyContent: 'center' },
