@@ -66,3 +66,11 @@ posted natively, so it appears with the app closed; tapping the prompt opens Rev
 `GET /momo-capture/balances` returns, per provider, the balance stated in the newest captured message
 ("Your bal is ZMW 4.44"). It is the operator's own figure, so it stays right even when some transactions were never
 captured or recorded. The capture screen lists these under "Wallet balances".
+
+### Balances and the external accounts
+
+With "A separate account per provider" selected, each provider account (Airtel Money, MTN MoMo, ...) is kept equal to
+the balance the operator last stated. The difference between that figure and the recorded transactions sits in one
+balancing entry per account (reference `MOMO-BALANCE-<account id>`, "balance brought forward"), replaced whenever the
+gap changes. Recording a waiting transaction moves its amount out of that entry instead of adding a new correction.
+Nothing is synced when captures are booked to the Cash account.

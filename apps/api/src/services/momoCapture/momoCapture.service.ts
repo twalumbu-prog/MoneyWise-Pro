@@ -13,6 +13,7 @@
 import crypto from 'crypto';
 import { supabase } from '../../lib/supabase';
 import { recordManualEntry, ensureCashWallet, listExternalWallets, ManualEntryError } from '../manualEntry.service';
+import { cashbookService } from '../cashbook.service';
 import { parseMomoMessage, dedupeKey, describe, type MomoProvider, type ParsedMomoMessage } from './parser';
 import { mirrorMomoCapture, findBookedCaptureEntry } from '../capture/capture.momoMirror';
 
@@ -144,6 +145,7 @@ export async function ingest(input: IngestInput) {
         }
     }
     await mirrorMomoCapture(row);
+    await syncWalletToReportedBalance(input.userId, input.orgId, parsed.provider);
     return { accepted: true as const, capture: row };
 }
 
@@ -156,16 +158,13 @@ export async function list(userId: string, orgId: string, status?: unknown) {
     return data ?? [];
 }
 
-/**
- * What each mobile money wallet holds, read from the newest message that states a balance ("Your bal is ZMW 4.44").
- * This is the operator's own figure, so it is right even when some transactions were never captured or recorded.
- * Messages saved before the parser could read their balance wording are re-read here.
- */
-export async function balances(userId: string, orgId: string) {
-    const { data, error } = await supabase.from('momo_captures')
+async function reportedBalances(orgId: string, userId?: string) {
+    let q = supabase.from('momo_captures')
         .select('provider, sender, raw_text, balance_after, occurred_at')
-        .eq('user_id', userId).eq('organization_id', orgId)
+        .eq('organization_id', orgId)
         .order('occurred_at', { ascending: false }).limit(400);
+    if (userId) q = q.eq('user_id', userId);
+    const { data, error } = await q;
     if (error) throw new MomoCaptureError(error.message, 500);
     const out: { provider: MomoProvider; name: string; balance: number; asOf: string }[] = [];
     for (const row of data ?? []) {
@@ -175,6 +174,64 @@ export async function balances(userId: string, orgId: string) {
         out.push({ provider: row.provider, name: PROVIDER_WALLET[row.provider as MomoProvider], balance: Number(balance), asOf: row.occurred_at });
     }
     return out;
+}
+
+export async function balances(userId: string, orgId: string) {
+    return reportedBalances(orgId, userId);
+}
+
+const balanceRef = (walletId: string) => `MOMO-BALANCE-${walletId}`;
+
+/**
+ * Keeps a provider's external account equal to the balance the operator last stated in a message.
+ *
+ * The ledger only knows the transactions that were recorded; the operator's figure also covers everything that was
+ * never captured, was dismissed, or is still waiting for review. The gap is held in ONE balancing entry per account
+ * (reference MOMO-BALANCE-<account id>), replaced whenever the gap changes, so the account never fills up with
+ * corrections: recording a waiting transaction just moves its amount out of that entry.
+ *
+ * Only for the "separate account per provider" setting. Never throws: a failed sync must not undo a capture or a
+ * booking, and the next message or booking tries again.
+ */
+async function syncWalletToReportedBalance(userId: string, orgId: string, provider: MomoProvider): Promise<void> {
+    try {
+        const settings = await settingsRow(userId, orgId);
+        if (settings.destination !== 'PROVIDER') return;
+        const reported = (await reportedBalances(orgId)).find((b) => b.provider === provider);
+        if (!reported) return;
+        const wallet = await walletFor(orgId, provider, 'PROVIDER');
+        const ledger = await cashbookService.getCurrentBalance(orgId, wallet.id);
+        const diff = Math.round((reported.balance - ledger) * 100) / 100;
+        if (Math.abs(diff) < 0.01) return;
+
+        const { data: old } = await supabase.from('cashbook_entries').select('id, date, created_at, debit, credit')
+            .eq('organization_id', orgId).eq('account_type', wallet.id).eq('external_reference', balanceRef(wallet.id));
+        const previous = (old ?? []).reduce((sum: number, e: any) => sum + Number(e.debit || 0) - Number(e.credit || 0), 0);
+        const net = Math.round((previous + diff) * 100) / 100;
+        const date = (old ?? []).map((e: any) => String(e.date).slice(0, 10)).sort()[0] ?? lusakaDate(new Date().toISOString());
+
+        if (old?.length) {
+            const { error } = await supabase.from('cashbook_entries').delete().in('id', old.map((e: any) => e.id));
+            if (error) throw new Error(`could not replace the balancing entry: ${error.message}`);
+            const first = [...old].sort((x: any, y: any) => `${x.date}${x.created_at}`.localeCompare(`${y.date}${y.created_at}`))[0];
+            await cashbookService.recalculateBalancesFrom(orgId, String(first.date).slice(0, 10), first.created_at, wallet.id);
+        }
+        if (Math.abs(net) >= 0.01) {
+            await cashbookService.createEntry(orgId, {
+                entry_type: 'ADJUSTMENT',
+                description: `${wallet.name} balance brought forward (transactions not recorded in MoneyWise)`,
+                debit: net > 0 ? net : 0,
+                credit: net < 0 ? -net : 0,
+                date,
+                created_by: userId,
+                account_type: wallet.id,
+                status: 'COMPLETED',
+                external_reference: balanceRef(wallet.id),
+            } as any);
+        }
+    } catch (e: any) {
+        console.error(`[MoMo capture] could not sync the ${provider} account to its reported balance:`, e?.message);
+    }
 }
 
 async function walletFor(orgId: string, provider: MomoProvider, destination: string) {
@@ -200,6 +257,9 @@ export async function post(userId: string, orgId: string, id: string, overrides:
     const { data: claimed } = await supabase.from('momo_captures').update({ status: 'POSTED', updated_at: new Date().toISOString() })
         .eq('id', id).eq('user_id', userId).eq('organization_id', orgId).in('status', ['PENDING', 'MATCHED']).select('*').maybeSingle();
     if (!claimed) throw new MomoCaptureError('This message was already handled or no longer exists', 409);
+    // The row comes back already flipped to POSTED, so what it was before has to be worked out: a failed booking
+    // must put it back in the review list, not leave it looking recorded with nothing in the ledger.
+    const previousStatus = claimed.matched_entry_id ? 'MATCHED' : 'PENDING';
 
     try {
         const settings = await settingsRow(userId, orgId);
@@ -226,9 +286,10 @@ export async function post(userId: string, orgId: string, id: string, overrides:
             }
         }
         await mirrorMomoCapture(done, mirror);
+        await syncWalletToReportedBalance(userId, orgId, claimed.provider);
         return { ...done, entry };
     } catch (e: any) {
-        await supabase.from('momo_captures').update({ status: claimed.status, updated_at: new Date().toISOString() }).eq('id', id);
+        await supabase.from('momo_captures').update({ status: previousStatus, updated_at: new Date().toISOString() }).eq('id', id);
         if (e instanceof ManualEntryError) throw new MomoCaptureError(e.message, e.httpStatus);
         throw e;
     }
