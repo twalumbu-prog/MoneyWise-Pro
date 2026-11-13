@@ -48,3 +48,21 @@ The in-app walkthrough copies a fresh key to the clipboard, opens the link, and 
 
 - Apply the migration (SQL editor; the MCP is still pointed at the old project).
 - Collect real MTN, Airtel and Zamtel messages from Zambian phones (with names and numbers changed), add them to `test_momo_parser.ts`, and tune the parser. The current samples are representative, not verbatim.
+
+## Prompt when a transaction happens (Android)
+
+When a live message is captured and is waiting for a decision, the native layer shows a notification straight away
+("Received K250.00 from John Banda · Airtel Money · balance K4.44") with **Record** and **Dismiss** buttons. It is
+posted natively, so it appears with the app closed; tapping the prompt opens Review captured.
+
+- The buttons call `POST /momo-capture/ingest/:id/post` and `/ingest/:id/dismiss` with the capture key. The key can
+  only settle a waiting message that belongs to its own owner.
+- No prompt for an SMS history import, for a duplicate, or when "Book automatically" already recorded it.
+- Needs the Android notification permission (asked when a source is switched on). The capture screen says so when
+  it is off, and shows what happened to the last prompt.
+
+## Wallet balances
+
+`GET /momo-capture/balances` returns, per provider, the balance stated in the newest captured message
+("Your bal is ZMW 4.44"). It is the operator's own figure, so it stays right even when some transactions were never
+captured or recorded. The capture screen lists these under "Wallet balances".

@@ -24,6 +24,20 @@ router.post('/ingest', async (req: any, res: any) => {
     } catch (error) { fail(res, error, 'ingest'); }
 });
 
+/**
+ * Record / Dismiss from the prompt the phone shows when a message arrives. The app may be closed, so these also take
+ * the capture key. The key can only settle a message that belongs to its own owner and is still waiting.
+ */
+const settleWithKey = (label: string, fn: (userId: string, orgId: string, id: string) => Promise<any>) => async (req: any, res: any) => {
+    try {
+        const owner = await momo.resolveToken(String(req.get('x-capture-token') || ''));
+        if (!owner) return res.status(401).json({ error: 'Capture key is missing or was turned off. Set capture up again in MoneyWise.' });
+        res.json(await fn(owner.userId, owner.orgId, req.params.id));
+    } catch (error) { fail(res, error, label); }
+};
+router.post('/ingest/:id/post', settleWithKey('prompt post', (userId, orgId, id) => momo.post(userId, orgId, id)));
+router.post('/ingest/:id/dismiss', settleWithKey('prompt dismiss', (userId, orgId, id) => momo.dismiss(userId, orgId, id)));
+
 router.use(requireAuth);
 
 const handle = (label: string, fn: (req: any) => Promise<any>) => async (req: any, res: any) => {
@@ -37,6 +51,7 @@ router.get('/settings', handle('settings', (req) => momo.getSettings(req.user.id
 router.put('/settings', handle('settings', (req) => momo.updateSettings(req.user.id, req.user.organization_id, req.body ?? {})));
 router.post('/token', handle('token', async (req) => ({ token: await momo.rotateToken(req.user.id, req.user.organization_id) })));
 router.delete('/token', handle('token', async (req) => { await momo.revokeToken(req.user.id); return { ok: true }; }));
+router.get('/balances', handle('balances', (req) => momo.balances(req.user.id, req.user.organization_id)));
 router.get('/', handle('list', (req) => momo.list(req.user.id, req.user.organization_id, req.query.status)));
 router.post('/paste', handle('paste', (req) => momo.ingest({ userId: req.user.id, orgId: req.user.organization_id, source: 'PASTE', text: req.body?.text })));
 router.post('/:id/post', handle('post', (req) => momo.post(req.user.id, req.user.organization_id, req.params.id, req.body ?? {})));

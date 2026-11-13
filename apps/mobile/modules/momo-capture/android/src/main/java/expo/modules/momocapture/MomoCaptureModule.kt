@@ -54,6 +54,8 @@ class MomoCaptureModule : Module() {
                 "notifSeenAt" to p.getLong("notifSeenAt", 0L).takeIf { it > 0 }?.toDouble(),
                 "notifSeenResult" to p.getString("notifSeenResult", null),
                 "listenerState" to p.getString("listenerResult", null),
+                "promptResult" to p.getString("promptResult", null),
+                "canPrompt" to NotificationManagerCompat.from(context).areNotificationsEnabled(),
             )
         }
 
@@ -87,7 +89,7 @@ class MomoCaptureModule : Module() {
                     val sender = c.getString(0)
                     val body = c.getString(1) ?: continue
                     if (MomoCapture.looksLikeMomo(context, sender, body)) {
-                        MomoCapture.capture(context, "ANDROID_SMS", sender, body, c.getLong(2))
+                        MomoCapture.capture(context, "ANDROID_SMS", sender, body, c.getLong(2), silent = true)
                         count++
                     }
                 }

@@ -156,6 +156,27 @@ export async function list(userId: string, orgId: string, status?: unknown) {
     return data ?? [];
 }
 
+/**
+ * What each mobile money wallet holds, read from the newest message that states a balance ("Your bal is ZMW 4.44").
+ * This is the operator's own figure, so it is right even when some transactions were never captured or recorded.
+ * Messages saved before the parser could read their balance wording are re-read here.
+ */
+export async function balances(userId: string, orgId: string) {
+    const { data, error } = await supabase.from('momo_captures')
+        .select('provider, sender, raw_text, balance_after, occurred_at')
+        .eq('user_id', userId).eq('organization_id', orgId)
+        .order('occurred_at', { ascending: false }).limit(400);
+    if (error) throw new MomoCaptureError(error.message, 500);
+    const out: { provider: MomoProvider; name: string; balance: number; asOf: string }[] = [];
+    for (const row of data ?? []) {
+        if (out.some((b) => b.provider === row.provider)) continue;
+        const balance = row.balance_after ?? parseMomoMessage(row.raw_text, row.sender)?.balanceAfter ?? null;
+        if (balance === null) continue;
+        out.push({ provider: row.provider, name: PROVIDER_WALLET[row.provider as MomoProvider], balance: Number(balance), asOf: row.occurred_at });
+    }
+    return out;
+}
+
 async function walletFor(orgId: string, provider: MomoProvider, destination: string) {
     if (destination === 'CASH') return ensureCashWallet(orgId);
     const name = PROVIDER_WALLET[provider];

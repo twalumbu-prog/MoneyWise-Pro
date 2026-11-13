@@ -34,6 +34,9 @@ interface NativeStatus {
     notifSeenAt?: number | null;
     notifSeenResult?: string | null;
     listenerState?: string | null;
+    /** Whether Android lets MoneyWise show the Record / Dismiss prompt, and what happened to the last one. */
+    canPrompt?: boolean;
+    promptResult?: string | null;
 }
 
 interface MomoCaptureNative {
@@ -77,12 +80,16 @@ export function getAndroidStatus(): NativeStatus | null {
  * Turns Android sources on/off. Fetches a capture key the first time (or when the server rejected the old one —
  * the native layer drops a rejected key).
  */
-export async function setAndroidSources(sources: { notifications: boolean; sms: boolean }) {
+export async function setAndroidSources(sources: { notifications: boolean; sms: boolean }, opts: { askToPrompt?: boolean } = {}) {
     if (!native) throw new Error('This version of the app can’t capture messages yet. Update MoneyWise from the Play Store.');
     const status = native.getStatus();
     const anyOn = sources.notifications || sources.sms;
     let token: string | undefined;
     if (anyOn && !status.hasToken) token = (await momoCaptureService.rotateToken()).token;
+    // The Record / Dismiss prompt is an ordinary notification, which Android 13+ only shows with this permission.
+    if (anyOn && opts.askToPrompt !== false && Number(Platform.Version) >= 33) {
+        try { await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS); } catch { /* capture still works without the prompt */ }
+    }
     native.configure({
         apiUrl: API_URL, token, smsEnabled: sources.sms, notificationsEnabled: sources.notifications,
         senderPattern: SENDER_PATTERN, providerPackages: PROVIDER_PACKAGES,
@@ -119,7 +126,7 @@ export async function flushQueued(): Promise<void> {
     try {
         const s = native?.getStatus();
         if (s && !s.hasToken && (s.smsEnabled || s.notificationsEnabled)) {
-            await setAndroidSources({ notifications: s.notificationsEnabled, sms: s.smsEnabled });
+            await setAndroidSources({ notifications: s.notificationsEnabled, sms: s.smsEnabled }, { askToPrompt: false });
         }
     } catch { /* signed out or offline: the next foreground tries again */ }
     try { await native?.flush(); } catch { /* next foreground tries again */ }

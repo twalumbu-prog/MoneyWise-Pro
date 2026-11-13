@@ -73,7 +73,7 @@ object MomoCapture {
     }
 
     /** Queues a message (dropping one already seen — the SMS and its notification are the same message) and sends. */
-    fun capture(ctx: Context, source: String, sender: String?, text: String, occurredAtMs: Long) {
+    fun capture(ctx: Context, source: String, sender: String?, text: String, occurredAtMs: Long, silent: Boolean = false) {
         val p = prefs(ctx)
         synchronized(this) {
             val key = digest(text)
@@ -83,7 +83,7 @@ object MomoCapture {
             val trimmedSeen = JSONArray().also { out -> (maxOf(0, seen.length() - 100) until seen.length()).forEach { out.put(seen.getString(it)) } }
 
             val queue = JSONArray(p.getString("queue", "[]"))
-            queue.put(JSONObject().put("source", source).put("sender", sender ?: JSONObject.NULL).put("text", text).put("occurredAt", occurredAtMs))
+            queue.put(JSONObject().put("source", source).put("sender", sender ?: JSONObject.NULL).put("text", text).put("occurredAt", occurredAtMs).put("silent", silent))
             val trimmedQueue = JSONArray().also { out -> (maxOf(0, queue.length() - MAX_QUEUE) until queue.length()).forEach { out.put(queue.get(it)) } }
             p.edit().putString("seen", trimmedSeen.toString()).putString("queue", trimmedQueue.toString()).apply()
         }
@@ -124,9 +124,17 @@ object MomoCapture {
                 val q = JSONArray(p.getString("queue", "[]"))
                 if (q.length() == 0) null else q.getJSONObject(0)
             } ?: break
-            val body = JSONObject(head.toString()).apply { remove("attempts") }
-            val code = try { post("$api/momo-capture/ingest", token, body) } catch (e: Exception) {
+            val body = JSONObject(head.toString()).apply { remove("attempts"); remove("silent") }
+            var reply = ""
+            val code = try { post("$api/momo-capture/ingest", token, body).also { reply = it.second }.first } catch (e: Exception) {
                 Log.w(TAG, "send failed: ${e.message}"); p.edit().putString("lastError", e.message ?: "network error").apply(); -1
+            }
+            // A new transaction waiting for a decision: ask straight away (not for an import of old messages).
+            if (code in 200..299 && !head.optBoolean("silent", false)) {
+                runCatching {
+                    val capture = JSONObject(reply).optJSONObject("capture")
+                    if (capture != null && capture.optString("status") == "PENDING") MomoPrompt.show(ctx, capture)
+                }.onFailure { Log.w(TAG, "prompt failed: ${it.message}") }
             }
             if (code == -1 || code == 429) break
             if (code == 401) {
@@ -151,7 +159,24 @@ object MomoCapture {
         return sent
     }
 
-    private fun post(url: String, token: String, body: JSONObject): Int {
+    /** Record or dismiss a waiting capture from its prompt. Runs off the main thread; reports whether it worked. */
+    fun settle(ctx: Context, captureId: String, record: Boolean, done: (Boolean) -> Unit) {
+        val app = ctx.applicationContext
+        io.execute {
+            val p = prefs(app)
+            val api = p.getString("apiUrl", null)
+            val token = p.getString("token", null)
+            val ok = if (api.isNullOrEmpty() || token.isNullOrEmpty()) false else try {
+                // 409 = already recorded or dismissed in the app, which is the outcome the person wanted anyway.
+                val code = post("$api/momo-capture/ingest/$captureId/${if (record) "post" else "dismiss"}", token, JSONObject()).first
+                code in 200..299 || code == 409
+            } catch (e: Exception) { Log.w(TAG, "settle failed: ${e.message}"); false }
+            done(ok)
+        }
+    }
+
+    /** POSTs JSON with the capture key; returns the status code and the response body. */
+    private fun post(url: String, token: String, body: JSONObject): Pair<Int, String> {
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"; connectTimeout = 15000; readTimeout = 20000; doOutput = true
             setRequestProperty("Content-Type", "application/json")
@@ -159,7 +184,9 @@ object MomoCapture {
         }
         return try {
             conn.outputStream.use { it.write(body.toString().toByteArray()) }
-            conn.responseCode
+            val code = conn.responseCode
+            val text = runCatching { (if (code in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader()?.use { it.readText() } }.getOrNull() ?: ""
+            code to text
         } finally { conn.disconnect() }
     }
 }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, Switch, Alert, Platform, AppState, ActivityIndicator } from 'react-native';
 import { Stack, router, useFocusEffect } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, MessageSquare, Workflow, Inbox, ChevronRight, Check, ClipboardPaste, Unplug, ScanLine } from 'lucide-react-native';
+import { Bell, MessageSquare, Workflow, Inbox, ChevronRight, Check, ClipboardPaste, Unplug, ScanLine, Wallet } from 'lucide-react-native';
 import { captureService, momoCaptureService } from 'core';
 import type { MomoCaptureSettings } from 'core';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
@@ -36,6 +36,7 @@ export default function MomoCaptureSettingsScreen() {
     // its row is shown only to accounts that can open it; a failed lookup just hides the row.
     const captureSettings = useQuery({ queryKey: ['captures', 'settings'], queryFn: () => captureService.settings(), retry: false });
     const allCapturesAvailable = !!captureSettings.data?.planEligible;
+    const balances = useQuery({ queryKey: ['momo-capture', 'balances'], queryFn: () => momoCaptureService.balances(), retry: false });
     const [android, setAndroid] = useState(getAndroidStatus());
     const [iosDone, setIosDone] = useState(false);
 
@@ -43,6 +44,7 @@ export default function MomoCaptureSettingsScreen() {
         setAndroid(getAndroidStatus());
         void isIosShortcutSetUp().then(setIosDone);
         void qc.invalidateQueries({ queryKey: MOMO_SETTINGS_KEY });
+        void qc.invalidateQueries({ queryKey: ['momo-capture', 'balances'] });
     }, [qc]);
 
     useFocusEffect(refreshDevice);
@@ -135,6 +137,23 @@ export default function MomoCaptureSettingsScreen() {
                         {!!android.lastError && <Text style={[styles.hint, { color: colors.warn }]}>Last send failed: {android.lastError}</Text>}
                         {android.smsEnabled && <Text style={styles.hint}>Last SMS seen: {android.smsSeenAt ? `${ago(new Date(android.smsSeenAt).toISOString())}. ${android.smsSeenResult ?? ''}` : 'none yet'}</Text>}
                         {android.notificationsEnabled && <Text style={styles.hint}>Last SMS alert seen: {android.notifSeenAt ? `${ago(new Date(android.notifSeenAt).toISOString())}. ${android.notifSeenResult ?? ''}` : 'none yet'}{android.listenerState ? ` (listener ${android.listenerState.toLowerCase()})` : ''}</Text>}
+                        {android.canPrompt === false && <Text style={[styles.hint, { color: colors.warn }]}>Notifications are off for MoneyWise, so it can’t ask you to record a transaction when it happens. Turn them on in your phone’s settings.</Text>}
+                        {!!android.promptResult && <Text style={styles.hint}>Last prompt: {android.promptResult}</Text>}
+                    </>
+                )}
+
+                {!!balances.data?.length && (
+                    <>
+                        <Text style={[styles.sectionLabel, { marginTop: 24 }]}>WALLET BALANCES</Text>
+                        <View style={styles.card}>
+                            {balances.data.map((b, i) => (
+                                <Row
+                                    key={b.provider} border={i > 0} icon={<Wallet size={18} color={colors.blue} />} label={b.name}
+                                    sub={`From your last message, ${ago(b.asOf)}`}
+                                    right={<Text style={styles.balance}>K{b.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>}
+                                />
+                            ))}
+                        </View>
                     </>
                 )}
 
@@ -220,6 +239,7 @@ const styles = StyleSheet.create({
     rowLabel: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text },
     badge: { fontFamily: fonts.bodyBold, fontSize: 10, color: colors.positiveInk, backgroundColor: '#E7FBF2', paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.pill, overflow: 'hidden' },
     rowSub: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint, lineHeight: 17 },
+    balance: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.text },
     hint: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint, marginTop: 8, marginLeft: 4, lineHeight: 17 },
     radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
     radioOn: { backgroundColor: colors.blue, borderColor: colors.blue },

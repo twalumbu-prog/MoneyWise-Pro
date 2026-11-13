@@ -32,7 +32,18 @@ export interface MomoCapture {
     matched_entry_id: string | null;
 }
 
+/** A wallet's balance as the operator last stated it in a message. */
+export interface MomoBalance {
+    provider: MomoCapture['provider'];
+    name: string;
+    balance: number;
+    asOf: string;
+}
+
 export const momoCaptureService = {
+    balances(): Promise<MomoBalance[]> {
+        return apiJson('/momo-capture/balances');
+    },
     getSettings(): Promise<MomoCaptureSettings> {
         return apiJson('/momo-capture/settings');
     },
