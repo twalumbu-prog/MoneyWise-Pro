@@ -24,6 +24,7 @@ object MomoCapture {
     private const val PREFS = "moneywise_momo_capture"
     // Must hold a whole SMS history import (up to 500 messages, queued faster than they send).
     private const val MAX_QUEUE = 600
+    private const val MAX_ATTEMPTS = 6
     private val io = Executors.newSingleThreadExecutor()
 
     private val DEFAULT_SENDERS = Regex("(?i)(momo|mtn|airtel|zamtel|kwacha)")
@@ -96,30 +97,55 @@ object MomoCapture {
         io.execute { val sent = flush(app); done?.invoke(sent) }
     }
 
-    /** Sends queued messages in order; stops at the first network failure so order and nothing is lost. */
+    /** What a listener last saw and did with it, so the app can show why nothing is arriving. */
+    fun note(ctx: Context, kind: String, result: String) {
+        prefs(ctx).edit().putLong(kind + "At", System.currentTimeMillis()).putString(kind + "Result", result).apply()
+    }
+
+    /** Why a source ("sms" / "notifications") is not capturing right now, or null when it is. */
+    fun blockedReason(ctx: Context, source: String): String? = when {
+        !prefs(ctx).getBoolean(source, false) -> "switched off"
+        !hasToken(ctx) -> "no capture key"
+        else -> null
+    }
+
+    /**
+     * Sends queued messages in order. A network failure stops the run and keeps everything. A message the server keeps
+     * failing on goes to the back of the queue (and is dropped after MAX_ATTEMPTS) so it cannot block the ones behind it.
+     */
     private fun flush(ctx: Context): Int {
         val p = prefs(ctx)
         val api = p.getString("apiUrl", null) ?: return 0
-        val token = p.getString("token", null) ?: return 0
         var sent = 0
         while (true) {
+            // Read the key every time: the app may have replaced it while this run was sending.
+            val token = p.getString("token", null)?.takeIf { it.isNotEmpty() } ?: break
             val head = synchronized(this) {
                 val q = JSONArray(p.getString("queue", "[]"))
                 if (q.length() == 0) null else q.getJSONObject(0)
             } ?: break
-            val code = try { post("$api/momo-capture/ingest", token, head) } catch (e: Exception) {
+            val body = JSONObject(head.toString()).apply { remove("attempts") }
+            val code = try { post("$api/momo-capture/ingest", token, body) } catch (e: Exception) {
                 Log.w(TAG, "send failed: ${e.message}"); p.edit().putString("lastError", e.message ?: "network error").apply(); -1
             }
-            if (code == -1 || code >= 500 || code == 429) break
+            if (code == -1 || code == 429) break
             if (code == 401) {
-                // The key was turned off or replaced on the server — stop until the app reconfigures us.
+                // Rejected with a key that has since been replaced: go round again with the new one.
+                if (p.getString("token", null) != token) continue
+                // The key was turned off on the server. Stop until the app issues a new one.
                 p.edit().putString("lastError", "Capture key rejected (401)").remove("token").apply(); break
             }
+            val failed = code >= 500
             synchronized(this) {
                 val q = JSONArray(p.getString("queue", "[]"))
                 val rest = JSONArray().also { out -> (1 until q.length()).forEach { out.put(q.get(it)) } }
-                p.edit().putString("queue", rest.toString()).putLong("lastSentAt", System.currentTimeMillis()).remove("lastError").apply()
+                val attempts = head.optInt("attempts", 0) + 1
+                if (failed && attempts < MAX_ATTEMPTS) rest.put(JSONObject(head.toString()).put("attempts", attempts))
+                val e = p.edit().putString("queue", rest.toString())
+                if (failed) e.putString("lastError", "Server error ($code)") else e.putLong("lastSentAt", System.currentTimeMillis()).remove("lastError")
+                e.apply()
             }
+            if (failed) break
             sent++
         }
         return sent

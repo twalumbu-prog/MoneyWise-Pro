@@ -129,6 +129,14 @@ export default function MomoCaptureSettingsScreen() {
                 </View>
                 {!!lastSeen && <Text style={styles.hint}>{lastSeen}.</Text>}
                 {Platform.OS === 'android' && !!android?.queued && <Text style={styles.hint}>{android.queued} message(s) waiting for a connection.</Text>}
+                {Platform.OS === 'android' && !!android && anyOn && (
+                    <>
+                        {!android.hasToken && <Text style={[styles.hint, { color: colors.warn }]}>This phone has no capture key. Switch a source off and on again to reconnect.</Text>}
+                        {!!android.lastError && <Text style={[styles.hint, { color: colors.warn }]}>Last send failed: {android.lastError}</Text>}
+                        {android.smsEnabled && <Text style={styles.hint}>Last SMS seen: {android.smsSeenAt ? `${ago(new Date(android.smsSeenAt).toISOString())}. ${android.smsSeenResult ?? ''}` : 'none yet'}</Text>}
+                        {android.notificationsEnabled && <Text style={styles.hint}>Last SMS alert seen: {android.notifSeenAt ? `${ago(new Date(android.notifSeenAt).toISOString())}. ${android.notifSeenResult ?? ''}` : 'none yet'}{android.listenerState ? ` (listener ${android.listenerState.toLowerCase()})` : ''}</Text>}
+                    </>
+                )}
 
                 <Text style={[styles.sectionLabel, { marginTop: 24 }]}>CAPTURED TRANSACTIONS</Text>
                 <View style={styles.card}>

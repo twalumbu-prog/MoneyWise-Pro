@@ -34,7 +34,7 @@ export function detectProvider(text: string, sender?: string | null): MomoProvid
 const NOT_A_TRANSACTION = /\b(fail(ed|ure)?|unsuccessful|declined|cancel(l)?ed|insufficient|otp|one[- ]time|verification code|has requested|requests? (you|payment)|wants you to pay|approve the)\b/i;
 // Promo / help lines. Operators tack these onto real confirmations ("… Dial *115# to check your balance"), so they
 // only remove their own sentence; a message that is nothing but promo has no transaction left to parse.
-const PROMO_SENTENCE = /(\bdial \*|\bwin\b|\bbonus offer\b|\bbundle offer\b)/i;
+const PROMO_SENTENCE = /(\bdial \*|\bwin\b|\bbonus offer\b|\bbundle offer\b|\bdid you know\b|https?:\/\/|\bwww\.)/i;
 const withoutPromo = (text: string) => text.split(/(?<=[.!?])\s+/).filter((s) => !PROMO_SENTENCE.test(s)).join(' ');
 
 const IN_WORDS = /\b(you have received|you received|received|has sent you|sent you|deposit(ed)?|credited|cash[- ]?in|reversal|refund(ed)?)\b/i;
@@ -57,7 +57,7 @@ function moneyHits(text: string): MoneyHit[] {
     return hits;
 }
 
-const isBalance = (before: string) => /\b(bal(ance)?|avail(able)?|new bal)\b[^a-z]*$/.test(before) || /balance (is|now)[^a-z]*$/.test(before);
+const isBalance = (before: string) => /\b(bal(ance)?|avail(able)?|new bal)\b[^a-z]*$/.test(before) || /\bbal(ance)? (is|now)[^a-z]*$/.test(before);
 const isFee = (before: string) => /\b(fee|charge[ds]?|cost|levy|tax)\b[^a-z]*$/.test(before);
 
 function firstMatchIndex(re: RegExp, text: string): number {

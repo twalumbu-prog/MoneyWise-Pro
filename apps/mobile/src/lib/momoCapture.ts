@@ -28,6 +28,12 @@ interface NativeStatus {
     queued: number;
     lastSentAt: number | null;
     lastError: string | null;
+    /** What each listener last saw and did with it. Absent on a binary built before these were added. */
+    smsSeenAt?: number | null;
+    smsSeenResult?: string | null;
+    notifSeenAt?: number | null;
+    notifSeenResult?: string | null;
+    listenerState?: string | null;
 }
 
 interface MomoCaptureNative {
@@ -104,8 +110,18 @@ export async function importSmsHistory(days = 30): Promise<number> {
     return n;
 }
 
-/** Retries anything the background listeners couldn't send (no signal at the time). */
+/**
+ * Retries anything the background listeners couldn't send (no signal at the time). If a source is switched on but the
+ * phone has lost its capture key (the server rejected it), a new key is issued first: otherwise capture stays silently
+ * off while the switches still read on.
+ */
 export async function flushQueued(): Promise<void> {
+    try {
+        const s = native?.getStatus();
+        if (s && !s.hasToken && (s.smsEnabled || s.notificationsEnabled)) {
+            await setAndroidSources({ notifications: s.notificationsEnabled, sms: s.smsEnabled });
+        }
+    } catch { /* signed out or offline: the next foreground tries again */ }
     try { await native?.flush(); } catch { /* next foreground tries again */ }
 }
 

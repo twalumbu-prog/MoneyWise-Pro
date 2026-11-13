@@ -49,6 +49,11 @@ class MomoCaptureModule : Module() {
                 "queued" to MomoCapture.queued(context),
                 "lastSentAt" to p.getLong("lastSentAt", 0L).takeIf { it > 0 }?.toDouble(),
                 "lastError" to p.getString("lastError", null),
+                "smsSeenAt" to p.getLong("smsSeenAt", 0L).takeIf { it > 0 }?.toDouble(),
+                "smsSeenResult" to p.getString("smsSeenResult", null),
+                "notifSeenAt" to p.getLong("notifSeenAt", 0L).takeIf { it > 0 }?.toDouble(),
+                "notifSeenResult" to p.getString("notifSeenResult", null),
+                "listenerState" to p.getString("listenerResult", null),
             )
         }
 

@@ -83,7 +83,9 @@ export async function revokeToken(userId: string) {
 
 export async function resolveToken(token: string): Promise<{ userId: string; orgId: string } | null> {
     if (typeof token !== 'string' || !token.startsWith('mwc_') || token.length > 100) return null;
-    const { data } = await supabase.from('momo_capture_settings').select('user_id, organization_id').eq('token_hash', hashToken(token)).maybeSingle();
+    const { data, error } = await supabase.from('momo_capture_settings').select('user_id, organization_id').eq('token_hash', hashToken(token)).maybeSingle();
+    // A failed lookup is not a rejected key: answering 401 makes the phone throw its key away and stop capturing.
+    if (error) throw new MomoCaptureError('Capture is temporarily unavailable', 503);
     return data ? { userId: data.user_id, orgId: data.organization_id } : null;
 }
 

@@ -54,7 +54,19 @@ const cases: { text: string; sender?: string; expect: Expect }[] = [
         sender: 'MoMo',
         expect: { direction: 'IN', amount: 500, balanceAfter: 512, reference: '11223344556' },
     },
+    // Real messages from a test phone (names changed).
+    {
+        text: 'Money sent to JANE PHIRI on 12/11/2026.Amount ZMW 10.00. Your bal is ZMW 4.44.TID: PP261112.1807.F61078.',
+        sender: 'AirtelMoney',
+        expect: { provider: 'AIRTEL', direction: 'OUT', amount: 10, balanceAfter: 4.44, reference: 'PP261112.1807.F61078' },
+    },
+    {
+        text: 'Money received ZMW 40.00 from 100200300 NFS SETTLEMENT ACCOUNT. Dial *115# to check balance. Deposits are free. TID: CI261112.1720.H05308',
+        sender: 'AirtelMoney',
+        expect: { provider: 'AIRTEL', direction: 'IN', amount: 40, reference: 'CI261112.1720.H05308' },
+    },
     // Not transactions — must be ignored.
+    { text: 'Did you know you can get 50Mbps uncapped data at K1,000 for 30 days and a FREE 5G Router? Call 111 or visit https://home.mtn.zm/ to purchase today!', sender: 'MTNHome', expect: null },
     { text: 'Y\'ello! You have received a bonus offer. Dial *117# to buy bundles from K5.', sender: 'MoMo', expect: null },
     { text: 'Enter PIN to approve the payment of ZMW 50.00 to SHOP X.', sender: 'MoMo', expect: null },
     { text: 'Your MoMo OTP is 482911. Do not share it with anyone.', expect: null },
