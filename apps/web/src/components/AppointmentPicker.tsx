@@ -6,10 +6,10 @@ interface AppointmentPickerProps {
     productId: string;
     productName: string;
     price: number;
-    initial?: { date: string; time: string } | null;
+    initial?: { date: string; time: string; staffId?: string | null } | null;
     onClose: () => void;
     /** date = YYYY-MM-DD, time = HH:MM (start), endTime = HH:MM */
-    onConfirm: (date: string, time: string, endTime: string) => void;
+    onConfirm: (date: string, time: string, endTime: string, staff?: { id: string; name: string } | null) => void;
 }
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -27,6 +27,8 @@ const AppointmentPicker: React.FC<AppointmentPickerProps> = ({ productId, produc
     const [time, setTime] = useState<string | null>(initial?.time || null);
     const [slots, setSlots] = useState<AppointmentSlot[]>([]);
     const [slotsLoading, setSlotsLoading] = useState(false);
+    // A service with hairdressers lets the client choose one (or leave it as "any available"); the choice changes the times shown.
+    const [staffId, setStaffId] = useState<string>(initial?.staffId || 'any');
     const [view, setView] = useState<{ y: number; m0: number } | null>(null);
 
     useEffect(() => {
@@ -47,12 +49,12 @@ const AppointmentPicker: React.FC<AppointmentPickerProps> = ({ productId, produc
         if (!date) return;
         let cancelled = false;
         setSlotsLoading(true);
-        productService.getAppointmentSlots(productId, date)
+        productService.getAppointmentSlots(productId, date, staffId)
             .then(s => { if (!cancelled) { setSlots(s); setTime(t => (t && s.some(x => x.start === t) ? t : null)); } })
             .catch(() => { if (!cancelled) setSlots([]); })
             .finally(() => { if (!cancelled) setSlotsLoading(false); });
         return () => { cancelled = true; };
-    }, [productId, date]);
+    }, [productId, date, staffId]);
 
     const isDayEnabled = (d: string) => {
         if (!info) return false;
@@ -82,6 +84,9 @@ const AppointmentPicker: React.FC<AppointmentPickerProps> = ({ productId, produc
         : '';
 
     const chosen = slots.find(s => s.start === time) || null;
+    const staffList = info?.staff ?? [];
+    const chosenStaff = staffId !== 'any' ? staffList.find(s => s.id === staffId) ?? null : null;
+    const step = (n: number) => (staffList.length > 0 ? n + 1 : n);
 
     return (
         <div className="fixed inset-0 z-[60] flex flex-col sm:items-center sm:justify-center sm:p-4">
@@ -110,7 +115,20 @@ const AppointmentPicker: React.FC<AppointmentPickerProps> = ({ productId, produc
                         </div>
                     ) : (
                         <>
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">1 · Choose a day</p>
+                            {staffList.length > 0 && (
+                                <div className="mb-5">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">1 · Choose your hairdresser <span className="font-medium normal-case tracking-normal text-slate-400">(optional)</span></p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {[{ id: 'any', name: 'Any available' }, ...staffList].map(s => (
+                                            <button key={s.id} type="button" onClick={() => { setStaffId(s.id); setTime(null); }}
+                                                className={`rounded-full border px-4 py-2 text-xs font-bold transition-colors ${staffId === s.id ? 'border-black bg-black text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>
+                                                {s.name}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">{step(1)} · Choose a day</p>
                             <div className="flex items-center justify-between mb-3">
                                 <button onClick={() => stepMonth(-1)} disabled={viewIdx <= minMonth} className="w-8 h-8 rounded-full flex items-center justify-center text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"><ChevronLeft size={18} /></button>
                                 <span className="text-sm font-bold text-slate-900">{monthLabel}</span>
@@ -139,7 +157,7 @@ const AppointmentPicker: React.FC<AppointmentPickerProps> = ({ productId, produc
 
                             {date && (
                                 <div className="mt-6">
-                                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">2 · Choose a time · {prettyDate(date)}</p>
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">{step(2)} · Choose a time · {prettyDate(date)}{chosenStaff ? ` · ${chosenStaff.name}` : ''}</p>
                                     {slotsLoading ? (
                                         <div className="flex items-center justify-center py-8 text-slate-400"><Loader2 size={20} className="animate-spin" /></div>
                                     ) : slots.length === 0 ? (
@@ -174,7 +192,7 @@ const AppointmentPicker: React.FC<AppointmentPickerProps> = ({ productId, produc
                         )}
                     </div>
                     <button
-                        onClick={() => date && chosen && onConfirm(date, chosen.start, chosen.end)}
+                        onClick={() => date && chosen && onConfirm(date, chosen.start, chosen.end, chosenStaff)}
                         disabled={!date || !chosen}
                         className="flex-shrink-0 bg-black hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed text-white px-6 py-3.5 rounded-xl font-semibold text-sm transition-all flex items-center gap-2"
                     >

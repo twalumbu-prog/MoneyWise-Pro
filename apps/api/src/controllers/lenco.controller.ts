@@ -20,6 +20,7 @@ import { captureEvent, withTiming } from '../utils/analytics';
 import { ensureWalletTransferConfirmed } from './disbursement.controller';
 import { getCachedOrgSecretKey } from '../lib/orgSecretKeyCache';
 import { CARD_REF_PREFIX, cardsEnabledFor, finalizeCard, dollarRate, usdToZmw } from '../services/lipila.service';
+import { SalonError, staffForService, serviceDuration, publicSlots, assignStaff } from '../services/salon.service';
 import { status as lipilaCardStatus } from './lipila.controller';
 import { sanitizeCheckoutFields } from './product.controller';
 
@@ -1146,8 +1147,12 @@ export const getAppointmentInfo = async (req: Request, res: Response) => {
         const cfg = resolveConfig(p.appointment_config);
         const today = nowInTz(cfg.timezone).date;
         const last = new Date(Date.parse(`${today}T00:00:00Z`) + cfg.max_advance_days * 86400000).toISOString().slice(0, 10);
+        // A service with hairdressers: show who can do it, and use the duration the salon set for the service.
+        const { data: pFull } = await supabase.from('products').select('organization_id, duration_minutes').eq('id', productId).maybeSingle();
+        const staffRows = pFull ? await staffForService(pFull.organization_id, productId) : [];
         res.json({
-            duration_minutes: cfg.duration_minutes,
+            staff: staffRows.map((s) => ({ id: s.id, name: s.display_name })),
+            duration_minutes: staffRows.length ? serviceDuration(pFull as any, cfg) : cfg.duration_minutes,
             open_weekdays: Object.keys(cfg.hours).map(Number),
             closed_dates: cfg.closed_dates,
             min_date: today,
@@ -1172,6 +1177,13 @@ export const getProductSlots = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Appointment service not found' });
         }
         const cfg = resolveConfig(p.appointment_config);
+        try {
+            const st = await publicSlots(productId, date, typeof req.query.staff === 'string' ? req.query.staff : undefined);
+            if (st.staffed) return res.json({ date, staffed: true, staff: st.staff, duration_minutes: st.duration, slots: st.slots.map(s => ({ start: s.start, end: s.end })) });
+        } catch (e: any) {
+            if (e instanceof SalonError) return res.status(e.httpStatus).json({ error: e.message });
+            throw e;
+        }
         const slots = computeSlots(cfg, date, await fetchConfirmedForDate(productId, date));
         res.json({ date, slots: slots.map(s => ({ start: s.start, end: s.end })) });
     } catch (error: any) {
@@ -1273,6 +1285,8 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
         // still be offered (open hours, notice, capacity); price is server-side.
         const apptItems: any[] = Array.isArray(items) ? items.filter((it: any) => it?.appointment_date && it?.appointment_time) : [];
         const apptInfo: Record<string, { price: number; duration: number; cfg: any }> = {};
+        // For a service with hairdressers: who will do each booked slot (chosen by the client, or the free one for "any").
+        const apptStaff: Record<string, { staffId: string; any: boolean; duration: number } | null> = {};
         if (apptItems.length > 0) {
             const ids = [...new Set(apptItems.map((a: any) => a.id))];
             const { data: prods } = await supabase.from('products')
@@ -1283,6 +1297,11 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
             }
             for (const a of apptItems) {
                 if (!apptInfo[a.id]) return res.status(400).json({ error: 'This service is not available for appointments.' });
+                let assigned: Awaited<ReturnType<typeof assignStaff>> = null;
+                try { assigned = await assignStaff(wallet.organization_id, a.id, String(a.appointment_date), String(a.appointment_time), typeof a.staff_profile_id === 'string' ? a.staff_profile_id : null); }
+                catch (e: any) { if (e instanceof SalonError) return res.status(e.httpStatus).json({ error: e.message }); throw e; }
+                apptStaff[`${a.id}|${a.appointment_date}|${a.appointment_time}`] = assigned;
+                if (assigned) continue; // a staffed service is checked against the hairdresser's own time
                 const slot = await isSlotAvailable(a.id, apptInfo[a.id].cfg, String(a.appointment_date), String(a.appointment_time));
                 if (!slot) return res.status(409).json({ error: 'Sorry, that time slot is no longer available. Please choose another.' });
             }
@@ -1414,6 +1433,7 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
                 const apptData = apptItems.map((a: any) => {
                     const [h, m] = String(a.appointment_time).split(':').map(Number);
                     const startMin = h * 60 + m;
+                    const assigned = apptStaff[`${a.id}|${a.appointment_date}|${a.appointment_time}`];
                     return {
                         organization_id: wallet.organization_id,
                         product_id: a.id,
@@ -1422,7 +1442,9 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
                         customer_phone: customerPhone || 'N/A',
                         appointment_date: a.appointment_date,
                         start_time: minToTime(startMin),
-                        end_time: minToTime(startMin + apptInfo[a.id].duration),
+                        end_time: minToTime(startMin + (assigned?.duration ?? apptInfo[a.id].duration)),
+                        staff_profile_id: assigned?.staffId ?? null,
+                        staff_any: assigned?.any ?? false,
                         amount: apptInfo[a.id].price,
                         status: 'PENDING',
                     };

@@ -123,6 +123,8 @@ export const DEFAULT_APPOINTMENT_CONFIG: AppointmentConfig = {
 };
 
 export interface AppointmentInfo {
+    /** Who can do this service (a salon's hairdressers). Empty when the service isn't staffed. */
+    staff?: { id: string; name: string }[];
     duration_minutes: number;
     open_weekdays: number[];
     closed_dates: string[];
@@ -347,9 +349,9 @@ export const productService = {
     },
 
     /** Public (no auth): bookable time slots on one day (YYYY-MM-DD). */
-    async getAppointmentSlots(productId: string, date: string): Promise<AppointmentSlot[]> {
+    async getAppointmentSlots(productId: string, date: string, staff?: string): Promise<AppointmentSlot[]> {
         const data = await apiJson<{ slots?: AppointmentSlot[] }>(
-            `/lenco/public-product-slots/${productId}?date=${encodeURIComponent(date)}`,
+            `/lenco/public-product-slots/${productId}?date=${encodeURIComponent(date)}${staff && staff !== 'any' ? `&staff=${encodeURIComponent(staff)}` : ''}`,
         );
         return data?.slots || [];
     },

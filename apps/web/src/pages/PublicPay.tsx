@@ -282,7 +282,7 @@ export const PublicPay: React.FC = () => {
     const [donationAmounts, setDonationAmounts] = useState<Record<string, number>>({});
     // Chosen stay for SERVICE_BOOKING products (keyed by product id). `nights` doubles
     // as the cart quantity for that line, so total = nights × nightly price.
-    const [bookingDates, setBookingDates] = useState<Record<string, { checkIn: string; checkOut: string; nights: number; time?: string; endTime?: string }>>({});
+    const [bookingDates, setBookingDates] = useState<Record<string, { checkIn: string; checkOut: string; nights: number; time?: string; endTime?: string; staffId?: string | null; staffName?: string | null }>>({});
     // Booking calendar overlay state.
     const [calendarProduct, setCalendarProduct] = useState<Product | null>(null);
     const [calendarAvailability, setCalendarAvailability] = useState<BookingRange[]>([]);
@@ -622,18 +622,18 @@ export const PublicPay: React.FC = () => {
     };
 
     // Confirm a chosen appointment slot → one unit in the cart, date/time kept alongside.
-    const handleConfirmAppointment = (productId: string, date: string, time: string, endTime: string) => {
-        setBookingDates(prev => ({ ...prev, [productId]: { checkIn: date, checkOut: date, nights: 1, time, endTime } }));
+    const handleConfirmAppointment = (productId: string, date: string, time: string, endTime: string, staff?: { id: string; name: string } | null) => {
+        setBookingDates(prev => ({ ...prev, [productId]: { checkIn: date, checkOut: date, nights: 1, time, endTime, staffId: staff?.id ?? null, staffName: staff?.name ?? null } }));
         setSelectedQuantities(prev => ({ ...prev, [productId]: 1 }));
         setAppointmentProduct(null);
     };
 
     // "Fri 14 Nov · 2:30 PM" for appointments, "12 Jul – 15 Jul · 3 nights" for stays.
-    const stayLabel = (product: Product, stay: { checkIn: string; checkOut: string; nights: number; time?: string }) => {
+    const stayLabel = (product: Product, stay: { checkIn: string; checkOut: string; nights: number; time?: string; staffName?: string | null }) => {
         if (isAppointmentProductType(product.product_type) && stay.time) {
             const [y, m, d] = stay.checkIn.split('-').map(Number);
             const day = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
-            return `${day} · ${formatSlotTime(stay.time)}`;
+            return `${day} · ${formatSlotTime(stay.time)}${stay.staffName ? ` · with ${stay.staffName}` : ''}`;
         }
         return `${formatStayRange(stay.checkIn, stay.checkOut)} · ${stay.nights} ${reservableUnit(product.product_type)}${stay.nights === 1 ? '' : 's'}`;
     };
@@ -886,7 +886,7 @@ export const PublicPay: React.FC = () => {
                     // Booking lines carry their stay so the server can hold/confirm the dates.
                     ...(li.isBooking && li.booking
                         ? (isAppointmentProductType(li.product.product_type)
-                            ? { appointment_date: li.booking.checkIn, appointment_time: li.booking.time }
+                            ? { appointment_date: li.booking.checkIn, appointment_time: li.booking.time, staff_profile_id: li.booking.staffId || undefined }
                             : { check_in: li.booking.checkIn, check_out: li.booking.checkOut })
                         : {}),
                     ...responsesFor(li.product.id),
@@ -1196,7 +1196,7 @@ export const PublicPay: React.FC = () => {
                     price: li.unitPrice,
                     ...(li.isBooking && li.booking
                         ? (isAppointmentProductType(li.product.product_type)
-                            ? { appointment_date: li.booking.checkIn, appointment_time: li.booking.time }
+                            ? { appointment_date: li.booking.checkIn, appointment_time: li.booking.time, staff_profile_id: li.booking.staffId || undefined }
                             : { check_in: li.booking.checkIn, check_out: li.booking.checkOut })
                         : {}),
                     ...responsesFor(li.product.id),
@@ -4314,10 +4314,10 @@ Status: VERIFIED`;
                 productName={appointmentProduct.name}
                 price={appointmentProduct.price}
                 initial={bookingDates[appointmentProduct.id]?.time
-                    ? { date: bookingDates[appointmentProduct.id].checkIn, time: bookingDates[appointmentProduct.id].time! }
+                    ? { date: bookingDates[appointmentProduct.id].checkIn, time: bookingDates[appointmentProduct.id].time!, staffId: bookingDates[appointmentProduct.id].staffId }
                     : null}
                 onClose={() => setAppointmentProduct(null)}
-                onConfirm={(d, t, e) => handleConfirmAppointment(appointmentProduct.id, d, t, e)}
+                onConfirm={(d, t, e, st) => handleConfirmAppointment(appointmentProduct.id, d, t, e, st)}
             />
         )}
 

@@ -28,10 +28,10 @@ export const DEFAULT_APPOINTMENT_CONFIG: AppointmentConfig = {
     closed_dates: [],
 };
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+export const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-const toMin = (t: string) => { const [h, m] = t.split(':'); return Number(h) * 60 + Number(m); };
+export const toMin = (t: string) => { const [h, m] = t.split(':'); return Number(h) * 60 + Number(m); };
 export const minToTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 const clampInt = (v: any, min: number, max: number, dflt: number) => {
     const n = Math.round(Number(v));
@@ -84,8 +84,8 @@ export function nowInTz(tz: string, at: Date = new Date()): { date: string; minu
     return { date: `${g('year')}-${g('month')}-${g('day')}`, minutes: Number(g('hour')) * 60 + Number(g('minute')) };
 }
 
-const dayDiff = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
-const weekdayOf = (date: string) => new Date(`${date}T00:00:00Z`).getUTCDay();
+export const dayDiff = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
+export const weekdayOf = (date: string) => new Date(`${date}T00:00:00Z`).getUTCDay();
 
 export interface Slot { start: string; end: string; remaining: number }
 
