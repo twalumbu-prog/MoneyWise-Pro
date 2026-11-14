@@ -18,6 +18,7 @@
 
 import { getCategorizationModelOverride } from './aiPrefs.context';
 import { getAIModelSettings } from './ai.settings.service';
+import { recordLlm } from '../usage.service';
 
 export interface LLMMessage {
     role: 'system' | 'user' | 'assistant';
@@ -61,6 +62,7 @@ async function callOpenAICompat(
 
         const data = await resp.json();
         const text = data.choices?.[0]?.message?.content;
+        recordLlm(data, { provider: name, model, kind: 'llm_chat' });
         if (!text) throw new Error(`${name}: empty response`);
 
         return { text, provider: name, model };
@@ -134,6 +136,7 @@ async function callPerplexityAgent(
         if (!resp.ok) throw new Error(`Perplexity Agent API ${resp.status}: ${await resp.text()}`);
 
         const data = await resp.json();
+        recordLlm(data, { provider: 'Perplexity', model, kind: 'llm_chat' });
         const text = data.output_text;
         if (!text) throw new Error('Perplexity Agent: empty output_text');
 
@@ -163,6 +166,7 @@ async function callGeminiText(model: string, messages: LLMMessage[]): Promise<LL
     if (!resp.ok) throw new Error(`Gemini text API ${resp.status}: ${await resp.text()}`);
     const data = await resp.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    recordLlm(data, { provider: 'Gemini', model, kind: 'llm_chat' });
     if (!text) throw new Error('Gemini: empty text response');
     return { text, provider: 'Gemini', model };
 }
@@ -188,6 +192,7 @@ async function callGeminiVision(model: string, prompt: string, imageBase64: stri
         if (!resp.ok) throw new Error(`Gemini Vision API ${resp.status}: ${await resp.text()}`);
         const data = await resp.json();
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        recordLlm(data, { provider: 'Gemini', model, kind: 'llm_vision' });
         if (!text) throw new Error('Gemini Vision: empty response');
         return { text, provider: 'Gemini', model };
     } catch (err: any) {
@@ -354,6 +359,7 @@ export async function callAllOcrProviders(
             if (!resp.ok) throw new Error(`OpenRouter Vision ${resp.status}: ${await resp.text()}`);
             const data = await resp.json();
             const text = data.choices?.[0]?.message?.content;
+            recordLlm(data, { provider: 'OpenRouter', model: settings.ocr_model, kind: 'ocr' });
             if (!text) throw new Error('OpenRouter Vision: empty response');
             return { text, provider: 'OpenRouter-Vision', model: settings.ocr_model } as LLMResponse;
         })().catch(e => { throw e; }));
@@ -390,6 +396,7 @@ export async function callAllOcrProviders(
             if (!resp.ok) throw new Error(`OpenRouter Vision (legacy) ${resp.status}: ${await resp.text()}`);
             const data = await resp.json();
             const text = data.choices?.[0]?.message?.content;
+            recordLlm(data, { provider: 'OpenRouter', model: legacyOrOcrModel, kind: 'ocr' });
             if (!text) throw new Error('OpenRouter Vision (legacy): empty response');
             return { text, provider: 'OpenRouter-Vision', model: legacyOrOcrModel } as LLMResponse;
         })().catch(e => { throw e; }));
@@ -435,6 +442,7 @@ export async function openRouterComplete(
         if (!resp.ok) throw new Error(`OpenRouter ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
         const data: any = await resp.json();
         const text = data.choices?.[0]?.message?.content;
+        recordLlm(data, { provider: 'OpenRouter', model, kind: 'llm_chat' });
         if (!text) throw new Error('OpenRouter: empty response');
         return String(text);
     } finally {

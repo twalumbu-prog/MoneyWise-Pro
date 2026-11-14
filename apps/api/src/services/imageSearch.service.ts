@@ -3,6 +3,8 @@
  * for it by and which Marketplace category it belongs in; the app then finds matching listings. It needs OPENROUTER_API_KEY (the same
  * key the rest of the app's AI features use); without it the feature says it isn't switched on.
  */
+import { recordLlm } from './usage.service';
+
 export class ImageSearchError extends Error {
     constructor(message: string, public httpStatus = 400, public code = 'INVALID') { super(message); }
 }
@@ -58,6 +60,7 @@ export async function describeImage(userId: string, image: unknown): Promise<Ima
         });
         if (!resp.ok) throw new ImageSearchError('We couldn’t read that picture. Try another one.', 502, 'VISION');
         const data: any = await resp.json();
+        recordLlm(data, { provider: 'OpenRouter', model, kind: 'llm_vision', meta: { feature: 'marketplace_image_search' } });
         const text = String(data.choices?.[0]?.message?.content ?? '').replace(/^```json|```$/g, '').trim();
         const j = JSON.parse(text);
         const keywords = (Array.isArray(j.keywords) ? j.keywords : []).map((k: unknown) => String(k).toLowerCase().trim()).filter((k: string) => k.length > 1 && k.length < 40).slice(0, 8);

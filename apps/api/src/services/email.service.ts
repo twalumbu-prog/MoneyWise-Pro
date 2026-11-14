@@ -1,5 +1,6 @@
 import { filterEmailsForOrg, orgIsPersonal, PERSONAL_SUPPRESSED_EVENTS } from './userPreferences.service';
 import { Resend } from 'resend';
+import { recordUsage } from './usage.service';
 import { getFrontendUrl } from '../utils/frontendUrl';
 import { supabase } from '../lib/supabase';
 import PDFDocument from 'pdfkit';
@@ -18,7 +19,25 @@ function getLencoLogo(): Buffer | null {
     return _lencoLogoBuffer;
 }
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resendClient = new Resend(process.env.RESEND_API_KEY);
+const recipientCount = (to: unknown) => (Array.isArray(to) ? to.length : to ? 1 : 0);
+// Every email Resend accepts goes in the cost ledger, one unit per recipient.
+const resend = {
+    emails: {
+        send: async (payload: any) => {
+            const r = await resendClient.emails.send(payload);
+            if (!r.error) recordUsage({ category: 'messaging', kind: 'email', provider: 'resend', units: Math.max(1, recipientCount(payload?.to)), unit: 'email' });
+            return r;
+        },
+    },
+    batch: {
+        send: async (payload: any[]) => {
+            const r = await resendClient.batch.send(payload);
+            if (!r.error) recordUsage({ category: 'messaging', kind: 'email', provider: 'resend', units: payload.reduce((n, m) => n + Math.max(1, recipientCount(m?.to)), 0), unit: 'email', meta: { batch: true } });
+            return r;
+        },
+    },
+};
 // moneywise.blueopus.cloud is the verified Resend sending domain. The default matters: falling
 // back to Resend's resend.dev sandbox sender only delivers to the Resend account owner.
 const FROM_ADDRESS = process.env.EMAIL_FROM || 'MoneyWise <notifications@moneywise.blueopus.cloud>';

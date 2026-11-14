@@ -1,3 +1,5 @@
+import { recordLlm } from '../usage.service';
+
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const AI_TEST_MODE = process.env.AI_TEST_MODE === 'true';
 
@@ -52,6 +54,7 @@ export class EmbeddingService {
                 }
 
                 const data: any = await response.json();
+                recordLlm(data, { provider: 'OpenRouter', model: EMBEDDING_MODEL, kind: 'embedding' });
                 const values = data?.data?.[0]?.embedding;
                 if (!Array.isArray(values) || values.length !== EMBEDDING_DIMENSIONS) {
                     console.warn('[EmbeddingService] OpenRouter returned an unexpected embedding.');

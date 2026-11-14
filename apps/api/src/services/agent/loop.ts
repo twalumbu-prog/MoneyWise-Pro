@@ -18,6 +18,7 @@ import { AgentContext, AgentEvent, ToolEffect, isProposal } from './types';
 import { dispatch, getTool, toolsForRole } from './registry';
 import { isWidgetResult } from './tools/viz.tools';
 import { buildSystemPrompt } from './prompt';
+import { recordLlm } from '../usage.service';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -357,6 +358,8 @@ async function streamTurn(params: {
             ? [...params.messages, { role: 'system', content: params.extraSystem }]
             : params.messages,
         stream: true,
+        // Asks OpenRouter to send the token counts and the real cost in the last chunk (recorded in the cost ledger).
+        usage: { include: true },
         temperature: 0.2,
         max_tokens: MAX_OUTPUT_TOKENS,
         // OpenRouter drops this for models that don't support reasoning.
@@ -439,6 +442,7 @@ async function streamTurn(params: {
         }
     };
 
+    let streamUsage: any = null;
     for await (const chunk of pump()) {
         buffer += chunk;
         const lines = buffer.split('\n');
@@ -456,6 +460,8 @@ async function streamTurn(params: {
             } catch {
                 continue; // partial JSON across chunk boundary; the buffer keeps the rest
             }
+
+            if (parsed.usage) streamUsage = parsed.usage; // sent on the last chunk, which has no delta
 
             // Read before the `!delta` bail-out below: some providers send
             // finish_reason on a final chunk whose delta is empty ({}, still
@@ -516,6 +522,7 @@ async function streamTurn(params: {
         params.emit({ type: 'text', delta: text.slice(emittedUpTo) });
     }
 
+    if (streamUsage) recordLlm({ usage: streamUsage }, { provider: 'OpenRouter', model: params.model, kind: 'llm_chat', meta: { feature: 'assistant' } });
     return { text: leaked ? '' : text, toolCalls, leaked, finishReason };
 }
 

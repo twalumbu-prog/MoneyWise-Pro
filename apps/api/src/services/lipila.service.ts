@@ -14,6 +14,7 @@ import { whatsappService } from './whatsapp.service';
 import { emailService } from './email.service';
 import { pushService } from './push.service';
 import { loadSettings } from './imports.service';
+import { recordUsage } from './usage.service';
 
 export class LipilaError extends Error {
     constructor(message: string, public httpStatus = 400, public code = 'LIPILA') { super(message); }
@@ -272,7 +273,10 @@ export class PayoutUnknownError extends Error { outcomeUnknown = true; construct
 export async function createMobileMoneyPayout(input: { orgId: string; reference: string; amount: number; phone: string; narration: string; apiBase?: string | null }): Promise<PayoutAnswer> {
     // Exactly the request shape Master Fees uses successfully in production: no callback header and no extra body fields. Lipila has no
     // reliable payout callback, so the outcome is confirmed by polling check-status with this reference.
-    return sendPayout(input.orgId, input.reference, 'mobile-money', { referenceId: input.reference, amount: round2(input.amount), accountNumber: payoutNumber(input.phone), currency: 'ZMW', narration: input.narration.slice(0, 100) });
+    // EXPERIMENT (requested): a bank payout from this same key was accepted while the mobile money one was refused with a 401, so the mobile
+    // money request also carries a default `branch: 'main'`, in case Lipila's payout check keys on it. It is not in Lipila's documented mobile
+    // money request: if Lipila rejects it, remove it. A 4xx means nothing was sent.
+    return sendPayout(input.orgId, input.reference, 'mobile-money', { referenceId: input.reference, amount: round2(input.amount), accountNumber: payoutNumber(input.phone), currency: 'ZMW', narration: input.narration.slice(0, 100), branch: 'main' });
 }
 
 /**
@@ -597,6 +601,7 @@ export async function finalizeCard(reference: string): Promise<Outcome> {
     try {
         await recordPayment(s);
         await supabase.from('lipila_card_sessions').update({ status: 'SUCCESSFUL', record_error: null, updated_at: new Date().toISOString(), finalized_at: new Date().toISOString() }).eq('reference', reference);
+        recordUsage({ category: 'payments', kind: 'card_collection', provider: 'lipila', organizationId: s.organization_id, cost: num(s.fee_amount), currency: s.currency || 'ZMW', units: num(s.charged_amount), unit: 'ZMW collected', reference, meta: { net: num(s.net_amount) } });
         return { state: 'successful', referenceNumber: await receiptNumber(s.organization_id, reference) };
     } catch (e: any) {
         // Lipila confirmed the money but we could not write it down. Keep the real error and stay open: the next check retries.

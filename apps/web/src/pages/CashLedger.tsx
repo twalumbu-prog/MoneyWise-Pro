@@ -1257,10 +1257,17 @@ Status: VERIFIED`;
     };
 
     if (categoryGroup === 'VIRTUAL') {
+        const virtualTab = (value: 'MONEYWISE' | 'EXTERNAL' | 'VIRTUAL', body: React.ReactNode, active: boolean, dot?: boolean) => ({
+            value,
+            buttonClassName: 'px-3.5 h-6 text-[10px] font-bold',
+            activeButtonClassName: 'text-[#1F1F1F]',
+            label: (<>{dot && <span className="w-1.5 h-1.5 rounded-full bg-[#0B57D0] md:bg-[#0842A0] flex-shrink-0" />}<span className={active ? 'text-[#1F1F1F]' : 'text-[#5F6368]'}>{body}</span></>),
+        });
         return (
             <Layout noPadding={true} backgroundColor="bg-[#F8FAFD] md:bg-white">
-                <div className="flex min-h-screen flex-col bg-[#F8FAFD] pb-24 pt-2 md:bg-white md:px-4 md:pb-4 md:pt-0">
-                    <div className="mx-auto mb-1 mt-3 w-full max-w-3xl px-4">
+                {/* Same frame as Main Wallets and External Accounts: on desktop the tab sits in the same card with the same small tab row. */}
+                <div className="flex min-h-screen flex-col bg-[#F8FAFD] pb-24 pt-2 md:min-h-[calc(100vh-56px)] md:bg-white md:px-4 md:pb-4 md:pt-0">
+                    <div className="mx-auto mb-1 mt-3 w-full max-w-3xl px-4 md:hidden">
                         <SegmentedControl
                             variant="capsule"
                             value={categoryGroup}
@@ -1272,7 +1279,22 @@ Status: VERIFIED`;
                             ]}
                         />
                     </div>
-                    <VirtualCardTab wallets={wallets.map((w: any) => ({ id: String(w.id), name: String(w.name), balance: Number(w.balance) || 0, is_main: !!w.is_main }))} />
+                    <div className="md:flex md:flex-1 md:flex-col md:gap-4 md:rounded-[20px] md:border md:border-[rgba(116,119,117,0.22)] md:bg-white md:p-3.5">
+                        <div className="hidden items-center justify-between md:flex">
+                            <TabPillGroup
+                                value={categoryGroup}
+                                onChange={(v) => handleCategoryChange(v as 'MONEYWISE' | 'EXTERNAL' | 'VIRTUAL')}
+                                trackClassName="h-8 p-1 bg-[#F8FAFD] md:bg-[#F8FAFD] rounded-[10px] flex items-center gap-1"
+                                indicatorClassName="bg-white rounded-lg shadow-sm"
+                                tabs={[
+                                    virtualTab('MONEYWISE', 'Main Wallets', false, hasNewMoneywise),
+                                    virtualTab('EXTERNAL', 'External Accounts', false, hasNewExternal),
+                                    virtualTab('VIRTUAL', 'Virtual Card', true),
+                                ]}
+                            />
+                        </div>
+                        <VirtualCardTab wallets={wallets.map((w: any) => ({ id: String(w.id), name: String(w.name), balance: Number(w.balance) || 0, is_main: !!w.is_main }))} />
+                    </div>
                 </div>
             </Layout>
         );

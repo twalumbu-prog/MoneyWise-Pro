@@ -53,6 +53,8 @@ import cronRoutes from './routes/cron.routes';
 import { startImportRefresh } from './services/imports.service';
 import { startFundFeeds } from './services/fundFeeds.service';
 import { cronHeartbeat } from './middleware/cronHeartbeat';
+import { usageContext } from './services/usage.service';
+import usageRoutes from './routes/usage.routes';
 import investRoutes from './routes/invest.routes';
 import savingsRoutes from './routes/savings.routes';
 import developerRoutes from './routes/developer.routes';
@@ -1732,6 +1734,9 @@ app.use(broadcastAfterWrite);
 // Heartbeats for calls dispatched by the internal scheduler (X-Cron-Job + shared secret only).
 app.use(cronHeartbeat);
 
+// Remembers which business a request is for, so the cost ledger can attribute AI calls, messages and fees made while serving it.
+app.use(usageContext);
+
 // Routes
 app.use('/auth', authRoutes);
 app.use('/requisitions', requisitionRoutes);
@@ -1742,6 +1747,7 @@ app.use('/integrations', integrationRoutes);
 app.use('/users', userRoutes);
 app.use('/rewards', rewardsRoutes);
 app.use('/pay-links', payLinkRoutes);
+app.use('/usage', usageRoutes);
 app.use('/ai', aiRoutes);
 app.use('/organizations', organizationRoutes);
 app.use('/organizations/products', productRoutes);

@@ -7,6 +7,7 @@ import { alignReferenceCounter, isReferenceCollision } from './referenceCounters
 import { withTiming } from '../utils/analytics';
 import { emailService } from './email.service';
 import { pushService } from './push.service';
+import { recordUsage } from './usage.service';
 
 // Fire-and-forget: never let a notification failure affect the ledger write.
 const notifyInflowAsync = (organizationId: string, entry: any) => {
@@ -601,6 +602,7 @@ export const cashbookService = {
         const feeToUse = isOnUsTransfer ? 0 :
                         actualFee !== undefined ? actualFee :
                         LencoService.calculatePayoutFee(netAmount, disbursement.payment_method || 'BANK');
+        if (feeToUse > 0) recordUsage({ category: 'payments', kind: 'payout', provider: 'lenco', organizationId: disbursement.organization_id, cost: Number(feeToUse), currency: 'ZMW', units: netAmount, unit: 'ZMW paid out', reference: requisitionId, meta: { method: disbursement.payment_method } });
 
         const walletId = disbursement.requisitions?.wallet_id;
 
@@ -714,6 +716,7 @@ export const cashbookService = {
         const net = Number((disbursement as any).requisitions?.estimated_total || 0);
         const deduction = Number(disbursement.total_prepared || 0) || net;
         const fee = Math.max(0, Math.round((deduction - net) * 100) / 100);
+        if (fee > 0) recordUsage({ category: 'payments', kind: 'payout', provider: 'lipila', organizationId: disbursement.organization_id, cost: fee, currency: 'ZMW', units: net, unit: 'ZMW paid out', reference: requisitionId, meta: { method: disbursement.payment_method } });
         await this.logDisbursement(
             disbursement.organization_id, requisitionId, deduction, disbursement.cashier_id,
             `Card Wallet payout (${disbursement.payment_method || 'MOBILE_MONEY'}) for Requisition #${requisitionId.slice(0, 8)}`,
