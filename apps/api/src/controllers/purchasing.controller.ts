@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import * as svc from '../services/purchasing.service';
+import * as basic from '../services/stockBasic.service';
 
 const fail = (res: Response, e: any, what: string) => {
     if (e instanceof svc.PurchasingError) return res.status(e.httpStatus).json({ error: e.message });
@@ -22,3 +23,9 @@ export const adjustStock = run('adjust the stock', async (r) => ({ movement: awa
 export const movements = run('load the stock history', async (r) => ({ movements: await svc.stockMovements(org(r), r.query.productId as string | undefined) }));
 export const valuation = run('value the stock', (r) => svc.inventoryValuation(org(r)));
 export const ageing = run('load what is owed', (r) => svc.payablesAgeing(org(r)));
+
+// Everyday stock (any plan): use stock up, restock with a cost, what is low, what was spent.
+export const useStock = run('record the stock used', async (r) => ({ movement: await basic.useStock(org(r), r.user.id, r.body) }));
+export const restock = run('record the purchase', async (r) => ({ movement: await basic.restock(org(r), r.user.id, r.body) }));
+export const lowStock = run('load what is low', (r) => basic.lowStock(org(r)));
+export const spending = run('load the spending', (r) => basic.spending(org(r), r.query.from as string | undefined, r.query.to as string | undefined));

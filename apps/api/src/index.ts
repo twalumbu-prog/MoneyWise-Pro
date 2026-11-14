@@ -55,6 +55,7 @@ import { startFundFeeds } from './services/fundFeeds.service';
 import { cronHeartbeat } from './middleware/cronHeartbeat';
 import { usageContext } from './services/usage.service';
 import usageRoutes from './routes/usage.routes';
+import stockRoutes from './routes/stock.routes';
 import investRoutes from './routes/invest.routes';
 import savingsRoutes from './routes/savings.routes';
 import developerRoutes from './routes/developer.routes';
@@ -1144,6 +1145,12 @@ ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS payout_account TEXT;
 ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS payout_account_name TEXT;
 ALTER TABLE public.purchase_bill_lines ADD COLUMN IF NOT EXISTS variant_id TEXT;
 ALTER TABLE public.stock_movements ADD COLUMN IF NOT EXISTS variant_id TEXT;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'stock_movements_reason_check' AND pg_get_constraintdef(oid) LIKE '%USED%') THEN
+    ALTER TABLE public.stock_movements DROP CONSTRAINT IF EXISTS stock_movements_reason_check;
+    ALTER TABLE public.stock_movements ADD CONSTRAINT stock_movements_reason_check CHECK (reason IN ('PURCHASE','ADJUSTMENT','COUNT','SALE','RETURN','VOID','USED'));
+  END IF;
+END $$;
 ALTER TABLE public.purchase_bills ADD COLUMN IF NOT EXISTS requisition_id UUID;
 ALTER TABLE public.bill_payments ALTER COLUMN account_id DROP NOT NULL;
 ALTER TABLE public.bill_payments ADD COLUMN IF NOT EXISTS requisition_id UUID;
@@ -1748,6 +1755,7 @@ app.use('/users', userRoutes);
 app.use('/rewards', rewardsRoutes);
 app.use('/pay-links', payLinkRoutes);
 app.use('/usage', usageRoutes);
+app.use('/stock', stockRoutes);
 app.use('/ai', aiRoutes);
 app.use('/organizations', organizationRoutes);
 app.use('/organizations/products', productRoutes);

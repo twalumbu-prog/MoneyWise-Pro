@@ -11,15 +11,17 @@ import * as vatSvc from './vat.service';
  * Payments here are recorded against the books; they don't send money from a Lenco wallet.
  */
 
+import { alertIfLow } from './stockAlerts.service';
+
 export class PurchasingError extends Error { constructor(message: string, readonly httpStatus = 400) { super(message); } }
 
-const r2 = (n: number) => Math.round(n * 100) / 100;
-const today = () => new Date(Date.now() + 2 * 3_600_000).toISOString().slice(0, 10);
+export const r2 = (n: number) => Math.round(n * 100) / 100;
+export const today = () => new Date(Date.now() + 2 * 3_600_000).toISOString().slice(0, 10);
 const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const addDays = (d: string, n: number) => new Date(Date.parse(d) + n * 86_400_000).toISOString().slice(0, 10);
-const text = (v: unknown, n: number) => { const s = String(v ?? '').trim().slice(0, n); return s || null; };
+export const text = (v: unknown, n: number) => { const s = String(v ?? '').trim().slice(0, n); return s || null; };
 
-async function ensureAccount(orgId: string, code: string, name: string, type: string, subtype: string): Promise<string> {
+export async function ensureAccount(orgId: string, code: string, name: string, type: string, subtype: string): Promise<string> {
     const { data } = await supabase.from('accounts').select('id').eq('organization_id', orgId).eq('code', code).maybeSingle();
     if (data) return data.id;
     const { data: made, error } = await supabase.from('accounts').insert({ organization_id: orgId, code, name, type, subtype, is_active: true, description: 'Created by purchasing' }).select('id').single();
@@ -30,12 +32,12 @@ async function ensureAccount(orgId: string, code: string, name: string, type: st
     }
     return made.id;
 }
-const inventoryAcct = (o: string) => ensureAccount(o, 'INVENTORY', 'Inventory', 'ASSET', 'Inventory');
+export const inventoryAcct = (o: string) => ensureAccount(o, 'INVENTORY', 'Inventory', 'ASSET', 'Inventory');
 const payablesAcct = (o: string) => ensureAccount(o, 'ACCTS-PAYABLE', 'Accounts Payable', 'LIABILITY', 'Accounts Payable');
 const adjustmentAcct = (o: string) => ensureAccount(o, 'INV-ADJUSTMENTS', 'Inventory adjustments', 'EXPENSE', 'Expense');
 
 interface PostLine { accountId: string; debit: number; credit: number; memo?: string }
-async function postJournal(orgId: string, userId: string | null, date: string, memo: string, ref: string, sourceType: string, sourceId: string, lines: PostLine[]) {
+export async function postJournal(orgId: string, userId: string | null, date: string, memo: string, ref: string, sourceType: string, sourceId: string, lines: PostLine[]) {
     const debit = r2(lines.reduce((s, l) => s + l.debit, 0)), credit = r2(lines.reduce((s, l) => s + l.credit, 0));
     if (Math.abs(debit - credit) >= 0.01) throw new PurchasingError('That entry would not balance.', 500);
     const { data: je, error } = await supabase.from('journal_entries').insert({ organization_id: orgId, entry_date: date, description: memo, reference_number: ref, source_type: sourceType, source_id: sourceId, created_by: userId }).select('id').single();
@@ -100,11 +102,11 @@ export async function supplierDetail(orgId: string, id: string) {
 
 interface LineIn { productId?: string; variantId?: string; taxCode?: string; accountId?: string; description?: string; quantity?: number; unitCost?: number }
 
-const variantsOf = (p: any): any[] => (Array.isArray(p?.variants) ? p.variants : []);
+export const variantsOf = (p: any): any[] => (Array.isArray(p?.variants) ? p.variants : []);
 const totalStock = (p: any) => (variantsOf(p).length ? variantsOf(p).reduce((s, v) => s + (Number(v.stock) || 0), 0) : Math.max(0, Number(p?.stock_quantity) || 0));
 
 /** Adds `qty` (or takes it away, if negative) from a product's count, or from one option's count when it is tracked by colour or size. */
-async function applyStock(p: any, variantId: string | null | undefined, qty: number) {
+export async function applyStock(p: any, variantId: string | null | undefined, qty: number) {
     if (variantsOf(p).length) {
         const vs = variantsOf(p).map((v) => (v.id === variantId ? { ...v, stock: Math.max(0, (Number(v.stock) || 0) + qty) } : v));
         await supabase.from('products').update({ variants: vs }).eq('id', p.id);
@@ -115,7 +117,7 @@ async function applyStock(p: any, variantId: string | null | undefined, qty: num
         p.stock_quantity = next;
     }
 }
-const stockOf = (p: any, variantId?: string | null) => (variantsOf(p).length ? Number(variantsOf(p).find((v) => v.id === variantId)?.stock) || 0 : Math.max(0, Number(p.stock_quantity) || 0));
+export const stockOf = (p: any, variantId?: string | null) => (variantsOf(p).length ? Number(variantsOf(p).find((v) => v.id === variantId)?.stock) || 0 : Math.max(0, Number(p.stock_quantity) || 0));
 
 export async function createBill(orgId: string, userId: string, body: any) {
     const { data: supplier } = await supabase.from('suppliers').select('id, payment_terms_days').eq('organization_id', orgId).eq('id', String(body?.supplierId ?? '')).maybeSingle();
@@ -364,6 +366,8 @@ export async function recordSale(order: { id: string; seller_org_id: string; pro
             ref_type: 'MARKETPLACE_ORDER', ref_id: order.id, balance_after: stockOf(p, order.variant_id), note: 'Marketplace order',
         });
         if (error) return;
+        const afterSale = stockOf(p, order.variant_id);
+        void alertIfLow(orgId, p, order.variant_id ?? null, afterSale + order.quantity, afterSale);
         const value = r2(order.quantity * cost);
         if (value > 0) {
             const inv = await inventoryAcct(orgId);
@@ -393,6 +397,7 @@ export async function adjustStock(orgId: string, userId: string, body: any) {
     const cost = Number(p.cost_price) || 0;
 
     await applyStock(p, variantId, change);
+    if (change < 0) void alertIfLow(orgId, p, variantId, before, after);
     const { data: mv, error } = await supabase.from('stock_movements').insert({ organization_id: orgId, product_id: p.id, variant_id: variantId, quantity_change: change, unit_cost: cost || null, reason, note: text(body?.note, 300), balance_after: after, created_by: userId }).select('*').single();
     if (error || !mv) throw new PurchasingError(error?.message ?? 'Could not record the movement.', 500);
     const value = r2(Math.abs(change) * cost);
