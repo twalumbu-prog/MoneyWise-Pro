@@ -51,8 +51,10 @@ object MomoPrompt {
         return if (custom != 0) custom else ctx.applicationInfo.icon
     }
 
-    private fun openApp(ctx: Context, requestCode: Int): PendingIntent {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("moneywise://momo-captures")).setPackage(ctx.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    // With a capture id, this opens straight into the "what was this for?" review modal instead of just the list.
+    private fun openApp(ctx: Context, requestCode: Int, reviewId: String? = null): PendingIntent {
+        val uri = if (reviewId != null) "moneywise://momo-captures?reviewId=$reviewId" else "moneywise://momo-captures"
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri)).setPackage(ctx.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         return PendingIntent.getActivity(ctx, requestCode, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
@@ -85,7 +87,7 @@ object MomoPrompt {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setAutoCancel(true)
-            .setContentIntent(openApp(ctx, notifyId(id)))
+            .setContentIntent(openApp(ctx, notifyId(id), reviewId = id))
             .addAction(0, "Record", action(ctx, ACTION_RECORD, id, title))
             .addAction(0, "Dismiss", action(ctx, ACTION_DISMISS, id, title))
             .build()
@@ -125,7 +127,7 @@ object MomoPrompt {
             .setContentText(text)
             .setOnlyAlertOnce(true)
             .setAutoCancel(true)
-            .setContentIntent(openApp(ctx, notifyId(captureId)))
+            .setContentIntent(openApp(ctx, notifyId(captureId), reviewId = if (ok) null else captureId))
             .apply { if (ok) setTimeoutAfter(6000) }
             .build()
         runCatching { nm.notify(notifyId(captureId), n) }

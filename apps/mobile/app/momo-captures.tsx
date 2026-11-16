@@ -6,6 +6,7 @@ import { ArrowDownLeft, ArrowUpRight, ClipboardPaste, X } from 'lucide-react-nat
 import { momoCaptureService, formatKwacha } from 'core';
 import type { MomoCapture, MomoCaptureStatus } from 'core';
 import { ScreenHeader } from '../src/components/ScreenHeader';
+import { MomoReviewModal } from '../src/components/momo/MomoReviewModal';
 import { colors, fonts, radius } from '../src/theme/tokens';
 import { MOMO_CAPTURES_KEY, MOMO_SETTINGS_KEY } from '../src/lib/momoCapture';
 
@@ -23,10 +24,11 @@ const PROVIDER: Record<MomoCapture['provider'], string> = { MTN: 'MTN MoMo', AIR
  */
 export default function MomoCapturesScreen() {
     const qc = useQueryClient();
-    const { paste: pasteParam } = useLocalSearchParams<{ paste?: string }>();
+    const { paste: pasteParam, reviewId } = useLocalSearchParams<{ paste?: string; reviewId?: string }>();
     const [tab, setTab] = useState<MomoCaptureStatus>('PENDING');
     const [pasteOpen, setPasteOpen] = useState(pasteParam === '1');
     const [pasteText, setPasteText] = useState('');
+    const [reviewing, setReviewing] = useState<MomoCapture | null>(null);
 
     const list = useQuery({ queryKey: [...MOMO_CAPTURES_KEY, tab], queryFn: () => momoCaptureService.list(tab) });
     const refresh = () => {
@@ -34,8 +36,17 @@ export default function MomoCapturesScreen() {
         void qc.invalidateQueries({ queryKey: MOMO_SETTINGS_KEY });
     };
 
+    // Tapping the "You got a new transaction" notification lands here with its id — open straight into the review
+    // modal instead of making the person find it in the list themselves.
+    const [consumedReviewId, setConsumedReviewId] = useState<string | null>(null);
+    if (reviewId && reviewId !== consumedReviewId && list.data) {
+        const match = list.data.find((c) => c.id === reviewId);
+        if (match) { setReviewing(match); setConsumedReviewId(reviewId); }
+    }
+
     const act = useMutation({
-        mutationFn: ({ id, action }: { id: string; action: 'post' | 'dismiss' }) => action === 'post' ? momoCaptureService.post(id) : momoCaptureService.dismiss(id),
+        mutationFn: ({ id, action, accountId, description }: { id: string; action: 'post' | 'dismiss'; accountId?: string | null; description?: string | null }) =>
+            action === 'post' ? momoCaptureService.post(id, { accountId: accountId ?? undefined, description: description ?? undefined }) : momoCaptureService.dismiss(id),
         onSuccess: (_d, v) => {
             refresh();
             if (v.action === 'post') void qc.invalidateQueries({ queryKey: ['cashbook-entries'] });
@@ -100,12 +111,19 @@ export default function MomoCapturesScreen() {
                         busy={act.isPending && act.variables?.id === item.id}
                         onPost={tab !== 'POSTED' ? () => (item.status === 'MATCHED'
                             ? Alert.alert('Book anyway?', 'This looks like a payment already in MoneyWise through your wallet. Booking it again would count it twice.', [
-                                { text: 'Cancel', style: 'cancel' }, { text: 'Book anyway', style: 'destructive', onPress: () => act.mutate({ id: item.id, action: 'post' }) },
+                                { text: 'Cancel', style: 'cancel' }, { text: 'Book anyway', style: 'destructive', onPress: () => setReviewing(item) },
                             ])
-                            : act.mutate({ id: item.id, action: 'post' })) : undefined}
+                            : setReviewing(item)) : undefined}
                         onDismiss={tab !== 'POSTED' ? () => act.mutate({ id: item.id, action: 'dismiss' }) : undefined}
                     />
                 )}
+            />
+
+            <MomoReviewModal
+                capture={reviewing}
+                busy={act.isPending && act.variables?.id === reviewing?.id}
+                onClose={() => setReviewing(null)}
+                onConfirm={(choice) => { if (reviewing) act.mutate({ id: reviewing.id, action: 'post', ...choice }); setReviewing(null); }}
             />
         </KeyboardAvoidingView>
     );
