@@ -92,8 +92,9 @@ const cases: { text: string; sender?: string; expect: Expect }[] = [
     { text: 'Payment of ZMW 20.00 received from MARY PHIRI. Txn ID 55566677788. New balance ZMW 25.00', sender: 'MoMo', expect: { direction: 'IN', amount: 20, balanceAfter: 25 } },
     { text: 'You have been paid ZMW 500.00 by ACME LTD. Ref 99911122233. Balance ZMW 512.00', sender: 'MoMo', expect: { direction: 'IN', amount: 500, balanceAfter: 512 } },
     { text: 'JOHN BANDA has transferred ZMW 50.00 to your account. TID: CI261113.1001.A11111', sender: 'AirtelMoney', expect: { direction: 'IN', amount: 50 } },
-    // A note after "Ref" is not a transaction id.
-    { text: 'You have received ZMW 30.00 from JOHN BANDA. Ref: School fees. Balance of ZMW 45.00', sender: 'MoMo', expect: { direction: 'IN', amount: 30, balanceAfter: 45, reference: null } },
+    // A note after "Ref" is not a transaction id, and without a real one this is read as not a transaction at all —
+    // a genuine confirmation always carries one; a message that merely mentions an amount must not be trusted.
+    { text: 'You have received ZMW 30.00 from JOHN BANDA. Ref: School fees. Balance of ZMW 45.00', sender: 'MoMo', expect: null },
     // Till payment and withdrawal name the other party differently.
     { text: 'Payment of ZMW 2.00 Till Number CORNER SHOP LUSAKA. Airtel Money bal is ZMW 0.44. TID : MP261113.0725.D88498.', sender: 'AirtelMoney', expect: { direction: 'OUT', amount: 2, balanceAfter: 0.44, counterparty: 'CORNER SHOP LUSAKA' } },
     { text: 'You have withdrawn ZMW 50.00 from 123456 JANE PHIRI. Bal is ZMW 83.81. TID: CO261017.1047.E96746.', sender: 'AirtelMoney', expect: { direction: 'OUT', amount: 50, balanceAfter: 83.81, counterparty: '123456 JANE PHIRI' } },
@@ -132,6 +133,12 @@ const balanceCases: { text: string; sender?: string; expect: { provider: string;
     { text: 'You have received ZMW 5.00 from JOHN BANDA. New balance ZMW 20.00. TID 12345678901', sender: 'MoMo', expect: null },
     { text: 'Your MoMo OTP is 482911. Do not share it with anyone.', expect: null },
 ];
+balanceCases.push(
+    // The real bug: a promo stating a "balance" figure, from a sender that names no mobile money provider at all,
+    // once created a wallet with that figure as its balance. Neither name a provider, so neither may anchor one.
+    { text: 'Your new K700 Wallet Balance is ready! Dial *123# to check and win more.', sender: 'Promo', expect: null },
+    { text: 'Reward balance: K700. Redeem before it expires!', sender: '228', expect: null },
+);
 for (const c of balanceCases) {
     const got = parseBalanceOnly(c.text, c.sender);
     try {

@@ -121,9 +121,13 @@ export function parseMomoMessage(rawText: string, sender?: string | null): Parse
     // "X has sent you" contains "sent" too, so the earlier, more specific phrase wins only when it really is first.
     else direction = (STRONG_IN.test(text) && !YOU_DID_IT.test(text)) ? 'IN' : /has sent you|sent you/i.test(text) ? 'IN' : inAt < outAt ? 'IN' : 'OUT';
 
+    const reference = findReference(text);
+    // A mobile money confirmation always carries a transaction id. Without one, this is read as a promo, a balance
+    // reminder, or some other message that merely mentions an amount — never as money that actually moved.
+    if (!reference) return null;
+
     const balance = hits.find((h) => h !== main && isBalance(h.before));
     const fee = hits.find((h) => h !== main && isFee(h.before));
-    const reference = findReference(text);
     const till = TILL_NAME.exec(text);
 
     return {
@@ -144,6 +148,11 @@ export function parseMomoMessage(rawText: string, sender?: string | null): Parse
  * A plain "what's my balance" reply (a dial-code check, or MTN/Airtel's own balance SMS) — no money moved, but its
  * figure is the most trustworthy anchor for the running wallet balance, better than only inferring one from
  * transaction messages. Must not also look like a transaction: checked after parseMomoMessage returns null.
+ *
+ * Deliberately strict, since nothing here is confirmed by a transaction id the way a real confirmation is: the
+ * sender or the text must actually name MTN, Airtel or Zamtel (never OTHER — that is how a promo mentioning a
+ * Kwacha figure, from a sender that isn't even a provider, once created a balance out of thin air), and the amount
+ * must sit right next to the word "balance", not just be the only figure in the message.
  */
 export function parseBalanceOnly(rawText: string, sender?: string | null): { provider: MomoProvider; balance: number } | null {
     const full = clean(rawText || '');
@@ -152,11 +161,12 @@ export function parseBalanceOnly(rawText: string, sender?: string | null): { pro
     if (text.length < 6 || NOT_A_TRANSACTION.test(text)) return null;
     if (IN_WORDS.test(text) || OUT_WORDS.test(text)) return null; // a real transaction, not a plain enquiry
 
+    const provider = detectProvider(text, sender);
+    if (provider === 'OTHER') return null;
     const hits = moneyHits(text);
-    if (hits.length === 0) return null;
-    const reading = hits.find((h) => isBalance(h.before)) ?? (hits.length === 1 ? hits[0] : null);
+    const reading = hits.find((h) => isBalance(h.before));
     if (!reading) return null;
-    return { provider: detectProvider(text, sender), balance: Math.round(reading.value * 100) / 100 };
+    return { provider, balance: Math.round(reading.value * 100) / 100 };
 }
 
 /** Same message arriving by SMS, by notification, or twice from the Shortcut must collapse to one row. */

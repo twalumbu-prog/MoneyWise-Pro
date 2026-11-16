@@ -1,6 +1,7 @@
 # Mobile money capture
 
 Books MTN MoMo / Airtel Money / Zamtel Kwacha transactions from the confirmation messages on the user's phone.
+Banks are not covered — a bank SMS is never matched, by design (see "Flow" below).
 
 | Piece | Where |
 | --- | --- |
@@ -18,9 +19,11 @@ Every plan, personal and business accounts alike. `/momo-capture` has no plan ch
 ## Flow
 
 1. A source sends the raw text to `POST /momo-capture/ingest` with header `X-Capture-Token: mwc_…`. The token is per user, only its SHA-256 is stored, it can only *add* messages, and "Turn off capture" revokes it. Captures go to the org that was active when the token was issued.
-2. The server parses the message. Non-transactions (OTPs, failures, payment requests) are ignored. Duplicates (same provider reference, or the same text) collapse: the SMS and its notification are one row.
-3. If a `MONEYWISE_WALLET` cashbook entry has the same amount and direction within ±30 min, the capture is `MATCHED` and **not booked**, because Lenco already has it.
-4. Otherwise the capture is `PENDING`, or booked straight away if "Book automatically" is on. Booking runs through `recordManualEntry` (AI categorisation included) into a per-provider external account ("MTN MoMo", "Airtel Money", …; created on first use) or the Cash account, per the user's setting. A fee in the message is booked as a separate OUT entry.
+2. The server parses the message. **A message is only ever read as a transaction when it carries a real transaction id (a digit-bearing TID/Txn/Ref) — mobile money confirmations always have one; nothing else is trusted, however much it looks like a payment.** This is what keeps a promo mentioning a Kwacha figure ("Win K700!") from being booked as money received — one such message once created a whole wallet out of thin air before this rule existed. Non-transactions (OTPs, failures, payment requests, promos) are ignored. Duplicates (same provider reference, or the same wording within 15 minutes) collapse: the SMS and its notification are one row.
+3. A message that states a balance but moves no money ("Your balance is ZMW 14.28") is read separately (`parseBalanceOnly`) — informational only, shown next to the ledger figure, never written into it — and only when the sender or text actually names MTN, Airtel or Zamtel; a provider the parser can't identify is never trusted as an anchor, for the same reason as above.
+4. **Bank SMS is not supported.** The sender/provider check only recognises `momo|mtn|airtel|zamtel|kwacha`; a bank's SMS never matches and is ignored outright, by design, not as an oversight.
+5. If a `MONEYWISE_WALLET` cashbook entry has the same amount and direction within ±30 min, the capture is `MATCHED` and **not booked**, because Lenco already has it.
+6. Otherwise the capture is `PENDING`, or booked straight away if "Book automatically" is on. **Nothing moves a wallet's ledger balance except this step** — capturing a message, or a plain balance check, never does. Booking runs through `recordManualEntry` (the "what was this for?" card's category/note, or AI categorisation when neither is given) into a per-provider external account ("MTN MoMo", "Airtel Money", …; created on first use) or the Cash account, per the user's setting. A fee in the message is booked as a separate OUT entry.
 
 ## Android
 
@@ -85,11 +88,12 @@ of how it was booked here — except a message the *current* parser no longer re
 mis-captured before a parser fix, say): a parser fix cleans up that old noise automatically, not just new messages. A
 provider with no message that has ever stated a balance has nothing to anchor to and is left out rather than guessed.
 
-With "A separate account per provider" selected, each provider account (Airtel Money, MTN MoMo, ...) is kept equal to
-this running balance. The difference between that figure and the recorded transactions sits in one balancing entry
-per account (reference `MOMO-BALANCE-<account id>`, "balance brought forward"), replaced whenever the gap changes.
-Recording a waiting transaction moves its amount out of that entry instead of adding a new correction. Nothing is
-synced when captures are booked to the Cash account.
+This running balance is shown, never written: it is purely informational, sitting beside the external account's real
+(booked) balance in the app, not inside it. An amount only ever reaches the ledger through booking — the "Done"
+button on the review card, auto-post, or an explicit "Book it" — never from merely capturing a message or a balance
+check. (An earlier version kept the external account equal to this running figure automatically, through a
+balancing entry; that is what let one misread promo inject a balance into a wallet that was never booked at all.
+Removed.)
 
 ## What keeps a transaction from being missed
 

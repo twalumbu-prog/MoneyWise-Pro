@@ -145,6 +145,10 @@ export default function MomoCaptureSettingsScreen() {
                 {!!balances.data?.length && (
                     <>
                         <Text style={[styles.sectionLabel, { marginTop: 24 }]}>WALLET BALANCES</Text>
+                        <Text style={styles.intro}>
+                            What your messages say each wallet holds. Nothing here is booked automatically — review and confirm
+                            a transaction to add it to MoneyWise.
+                        </Text>
                         <View style={styles.card}>
                             {balances.data.map((b, i) => (
                                 <Row
