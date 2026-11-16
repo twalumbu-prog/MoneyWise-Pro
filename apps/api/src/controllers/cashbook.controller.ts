@@ -8,6 +8,7 @@ import { QuickBooksService } from '../services/quickbooks.service';
 import { ledgerService } from '../services/ledger.service';
 import { releaseAllocationsIfNotReceivable } from '../services/customerInvoice.service';
 import { calculatePlatformFee } from '../utils/platformFee';
+import { orgWalletBalances } from '../services/momoCapture/momoCapture.service';
 
 /**
  * Get all cashbook entries with optional filters
@@ -940,7 +941,8 @@ export const getCashbookOverview = async (req: any, res: any): Promise<any> => {
             recentMoneywise, recentCash, recentAirtel, recentBank,
             mfIntegration,
             extBalances,
-            recentExts
+            recentExts,
+            liveMomoBalances
         ] = await Promise.all([
             cashbookService.getEntries(organizationId, {
                 startDate: startDate as string,
@@ -960,7 +962,8 @@ export const getCashbookOverview = async (req: any, res: any): Promise<any> => {
             cashbookService.getEntries(organizationId, { accountType: 'BANK', limit: 10 }),
             supabase.from('integrations').select('config').eq('provider', 'MASTERFEES').eq('organization_id', organizationId).maybeSingle(),
             Promise.all(extWalletList.map(w => cashbookService.getCurrentBalance(organizationId, w.id))),
-            Promise.all(extWalletList.map(w => cashbookService.getEntries(organizationId, { accountType: w.id, limit: 10 })))
+            Promise.all(extWalletList.map(w => cashbookService.getEntries(organizationId, { accountType: w.id, limit: 10 }))),
+            orgWalletBalances(organizationId).catch(() => [] as Awaited<ReturnType<typeof orgWalletBalances>>)
         ]);
 
         // Master Fees external accounts are only relevant to orgs that actually use
@@ -1002,7 +1005,13 @@ export const getCashbookOverview = async (req: any, res: any): Promise<any> => {
             MASTERFEES_MANUAL: masterFeesManualBal,
         };
         extWalletList.forEach((w, idx) => {
-            externalBalancesMap[w.id] = extBalances[idx];
+            // A mobile money account shows the balance the operator actually reports, not just the sum of what has
+            // been booked so far — a real account's balance is what the provider says it is, never "correct once
+            // you've reviewed everything". The booked ledger entries underneath are untouched either way.
+            const live = w.provider_type === 'MOBILE_MONEY'
+                ? liveMomoBalances.find((b) => b.name.toLowerCase() === String(w.name).toLowerCase())
+                : undefined;
+            externalBalancesMap[w.id] = live ? live.balance : extBalances[idx];
         });
 
         const flatRecentExt = recentExts.flat();

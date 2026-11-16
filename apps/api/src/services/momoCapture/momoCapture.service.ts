@@ -281,6 +281,18 @@ export async function balances(userId: string, orgId: string) {
     return runningBalances(orgId, userId);
 }
 
+/**
+ * Every phone's running balance for this org, merged — what the Wallet page shows as each mobile money account's
+ * balance. Deliberately the live figure, not the booked ledger total: a real external account's balance is what the
+ * provider says it is, and showing anything else ("but you haven't booked everything yet") would just read as the
+ * app getting it wrong. The ledger entries themselves are untouched — still only what's actually been booked — so
+ * the account's balance and its own listed transactions won't fully reconcile until the backlog is cleared, same as
+ * a real statement that hasn't caught up with a pending transaction yet.
+ */
+export async function orgWalletBalances(orgId: string) {
+    return runningBalances(orgId);
+}
+
 async function walletFor(orgId: string, provider: MomoProvider, destination: string) {
     if (destination === 'CASH') return ensureCashWallet(orgId);
     const name = PROVIDER_WALLET[provider];

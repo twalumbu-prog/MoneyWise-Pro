@@ -88,12 +88,18 @@ of how it was booked here — except a message the *current* parser no longer re
 mis-captured before a parser fix, say): a parser fix cleans up that old noise automatically, not just new messages. A
 provider with no message that has ever stated a balance has nothing to anchor to and is left out rather than guessed.
 
-This running balance is shown, never written: it is purely informational, sitting beside the external account's real
-(booked) balance in the app, not inside it. An amount only ever reaches the ledger through booking — the "Done"
-button on the review card, auto-post, or an explicit "Book it" — never from merely capturing a message or a balance
-check. (An earlier version kept the external account equal to this running figure automatically, through a
-balancing entry; that is what let one misread promo inject a balance into a wallet that was never booked at all.
-Removed.)
+This running balance IS the account's displayed balance for a mobile money external account — the Wallet page's
+`GET /cashbook` shows it (`orgWalletBalances`, matched to the account by name), not the sum of what has been booked
+so far. A real account's balance is what the provider says it is; showing anything else would just read as the app
+having got it wrong. The ledger (the entries actually listed under that account, the journal, reports) is untouched
+by this and still only contains what was explicitly booked, so the two won't fully reconcile until the backlog is
+cleared — same as a real bank statement whose headline balance is ahead of a transaction still settling.
+
+Nothing here writes to the ledger. An amount only ever reaches it through booking — the "Done" button on the review
+card, auto-post, or an explicit "Book it" — never from merely capturing a message or a balance check. (An earlier
+version kept the ledger itself equal to this running figure automatically, through a balancing entry; that is what
+let one misread promo inject a balance into a wallet that was never booked at all. Removed — this is a display
+figure now, nothing more.)
 
 ## What keeps a transaction from being missed
 
