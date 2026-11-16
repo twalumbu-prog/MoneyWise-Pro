@@ -34,6 +34,12 @@ export function detectProvider(text: string, sender?: string | null): MomoProvid
 // Also data/airtime bundle notices ("You have received K10: 1GB - 30Days from 26096… valid until …"): the "K10" there
 // is the bundle's name, not money moving. The payment for a bundle arrives as its own confirmation.
 const NOT_A_TRANSACTION = /\b(fail(ed|ure)?|unsuccessful|declined|cancel(l)?ed|insufficient|otp|one[- ]time|verification code|has requested|requests? (you|payment)|wants you to pay|approve the|valid until|[0-9]+(\.[0-9]+)?\s?(gb|mb))\b/i;
+// Airtime/call/data "balance" notices ("Your last call cost was K2.00. Your Current Balance is K15.00."): that
+// figure is airtime credit, not the mobile money wallet. A general carrier sender (e.g. "MTNZM") sends both kinds
+// under the same name, so only a plain balance enquiry (parseBalanceOnly) needs to tell them apart — a real
+// transaction (which parseMomoMessage requires a transaction id for) is never one of these regardless of wording,
+// so this only ever excludes a reading, never a booked payment (buying a data bundle is still real money moving).
+const NOT_A_BALANCE_READING = /\b(call cost|airtime|data bundle|sms bundle|voice bundle|minutes bundle|bundle balance)\b/i;
 // The free-text note the sender typed ("Message from sender: rent", "Message -: CBP", "Message:- top up"). It can say
 // anything, including words like "failed" or an amount, so it is removed before the message is read. It runs up to
 // the next fixed part of the confirmation.
@@ -158,11 +164,17 @@ export function parseBalanceOnly(rawText: string, sender?: string | null): { pro
     const full = clean(rawText || '');
     if (full.length > 1200) return null;
     const text = withoutPromo(full.replace(SENDER_NOTE, ''));
-    if (text.length < 6 || NOT_A_TRANSACTION.test(text)) return null;
+    if (text.length < 6 || NOT_A_TRANSACTION.test(text) || NOT_A_BALANCE_READING.test(text)) return null;
     if (IN_WORDS.test(text) || OUT_WORDS.test(text)) return null; // a real transaction, not a plain enquiry
 
     const provider = detectProvider(text, sender);
     if (provider === 'OTHER') return null;
+    // A carrier's general sender (e.g. "MTNZM") sends airtime/call notices too, under the same name as mobile money
+    // ones. The NOT_A_TRANSACTION check above catches the wordings seen so far; this is the other half — require the
+    // message to actually say so, unless the sender is a dedicated mobile money one that sends nothing else.
+    const DEDICATED_SENDER = /\b(momo|airtelmoney|zamtelkwacha)\b/i;
+    const MOBILE_MONEY_CONTEXT = /\b(mobile money|momo|e-? ?wallet)\b/i;
+    if (!(sender && DEDICATED_SENDER.test(sender)) && !MOBILE_MONEY_CONTEXT.test(text)) return null;
     const hits = moneyHits(text);
     const reading = hits.find((h) => isBalance(h.before));
     if (!reading) return null;

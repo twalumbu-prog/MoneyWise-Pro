@@ -138,6 +138,11 @@ balanceCases.push(
     // once created a wallet with that figure as its balance. Neither name a provider, so neither may anchor one.
     { text: 'Your new K700 Wallet Balance is ready! Dial *123# to check and win more.', sender: 'Promo', expect: null },
     { text: 'Reward balance: K700. Redeem before it expires!', sender: '228', expect: null },
+    // The other real bug: a generic carrier sender's airtime/call-cost notice once overrode a correct mobile money
+    // balance with an unrelated airtime figure — same sender name as real mobile money texts, so it must be told
+    // apart by what the message actually says, not who it came from.
+    { text: 'Your last call cost was K2.00. Your Current Balance is K15.00.', sender: 'MTNZM', expect: null },
+    { text: 'Your MTN Airtime Balance is K15.00.', sender: 'MTNZM', expect: null },
 );
 for (const c of balanceCases) {
     const got = parseBalanceOnly(c.text, c.sender);
