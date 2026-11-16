@@ -79,13 +79,22 @@ export function getAndroidStatus(): NativeStatus | null {
 /**
  * Turns Android sources on/off. Fetches a capture key the first time (or when the server rejected the old one —
  * the native layer drops a rejected key).
+ *
+ * Switching a source on must take effect on the phone even when the network is down: issuing a key is the only part
+ * that needs one. If that fails, the switch still turns on locally (capture itself stays off, since the native side
+ * won't send without a key) and the screen's own "no capture key" hint explains why — rather than the toggle
+ * silently doing nothing, which is what it looked like before this always ran. `flushQueued` retries the key on the
+ * next foreground, so it recovers on its own once the connection is back.
  */
 export async function setAndroidSources(sources: { notifications: boolean; sms: boolean }, opts: { askToPrompt?: boolean } = {}) {
     if (!native) throw new Error('This version of the app can’t capture messages yet. Update MoneyWise from the Play Store.');
     const status = native.getStatus();
     const anyOn = sources.notifications || sources.sms;
     let token: string | undefined;
-    if (anyOn && !status.hasToken) token = (await momoCaptureService.rotateToken()).token;
+    if (anyOn && !status.hasToken) {
+        try { token = (await momoCaptureService.rotateToken()).token; }
+        catch (e) { console.warn('[MoMo capture] could not issue a capture key; will retry later:', e); }
+    }
     // The Record / Dismiss prompt is an ordinary notification, which Android 13+ only shows with this permission.
     if (anyOn && opts.askToPrompt !== false && Number(Platform.Version) >= 33) {
         try { await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS); } catch { /* capture still works without the prompt */ }
