@@ -1039,6 +1039,43 @@ export class QuickBooksService {
         return { accountName, fromDate, toDate, openingBalance, closingBalance, transactions };
     }
 
+    /**
+     * Posts a plain double-entry journal (no customer/vendor lines) — used for the payroll accrual and deductions-allocation journals.
+     * Never posts an unbalanced journal. Returns the QuickBooks JournalEntry id.
+     */
+    static async createPayrollJournal(
+        organizationId: string,
+        params: { date: string; docNumber: string; note: string; lines: Array<{ accountId: string; debit: number; credit: number; description: string }> }
+    ): Promise<{ success: boolean; qbId?: string; error?: any }> {
+        try {
+            const dr = params.lines.reduce((a, l) => a + Math.round((l.debit || 0) * 100), 0), cr = params.lines.reduce((a, l) => a + Math.round((l.credit || 0) * 100), 0);
+            if (dr !== cr || dr === 0) return { success: false, error: `Journal does not balance (debits ${dr / 100}, credits ${cr / 100})` };
+            const { accessToken, realmId } = await this.getValidToken(organizationId);
+            const body = {
+                TxnDate: params.date,
+                DocNumber: params.docNumber.slice(0, 21),
+                PrivateNote: params.note,
+                Line: params.lines.map(l => ({
+                    DetailType: 'JournalEntryLineDetail',
+                    Amount: l.debit > 0 ? l.debit : l.credit,
+                    Description: l.description,
+                    JournalEntryLineDetail: { PostingType: l.debit > 0 ? 'Debit' : 'Credit', AccountRef: { value: l.accountId } },
+                })),
+            };
+            const { apiBase } = this.getEnv();
+            const response = await fetch(`${apiBase}/${realmId}/journalentry?minorversion=70`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+                body: JSON.stringify(body),
+            });
+            const result: any = await response.json();
+            if (!response.ok) return { success: false, error: JSON.stringify(result?.Fault || result).slice(0, 500) };
+            return { success: true, qbId: String(result.JournalEntry?.Id) };
+        } catch (error: any) {
+            return { success: false, error: error.message };
+        }
+    }
+
     static async createDeposit(organizationId: string, entryId: string, creditAccountId: string, userId: string) {
         console.log(`[QB Deposit] Starting deposit creation for entry ${entryId}`);
         try {

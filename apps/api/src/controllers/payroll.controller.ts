@@ -1,4 +1,6 @@
 import { employerLoanLedger } from '../services/employerLoanLedger.service';
+import { mergeRules, allowanceBases, computeStatutory, AllowanceType } from '../lib/payrollStatutory';
+import { postRunJournals } from '../services/payrollAccrual.service';
 import { RECOVERABLE_STATUSES, loanTermExpired, totalOwed } from '../lib/loanMath';
 import { getPreferences, getPersonalOrgForUser } from '../services/userPreferences.service';
 import { accountsOf, getAllPaymentInfo } from '../services/paymentInfo.service';
@@ -237,23 +239,6 @@ export const getPayrollRun = async (req: Request, res: Response) => {
 };
 
 // Zambia statutory calculation helpers
-const NAPSA_RATE = 0.05; // 5% employee, 5% employer
-const NHIMA_RATE = 0.01; // 1% employee, 1% employer
-const NAPSA_CEILING = 1073.15; // monthly ceiling (2026 rate)
-
-function calcPAYE(grossIncome: number): number {
-    // Zambia ZRA PAYE 2024/2025 bands (annual → monthly divide)
-    // Monthly bands:
-    // 0–4800: 0%
-    // 4800.01–9600: 20%
-    // 9600.01–16000: 30%
-    // 16000.01+: 37.5%
-    if (grossIncome <= 4800) return 0;
-    if (grossIncome <= 9600) return (grossIncome - 4800) * 0.20;
-    if (grossIncome <= 16000) return (9600 - 4800) * 0.20 + (grossIncome - 9600) * 0.30;
-    return (9600 - 4800) * 0.20 + (16000 - 9600) * 0.30 + (grossIncome - 16000) * 0.375;
-}
-
 export const createPayrollRun = async (req: Request, res: Response) => {
     try {
         if (!adminOnly(req, res)) return;
@@ -268,27 +253,41 @@ export const createPayrollRun = async (req: Request, res: Response) => {
         const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
         const periodLabel = `${monthNames[period_month - 1]} Payroll Run - ${period_year}`;
 
-        // Compute per-item statutory amounts
+        // Statutory rules + allowance flags come from the organisation's payroll settings (see lib/payrollStatutory.ts).
+        const { data: cfg } = await supabase.from('payroll_config').select('allowance_types, statutory_rules').eq('organization_id', orgId).maybeSingle();
+        const rules = mergeRules((cfg as any)?.statutory_rules);
+        const allowanceTypes: AllowanceType[] = ((cfg as any)?.allowance_types || []) as AllowanceType[];
+
         const computedItems = submittedItems.map((item: any) => {
             const basicPay = Number(item.basic_pay) || 0;
             const overtime = Number(item.overtime) || 0;
             const taxableAllowances = Number(item.taxable_allowances) || 0;
             const nonTaxableAllowances = Number(item.non_taxable_allowances) || 0;
             const allowancesTotal = taxableAllowances + nonTaxableAllowances;
-            const grossPay = basicPay + overtime + allowancesTotal;
-            const statutoryGross = basicPay + overtime + taxableAllowances;
+            const breakdown = (item.allowance_breakdown && typeof item.allowance_breakdown === 'object') ? item.allowance_breakdown : {};
+            const breakdownSum = Object.values(breakdown).reduce((a: number, v: any) => a + (Number(v) || 0), 0);
 
-            const napsaBase = Math.min(statutoryGross, NAPSA_CEILING * 12 / 12); // NAPSA_CEILING is 1073.15 per month limit (or maybe higher now, but we use the defined constant)
-            const napsaEmployee = parseFloat((napsaBase * NAPSA_RATE).toFixed(2));
-            const napsaEmployer = napsaEmployee;
-            const nhimaEmployee = parseFloat((statutoryGross * NHIMA_RATE).toFixed(2));
-            const nhimaEmployer = nhimaEmployee;
-            const paye = parseFloat(calcPAYE(statutoryGross).toFixed(2));
-            const statutoryTotal = napsaEmployee + nhimaEmployee + paye;
+            // Per-statutory bases: the breakdown's allowance types carry their own NAPSA / NHIMA / PAYE flags. Any allowance amount the
+            // breakdown does not name (a staff record's own allowance, an ad-hoc one) is treated as fully statutory — the prudent default.
+            let bases = { napsa: taxableAllowances, nhima: taxableAllowances, paye: taxableAllowances, total: allowancesTotal };
+            if (breakdownSum > 0) {
+                const b = allowanceBases(breakdown, allowanceTypes);
+                const rem = Math.max(0, allowancesTotal - breakdownSum);
+                bases = { napsa: b.napsa + rem, nhima: b.nhima + rem, paye: b.paye + rem, total: Math.max(allowancesTotal, b.total) };
+            }
 
+            const st = computeStatutory({
+                basic: basicPay, overtime, allowanceBases: bases,
+                napsaExempt: !!item.napsa_exempt, nhimaExempt: !!item.nhima_exempt,
+                override: item.statutory_override && typeof item.statutory_override === 'object' ? item.statutory_override : undefined,
+            }, rules);
+            const grossPay = st.gross;
+
+            const schoolFees = Number(item.school_fees) || 0;
+            const salaryAdvances = Number(item.salary_advances) || 0;
             const loans = Number(item.loans) || 0;
             const otherDeductions = Number(item.other_deductions) || 0;
-            const netPay = parseFloat((grossPay - statutoryTotal - loans - otherDeductions).toFixed(2));
+            const netPay = parseFloat((grossPay - st.statutory_total - schoolFees - salaryAdvances - loans - otherDeductions).toFixed(2));
 
             return {
                 organization_id: orgId,
@@ -298,15 +297,20 @@ export const createPayrollRun = async (req: Request, res: Response) => {
                 overtime,
                 allowances: allowancesTotal,
                 gross_pay: grossPay,
-                napsa_employee: napsaEmployee,
-                napsa_employer: napsaEmployer,
-                nhima_employee: nhimaEmployee,
-                nhima_employer: nhimaEmployer,
-                paye,
-                statutory_total: statutoryTotal,
+                napsa_employee: st.napsa_employee,
+                napsa_employer: st.napsa_employer,
+                nhima_employee: st.nhima_employee,
+                nhima_employer: st.nhima_employer,
+                paye: st.paye,
+                statutory_total: st.statutory_total,
+                statutory_override: st.overridden,
+                school_fees: schoolFees,
+                salary_advances: salaryAdvances,
+                bonus: Number(item.bonus) || 0,
                 loans,
                 other_deductions: otherDeductions,
                 net_pay: netPay,
+                department: item.department || null,
                 payment_method: item.payment_method || 'BANK',
                 pay_source: item.pay_source || null,
                 destination_method: item.destination_method || null,
@@ -706,13 +710,25 @@ export const approvePayrollRun = async (req: Request, res: Response) => {
             .single();
         if (updateErr) throw updateErr;
 
-        // Books: gross pay, employer contributions and what is owed to ZRA, NAPSA and NHIMA (only when accruals are on; never blocks approval).
+        // Books. Two mechanisms exist and must never both post the same run:
+        //   1. the platform accrual (Enterprise plan, switched on in Accounting settings) — generic accounts it creates itself;
+        //   2. this organisation's own mapped accounts (payroll_config.account_map, e.g. a QuickBooks-mirrored chart) — payrollAccrual.service.
+        // The platform accrual goes first; if it booked the run (accrued_at set) the mapped-account journal is skipped.
+        // Neither blocks the approval: a posting problem is logged / reported on the run so the accountant can retry.
         await payrollAcct.onRunApproved(orgId, userId, id);
+        let journals: any = null;
+        try { journals = await postRunJournals(orgId, id, userId, { toQuickBooks: true }); }
+        catch (e: any) {
+            console.error('[approvePayrollRun] payroll journal not posted:', e.message);
+            await supabase.from('payroll_runs').update({ qb_sync_status: 'FAILED', qb_sync_error: String(e.message).slice(0, 500) }).eq('id', id);
+            journals = { error: e.message };
+        }
 
         res.json({
             run: updatedRun,
             requisitions: createdRequisitions,
             loan_recovery: recovery,
+            journals,
         });
     } catch (err: any) {
         console.error('[approvePayrollRun]', err);
@@ -772,7 +788,7 @@ export const upsertPayrollConfig = async (req: Request, res: Response) => {
     try {
         if (!adminOnly(req, res)) return;
         const orgId = (req as any).user.organization_id;
-        const { basic_pay_configured, allowance_types, deduction_types } = req.body;
+        const { basic_pay_configured, allowance_types, deduction_types, statutory_rules, account_map } = req.body;
 
         const { data: existing, error: checkError } = await supabase
             .from('payroll_config')
@@ -789,7 +805,9 @@ export const upsertPayrollConfig = async (req: Request, res: Response) => {
             const payload = {
                 basic_pay_configured: basic_pay_configured ?? true,
                 allowance_types: allowance_types ?? [],
-                deduction_types: deduction_types ?? []
+                deduction_types: deduction_types ?? [],
+                ...(statutory_rules !== undefined ? { statutory_rules } : {}),
+                ...(account_map !== undefined ? { account_map } : {}),
             };
             const result = await supabase
                 .from('payroll_config')
@@ -804,7 +822,9 @@ export const upsertPayrollConfig = async (req: Request, res: Response) => {
                 organization_id: orgId,
                 basic_pay_configured: basic_pay_configured ?? true,
                 allowance_types: allowance_types ?? [],
-                deduction_types: deduction_types ?? []
+                deduction_types: deduction_types ?? [],
+                ...(statutory_rules !== undefined ? { statutory_rules } : {}),
+                ...(account_map !== undefined ? { account_map } : {}),
             };
             const result = await supabase
                 .from('payroll_config')
@@ -926,3 +946,72 @@ async function resolveSalaryOverrides(staffIds: string[]): Promise<Map<string, S
     }
     return out;
 }
+
+
+// ── Record a payroll that was run outside the app (signed-off payroll sheet) ──────────────────────────────────────────
+
+/**
+ * POST /payroll/runs/import
+ * Records a month's payroll with the figures actually paid, exactly as signed off — nothing is recomputed — and books its
+ * journals. It creates NO requisitions and NO disbursements (the money moved outside the app) and does not touch the loan
+ * recovery ledger. A period can only be recorded once.
+ *
+ * body: { period_month, period_year, pay_date?, notes?, qb_journal_id?, qb_allocation_journal_id?, post_to_quickbooks?,
+ *         items: [{ staff_id?, staff_name, department?, basic_pay, overtime?, allowance_breakdown?, napsa_employee, napsa_employer?,
+ *                   nhima_employee, nhima_employer?, paye, school_fees?, salary_advances?, loans?, other_deductions?, net_pay, pay_source? }] }
+ */
+export const importPayrollRun = async (req: Request, res: Response) => {
+    try {
+        if (!adminOnly(req, res)) return;
+        const orgId = (req as any).user.organization_id;
+        const userId = (req as any).user.id;
+        const { period_month, period_year, pay_date, notes, items, qb_journal_id, qb_allocation_journal_id, post_to_quickbooks } = req.body;
+        if (!period_month || !period_year || !Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'period_month, period_year and items[] are required' });
+
+        const { data: dup } = await supabase.from('payroll_runs').select('id, status').eq('organization_id', orgId).eq('period_month', period_month).eq('period_year', period_year).neq('status', 'CANCELLED').maybeSingle();
+        if (dup) return res.status(409).json({ error: `A payroll run for ${period_month}/${period_year} already exists (${dup.status}).` });
+
+        const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+        const problems: string[] = [];
+        const rows = items.map((it: any, idx: number) => {
+            const basic = Number(it.basic_pay) || 0, ot = Number(it.overtime) || 0;
+            const breakdown = it.allowance_breakdown && typeof it.allowance_breakdown === 'object' ? it.allowance_breakdown : {};
+            const allow = r2(Object.values(breakdown).reduce((a: number, v: any) => a + (Number(v) || 0), 0));
+            const gross = r2(basic + ot + allow);
+            const nE = Number(it.napsa_employee) || 0, hE = Number(it.nhima_employee) || 0, paye = Number(it.paye) || 0;
+            const nR = it.napsa_employer == null ? nE : Number(it.napsa_employer), hR = it.nhima_employer == null ? hE : Number(it.nhima_employer);
+            const sf = Number(it.school_fees) || 0, adv = Number(it.salary_advances) || 0, loans = Number(it.loans) || 0, oth = Number(it.other_deductions) || 0;
+            const net = r2(gross - nE - hE - paye - sf - adv - loans - oth);
+            if (it.net_pay != null && Math.abs(net - Number(it.net_pay)) > 0.05) problems.push(`${it.staff_name || '#' + (idx + 1)}: net pay ${it.net_pay} does not equal gross - deductions (${net})`);
+            return {
+                organization_id: orgId, staff_id: it.staff_id || null, staff_name: it.staff_name, basic_pay: basic, overtime: ot, allowances: allow, gross_pay: gross,
+                napsa_employee: nE, napsa_employer: nR, nhima_employee: hE, nhima_employer: hR, paye, statutory_total: r2(nE + hE + paye), statutory_override: true,
+                school_fees: sf, salary_advances: adv, loans, other_deductions: oth, bonus: Number(breakdown.Bonus ?? breakdown.bonus) || 0, net_pay: net,
+                department: it.department || null, payment_method: it.payment_method || 'BANK', pay_source: it.pay_source || 'MANUAL', destination_method: it.destination_method || null,
+                allowance_breakdown: breakdown, deduction_breakdown: it.deduction_breakdown || {},
+                bank_name: it.bank_name || null, bank_account_number: it.bank_account_number || null, mobile_money_number: it.mobile_money_number || null,
+            };
+        });
+        if (problems.length) return res.status(400).json({ error: 'Some payroll lines do not foot', problems });
+
+        const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+        const gross = r2(rows.reduce((a: number, r: any) => a + r.gross_pay, 0)), net = r2(rows.reduce((a: number, r: any) => a + r.net_pay, 0));
+        const { data: run, error: runErr } = await supabase.from('payroll_runs').insert({
+            organization_id: orgId, period_label: `${monthNames[period_month - 1]} Payroll Run - ${period_year}`, period_month, period_year, status: 'CLEARED', source: 'IMPORTED',
+            pay_date: pay_date || null, gross_total: gross, net_total: net, employee_count: rows.length, notes: notes || 'Recorded from the signed-off payroll sheet',
+            run_by: userId, run_at: new Date().toISOString(), approved_by: userId, approved_at: new Date().toISOString(),
+            qb_journal_id: qb_journal_id || null, qb_allocation_journal_id: qb_allocation_journal_id || null, qb_sync_status: qb_journal_id ? 'SUCCESS' : null,
+        }).select().single();
+        if (runErr) throw runErr;
+        const { error: itErr } = await supabase.from('payroll_run_items').insert(rows.map((r: any) => ({ ...r, payroll_run_id: run.id })));
+        if (itErr) { await supabase.from('payroll_runs').delete().eq('id', run.id); throw itErr; }
+
+        let journals: any = null;
+        try { journals = await postRunJournals(orgId, run.id, userId, { toQuickBooks: !!post_to_quickbooks && !qb_journal_id }); }
+        catch (e: any) { journals = { error: e.message }; }
+        res.status(201).json({ run, journals });
+    } catch (err: any) {
+        console.error('[importPayrollRun]', err);
+        res.status(500).json({ error: err.message });
+    }
+};
