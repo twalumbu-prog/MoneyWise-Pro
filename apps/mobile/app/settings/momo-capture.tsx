@@ -2,13 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, Switch, Alert, Platform, AppState, ActivityIndicator } from 'react-native';
 import { Stack, router, useFocusEffect } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, MessageSquare, Workflow, Inbox, ChevronRight, Check, ClipboardPaste, Unplug, ScanLine, Wallet } from 'lucide-react-native';
+import { Bell, MessageSquare, Workflow, Inbox, ChevronRight, Check, ClipboardPaste, Unplug, ScanLine, Wallet, History } from 'lucide-react-native';
 import { captureService, momoCaptureService } from 'core';
 import type { MomoCaptureSettings } from 'core';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 import {
-    androidCaptureAvailable, iosShortcutAvailable, getAndroidStatus, setAndroidSources, isIosShortcutSetUp, disconnectCapture, MOMO_SETTINGS_KEY,
+    androidCaptureAvailable, iosShortcutAvailable, getAndroidStatus, setAndroidSources, isIosShortcutSetUp, disconnectCapture,
+    importRecentMessages, requestSmsPermission, MOMO_SETTINGS_KEY, MOMO_CAPTURES_KEY,
 } from '../../src/lib/momoCapture';
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -73,6 +74,22 @@ export default function MomoCaptureSettingsScreen() {
         } catch (e: any) { Alert.alert('Could not change capture', e.message); }
         refreshDevice();
     };
+
+    const reimport = useMutation({
+        mutationFn: async () => {
+            if (!android?.smsPermission) {
+                const res = await requestSmsPermission();
+                if (res !== 'granted') throw new Error('MoneyWise needs SMS access to catch up on recent messages. You can use notification capture or paste messages instead.');
+            }
+            return importRecentMessages(100);
+        },
+        onSuccess: (n) => {
+            Alert.alert(n ? 'Import complete' : 'Nothing new', n ? `Found ${n} message(s) among your newest 100. Already-captured ones were skipped — review the rest in Review captured.` : 'No new mobile money messages among your newest 100 texts.');
+            refreshDevice();
+            void qc.invalidateQueries({ queryKey: MOMO_CAPTURES_KEY });
+        },
+        onError: (e: Error) => Alert.alert('Could not import', e.message),
+    });
 
     const disconnect = () => Alert.alert(
         'Turn off capture?',
@@ -180,6 +197,13 @@ export default function MomoCaptureSettingsScreen() {
                         sub="Copy a confirmation SMS and add it by hand" onPress={() => router.push({ pathname: '/momo-captures', params: { paste: '1' } })}
                         right={<ChevronRight size={18} color={colors.textFaint} />}
                     />
+                    {Platform.OS === 'android' && androidCaptureAvailable && (
+                        <Row
+                            border icon={<History size={18} color={colors.blue} />} label="Import recent messages"
+                            sub="Catch up on the newest 100 — already captured ones are skipped" onPress={() => reimport.mutate()}
+                            right={reimport.isPending ? <ActivityIndicator color={colors.blue} /> : <ChevronRight size={18} color={colors.textFaint} />}
+                        />
+                    )}
                 </View>
 
                 {settings.isLoading ? <ActivityIndicator style={{ marginTop: 24 }} color={colors.blue} /> : s ? (

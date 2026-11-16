@@ -120,10 +120,21 @@ export const openNotificationAccessSettings = () => native?.openNotificationAcce
 export const openAppSettings = () => (native ? native.openAppSettings() : Linking.openSettings());
 
 /** Queues the last [days] of provider SMS from the inbox. Server-side dedupe makes re-running safe. */
-export async function importSmsHistory(days = 30): Promise<number> {
+export async function importSmsHistory(days = 30, max = 500): Promise<number> {
     if (!native) return 0;
-    const n = await native.importSmsHistory(Date.now() - days * 24 * 3600 * 1000, 500);
+    const n = await native.importSmsHistory(Date.now() - days * 24 * 3600 * 1000, max);
     return n;
+}
+
+/**
+ * Catches the phone back up: queues the newest [max] matching SMS regardless of how long ago they are (the
+ * original import only ever ran once, during setup, so anything since has no way back into Review captured short
+ * of this). Safe to run as often as wanted — a message already booked, dismissed, or waiting is never duplicated,
+ * both locally (the same text within 15 minutes is dropped before it's even queued) and on the server (a message
+ * with the same transaction id, or the same wording within 15 minutes, is rejected outright).
+ */
+export async function importRecentMessages(max = 100): Promise<number> {
+    return importSmsHistory(3650, max);
 }
 
 /**
