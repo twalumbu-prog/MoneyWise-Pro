@@ -125,6 +125,9 @@ export const DEFAULT_APPOINTMENT_CONFIG: AppointmentConfig = {
 export interface AppointmentInfo {
     /** Who can do this service (a salon's hairdressers). Empty when the service isn't staffed. */
     staff?: { id: string; name: string }[];
+    /** The full price, and the deposit amounts a client may pay now instead of all of it (each less than the price). */
+    price?: number;
+    deposit_options?: number[];
     duration_minutes: number;
     open_weekdays: number[];
     closed_dates: string[];

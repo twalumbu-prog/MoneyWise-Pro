@@ -105,6 +105,8 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
     const [checkoutFields, setCheckoutFields] = useState<UiCheckoutField[]>([]);
     const [collectInfo, setCollectInfo] = useState(false);
     const [apptConfig, setApptConfig] = useState<AppointmentConfig>(DEFAULT_APPOINTMENT_CONFIG);
+    // Deposit amounts a client may pay now to secure an appointment, typed as "100, 200".
+    const [depositText, setDepositText] = useState('');
     const newFieldId = () => `f_${Math.random().toString(36).slice(2, 9)}`;
     const addCheckoutField = (preset: 'name' | 'email' | 'size' | 'custom') => {
         const f: UiCheckoutField =
@@ -238,6 +240,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
         });
         setDigitalAssets([]);
         setApptConfig(DEFAULT_APPOINTMENT_CONFIG);
+        setDepositText('');
         setError(null);
         setIsModalOpen(true);
     };
@@ -262,7 +265,10 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
         const existingFields = Array.isArray(product.checkout_fields) ? product.checkout_fields : [];
         setCheckoutFields(existingFields.map(f => ({ ...f, optionsText: (f.options || []).join(', ') })));
         setCollectInfo(existingFields.length > 0);
-        setApptConfig(product.appointment_config ? { ...DEFAULT_APPOINTMENT_CONFIG, ...product.appointment_config } : DEFAULT_APPOINTMENT_CONFIG);
+        // The service's own length (what bookings use) wins over the booking rule's, so the form shows the real one.
+        const ownLength = Number((product as any).duration_minutes);
+        setApptConfig({ ...(product.appointment_config ? { ...DEFAULT_APPOINTMENT_CONFIG, ...product.appointment_config } : DEFAULT_APPOINTMENT_CONFIG), ...(ownLength >= 5 ? { duration_minutes: ownLength } : {}) });
+        setDepositText(Array.isArray((product as any).deposit_options) ? (product as any).deposit_options.join(', ') : '');
         setFormData({
             name: product.name,
             description: product.description || '',
@@ -520,6 +526,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                 whats_included: whatsIncluded.filter(s => s.trim()),
                 checkout_fields: collectInfo ? cleanedCheckoutFields : [],
                 appointment_config: isAppointment ? apptConfig : null,
+                deposit_options: isAppointment ? depositText.split(/[,\s]+/).map(Number).filter((n) => Number.isFinite(n) && n > 0) : null,
             };
 
             let savedId = editingProduct?.id ?? '';
@@ -1183,6 +1190,15 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                             />
                                         </div>
                                         {isVariable && <p className="text-xs text-gray-400 mt-1">You'll confirm the final amount when sharing a link.</p>}
+                                    </div>
+                                )}
+
+                                {isAppointment && (
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-800 mb-1.5">Deposit options <span className="text-xs font-medium text-gray-400 ml-1">Optional</span></label>
+                                        <input type="text" value={depositText} onChange={(e) => setDepositText(e.target.value)} disabled={submitting} placeholder="e.g. 100, 200"
+                                            className="block w-full px-4 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0]" />
+                                        <p className="text-xs text-gray-400 mt-1">Amounts (in kwacha) a client can pay now to secure the booking, instead of the full price. They pay the rest at the salon. Leave empty to take the full price.</p>
                                     </div>
                                 )}
 

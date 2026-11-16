@@ -3,6 +3,7 @@ import { catalogItemExists } from '../services/priceCompare.service';
 import { Response } from 'express';
 import { supabase } from '../lib/supabase';
 import { sanitizeAppointmentConfig } from '../services/appointment.service';
+import { sanitizeDepositOptions } from '../services/salon.service';
 
 const PARCEL_SIZES = ['SMALL', 'MEDIUM', 'LARGE', 'BULKY'];
 
@@ -123,7 +124,7 @@ export const createProduct = async (req: any, res: Response): Promise<any> => {
 
         const { name, description, price, image_url, product_type, wallet_id, income_account_id, category, digital_assets,
                 requires_delivery, allow_external_delivery, own_delivery_charge, weight_kg, parcel_size, track_stock, stock_quantity, low_stock_threshold, variants,
-                additional_images, whats_included, checkout_fields, marketplace_listed, catalog_item_id, appointment_config } = req.body;
+                additional_images, whats_included, checkout_fields, marketplace_listed, catalog_item_id, appointment_config, deposit_options } = req.body;
 
         if (!name || name.trim() === '') {
             return res.status(400).json({ error: 'Product name is required' });
@@ -182,6 +183,8 @@ export const createProduct = async (req: any, res: Response): Promise<any> => {
                 // Which catalogue product this is, so it shows up in that product's price comparison. Only sent when chosen.
                 ...(catalog_item_id && (await catalogItemExists(String(catalog_item_id))) ? { catalog_item_id } : {}),
                 appointment_config: productType === 'SERVICE_APPOINTMENT' ? sanitizeAppointmentConfig(appointment_config) : null,
+                deposit_options: productType === 'SERVICE_APPOINTMENT' ? sanitizeDepositOptions(deposit_options) : null,
+                ...(productType === 'SERVICE_APPOINTMENT' ? { duration_minutes: sanitizeAppointmentConfig(appointment_config).duration_minutes } : {}),
             })
             .select()
             .single();
@@ -225,7 +228,7 @@ export const updateProduct = async (req: any, res: Response): Promise<any> => {
 
         const { name, description, price, is_active, image_url, product_type, wallet_id, income_account_id, category, digital_assets,
                 requires_delivery, allow_external_delivery, own_delivery_charge, weight_kg, parcel_size, track_stock, stock_quantity, low_stock_threshold, variants,
-                additional_images, whats_included, checkout_fields, marketplace_listed, catalog_item_id, appointment_config } = req.body;
+                additional_images, whats_included, checkout_fields, marketplace_listed, catalog_item_id, appointment_config, deposit_options } = req.body;
         const updateData: any = {};
         if (catalog_item_id !== undefined) {
             if (catalog_item_id === null || catalog_item_id === '') updateData.catalog_item_id = null;
@@ -306,9 +309,11 @@ export const updateProduct = async (req: any, res: Response): Promise<any> => {
         if (checkout_fields !== undefined) updateData.checkout_fields = sanitizeCheckoutFields(checkout_fields);
         if (marketplace_listed !== undefined) updateData.marketplace_listed = marketplace_listed === true;
         if (effectiveType === 'SERVICE_APPOINTMENT') {
-            if (appointment_config !== undefined) updateData.appointment_config = sanitizeAppointmentConfig(appointment_config);
+            if (appointment_config !== undefined) { updateData.appointment_config = sanitizeAppointmentConfig(appointment_config); updateData.duration_minutes = sanitizeAppointmentConfig(appointment_config).duration_minutes; }
+            if (deposit_options !== undefined) updateData.deposit_options = sanitizeDepositOptions(deposit_options);
         } else if (product_type !== undefined) {
             updateData.appointment_config = null;
+            updateData.deposit_options = null;
         }
         updateData.updated_at = new Date().toISOString();
 

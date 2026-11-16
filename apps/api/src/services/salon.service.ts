@@ -5,7 +5,9 @@
  *
  * A service nobody is assigned to keeps the original behaviour (capacity per service), so businesses that aren't salons are unaffected.
  */
+import crypto from 'crypto';
 import { supabase } from '../lib/supabase';
+import { cashbookService } from './cashbook.service';
 import { resolveConfig, nowInTz, minToTime, toMin, dayDiff, weekdayOf, DATE_RE, TIME_RE, AppointmentConfig } from './appointment.service';
 
 export class SalonError extends Error { constructor(message: string, readonly httpStatus = 400) { super(message); } }
@@ -14,6 +16,30 @@ export interface StaffRow { id: string; display_name: string; work_start: string
 export interface StaffSlot { start: string; end: string; staffIds: string[] }
 
 const hhmm = (t: string) => String(t).slice(0, 5);
+const r2 = (n: number) => Math.round(n * 100) / 100;
+
+/* ───────────── Deposits ───────────── */
+
+/** The deposit amounts a service offers (for example 100 and 200), cleaned: positive, unique, smallest first, at most six. */
+export const sanitizeDepositOptions = (raw: unknown): number[] | null => {
+    if (!Array.isArray(raw)) return null;
+    const v = [...new Set(raw.map(Number).filter((n) => Number.isFinite(n) && n > 0 && n <= 10_000_000).map(r2))].sort((a, b) => a - b).slice(0, 6);
+    return v.length ? v : null;
+};
+/** What the client asked to pay now, checked against what the service offers. null = pay in full. A deposit must be one of the offered amounts and less than the price. */
+export function checkDeposit(product: { price: unknown; deposit_options?: unknown }, requested: unknown): number | null {
+    if (requested == null || requested === '') return null;
+    const want = r2(Number(requested));
+    const offered = (sanitizeDepositOptions(product.deposit_options) ?? []).filter((o) => o < Number(product.price));
+    if (!offered.includes(want)) throw new SalonError('That deposit isn’t offered for this service.', 400);
+    return want;
+}
+/** What is still owed on a booking. A booking with no paid amount recorded was paid in full. */
+export const balanceOf = (a: { amount: unknown; paid_amount?: unknown }): number => {
+    const total = Number(a.amount) || 0;
+    const paid = a.paid_amount == null ? total : Number(a.paid_amount) || 0;
+    return Math.max(0, r2(total - paid));
+};
 
 /** How long a service takes: the duration the salon set on the service, else the booking rule's. */
 export const serviceDuration = (product: { duration_minutes?: number | null }, cfg: AppointmentConfig): number => {
@@ -159,7 +185,7 @@ export async function saveStaff(orgId: string, body: any, id?: string) {
 /** One day's bookings, each with the hairdresser, the service and whether it has been finished. */
 export async function bookingsForDay(orgId: string, date: string, staffId?: string) {
     if (!DATE_RE.test(date)) throw new SalonError('Choose a date.');
-    let q = supabase.from('product_appointments').select('id, product_id, staff_profile_id, customer_name, customer_phone, appointment_date, start_time, end_time, scheduled_end_time, completed_at, amount, status').eq('organization_id', orgId).eq('appointment_date', date).in('status', ['CONFIRMED', 'COMPLETED']).order('start_time');
+    let q = supabase.from('product_appointments').select('id, product_id, staff_profile_id, customer_name, customer_phone, appointment_date, start_time, end_time, scheduled_end_time, completed_at, amount, paid_amount, deposit_amount, no_show_at, status').eq('organization_id', orgId).eq('appointment_date', date).in('status', ['CONFIRMED', 'COMPLETED', 'NO_SHOW']).order('start_time');
     if (staffId) q = q.eq('staff_profile_id', staffId);
     const { data, error } = await q;
     if (error) throw new SalonError(error.message, 500);
@@ -174,6 +200,8 @@ export async function bookingsForDay(orgId: string, date: string, staffId?: stri
         id: r.id, service: pn.get(r.product_id) ?? 'Service', staffId: r.staff_profile_id, staff: r.staff_profile_id ? sn.get(r.staff_profile_id) ?? null : null,
         customerName: r.customer_name, customerPhone: r.customer_phone, start: hhmm(r.start_time), end: hhmm(r.end_time), bookedUntil: hhmm(r.scheduled_end_time ?? r.end_time),
         status: r.status, finishedAt: r.completed_at, amount: Number(r.amount) || 0,
+        paid: r.paid_amount == null ? Number(r.amount) || 0 : Number(r.paid_amount) || 0, balance: r.status === 'NO_SHOW' ? 0 : balanceOf(r), deposit: r.deposit_amount == null ? null : Number(r.deposit_amount),
+        noShow: r.status === 'NO_SHOW',
     }));
 }
 
@@ -204,4 +232,69 @@ export async function completeBooking(orgId: string, id: string, allow: (staffUs
     const { error } = await supabase.from('product_appointments').update(patch).eq('id', id).eq('status', 'CONFIRMED');
     if (error) throw new SalonError(error.message, 500);
     return { id, status: 'COMPLETED', freedMinutes: Math.max(0, scheduledEnd - realEnd), endedAt: minToTime(realEnd) };
+}
+
+/* ───────────── Balance, and no-shows ───────────── */
+
+async function loadBooking(orgId: string, id: string) {
+    const { data: a } = await supabase.from('product_appointments').select('id, product_id, staff_profile_id, customer_name, customer_phone, appointment_date, start_time, amount, paid_amount, deposit_amount, status').eq('organization_id', orgId).eq('id', id).maybeSingle();
+    if (!a) throw new SalonError('Booking not found.', 404);
+    const { data: p } = await supabase.from('products').select('name, wallet_id, appointment_config').eq('id', a.product_id).maybeSingle();
+    return { a: a as any, service: (p?.name as string) ?? 'Service', walletId: (p?.wallet_id as string | null) ?? null, tz: resolveConfig(p?.appointment_config).timezone };
+}
+
+/**
+ * A payment link for what is still owed on a booking, for the salon to send the client. Paying it adds the amount to the booking's paid total.
+ * There is only ever one open link per booking: asking again returns the same one.
+ */
+export async function createBalanceLink(orgId: string, userId: string, id: string) {
+    const { a, walletId } = await loadBooking(orgId, id);
+    if (!['CONFIRMED', 'COMPLETED'].includes(a.status)) throw new SalonError('Only a confirmed booking has a balance to pay.', 409);
+    const balance = balanceOf(a);
+    if (balance <= 0) throw new SalonError('Nothing is owed on this booking.', 409);
+    const { data: open } = await supabase.from('payment_links').select('token, amount').eq('organization_id', orgId).eq('appointment_id', id).eq('status', 'ACTIVE').maybeSingle();
+    if (open && Math.abs(Number(open.amount) - balance) < 0.005) return { token: open.token as string, path: `/pl/${open.token}`, amount: balance, reused: true };
+    if (open) await supabase.from('payment_links').update({ status: 'CANCELLED' }).eq('organization_id', orgId).eq('appointment_id', id).eq('status', 'ACTIVE');
+    let wallet = walletId;
+    if (!wallet) wallet = (await supabase.from('organization_wallets').select('id').eq('organization_id', orgId).eq('is_main', true).maybeSingle()).data?.id ?? null;
+    const token = crypto.randomBytes(24).toString('base64url');
+    const { error } = await supabase.from('payment_links').insert({ organization_id: orgId, product_id: a.product_id, token, customer_name: a.customer_name, customer_phone: a.customer_phone, amount: balance, wallet_id: wallet, status: 'ACTIVE', created_by: userId, appointment_id: id });
+    if (error) throw new SalonError(error.message, 500);
+    return { token, path: `/pl/${token}`, amount: balance, reused: false };
+}
+
+/** The balance was paid in cash at the salon: the booking is settled and the cash is recorded as money in. */
+export async function recordBalanceReceived(orgId: string, userId: string, id: string) {
+    const { a, service } = await loadBooking(orgId, id);
+    if (!['CONFIRMED', 'COMPLETED'].includes(a.status)) throw new SalonError('Only a confirmed booking has a balance to pay.', 409);
+    const balance = balanceOf(a);
+    if (balance <= 0) throw new SalonError('Nothing is owed on this booking.', 409);
+    // Settle first, guarded on what we read, so a double click can't record the cash twice.
+    const { data: upd, error } = await supabase.from('product_appointments').update({ paid_amount: a.amount, updated_at: new Date().toISOString() }).eq('id', id).eq('organization_id', orgId).eq('paid_amount', a.paid_amount).select('id');
+    if (error) throw new SalonError(error.message, 500);
+    if (!upd?.length) throw new SalonError('This booking was just updated. Refresh and check the balance.', 409);
+    try {
+        await cashbookService.logInflow(orgId, { personName: a.customer_name || 'Client', purpose: `Balance: ${service}`, amount: balance, accountType: 'CASH' }, userId);
+    } catch (e: any) {
+        await supabase.from('product_appointments').update({ paid_amount: a.paid_amount }).eq('id', id).eq('organization_id', orgId);
+        throw new SalonError(`Couldn’t record the cash: ${e?.message ?? e}`, 500);
+    }
+    await supabase.from('payment_links').update({ status: 'CANCELLED' }).eq('organization_id', orgId).eq('appointment_id', id).eq('status', 'ACTIVE');
+    return { id, paid: Number(a.amount), balance: 0, recorded: balance };
+}
+
+/** The client didn't come. Only once the start time has passed. The deposit is not refunded: it stays as paid, and nothing more is owed. */
+export async function markNoShow(orgId: string, id: string, allow: (staffUserId: string | null) => boolean, at: Date = new Date()) {
+    const { a, tz } = await loadBooking(orgId, id);
+    if (a.status === 'NO_SHOW') throw new SalonError('Already marked as a no-show.', 409);
+    if (a.status !== 'CONFIRMED') throw new SalonError('Only a confirmed booking that hasn’t happened can be a no-show.', 409);
+    let staffUser: string | null = null;
+    if (a.staff_profile_id) staffUser = (await supabase.from('salon_staff_profiles').select('user_id').eq('id', a.staff_profile_id).maybeSingle()).data?.user_id ?? null;
+    if (!allow(staffUser)) throw new SalonError('Only the salon’s managers or the hairdresser can mark a no-show.', 403);
+    const now = nowInTz(tz, at);
+    if (a.appointment_date > now.date || (a.appointment_date === now.date && now.minutes < toMin(hhmm(a.start_time)))) throw new SalonError('The appointment time hasn’t passed yet.', 409);
+    const { error } = await supabase.from('product_appointments').update({ status: 'NO_SHOW', no_show_at: at.toISOString(), updated_at: at.toISOString() }).eq('id', id).eq('status', 'CONFIRMED');
+    if (error) throw new SalonError(error.message, 500);
+    const kept = a.paid_amount == null ? Number(a.amount) : Number(a.paid_amount) || 0;
+    return { id, status: 'NO_SHOW', depositKept: r2(kept) };
 }

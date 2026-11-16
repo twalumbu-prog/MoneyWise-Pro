@@ -20,7 +20,7 @@ import { captureEvent, withTiming } from '../utils/analytics';
 import { ensureWalletTransferConfirmed } from './disbursement.controller';
 import { getCachedOrgSecretKey } from '../lib/orgSecretKeyCache';
 import { CARD_REF_PREFIX, cardsEnabledFor, finalizeCard, dollarRate, usdToZmw } from '../services/lipila.service';
-import { SalonError, staffForService, serviceDuration, publicSlots, assignStaff } from '../services/salon.service';
+import { SalonError, staffForService, serviceDuration, publicSlots, assignStaff, sanitizeDepositOptions, checkDeposit } from '../services/salon.service';
 import { status as lipilaCardStatus } from './lipila.controller';
 import { sanitizeCheckoutFields } from './product.controller';
 
@@ -1148,10 +1148,12 @@ export const getAppointmentInfo = async (req: Request, res: Response) => {
         const today = nowInTz(cfg.timezone).date;
         const last = new Date(Date.parse(`${today}T00:00:00Z`) + cfg.max_advance_days * 86400000).toISOString().slice(0, 10);
         // A service with hairdressers: show who can do it, and use the duration the salon set for the service.
-        const { data: pFull } = await supabase.from('products').select('organization_id, duration_minutes').eq('id', productId).maybeSingle();
+        const { data: pFull } = await supabase.from('products').select('organization_id, duration_minutes, price, deposit_options').eq('id', productId).maybeSingle();
         const staffRows = pFull ? await staffForService(pFull.organization_id, productId) : [];
         res.json({
             staff: staffRows.map((s) => ({ id: s.id, name: s.display_name })),
+            price: Number(pFull?.price) || 0,
+            deposit_options: (sanitizeDepositOptions(pFull?.deposit_options) ?? []).filter((o) => o < (Number(pFull?.price) || 0)),
             duration_minutes: staffRows.length ? serviceDuration(pFull as any, cfg) : cfg.duration_minutes,
             open_weekdays: Object.keys(cfg.hours).map(Number),
             closed_dates: cfg.closed_dates,
@@ -1287,13 +1289,17 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
         const apptInfo: Record<string, { price: number; duration: number; cfg: any }> = {};
         // For a service with hairdressers: who will do each booked slot (chosen by the client, or the free one for "any").
         const apptStaff: Record<string, { staffId: string; any: boolean; duration: number } | null> = {};
+        // A deposit the client chose to pay now instead of the full price (checked against what the service offers), by booked slot.
+        const apptDeposit: Record<string, number | null> = {};
+        const apptDepositOptions: Record<string, unknown> = {};
         if (apptItems.length > 0) {
             const ids = [...new Set(apptItems.map((a: any) => a.id))];
             const { data: prods } = await supabase.from('products')
-                .select('id, price, product_type, is_active, appointment_config').in('id', ids).eq('organization_id', wallet.organization_id);
+                .select('id, price, product_type, is_active, appointment_config, deposit_options').in('id', ids).eq('organization_id', wallet.organization_id);
             for (const p of (prods || []) as any[]) {
                 if (p.product_type !== 'SERVICE_APPOINTMENT' || !p.is_active) continue;
                 apptInfo[p.id] = { price: Number(p.price) || 0, duration: resolveConfig(p.appointment_config).duration_minutes, cfg: p.appointment_config };
+                apptDepositOptions[p.id] = p.deposit_options;
             }
             for (const a of apptItems) {
                 if (!apptInfo[a.id]) return res.status(400).json({ error: 'This service is not available for appointments.' });
@@ -1301,6 +1307,8 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
                 try { assigned = await assignStaff(wallet.organization_id, a.id, String(a.appointment_date), String(a.appointment_time), typeof a.staff_profile_id === 'string' ? a.staff_profile_id : null); }
                 catch (e: any) { if (e instanceof SalonError) return res.status(e.httpStatus).json({ error: e.message }); throw e; }
                 apptStaff[`${a.id}|${a.appointment_date}|${a.appointment_time}`] = assigned;
+                try { apptDeposit[`${a.id}|${a.appointment_date}|${a.appointment_time}`] = checkDeposit({ price: apptInfo[a.id].price, deposit_options: apptDepositOptions[a.id] }, a.deposit_amount); }
+                catch (e: any) { if (e instanceof SalonError) return res.status(e.httpStatus).json({ error: e.message }); throw e; }
                 if (assigned) continue; // a staffed service is checked against the hairdresser's own time
                 const slot = await isSlotAvailable(a.id, apptInfo[a.id].cfg, String(a.appointment_date), String(a.appointment_time));
                 if (!slot) return res.status(409).json({ error: 'Sorry, that time slot is no longer available. Please choose another.' });
@@ -1374,8 +1382,10 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
                 const isBooking = !!(item.check_in && item.check_out);
                 const isAppt = !isBooking && !!apptInfo[item.id] && !!(item.appointment_date && item.appointment_time);
                 const qty = isBooking ? nightsOf(String(item.check_in), String(item.check_out)) : isAppt ? 1 : Number(item.quantity);
-                const unit = isBooking ? (bookingPrices[item.id] ?? (Number(item.price) || 0)) : isAppt ? apptInfo[item.id].price : Number(item.price);
+                const deposit = isAppt ? apptDeposit[`${item.id}|${item.appointment_date}|${item.appointment_time}`] ?? null : null;
+                const unit = isBooking ? (bookingPrices[item.id] ?? (Number(item.price) || 0)) : isAppt ? (deposit ?? apptInfo[item.id].price) : Number(item.price);
                 return {
+                    is_deposit: deposit != null,
                     organization_id: wallet.organization_id,
                     product_id: item.id,
                     customer_name: customerName || 'Anonymous',
@@ -1445,6 +1455,9 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
                         end_time: minToTime(startMin + (assigned?.duration ?? apptInfo[a.id].duration)),
                         staff_profile_id: assigned?.staffId ?? null,
                         staff_any: assigned?.any ?? false,
+                        // What is paid now (the deposit or the whole price) and the deposit chosen; the amount stays the full price.
+                        paid_amount: apptDeposit[`${a.id}|${a.appointment_date}|${a.appointment_time}`] ?? apptInfo[a.id].price,
+                        deposit_amount: apptDeposit[`${a.id}|${a.appointment_date}|${a.appointment_time}`] ?? null,
                         amount: apptInfo[a.id].price,
                         status: 'PENDING',
                     };

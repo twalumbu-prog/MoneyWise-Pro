@@ -12,5 +12,8 @@ router.put('/staff/:id', requireRole(['ADMIN']), c.updateStaff);
 router.get('/bookings', read, c.bookings);
 // Any signed-in user may try: the service itself allows managers and the hairdresser who did the work.
 router.post('/bookings/:id/complete', c.complete);
+router.post('/bookings/:id/no-show', c.noShow);
+router.post('/bookings/:id/balance-link', read, c.balanceLink);
+router.post('/bookings/:id/balance-received', read, c.balanceReceived);
 
 export default router;

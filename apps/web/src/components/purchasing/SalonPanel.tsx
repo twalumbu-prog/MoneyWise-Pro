@@ -6,7 +6,7 @@ import { Dialog, ErrorNote, PrimaryButton, fieldClass, labelClass } from '../ui/
 
 interface Staff { id: string; name: string; isBookable: boolean; isActive: boolean; workStart: string; workEnd: string; workingDays: number[]; userId: string | null; serviceIds: string[] }
 interface Service { id: string; name: string; duration_minutes: number | null }
-interface Booking { id: string; service: string; staffId: string | null; staff: string | null; customerName: string; customerPhone: string; start: string; end: string; bookedUntil: string; status: 'CONFIRMED' | 'COMPLETED'; finishedAt: string | null; amount: number }
+interface Booking { id: string; service: string; staffId: string | null; staff: string | null; customerName: string; customerPhone: string; start: string; end: string; bookedUntil: string; status: 'CONFIRMED' | 'COMPLETED' | 'NO_SHOW'; finishedAt: string | null; amount: number; paid: number; balance: number; deposit: number | null; noShow: boolean }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const todayStr = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lusaka' });
@@ -66,6 +66,16 @@ export const SalonPanel: React.FC = () => {
     const day = useQuery<{ bookings: Booking[] }>({ queryKey: ['salon', 'bookings', date, staffFilter], queryFn: () => apiJson(`/salon/bookings?date=${date}${staffFilter ? `&staffId=${staffFilter}` : ''}`), retry: false, refetchInterval: 60_000 });
     const refresh = () => qc.invalidateQueries({ queryKey: ['salon'] });
 
+    const [linkFor, setLinkFor] = useState<{ id: string; url: string; amount: number } | null>(null);
+    const act = async (b: Booking, path: string, onOk: (r: any) => void) => {
+        setBusyId(b.id); setErr(null); setNote(null);
+        try { onOk(await apiJson<any>(`/salon/bookings/${b.id}/${path}`, { method: 'POST' })); refresh(); }
+        catch (e: any) { setErr(e?.message || 'That didn’t work.'); } finally { setBusyId(null); }
+    };
+    const makeLink = (b: Booking) => act(b, 'balance-link', (r) => setLinkFor({ id: b.id, url: `${window.location.origin}${r.path}`, amount: r.amount }));
+    const cashIn = (b: Booking) => { if (window.confirm(`Record ${formatKwacha(b.balance)} received in cash from ${b.customerName}?`)) act(b, 'balance-received', (r) => setNote(`${formatKwacha(r.recorded)} recorded as cash received. ${b.customerName} is paid up.`)); };
+    const noShow = (b: Booking) => { if (window.confirm(`Mark ${b.customerName} as a no-show? Their deposit is kept and not refunded.`)) act(b, 'no-show', (r) => setNote(`Marked as a no-show. ${formatKwacha(r.depositKept)} kept.`)); };
+
     const finish = async (b: Booking) => {
         setBusyId(b.id); setErr(null); setNote(null);
         try {
@@ -105,10 +115,34 @@ export const SalonPanel: React.FC = () => {
                                     <div className="min-w-0">
                                         <p className="text-sm font-semibold text-[#1F1F1F]">{fmt(b.start)} – {fmt(b.end)} · {b.service}</p>
                                         <p className="text-[11px] text-[#5F6368]">{b.customerName}{b.customerPhone && b.customerPhone !== 'N/A' ? ` · ${b.customerPhone}` : ''} · {formatKwacha(b.amount)}{b.status === 'COMPLETED' && b.bookedUntil !== b.end ? ` · booked until ${fmt(b.bookedUntil)}` : ''}</p>
+                                        <p className={`text-[11px] font-semibold ${b.noShow ? 'text-[#B31412]' : b.balance > 0 ? 'text-[#B06000]' : 'text-[#137333]'}`}>
+                                            {b.noShow ? `No-show · ${formatKwacha(b.paid)} deposit kept` : b.balance > 0 ? `${formatKwacha(b.paid)} paid · ${formatKwacha(b.balance)} due` : `${formatKwacha(b.paid)} paid in full`}
+                                        </p>
+                                        {linkFor?.id === b.id && (
+                                            <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-lg bg-[#F8FAFD] px-2.5 py-1.5">
+                                                <span className="truncate text-[11px] text-[#5F6368]">{linkFor.url}</span>
+                                                <button type="button" onClick={() => navigator.clipboard?.writeText(linkFor.url).then(() => setNote(`Link for ${formatKwacha(linkFor.amount)} copied. Send it to ${b.customerName}.`))} className="text-[11px] font-bold text-[#0B57D0] hover:underline">Copy</button>
+                                            </div>
+                                        )}
                                     </div>
-                                    {b.status === 'COMPLETED'
-                                        ? <span className="inline-flex items-center gap-1 rounded-full bg-[#E6F4EA] px-2.5 py-1 text-[11px] font-bold text-[#137333]"><CheckCircle2 size={12} /> Finished</span>
-                                        : <button type="button" onClick={() => finish(b)} disabled={busyId === b.id || isFuture} title={isFuture ? 'This booking is in the future' : 'Mark this service finished'} className="rounded-full border border-[#0B57D0] px-4 py-1.5 text-xs font-bold text-[#0B57D0] hover:bg-[#E8F0FE] disabled:opacity-40">{busyId === b.id ? 'Saving…' : 'Finished'}</button>}
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        {b.balance > 0 && !b.noShow && (
+                                            <>
+                                                <button type="button" onClick={() => makeLink(b)} disabled={busyId === b.id} className="rounded-full border border-[#C4C7C5] px-3 py-1.5 text-[11px] font-bold text-[#1F1F1F] hover:bg-[#F8FAFD] disabled:opacity-40">Balance link</button>
+                                                <button type="button" onClick={() => cashIn(b)} disabled={busyId === b.id} className="rounded-full border border-[#C4C7C5] px-3 py-1.5 text-[11px] font-bold text-[#1F1F1F] hover:bg-[#F8FAFD] disabled:opacity-40">Cash received</button>
+                                            </>
+                                        )}
+                                        {b.noShow
+                                            ? null
+                                            : b.status === 'COMPLETED'
+                                                ? <span className="inline-flex items-center gap-1 rounded-full bg-[#E6F4EA] px-2.5 py-1 text-[11px] font-bold text-[#137333]"><CheckCircle2 size={12} /> Finished</span>
+                                                : (
+                                                    <>
+                                                        <button type="button" onClick={() => noShow(b)} disabled={busyId === b.id || isFuture} title="The client didn’t come. Their deposit is kept." className="rounded-full border border-[#E6B8B5] px-3 py-1.5 text-[11px] font-bold text-[#B31412] hover:bg-[#FCE8E6] disabled:opacity-40">No-show</button>
+                                                        <button type="button" onClick={() => finish(b)} disabled={busyId === b.id || isFuture} title={isFuture ? 'This booking is in the future' : 'Mark this service finished'} className="rounded-full border border-[#0B57D0] px-4 py-1.5 text-xs font-bold text-[#0B57D0] hover:bg-[#E8F0FE] disabled:opacity-40">{busyId === b.id ? 'Saving…' : 'Finished'}</button>
+                                                    </>
+                                                )}
+                                    </div>
                                 </li>
                             ))}
                         </ul>

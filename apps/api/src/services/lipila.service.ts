@@ -15,6 +15,7 @@ import { emailService } from './email.service';
 import { pushService } from './push.service';
 import { loadSettings } from './imports.service';
 import { recordUsage } from './usage.service';
+import { checkDeposit } from './salon.service';
 
 export class LipilaError extends Error {
     constructor(message: string, public httpStatus = 400, public code = 'LIPILA') { super(message); }
@@ -417,8 +418,11 @@ async function pendingNet(orgId: string, reference: string): Promise<{ net: numb
  */
 async function assertAmountIsRight(orgId: string, reference: string, net: number, ctx?: Record<string, unknown>): Promise<void> {
     const wrong = () => new LipilaError('The amount doesn’t match this order. Please go back and try again.', 409, 'AMOUNT');
+    // A link that pays the balance of a booking is part of the price by design: its amount is checked against the link, not the product's price.
+    let paysBalance = false;
     if (ctx?.kind === 'payment_link' && ctx?.token) {
-        const { data: link } = await supabase.from('payment_links').select('amount, status, organization_id, currency, foreign_amount').eq('token', String(ctx.token)).maybeSingle();
+        const { data: link } = await supabase.from('payment_links').select('amount, status, organization_id, currency, foreign_amount, appointment_id').eq('token', String(ctx.token)).maybeSingle();
+        paysBalance = !!link?.appointment_id;
         if (!link || link.organization_id !== orgId) throw new LipilaError('That payment link can’t be found.', 404, 'LINK');
         if (link.status && link.status !== 'ACTIVE') throw new LipilaError('This payment link has already been paid or is closed.', 409, 'LINK_CLOSED');
         if (link.currency === 'USD' && num(link.foreign_amount) > 0) {
@@ -427,15 +431,22 @@ async function assertAmountIsRight(orgId: string, reference: string, net: number
             if (Math.abs(expected - net) > Math.max(0.5, expected * 0.02)) throw wrong();
         } else if (Math.abs(num(link.amount) - net) > 0.01) throw wrong();
     }
-    const { data: lines } = await supabase.from('product_sales').select('product_id, quantity, amount_paid').eq('organization_id', orgId).eq('reference', reference);
+    const { data: lines } = await supabase.from('product_sales').select('product_id, quantity, amount_paid, is_deposit').eq('organization_id', orgId).eq('reference', reference);
     if (lines?.length) {
         const sum = round2(lines.reduce((s: number, l: any) => s + num(l.amount_paid), 0));
         if (Math.abs(sum - net) > 0.01) throw wrong();
         const ids = [...new Set(lines.map((l: any) => l.product_id).filter(Boolean))];
-        const { data: prods } = ids.length ? await supabase.from('products').select('id, price').in('id', ids).eq('organization_id', orgId) : { data: [] as any[] };
+        const { data: prods } = ids.length ? await supabase.from('products').select('id, price, deposit_options').in('id', ids).eq('organization_id', orgId) : { data: [] as any[] };
         const price = new Map<string, number>((prods ?? []).map((p: any) => [p.id, num(p.price)]));
+        const prodById = new Map<string, any>((prods ?? []).map((p: any) => [p.id, p]));
         // A product with a price can't be bought for less. (Donations have no price: the payer chooses.)
-        for (const l of lines) { const p = price.get(l.product_id) ?? 0; if (p > 0 && num(l.amount_paid) + 0.01 < round2(p * num(l.quantity))) throw wrong(); }
+        for (const l of lines) {
+            if (paysBalance) continue;
+            const p = price.get(l.product_id) ?? 0;
+            // A deposit line is the one case where less than the price is right, and then only for a deposit the service offers.
+            if (l.is_deposit) { try { checkDeposit(prodById.get(l.product_id) ?? { price: p }, num(l.amount_paid)); } catch { throw wrong(); } continue; }
+            if (p > 0 && num(l.amount_paid) + 0.01 < round2(p * num(l.quantity))) throw wrong();
+        }
     }
 }
 

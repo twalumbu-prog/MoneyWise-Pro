@@ -30,10 +30,21 @@ export async function markPaymentLinkPaid(orgId: string, reference: string): Pro
                 .eq('organization_id', orgId)
                 .eq('reference', reference)
                 .eq('status', 'ACTIVE')
-                .select('id, items');
+                .select('id, items, appointment_id, amount');
             if (error) throw new Error(error.message);
 
             const flipped = Array.isArray(data) && data.length > 0;
+
+            // A link that pays a booking's balance: add what was paid to the booking (never past the price).
+            if (flipped) {
+                for (const link of data as any[]) {
+                    if (!link.appointment_id) continue;
+                    const { data: appt } = await supabase.from('product_appointments').select('amount, paid_amount').eq('id', link.appointment_id).maybeSingle();
+                    if (!appt || appt.paid_amount == null) continue; // already counted as paid in full
+                    const next = Math.min(Number(appt.amount), Math.round((Number(appt.paid_amount) + Number(link.amount)) * 100) / 100);
+                    await supabase.from('product_appointments').update({ paid_amount: next, updated_at: new Date().toISOString() }).eq('id', link.appointment_id);
+                }
+            }
 
             // For invoice-type links (have items[]), void the PENDING Accounts
             // Receivable cashbook entry that was created at invoice issuance.

@@ -6,10 +6,10 @@ interface AppointmentPickerProps {
     productId: string;
     productName: string;
     price: number;
-    initial?: { date: string; time: string; staffId?: string | null } | null;
+    initial?: { date: string; time: string; staffId?: string | null; deposit?: number | null } | null;
     onClose: () => void;
     /** date = YYYY-MM-DD, time = HH:MM (start), endTime = HH:MM */
-    onConfirm: (date: string, time: string, endTime: string, staff?: { id: string; name: string } | null) => void;
+    onConfirm: (date: string, time: string, endTime: string, staff?: { id: string; name: string } | null, deposit?: number | null) => void;
 }
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -29,6 +29,8 @@ const AppointmentPicker: React.FC<AppointmentPickerProps> = ({ productId, produc
     const [slotsLoading, setSlotsLoading] = useState(false);
     // A service with hairdressers lets the client choose one (or leave it as "any available"); the choice changes the times shown.
     const [staffId, setStaffId] = useState<string>(initial?.staffId || 'any');
+    // The amount to pay now: one of the deposits the service offers, or null for the full price.
+    const [deposit, setDeposit] = useState<number | null | undefined>(initial ? initial.deposit ?? null : undefined);
     const [view, setView] = useState<{ y: number; m0: number } | null>(null);
 
     useEffect(() => {
@@ -85,6 +87,10 @@ const AppointmentPicker: React.FC<AppointmentPickerProps> = ({ productId, produc
 
     const chosen = slots.find(s => s.start === time) || null;
     const staffList = info?.staff ?? [];
+    const depositOptions = info?.deposit_options ?? [];
+    const fullPrice = info?.price ?? price;
+    // With deposits on offer the smallest one is chosen until the client picks otherwise (it is what secures the booking).
+    const payNow = depositOptions.length > 0 ? (deposit === undefined ? depositOptions[0] : deposit) : null;
     const chosenStaff = staffId !== 'any' ? staffList.find(s => s.id === staffId) ?? null : null;
     const step = (n: number) => (staffList.length > 0 ? n + 1 : n);
 
@@ -174,6 +180,22 @@ const AppointmentPicker: React.FC<AppointmentPickerProps> = ({ productId, produc
                                     )}
                                 </div>
                             )}
+
+                            {date && chosen && depositOptions.length > 0 && (
+                                <div className="mt-6">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">{step(3)} · How much to pay now</p>
+                                    <div className="flex flex-col gap-2">
+                                        {[...depositOptions.map(o => ({ v: o as number | null, label: `Pay a K${o.toLocaleString()} deposit`, hint: `K${(fullPrice - o).toLocaleString(undefined, { minimumFractionDigits: 2 })} to pay at the salon` })), { v: null as number | null, label: `Pay in full · K${fullPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, hint: 'Nothing more to pay' }].map(o => (
+                                            <button key={String(o.v)} type="button" onClick={() => setDeposit(o.v)}
+                                                className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${payNow === o.v ? 'border-black bg-slate-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
+                                                <span className="text-sm font-bold text-slate-900">{o.label}</span>
+                                                <span className="text-[11px] font-medium text-slate-500">{o.hint}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <p className="mt-2 text-[11px] text-slate-400">A deposit is not refunded if you don&rsquo;t come to your appointment.</p>
+                                </div>
+                            )}
                         </>
                     )}
                 </div>
@@ -182,7 +204,7 @@ const AppointmentPicker: React.FC<AppointmentPickerProps> = ({ productId, produc
                     <div className="flex-1 min-w-0">
                         {date && chosen ? (
                             <>
-                                <p className="text-sm font-black text-slate-900">K{price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                <p className="text-sm font-black text-slate-900">{payNow != null ? `K${payNow.toLocaleString(undefined, { minimumFractionDigits: 2 })} deposit` : `K${fullPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}</p>
                                 <p className="text-[11px] font-medium text-slate-400 flex items-center gap-1 truncate">
                                     <Clock size={11} /> {formatSlotTime(chosen.start)} – {formatSlotTime(chosen.end)}
                                 </p>
@@ -192,7 +214,7 @@ const AppointmentPicker: React.FC<AppointmentPickerProps> = ({ productId, produc
                         )}
                     </div>
                     <button
-                        onClick={() => date && chosen && onConfirm(date, chosen.start, chosen.end, chosenStaff)}
+                        onClick={() => date && chosen && onConfirm(date, chosen.start, chosen.end, chosenStaff, payNow)}
                         disabled={!date || !chosen}
                         className="flex-shrink-0 bg-black hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed text-white px-6 py-3.5 rounded-xl font-semibold text-sm transition-all flex items-center gap-2"
                     >

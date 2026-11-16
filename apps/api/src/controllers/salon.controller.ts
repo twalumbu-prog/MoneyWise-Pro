@@ -19,3 +19,8 @@ export const bookings = async (req: any, res: Response) => {
 export const complete = async (req: any, res: Response) => {
     try { res.json(await salon.completeBooking(org(req), req.params.id, (staffUser) => MANAGERS.includes(req.user.role) || (!!staffUser && staffUser === req.user.id))); } catch (e) { fail(res, e, 'mark the service finished'); }
 };
+export const balanceLink = async (req: any, res: Response) => { try { res.json(await salon.createBalanceLink(org(req), req.user.id, req.params.id)); } catch (e) { fail(res, e, 'make the payment link'); } };
+export const balanceReceived = async (req: any, res: Response) => { try { res.json(await salon.recordBalanceReceived(org(req), req.user.id, req.params.id)); } catch (e) { fail(res, e, 'record the payment'); } };
+export const noShow = async (req: any, res: Response) => {
+    try { res.json(await salon.markNoShow(org(req), req.params.id, (staffUser) => MANAGERS.includes(req.user.role) || (!!staffUser && staffUser === req.user.id))); } catch (e) { fail(res, e, 'mark the no-show'); }
+};
