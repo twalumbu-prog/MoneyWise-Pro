@@ -42,7 +42,7 @@ const Thumb: React.FC<{ product: Product }> = ({ product }) => {
 
 const Switch: React.FC<{ on: boolean; busy?: boolean; disabled?: boolean; label: string; onChange: (v: boolean) => void }> = ({ on, busy, disabled, label, onChange }) => (
     <button type="button" role="switch" aria-checked={on} aria-label={label} disabled={disabled || busy} onClick={() => onChange(!on)} className={`relative h-6 w-11 min-w-[2.75rem] flex-shrink-0 rounded-full transition-colors disabled:opacity-50 ${on ? 'bg-[#0B57D0]' : 'bg-[#C4C7C5]'}`}>
-        <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-6' : 'translate-x-1'}`} />
+        <span className={`absolute left-0 top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-6' : 'translate-x-1'}`} />
     </button>
 );
 
