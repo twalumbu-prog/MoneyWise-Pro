@@ -61,7 +61,7 @@ export const LipilaIntegration: React.FC<{ onBack: () => void }> = ({ onBack }) 
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#0B57D0] text-white"><CreditCard size={22} /></div>
                 <div>
                     <h3 className="text-lg font-bold text-[#1F1F1F]">Lipila card payments</h3>
-                    <p className="text-sm text-gray-500">Let customers pay you by card. The money goes to your own Lipila wallet.</p>
+                    <p className="text-sm text-gray-500">Let customers pay you by card. The money goes to your own Card Wallet.</p>
                 </div>
             </div>
 
@@ -86,7 +86,7 @@ export const LipilaIntegration: React.FC<{ onBack: () => void }> = ({ onBack }) 
                     {test && <p className={`rounded-xl px-4 py-3 text-sm ${test.ok ? 'bg-[#E6F4EA] text-[#137333]' : 'bg-[#FCE8E6] text-[#B31412]'}`}>{test.message}</p>}
 
                     <section className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5">
-                        <h4 className="text-sm font-bold text-gray-900">Your Lipila wallet</h4>
+                        <h4 className="text-sm font-bold text-gray-900">Your Card Wallet</h4>
                         <div>
                             <label className="mb-1.5 block text-xs font-bold text-gray-700">Environment</label>
                             <select className={field} value={env} onChange={(e) => setEnv(e.target.value as any)} disabled={!isAdmin || busy}>

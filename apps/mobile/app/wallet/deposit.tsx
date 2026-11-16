@@ -210,7 +210,7 @@ export default function DepositScreen() {
                 ) : cardAvailable ? (
                     <View style={[styles.card, { gap: 8 }]}>
                         <Text style={styles.soonTitle}>Pay with a Visa, Mastercard or Amex</Text>
-                        <Text style={[styles.soonText, { textAlign: 'left', maxWidth: undefined }]}>This goes to your Card Wallet (your Lipila account), not the Lenco wallet. You enter your card on a secure page.</Text>
+                        <Text style={[styles.soonText, { textAlign: 'left', maxWidth: undefined }]}>This goes to your Card Wallet, not the Lenco wallet. You enter your card on a secure page.</Text>
                         {value > 0 ? (
                             <View style={{ gap: 4, marginTop: 4 }}>
                                 <View style={styles.totalRow}><Text style={styles.totalLabel}>Deposit</Text><Text style={styles.soonText}>{formatKwacha(value)}</Text></View>
@@ -227,7 +227,7 @@ export default function DepositScreen() {
                         <Text style={styles.soonText}>
                             {cardOpenButNotSetUp
                                 ? (cardSettings?.configured
-                                    ? 'Your Lipila key is saved, but card payments are switched off. Turn them on in the card settings.'
+                                    ? 'Card payments are set up but switched off. Turn them on in the card settings.'
                                     : 'Add your own Lipila key to take card deposits. It only takes a minute in the card settings.')
                                 : 'Card payments aren’t open for this account yet. Please use Mobile Money for now.'}
                         </Text>

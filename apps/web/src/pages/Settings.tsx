@@ -225,7 +225,7 @@ export const Settings: React.FC = () => {
                                                                     <CreditCard className="h-6 w-6" />
                                                                 </div>
                                                                 <h4 className="text-base font-bold text-gray-900 mb-1">Lipila Card Payments</h4>
-                                                                <p className="text-sm text-gray-500">Take card payments straight into your own Lipila wallet</p>
+                                                                <p className="text-sm text-gray-500">Take card payments straight into your own Card Wallet</p>
                                                             </button>
                                                         )}
                                                         {/* Gmail Card */}

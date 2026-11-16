@@ -47,7 +47,7 @@ export function CardWalletPanel({ organizationId }: { organizationId: string | n
             {open ? <>
             <View style={styles.stats}>
                 <View style={styles.stat}>
-                    <Text style={styles.statLabel}>BALANCE IN LIPILA</Text>
+                    <Text style={styles.statLabel}>LIVE BALANCE</Text>
                     <Text style={styles.statValue}>{wallet.isLoading ? '…' : w?.balance != null ? formatKwacha(w.balance) : '—'}</Text>
                 </View>
                 <View style={styles.stat}>

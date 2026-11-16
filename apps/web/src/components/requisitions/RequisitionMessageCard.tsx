@@ -2083,7 +2083,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                         </div>
                                                                         {selectedIsCard && (
                                                                             <p className="px-4 text-[11px] font-medium text-slate-500 leading-relaxed">
-                                                                                {`Paid from your Lipila Card Wallet to the ${paymentType === 'MOBILE_MONEY' ? 'mobile money number' : 'bank account'}. Lipila's charge of K${lencoService.calculateLipilaPayoutFee(Number(requisitionData?.estimated_total || 0)).toFixed(2)} is added and taken from the wallet.`}
+                                                                                {`Paid from your Card Wallet to the ${paymentType === 'MOBILE_MONEY' ? 'mobile money number' : 'bank account'}. A payout charge of K${lencoService.calculateLipilaPayoutFee(Number(requisitionData?.estimated_total || 0)).toFixed(2)} is added and taken from the wallet.`}
                                                                             </p>
                                                                         )}
                                                                         {isWalletBalanceInsufficient && (

@@ -860,7 +860,7 @@ export const PersonalSend: React.FC = () => {
                                                 triggerClassName="w-full h-12 rounded-xl border border-[rgba(116,119,117,0.22)] bg-white px-4 text-sm flex items-center justify-between"
                                             />
                                             {walletBalance !== null && <p className="mt-1.5 text-xs text-[#80868B]">{formatKwacha(walletBalance)} available</p>}
-                                            {walletIsCard && <p className="mt-1 text-xs text-[#80868B]">Paid from your Lipila Card Wallet to the {method === 'bank' ? 'bank account' : 'mobile money number'}. Lipila's charge of {formatKwacha(cardFee)} is added and taken from the wallet.</p>}
+                                            {walletIsCard && <p className="mt-1 text-xs text-[#80868B]">Paid from your Card Wallet to the {method === 'bank' ? 'bank account' : 'mobile money number'}. A payout charge of {formatKwacha(cardFee)} is added and taken from the wallet.</p>}
                                             {walletIsCard && method === 'bank' && (
                                                 <div className="mt-3 flex flex-col gap-3">
                                                     <div>

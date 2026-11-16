@@ -312,7 +312,7 @@ export const DisburseSheet: React.FC<{
                                 searchPlaceholder="Search wallets…"
                                 onSelect={(i) => setWalletId(i.id)}
                             />
-                            {selectedIsCard && <Text style={styles.feeText}>Paid from your Lipila Card Wallet. Lipila’s charge of {formatKwacha(fee)} is added and taken from the wallet.</Text>}
+                            {selectedIsCard && <Text style={styles.feeText}>Paid from your Card Wallet. A payout charge of {formatKwacha(fee)} is added and taken from the wallet.</Text>}
                             {cardBank && (
                                 <>
                                     <Text style={[styles.label, styles.spaced]}>Bank SWIFT code</Text>

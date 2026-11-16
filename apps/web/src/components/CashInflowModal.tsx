@@ -546,7 +546,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
                                             </div>
                                         )}
                                         {walletMethod === 'CARD' && (
-                                            <p className="text-[11px] text-slate-500 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">Card deposits go to your <strong>Card Wallet</strong> (your Lipila account), not the Lenco wallet.</p>
+                                            <p className="text-[11px] text-slate-500 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">Card deposits go to your <strong>Card Wallet</strong>, not the Lenco wallet.</p>
                                         )}
                                         {cardNote && (
                                             <div className="flex items-center gap-3 text-sm font-semibold text-slate-700 bg-slate-50 border border-slate-100 rounded-xl px-3 py-3"><Loader2 size={16} className="animate-spin text-[#0B57D0]" />{cardNote}</div>

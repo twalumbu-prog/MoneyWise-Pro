@@ -67,7 +67,7 @@ export default function LipilaSettingsScreen() {
             <Stack.Screen options={{ headerShown: false }} />
             <ScreenHeader title="Card payments" />
             <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-                <Text style={styles.sub}>Let customers pay you by card. The money goes to your own Lipila wallet.</Text>
+                <Text style={styles.sub}>Let customers pay you by card. The money goes to your own Card Wallet.</Text>
 
                 {!view ? (
                     error ? <Text style={styles.errorBox}>{error}</Text> : <View style={styles.centre}><ActivityIndicator color={colors.blue} /></View>
@@ -90,7 +90,7 @@ export default function LipilaSettingsScreen() {
                         {test ? <Text style={test.ok ? styles.okBox : styles.errorBox}>{test.message}</Text> : null}
 
                         <View style={styles.card}>
-                            <Text style={styles.cardTitle}>Your Lipila wallet</Text>
+                            <Text style={styles.cardTitle}>Your Card Wallet</Text>
 
                             <Text style={styles.label}>Environment</Text>
                             <View style={styles.seg}>

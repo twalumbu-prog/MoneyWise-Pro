@@ -1169,7 +1169,7 @@ export default function NewRequisitionScreen() {
                                             <View style={{ flex: 1 }}>
                                                 <Text style={styles.selectInputText}>{wallets.find((w) => w.id === selectedWalletId)?.name || 'Select Wallet'}</Text>
                                                 {!!selectedWalletLine && <Text style={styles.selectInputSub}>{selectedWalletLine}</Text>}
-                                                {!!selectedWalletRow?.is_card_wallet && <Text style={styles.selectInputSub}>Paid from your Lipila Card Wallet. Lipila’s charge of {formatKwacha(cardFee)} is added.</Text>}
+                                                {!!selectedWalletRow?.is_card_wallet && <Text style={styles.selectInputSub}>Paid from your Card Wallet. A payout charge of {formatKwacha(cardFee)} is added.</Text>}
                                             </View>
                                             <ChevronDown size={16} color={colors.textFaint} />
                                         </Pressable>

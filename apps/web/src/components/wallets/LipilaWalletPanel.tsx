@@ -41,7 +41,7 @@ export const LipilaWalletPanel: React.FC<{ organizationId: string | null | undef
                 <button type="button" onClick={toggle} aria-expanded={open} aria-controls="lipila-panel-body" className="flex min-w-0 flex-1 items-center gap-3 text-left">
                     <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#E8F0FE] text-[#0B57D0]"><CreditCard size={20} /></div>
                     <div className="min-w-0 flex-1">
-                        <p className="text-sm font-bold text-[#1F1F1F]">Lipila wallet</p>
+                        <p className="text-sm font-bold text-[#1F1F1F]">Card Wallet</p>
                         <p className="text-xs text-[#5F6368]">Where your customers’ card payments go{w?.env ? ` · ${w.env === 'production' ? 'live' : 'testing'}` : ''}</p>
                     </div>
                     {!open && <span className="flex-shrink-0 rounded-full bg-[#F8FAFD] px-3 py-1 text-xs font-bold tabular-nums text-[#1F1F1F]">{wallet.isLoading ? '…' : w?.balance != null ? formatKwacha(w.balance) : '—'}</span>}
@@ -53,12 +53,12 @@ export const LipilaWalletPanel: React.FC<{ organizationId: string | null | undef
             {open && <div id="lipila-panel-body">
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div className="rounded-xl bg-[#F8FAFD] p-4">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#5F6368]">Balance in Lipila</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#5F6368]">Live balance</p>
                     <p className="mt-1 text-2xl font-bold tabular-nums text-[#1F1F1F]">{wallet.isLoading ? '…' : w?.balance != null ? formatKwacha(w.balance) : '—'}</p>
                     <p className="text-[11px] text-[#80868B]">{w?.balance != null ? `Asked Lipila at ${new Date(w.fetchedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}` : 'Not available right now'}</p>
                 </div>
                 <div className="rounded-xl bg-[#F8FAFD] p-4">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#5F6368]">Booked in Lipila</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#5F6368]">Booked balance</p>
                     <p className="mt-1 text-2xl font-bold tabular-nums text-[#1F1F1F]">{w?.booked != null ? formatKwacha(w.booked) : '—'}</p>
                     <p className="text-[11px] text-[#80868B]">Includes money not yet available</p>
                 </div>
@@ -69,7 +69,7 @@ export const LipilaWalletPanel: React.FC<{ organizationId: string | null | undef
                 </div>
             </div>
             {w?.error && <p className="mt-3 flex items-start gap-2 rounded-xl bg-[#FEF7E0] px-3 py-2.5 text-xs text-[#7A4B00]"><AlertCircle size={14} className="mt-0.5 flex-shrink-0" /> {w.error}</p>}
-            {wallet.isError && <p className="mt-3 rounded-xl bg-[#FCE8E6] px-3 py-2.5 text-xs text-[#B31412]">Couldn’t load the Lipila wallet. {(wallet.error as any)?.message ?? ''}</p>}
+            {wallet.isError && <p className="mt-3 rounded-xl bg-[#FCE8E6] px-3 py-2.5 text-xs text-[#B31412]">Couldn’t load the Card Wallet. {(wallet.error as any)?.message ?? ''}</p>}
 
             <h4 className="mb-2 mt-5 text-sm font-bold text-[#1F1F1F]">Card payments</h4>
             {pays.isLoading ? <div className="h-16 animate-pulse rounded-xl bg-[#F1F3F4]" /> : rows.length === 0 ? (
