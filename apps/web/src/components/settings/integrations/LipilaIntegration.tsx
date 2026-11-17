@@ -4,9 +4,9 @@ import { apiJson } from 'core';
 import { useAuth } from '../../../context/AuthContext';
 
 interface View {
-    available: boolean; encryptionReady: boolean; configured: boolean; enabled: boolean; env: 'sandbox' | 'production';
+    available: boolean; encryptionReady: boolean; unreadable?: boolean; configured: boolean; enabled: boolean; env: 'sandbox' | 'production';
     cardCurrency?: 'ZMW' | 'USD'; dollarRate?: number | null;
-    keyHint: string | null; hasWebhookSecret: boolean; updatedAt: string | null; webhookUrl: string | null; feeNote: string;
+    keyHint: string | null; hasWebhookSecret: boolean; usesDefaultWebhookSecret?: boolean; updatedAt: string | null; webhookUrl: string | null; feeNote: string;
 }
 
 const field = 'block w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm outline-none transition focus:border-[#0B57D0] focus:ring-2 focus:ring-[#0B57D0]/20 disabled:bg-gray-50';
@@ -69,7 +69,7 @@ export const LipilaIntegration: React.FC<{ onBack: () => void }> = ({ onBack }) 
                 <p className="rounded-xl bg-[#FEF7E0] px-4 py-3 text-sm text-[#7A4B00]">Card payments aren’t open for your account yet.</p>
             ) : (
                 <>
-                    {!view.encryptionReady && <p className="flex items-start gap-2 rounded-xl bg-[#FEF7E0] px-4 py-3 text-sm text-[#7A4B00]"><AlertCircle size={16} className="mt-0.5 flex-shrink-0" /> The server can’t store keys safely yet, so saving is switched off. Ask your administrator to set GATEWAY_CREDENTIALS_KEY on the server.</p>}
+                    {view.unreadable && <p className="flex items-start gap-2 rounded-xl bg-[#FEF7E0] px-4 py-3 text-sm text-[#7A4B00]"><AlertCircle size={16} className="mt-0.5 flex-shrink-0" /> A key was saved earlier by a different server and can’t be read here. Paste it once more and save: it is then stored so every server (local, preview and live) can read it.</p>}
                     {error && <p className="rounded-xl bg-[#FCE8E6] px-4 py-3 text-sm text-[#B31412]">{error}</p>}
                     {notice && <p className="rounded-xl bg-[#E6F4EA] px-4 py-3 text-sm text-[#137333]">{notice}</p>}
 
@@ -103,6 +103,7 @@ export const LipilaIntegration: React.FC<{ onBack: () => void }> = ({ onBack }) 
                         <div>
                             <label className="mb-1.5 block text-xs font-bold text-gray-700">Webhook signing secret <span className="font-normal text-gray-400">(needed so Lipila can tell us a payment finished)</span></label>
                             <input type="password" autoComplete="off" className={field} value={secret} onChange={(e) => { setSecret(e.target.value); setClearSecret(false); }} placeholder={view.hasWebhookSecret ? 'Saved. Paste a new one to replace it' : 'Paste the signing secret'} disabled={!isAdmin || busy || !view.encryptionReady} />
+                            {!view.hasWebhookSecret && view.usesDefaultWebhookSecret && <p className="mt-1.5 text-[11px] text-[#137333]">Using MoneyWise&rsquo;s default signing secret, so you don&rsquo;t need to paste one. Paste your own here to use it instead.</p>}
                             {view.hasWebhookSecret && <label className="mt-1.5 flex items-center gap-2 text-[11px] text-gray-500"><input type="checkbox" checked={clearSecret} onChange={(e) => setClearSecret(e.target.checked)} /> Remove the saved secret</label>}
                         </div>
                         <div>
@@ -119,7 +120,7 @@ export const LipilaIntegration: React.FC<{ onBack: () => void }> = ({ onBack }) 
                             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} disabled={!isAdmin || busy} /> Accept card payments on my payment links, quick pay page and store
                         </label>
                         <div className="flex flex-wrap gap-2">
-                            <button type="button" onClick={save} disabled={!isAdmin || busy || !view.encryptionReady || (!view.configured && !apiKey.trim())} className="h-11 rounded-full bg-[#0B57D0] px-6 text-sm font-bold text-white hover:bg-[#0842A0] disabled:opacity-50">{busy ? 'Saving…' : 'Save'}</button>
+                            <button type="button" onClick={save} disabled={!isAdmin || busy || ((!view.configured || !!view.unreadable) && !apiKey.trim())} className="h-11 rounded-full bg-[#0B57D0] px-6 text-sm font-bold text-white hover:bg-[#0842A0] disabled:opacity-50">{busy ? 'Saving…' : 'Save'}</button>
                             {view.configured && isAdmin && <button type="button" onClick={remove} disabled={busy} className="h-11 rounded-full px-5 text-sm font-bold text-[#B31412] hover:bg-[#FCE8E6]">Remove key</button>}
                         </div>
                         {!isAdmin && <p className="text-xs text-gray-500">Only the account holder can change these.</p>}

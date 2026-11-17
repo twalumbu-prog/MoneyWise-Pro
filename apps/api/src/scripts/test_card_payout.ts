@@ -24,6 +24,7 @@ let postMode: Post = 'pending';
 let liveBalance = 1000;
 const known: Record<string, 'Pending' | 'Successful' | 'Failed'> = {};
 const sent: { reference: string; amount: number; account: string }[] = [];
+const bankSent: Record<string, any>[] = [];
 globalThis.fetch = (async (input: any, init: any = {}) => {
     const url = String(typeof input === 'string' ? input : input?.url ?? input);
     if (!/api\.lipila\.dev|blz\.lipila\.io/.test(url)) return realFetch(input, init);
@@ -37,6 +38,13 @@ globalThis.fetch = (async (input: any, init: any = {}) => {
         sent.push({ reference: b.referenceId, amount: b.amount, account: b.accountNumber });
         known[b.referenceId] = postMode === 'successful' ? 'Successful' : 'Pending';
         return json(200, { referenceId: b.referenceId, status: known[b.referenceId], identifier: `LPLXC-${b.referenceId}` });
+    }
+    if (/\/api\/v1\/banks(\?|$)/.test(url)) return json(200, [{ name: 'STANDARD CHARTERED', swiftCode: 'SCBLZMLX', isActive: true }, { name: 'ZANACO', swiftCode: 'ZNCOZMLU', isActive: true }, { name: 'OLD BANK', swiftCode: 'OLDBZMLU', isActive: false }]);
+    if (url.includes('/disbursements/bank') && init.method === 'POST') {
+        const b = JSON.parse(init.body);
+        bankSent.push(b);
+        known[b.referenceId] = 'Pending';
+        return json(200, { referenceId: b.referenceId, status: 'Pending', identifier: `LPLXC-${b.referenceId}` });
     }
     if (url.includes('/disbursements/check-status')) {
         const ref = new URL(url).searchParams.get('referenceId') ?? '';
@@ -76,19 +84,45 @@ const cardBalance = (org: string) => cashbookService.getCurrentBalance(org, lipi
         };
         const payBody = (amount: number, extra: Record<string, unknown> = {}) => ({ payment_method: 'MOBILE_MONEY', total_prepared: amount, recipient_account: '0971234567', recipient_bank_code: 'mtn', recipient_account_name: 'Test Person', wallet_id: 'CARD_WALLET', ...extra });
 
-        check('Lipila’s charge is 1.5% of the amount, to the ngwee', lipila.payoutFee(100) === 1.5 && lipila.payoutFee(60) === 0.9 && lipila.payoutFee(333.33) === 5 && lipila.payoutFee(1000) === 15 && lipila.payoutFee(0) === 0, JSON.stringify([lipila.payoutFee(100), lipila.payoutFee(60), lipila.payoutFee(333.33)]));
+        check('Lipila’s charge is 1.5% rounded up to the cent, never under K5', lipila.payoutFee(100) === 5 && lipila.payoutFee(333.33) === 5 && lipila.payoutFee(334) === 5.01 && lipila.payoutFee(1000) === 15 && lipila.payoutFee(0) === 0, JSON.stringify([lipila.payoutFee(100), lipila.payoutFee(333.33), lipila.payoutFee(334), lipila.payoutFee(1000)]));
         check('numbers are checked before Lipila is called', lipila.isPayableNumber('0971234567') && lipila.isPayableNumber('+260971234567') && !lipila.isPayableNumber('12345') && !lipila.isPayableNumber('0971'));
 
         // ---- refusals send nothing
         const r1 = await newReq(100);
         let a = await run(r1, org, user, payBody(100, { recipient_bank_code: 'zanaco' }));
-        check('a bank recipient is refused for the Card Wallet', a.statusCode === 400 && /mobile money/i.test(a.body?.error ?? '') && sent.length === 0 && (await statusOf(r1)) === 'AUTHORISED');
+        check('a bank recipient with no SWIFT code is refused for the Card Wallet, and nothing is sent', a.statusCode === 400 && /swift/i.test(a.body?.error ?? '') && sent.length === 0 && (await statusOf(r1)) === 'AUTHORISED');
+        a = await run(r1, org, user, payBody(100, { recipient_bank_code: 'zanaco', recipient_swift_code: 'SCBL123', recipient_account: '0123456789', recipient_account_name: 'Test Person', recipient_phone: '0971234567' }));
+        check('a malformed SWIFT code is refused', a.statusCode === 400 && /swift/i.test(a.body?.error ?? '') && sent.length === 0);
+        a = await run(r1, org, user, payBody(100, { recipient_bank_code: 'moneywise' }));
+        check('a MoneyWise account is still refused for the Card Wallet', a.statusCode === 400 && sent.length === 0);
         a = await run(r1, org, user, payBody(100, { recipient_account: '0971' }));
         check('a bad number is refused before Lipila is called', a.statusCode === 400 && /mobile money number/i.test(a.body?.error ?? '') && sent.length === 0);
-        liveBalance = 90; // the books say 500, Lipila says 90: Lipila's figure rules, and 100 + the 1.50 charge needs 101.50
+        liveBalance = 90; // the books say 500, Lipila says 90: Lipila's figure rules, and 100 + the 1.50 charge needs 1050
         a = await run(r1, org, user, payBody(100));
         check('not enough in the wallet is refused, naming what is short', a.statusCode === 400 && /Insufficient Card Wallet balance/.test(a.body?.error ?? '') && sent.length === 0 && (await statusOf(r1)) === 'AUTHORISED', a.body?.error);
         liveBalance = 1000;
+
+        // ---- a bank payout with a SWIFT code goes to Lipila's bank endpoint (the same request the send screen makes)
+        postMode = 'pending';
+        const rb = await newReq(5);
+        const bankBody = (swift: string) => payBody(5, { payment_method: 'MONEYWISE_WALLET', recipient_bank_code: 'zanaco', recipient_swift_code: swift, recipient_account: '0104316845800', recipient_account_name: 'CHARLEY SIWALE', recipient_phone: '0968460113' });
+        const lb = await lipila.listBanks(org);
+        check('Lipila’s own bank list is read, and inactive banks are left out', lb.live === true && lb.banks.length === 2 && !lb.banks.some((b) => b.swiftCode === 'OLDBZMLU'), JSON.stringify(lb));
+        a = await run(rb, org, user, bankBody('SCBLZMLXXXX'));
+        check('a SWIFT code that isn’t on Lipila’s list is refused before anything is created or sent', a.statusCode === 400 && /can.t pay a bank with the code SCBLZMLXXXX/.test(a.body?.error ?? '') && bankSent.length === 0 && (await statusOf(rb)) === 'AUTHORISED', a.body?.error);
+        a = await run(rb, org, user, bankBody('OLDBZMLU'));
+        check('and so is a bank Lipila has switched off', a.statusCode === 400 && bankSent.length === 0);
+        a = await run(rb, org, user, bankBody('scblzmlx'));
+        const bk = bankSent[0];
+        check('a bank payout with a code from Lipila’s list is accepted and sent to the bank endpoint', a.statusCode === 200 && bankSent.length === 1 && sent.length === 0, JSON.stringify([a.statusCode, a.body?.error, bankSent.length]));
+        check('it carries the SWIFT code, account, holder names and phone Lipila needs', bk?.swiftCode === 'SCBLZMLX' && bk?.accountNumber === '0104316845800' && bk?.firstName === 'CHARLEY' && bk?.lastName === 'SIWALE' && bk?.accountHolderName === 'CHARLEY SIWALE' && bk?.phoneNumber === '260968460113' && bk?.amount === 5 && bk?.currency === 'ZMW', JSON.stringify(bk));
+        const rbd = await disbOf(rb);
+        check('the payout is recorded as waiting, with the amount plus the bank charge', (await statusOf(rb)) === 'PROCESSING' && Number(rbd?.total_prepared) === 10, JSON.stringify([await statusOf(rb), rbd?.total_prepared]));
+        check('a bank payout costs the same rule: K5 on K5 and K10 (so K10 and K15 leave the wallet), 1.5% above', lipila.payoutFee(5, 'bank') === 5 && lipila.payoutFee(10, 'bank') === 5 && lipila.payoutFee(1000, 'bank') === 15 && lipila.payoutFee(10000, 'bank') === 150 && lipila.payoutFee(100, 'mobile') === 5);
+        check('the narration only uses what Lipila allows (no # in "Requisition #…")', /^[A-Za-z0-9 \-/.]{4,100}$/.test(bk?.narration ?? ''), bk?.narration);
+        check('cleaning a narration: symbols and accents go, short ones get a default', lipila.cleanNarration('Disbursement for Requisition #aa3ab94c') === 'Disbursement for Requisition aa3ab94c' && lipila.cleanNarration('Café & rent: K5 (June)!') === 'Cafe rent K5 June' && lipila.cleanNarration('#') === 'Payout' && lipila.cleanNarration('x'.repeat(300)).length === 100);
+        bankSent.length = 0;
+        await supabase.from('requisitions').update({ status: 'RECEIVED' }).eq('id', rb); // settled, so it doesn't block the checks that follow
 
         // ---- a definite refusal leaves nothing behind
         postMode = 'refused403';
@@ -104,7 +138,7 @@ const cardBalance = (org: string) => cashbookService.getCurrentBalance(org, lipi
         a = await run(r1, org, user, payBody(100));
         const d1 = await disbOf(r1);
         check('no answer from Lipila is not reported as failed', a.statusCode === 200 && a.body?.lencoStatus === 'pending', JSON.stringify(a.body)?.slice(0, 120));
-        check('it waits as Processing, with a record Lipila can be asked about', (await statusOf(r1)) === 'PROCESSING' && !!d1 && d1.external_reference.startsWith(lipila.PAYOUT_REF_PREFIX) && Number(d1.total_prepared) === 101.5, JSON.stringify([d1?.external_reference, d1?.total_prepared]));
+        check('it waits as Processing, with a record Lipila can be asked about', (await statusOf(r1)) === 'PROCESSING' && !!d1 && d1.external_reference.startsWith(lipila.PAYOUT_REF_PREFIX) && Number(d1.total_prepared) === 105, JSON.stringify([d1?.external_reference, d1?.total_prepared]));
         check('nothing is booked on a guess', (await cardBalance(org)) === 500 && sent.length === 0);
 
         // ---- one unconfirmed payout blocks the next
@@ -123,13 +157,13 @@ const cardBalance = (org: string) => cashbookService.getCurrentBalance(org, lipi
         known[ref1] = 'Successful';
         s = await settleCardPayout(ref1);
         check('Lipila saying Successful moves it to Received', s.state === 'successful' && (await statusOf(r1)) === 'RECEIVED');
-        check('the Card Wallet is debited the amount plus the charge, once', (await cardBalance(org)) === 398.5, `balance ${await cardBalance(org)}`);
+        check('the Card Wallet is debited the amount plus the charge, once', (await cardBalance(org)) === 395, `balance ${await cardBalance(org)}`);
         await settleCardPayout(ref1); await settleCardPayout(ref1);
-        check('asking again never books it twice', (await cardBalance(org)) === 398.5);
+        check('asking again never books it twice', (await cardBalance(org)) === 395);
         const { data: ents } = await supabase.from('cashbook_entries').select('account_type, credit').eq('requisition_id', r1).eq('entry_type', 'DISBURSEMENT');
-        check('it is on the Card Wallet account, not a MoneyWise wallet', (ents ?? []).length === 1 && ents![0].account_type === lipila.CARD_ACCOUNT_TYPE && Number(ents![0].credit) === 101.5);
+        check('it is on the Card Wallet account, not a MoneyWise wallet', (ents ?? []).length === 1 && ents![0].account_type === lipila.CARD_ACCOUNT_TYPE && Number(ents![0].credit) === 105);
         const { data: fee } = await supabase.from('line_items').select('estimated_amount').eq('requisition_id', r1).ilike('description', '%Withdrawal Fee%');
-        check('Lipila’s charge is booked once as a transaction charge', (fee ?? []).length === 1 && Number(fee![0].estimated_amount) === 1.5);
+        check('Lipila’s charge is booked once as a transaction charge', (fee ?? []).length === 1 && Number(fee![0].estimated_amount) === 5);
 
         // ---- a double click is stopped
         const r3 = await newReq(100);
@@ -145,7 +179,7 @@ const cardBalance = (org: string) => cashbookService.getCurrentBalance(org, lipi
         known[d4.external_reference] = 'Failed';
         s = await settleCardPayout(d4.external_reference);
         check('Lipila saying Failed reverses it', s.state === 'failed' && (await statusOf(r4)) === 'AUTHORISED' && !(await disbOf(r4)));
-        check('a failed payout books nothing', (await cardBalance(org)) === 398.5);
+        check('a failed payout books nothing', (await cardBalance(org)) === 395);
         a = await run(r4, org, user, payBody(60));
         check('the retry is sent under a new reference, never the old one', a.statusCode === 200 && sent.length === 2 && sent[1].reference === `${d4.external_reference}-R1`, sent[1]?.reference);
         const reqWithDisb = await disbOf(r4);
@@ -153,7 +187,7 @@ const cardBalance = (org: string) => cashbookService.getCurrentBalance(org, lipi
         if (!reqWithDisb) throw new Error('no record after the retry');
         known[reqWithDisb.external_reference] = 'Successful';
         await settleCardPayout(reqWithDisb.external_reference);
-        check('the retry settles and the wallet is debited 60 + 0.90', (await statusOf(r4)) === 'RECEIVED' && (await cardBalance(org)) === 398.5 - 60.9, `balance ${await cardBalance(org)}`);
+        check('the retry settles and the wallet is debited 60 + 5', (await statusOf(r4)) === 'RECEIVED' && (await cardBalance(org)) === 395 - 65, `balance ${await cardBalance(org)}`);
     } catch (e: any) {
         console.log('ERROR:', e?.stack ?? e?.message ?? JSON.stringify(e)); failed++;
     } finally {

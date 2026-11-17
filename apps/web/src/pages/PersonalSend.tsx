@@ -6,7 +6,7 @@ import {
     Clock, ShieldCheck, Smartphone, Star, Trash2, X,
 } from 'lucide-react';
 import {
-    cashbookService, departmentService, formatKwacha, lencoService, requisitionService, userService,
+    cashbookService, departmentService, formatKwacha, lencoService, requisitionService, userService, lipilaService, matchLipilaBank,
 } from 'core';
 import type { MoneyWiseRecipient, SendSummary } from 'core';
 import { Layout } from '../components/Layout';
@@ -118,7 +118,7 @@ const fieldClass = 'h-12 w-full rounded-xl border border-[rgba(116,119,117,0.22)
 const labelClass = 'mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#5F6368]';
 
 /** The "money sent" popup: confirms the payment, then shows which account it was filed under and what is left of that budget. */
-const SentPopup: React.FC<{ requisitionId: string; amount: number; recipient: string | null; onClose: () => void }> = ({ requisitionId, amount, recipient, onClose }) => {
+const SentPopup: React.FC<{ requisitionId: string; amount: number; recipient: string | null; waiting?: boolean; onClose: () => void }> = ({ requisitionId, amount, recipient, waiting, onClose }) => {
     const [summary, setSummary] = useState<SendSummary | null>(null);
     const [failed, setFailed] = useState(false);
 
@@ -157,9 +157,10 @@ const SentPopup: React.FC<{ requisitionId: string; amount: number; recipient: st
                 <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border-[3px] border-[#34A853] text-[#34A853]">
                     <Check size={32} strokeWidth={3} />
                 </span>
-                <h2 className="mt-4 text-lg font-bold text-[#1F1F1F]">Money sent</h2>
+                <h2 className="mt-4 text-lg font-bold text-[#1F1F1F]">{waiting ? 'Payment on its way' : 'Money sent'}</h2>
                 <p className="mt-1 text-3xl font-bold text-[#1F1F1F]">{formatKwacha(amount)}</p>
                 {recipient && <p className="mt-1 truncate text-sm text-[#5F6368]">to {recipient}</p>}
+                {waiting && <p className="mt-3 rounded-xl bg-[#FEF7E0] px-3 py-2 text-xs text-[#7A4B00]">The bank hasn&rsquo;t confirmed it yet. Open it in your Inbox to see the latest: it is updated there once the bank answers, and nothing is taken from you if it fails.</p>}
 
                 <div className="mt-6 min-h-[64px] rounded-2xl bg-[#F8FAFD] p-4 text-left">
                     {!summary && !failed && (
@@ -228,6 +229,8 @@ export const PersonalSend: React.FC = () => {
     // A bank transfer from the Card Wallet (Lipila) needs the bank's SWIFT code and the account holder's phone number.
     const [swiftCode, setSwiftCode] = useState('');
     const [holderPhone, setHolderPhone] = useState('');
+    // Browser auto-fill can put a number in the box without telling the page, so what is really in the box is read when sending.
+    const holderPhoneRef = useRef<HTMLInputElement>(null);
     const [resolvedName, setResolvedName] = useState('');
     const [confirmingName, setConfirmingName] = useState(false);
 
@@ -237,7 +240,7 @@ export const PersonalSend: React.FC = () => {
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [failedRequisitionId, setFailedRequisitionId] = useState<string | null>(null);
-    const [sent, setSent] = useState<{ requisitionId: string; amount: number; recipient: string | null } | null>(null);
+    const [sent, setSent] = useState<{ requisitionId: string; amount: number; recipient: string | null; waiting?: boolean } | null>(null);
 
     const { data: accountability } = useQuery({
         queryKey: ['requisitions', 'accountability', organizationId],
@@ -280,7 +283,17 @@ export const PersonalSend: React.FC = () => {
         [makeList, lineItems, manualAmount],
     );
     // Lipila's charge is added on top for a Card Wallet payout.
-    const cardFee = walletIsCard ? lencoService.calculateLipilaPayoutFee(total) : 0;
+    const cardFee = walletIsCard ? lencoService.calculateLipilaPayoutFee(total, method === 'bank' ? 'bank' : 'mobile') : 0;
+    // A bank transfer from the Card Wallet uses the SWIFT code Lipila itself lists for the bank, picked from that list (never typed): it is
+    // filled in from the bank chosen above where the two lists agree, and can be changed.
+    const lipilaBanks = useQuery({ queryKey: ['lipila', 'banks'], queryFn: () => lipilaService.banks(), enabled: walletIsCard && method === 'bank', staleTime: 3_600_000, retry: false });
+    useEffect(() => {
+        if (!(walletIsCard && method === 'bank') || !lipilaBanks.data) return;
+        const name = banks.find((b: any) => (b.id || b.code) === bankId)?.name ?? '';
+        const found = matchLipilaBank(name, lipilaBanks.data.banks)?.swiftCode ?? '';
+        setSwiftCode(found);
+        if (found) setError((e) => (e && /SWIFT/i.test(e) ? null : e)); // an old "enter the SWIFT code" message is no longer true
+    }, [bankId, lipilaBanks.data, walletIsCard, method]); // eslint-disable-line react-hooks/exhaustive-deps
     const insufficient = !!walletId && walletBalance !== null && total + cardFee > walletBalance;
 
     // MoneyWise recipient search, as you type.
@@ -417,7 +430,7 @@ export const PersonalSend: React.FC = () => {
         if (cardBank) {
             if (!/^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(swiftCode.replace(/\s/g, '').toUpperCase())) { setError('Enter the bank\u2019s SWIFT code (8 or 11 letters and digits, for example SCBLZMLX). A bank transfer from the Card Wallet needs it.'); return; }
             if (!resolvedName || resolvedName === 'Name not confirmed' || /^Session|^Can\u2019t/.test(resolvedName)) { setError('The account holder\u2019s name couldn\u2019t be confirmed. Check the account number and bank first.'); return; }
-            if (holderPhone.replace(/\D/g, '').length < 9) { setError('Enter the account holder\u2019s phone number. A bank transfer from the Card Wallet needs it.'); return; }
+            if ((holderPhoneRef.current?.value || holderPhone).replace(/\D/g, '').length < 9) { setError('Enter the account holder\u2019s phone number. A bank transfer from the Card Wallet needs it.'); return; }
         }
         if (insufficient) {
             setError(`This wallet only has ${formatKwacha(walletBalance || 0)} available, but ${formatKwacha(total)} is needed. Choose another wallet or add money first.`);
@@ -426,6 +439,7 @@ export const PersonalSend: React.FC = () => {
         setSubmitting(true);
         setError(null);
         setFailedRequisitionId(null);
+        let stillWaiting = false; // the provider hadn't confirmed when we stopped asking
         try {
             const data: any = {
                 description,
@@ -451,14 +465,15 @@ export const PersonalSend: React.FC = () => {
                         recipient_bank_code: method === 'moneywise' ? 'moneywise' : (method === 'mobile' ? momoOperator : bankId).toLowerCase(),
                         recipient_account_name: recipientName || undefined,
                         recipient_organization_id: method === 'moneywise' ? (recipient?.organization_id || undefined) : undefined,
-                        ...(cardBank ? { recipient_swift_code: swiftCode.replace(/\s/g, '').toUpperCase(), recipient_phone: holderPhone } : {}),
+                        ...(cardBank ? { recipient_swift_code: swiftCode.replace(/\s/g, '').toUpperCase(), recipient_phone: holderPhoneRef.current?.value || holderPhone } : {}),
                         wallet_id: walletId || undefined,
                     });
                     if (result.lencoStatus === 'pending') {
+                        stillWaiting = true;
                         for (let attempt = 0; attempt < 8; attempt++) {
                             await new Promise((r) => setTimeout(r, 4000));
                             const poll = await requisitionService.verifyDisbursement(created.id);
-                            if (poll.status === 'successful') break;
+                            if (poll.status === 'successful') { stillWaiting = false; break; }
                             if (poll.status === 'failed') throw new Error(poll.error || poll.details?.reasonForFailure || 'The transfer was rejected.');
                         }
                     }
@@ -473,7 +488,7 @@ export const PersonalSend: React.FC = () => {
             qc.invalidateQueries({ queryKey: ['wallets'] });
             qc.invalidateQueries({ queryKey: ['cashbook-entries'] });
             if (currentFavRef.current) addRecent(currentFavRef.current);
-            setSent({ requisitionId: created.id, amount: total, recipient: recipientName || null });
+            setSent({ requisitionId: created.id, amount: total, recipient: recipientName || null, waiting: stillWaiting });
         } catch (e: any) {
             setError(e?.message ?? 'Submission failed. Please try again.');
             if (e?.activeRequisitionId) setFailedRequisitionId(e.activeRequisitionId);
@@ -864,13 +879,16 @@ export const PersonalSend: React.FC = () => {
                                             {walletIsCard && method === 'bank' && (
                                                 <div className="mt-3 flex flex-col gap-3">
                                                     <div>
-                                                        <label className={labelClass} htmlFor="ps-swift">Bank SWIFT code</label>
-                                                        <input id="ps-swift" className={fieldClass} value={swiftCode} onChange={(e) => setSwiftCode(e.target.value.toUpperCase())} maxLength={11} placeholder="e.g. SCBLZMLX" />
-                                                        <p className="mt-1 text-xs text-[#80868B]">Lipila needs the bank&rsquo;s SWIFT code for a bank transfer. Ask the recipient or their bank.</p>
+                                                        <label className={labelClass} htmlFor="ps-swift">Bank</label>
+                                                        <select id="ps-swift" className={fieldClass} value={swiftCode} onChange={(e) => { setSwiftCode(e.target.value); setError(null); }}>
+                                                            <option value="">{lipilaBanks.isError ? 'Could not load the banks' : lipilaBanks.data ? 'Choose the bank…' : 'Loading banks…'}</option>
+                                                            {(lipilaBanks.data?.banks ?? []).map((b) => <option key={b.swiftCode} value={b.swiftCode}>{b.name} ({b.swiftCode})</option>)}
+                                                        </select>
+                                                        <p className="mt-1 text-xs text-[#80868B]">Chosen from the bank above; change it if it&rsquo;s the wrong one. Only banks the Card Wallet can pay are listed.</p>
                                                     </div>
                                                     <div>
                                                         <label className={labelClass} htmlFor="ps-holder-phone">Account holder&rsquo;s phone number</label>
-                                                        <input id="ps-holder-phone" className={fieldClass} inputMode="tel" value={holderPhone} onChange={(e) => setHolderPhone(e.target.value)} placeholder="097..." />
+                                                        <input id="ps-holder-phone" ref={holderPhoneRef} autoComplete="off" onInput={(e) => setHolderPhone((e.target as HTMLInputElement).value)} className={fieldClass} inputMode="tel" value={holderPhone} onChange={(e) => { setHolderPhone(e.target.value); setError(null); }} placeholder="097..." />
                                                     </div>
                                                 </div>
                                             )}
@@ -926,6 +944,7 @@ export const PersonalSend: React.FC = () => {
                     requisitionId={sent.requisitionId}
                     amount={sent.amount}
                     recipient={sent.recipient}
+                    waiting={sent.waiting}
                     onClose={() => { setSent(null); navigate('/'); }}
                 />
             )}

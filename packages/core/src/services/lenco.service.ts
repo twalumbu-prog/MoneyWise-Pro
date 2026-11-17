@@ -152,8 +152,13 @@ export const lencoService = {
         return 20.00;
     },
 
-    /** Lipila's payout charge: 1.5% of the amount, taken from the Card Wallet on top of it, to the ngwee. Mirrors the API's payoutFee. */
-    calculateLipilaPayoutFee(amount: number): number {
-        return Math.round(Number(amount) * 0.015 * 100) / 100;
+    /**
+     * Lipila's payout charge, taken from the Card Wallet on top of the amount: 1.5% rounded up to the cent, never less than K5 (a real K5 and
+     * K10 bank payout each cost K5; same rule as Master Fees). Mirrors the API's payoutFee.
+     */
+    calculateLipilaPayoutFee(amount: number, _rail: 'mobile' | 'bank' = 'mobile'): number {
+        const a = Number(amount);
+        if (!(a > 0)) return 0;
+        return Math.max(5, Math.ceil(a * 0.015 * 100 - 1e-9) / 100);
     },
 };

@@ -5,7 +5,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Wallet, Coins, Smartphone, Building2, AlertTriangle, Check, Clock, Phone, MessageCircle } from 'lucide-react-native';
 import {
-    requisitionService, cashbookService, lencoService, formatKwacha,
+    requisitionService, cashbookService, lencoService, formatKwacha, lipilaService, matchLipilaBank,
     SUPPORT_PHONE_DISPLAY, SUPPORT_TEL_URL, SUPPORT_WHATSAPP_URL, NETWORK_RETRY_MINUTES, isNetworkTransferFailure, retryAfterLabel,
 } from 'core';
 import { InlineSearchSelect } from '../InlineSearchSelect';
@@ -125,11 +125,20 @@ export const DisburseSheet: React.FC<{
 
     const selectedWallet = usable.find((w: any) => w.id === walletId);
     const selectedIsCard = !!selectedWallet?.isCard;
+    // The banks Lipila can pay, each with the SWIFT code Lipila itself uses (picked, never typed), filled in from the bank chosen where the lists agree.
+    const lipilaBanks = useQuery({ queryKey: ['lipila', 'banks'], queryFn: () => lipilaService.banks(), enabled: selectedIsCard && rail === 'BANK', staleTime: 3_600_000, retry: false });
+    useEffect(() => {
+        if (!(selectedIsCard && rail === 'BANK') || !lipilaBanks.data) return;
+        const name = banks.find((b: any) => String(b.id) === String(provider))?.name ?? '';
+        const found = matchLipilaBank(name, lipilaBanks.data.banks)?.swiftCode ?? '';
+        setSwift(found);
+        if (found) setError((e) => (e && /SWIFT/i.test(e) ? null : e));
+    }, [provider, lipilaBanks.data, selectedIsCard, rail]); // eslint-disable-line react-hooks/exhaustive-deps
     // MoneyWise Pay (wallet-to-wallet) is an on-us transfer: no payout fee, and no bank / mobile-money details to enter or look up
     // (e.g. an approved salary advance or loan going into an employee's personal MoneyWise account).
     const isMoneyWisePay = (savedMethod || '').toUpperCase() === 'MONEYWISE_PAY' || savedCode === 'MONEYWISE';
     // A Card Wallet payout carries Lipila's own charge, added on top and taken from that wallet.
-    const fee = selectedIsCard ? lencoService.calculateLipilaPayoutFee(amount) : lencoService.calculatePayoutFee(amount, isMoneyWisePay ? 'MONEYWISE_PAY' : rail);
+    const fee = selectedIsCard ? lencoService.calculateLipilaPayoutFee(amount, rail === 'BANK' ? 'bank' : 'mobile') : lencoService.calculatePayoutFee(amount, isMoneyWisePay ? 'MONEYWISE_PAY' : rail);
     const totalDue = amount + fee;
     const insufficient = route === 'WALLET' && !!selectedWallet && totalDue > selectedWallet.balance;
 
@@ -315,11 +324,17 @@ export const DisburseSheet: React.FC<{
                             {selectedIsCard && <Text style={styles.feeText}>Paid from your Card Wallet. A payout charge of {formatKwacha(fee)} is added and taken from the wallet.</Text>}
                             {cardBank && (
                                 <>
-                                    <Text style={[styles.label, styles.spaced]}>Bank SWIFT code</Text>
-                                    <TextInput style={styles.input} value={swift} onChangeText={(t) => setSwift(t.toUpperCase())} autoCapitalize="characters" autoCorrect={false} maxLength={11} placeholder="e.g. SCBLZMLX" placeholderTextColor={colors.textFaint} />
-                                    <Text style={styles.feeText}>Lipila needs the bank’s SWIFT code for a bank transfer. Ask the recipient or their bank.</Text>
+                                    <Text style={[styles.label, styles.spaced]}>Bank</Text>
+                                    <InlineSearchSelect
+                                        items={(lipilaBanks.data?.banks ?? []).map((b) => ({ id: b.swiftCode, label: `${b.name} (${b.swiftCode})` }))}
+                                        selectedId={swift || null}
+                                        placeholder={lipilaBanks.data ? 'Choose the bank' : 'Loading banks…'}
+                                        searchPlaceholder="Search banks…"
+                                        onSelect={(i) => { setSwift(i.id); setError(null); }}
+                                    />
+                                    <Text style={styles.feeText}>Chosen from the bank above; change it if it’s the wrong one. Only banks the Card Wallet can pay are listed.</Text>
                                     <Text style={[styles.label, styles.spaced]}>Account holder’s phone number</Text>
-                                    <TextInput style={styles.input} value={holderPhone} onChangeText={setHolderPhone} keyboardType="phone-pad" placeholder="097…" placeholderTextColor={colors.textFaint} />
+                                    <TextInput style={styles.input} value={holderPhone} onChangeText={(t) => { setHolderPhone(t); setError(null); }} keyboardType="phone-pad" placeholder="097…" placeholderTextColor={colors.textFaint} />
                                 </>
                             )}
                             {insufficient && (

@@ -79,6 +79,10 @@ export const webhook = async (req: Request, res: Response) => {
 
 /* ── The wallet (signed in, finance roles) ── */
 
+/** GET /lipila/banks  The banks Lipila can pay out to, each with the exact SWIFT code Lipila uses. */
+export const banks = async (req: any, res: Response) => {
+    try { const org = req.user?.organization_id; if (!org) return res.status(400).json({ error: 'No account on this sign-in.' }); res.json(await lipila.listBanks(org)); } catch (e) { fail(res, e, 'load the banks'); }
+};
 export const wallet = async (req: any, res: Response) => {
     try { const org = req.user?.organization_id; if (!org) return res.status(400).json({ error: 'No account on this sign-in.' }); res.json(await lipila.walletSummary(org)); } catch (e) { fail(res, e, 'load the Card Wallet'); }
 };

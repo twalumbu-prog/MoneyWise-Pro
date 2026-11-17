@@ -17,6 +17,14 @@ export function formatKwacha(amount: number | string | null | undefined): string
 }
 
 /** Compact form for dense lists and chart axes: `K1.2k`, `K3.4M`. */
+/** An amount in its own currency: "$12.50" for USD, "K12.50" for kwacha (the default). */
+export function formatMoney(amount: number | string | null | undefined, currency?: string | null): string {
+    if (String(currency ?? '').toUpperCase() !== 'USD') return formatKwacha(amount);
+    const n = typeof amount === 'string' ? Number(amount) : (amount ?? 0);
+    const safe = Number.isFinite(n) ? n : 0;
+    return `$${safe.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 export function formatKwachaCompact(amount: number | null | undefined): string {
     const n = amount ?? 0;
     const abs = Math.abs(n);

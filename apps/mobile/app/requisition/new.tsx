@@ -17,7 +17,7 @@ import { File } from 'expo-file-system';
 import { filesAdapter, captureImage } from '../../src/platform/files';
 import {
     requisitionService, departmentService, lencoService, cashbookService, userService,
-    formatKwacha,
+    formatKwacha, lipilaService, matchLipilaBank,
 } from 'core';
 import type { PaymentInfo, MoneyWiseRecipient } from 'core';
 import { useAuth } from '../../src/context/AuthContext';
@@ -432,7 +432,16 @@ export default function NewRequisitionScreen() {
     const selectedWalletLine = walletBalanceText(selectedWalletBalance ?? selectedWalletRow?.balance);
 
     // Lipila's charge is added on top for a Card Wallet payout.
-    const cardFee = selectedWalletRow?.is_card_wallet ? lencoService.calculateLipilaPayoutFee(getTotal()) : 0;
+    const cardFee = selectedWalletRow?.is_card_wallet ? lencoService.calculateLipilaPayoutFee(getTotal(), paymentMethod === 'bank' ? 'bank' : 'mobile') : 0;
+    // The banks Lipila can pay, each with the SWIFT code Lipila itself uses (picked, never typed), filled in from the bank chosen where the lists agree.
+    const lipilaBanks = useQuery({ queryKey: ['lipila', 'banks'], queryFn: () => lipilaService.banks(), enabled: !!selectedWalletRow?.is_card_wallet && paymentMethod === 'bank', staleTime: 3_600_000, retry: false });
+    useEffect(() => {
+        if (!(selectedWalletRow?.is_card_wallet && paymentMethod === 'bank') || !lipilaBanks.data) return;
+        const name = banks.find((b: any) => String(b.id ?? b.code) === bankId)?.name ?? '';
+        const found = matchLipilaBank(name, lipilaBanks.data.banks)?.swiftCode ?? '';
+        setSwiftCode(found);
+        if (found) setError((e) => (e && /SWIFT/i.test(e) ? null : e));
+    }, [bankId, lipilaBanks.data, selectedWalletRow?.is_card_wallet, paymentMethod]); // eslint-disable-line react-hooks/exhaustive-deps
     const isWalletBalanceInsufficient = autoAuthorize && !useMyAccount &&
         !!selectedWalletId && selectedWalletBalance !== null && getTotal() + cardFee > selectedWalletBalance;
 
@@ -1175,10 +1184,16 @@ export default function NewRequisitionScreen() {
                                         </Pressable>
                                         {!!selectedWalletRow?.is_card_wallet && paymentMethod === 'bank' && (
                                             <View style={{ marginTop: 12, gap: 8 }}>
-                                                <Text style={styles.label}>Bank SWIFT code</Text>
-                                                <TextInput style={styles.input} value={swiftCode} onChangeText={(t) => setSwiftCode(t.toUpperCase())} autoCapitalize="characters" autoCorrect={false} maxLength={11} placeholder="e.g. SCBLZMLX" placeholderTextColor={colors.textFaint} />
+                                                <Text style={styles.label}>Bank</Text>
+                                                <InlineSearchSelect
+                                                    items={(lipilaBanks.data?.banks ?? []).map((b) => ({ id: b.swiftCode, label: `${b.name} (${b.swiftCode})` }))}
+                                                    selectedId={swiftCode || null}
+                                                    placeholder={lipilaBanks.data ? 'Choose the bank' : 'Loading banks…'}
+                                                    searchPlaceholder="Search banks…"
+                                                    onSelect={(i) => { setSwiftCode(i.id); setError(null); }}
+                                                />
                                                 <Text style={styles.label}>Account holder’s phone number</Text>
-                                                <TextInput style={styles.input} value={holderPhone} onChangeText={setHolderPhone} keyboardType="phone-pad" placeholder="097…" placeholderTextColor={colors.textFaint} />
+                                                <TextInput style={styles.input} value={holderPhone} onChangeText={(t) => { setHolderPhone(t); setError(null); }} keyboardType="phone-pad" placeholder="097…" placeholderTextColor={colors.textFaint} />
                                             </View>
                                         )}
                                     </View>

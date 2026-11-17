@@ -19,7 +19,7 @@ import { QuickBooksService } from '../services/quickbooks.service';
 import { captureEvent, withTiming } from '../utils/analytics';
 import { ensureWalletTransferConfirmed } from './disbursement.controller';
 import { getCachedOrgSecretKey } from '../lib/orgSecretKeyCache';
-import { CARD_REF_PREFIX, cardsEnabledFor, finalizeCard, dollarRate, usdToZmw } from '../services/lipila.service';
+import { CARD_REF_PREFIX, cardsEnabledFor, finalizeCard, dollarRate, usdToZmw, productPrices } from '../services/lipila.service';
 import { SalonError, staffForService, serviceDuration, publicSlots, assignStaff, sanitizeDepositOptions, checkDeposit } from '../services/salon.service';
 import { status as lipilaCardStatus } from './lipila.controller';
 import { sanitizeCheckoutFields } from './product.controller';
@@ -924,10 +924,19 @@ export const getPublicWalletContext = async (req: Request, res: Response) => {
                         salesCounts[r.product_id] = (salesCounts[r.product_id] || 0) + 1;
                     });
                 }
-                const productsWithCounts = (products || []).map((p: any) => ({
-                    ...p,
-                    sales_count: salesCounts[p.id] || 0,
-                }));
+                // The store works in kwacha. A product priced in dollars goes out at today's kwacha equivalent, with its dollar price alongside
+                // so the page can show it; one that can't be converted (no dollar rate) is left out rather than sold at its dollar number.
+                const kw = await productPrices(productIds as string[], wallet.organization_id);
+                const productsWithCounts = (products || []).flatMap((p: any) => {
+                    const k = kw.get(p.id);
+                    if (!k) return [];
+                    return [{
+                        ...p,
+                        price: k.zmw,
+                        ...(k.currency === 'USD' ? { currency: 'USD', usd_price: k.usd, usd_rate: k.rate } : {}),
+                        sales_count: salesCounts[p.id] || 0,
+                    }];
+                });
 
                 return { org, products: productsWithCounts };
             }
@@ -1255,8 +1264,13 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
             Math.round((Date.parse(`${co}T00:00:00Z`) - Date.parse(`${ci}T00:00:00Z`)) / 86400000);
         if (bookingItems.length > 0) {
             const ids = [...new Set(bookingItems.map((b: any) => b.id))];
-            const { data: prods } = await supabase.from('products').select('id, price').in('id', ids);
-            for (const p of (prods || []) as any[]) bookingPrices[p.id] = Number(p.price) || 0;
+            // In kwacha (a dollar product at today's rate). A dollar product with no rate to convert it is refused, never priced at its dollar number.
+            const kwPrices = await productPrices(ids as string[]);
+            for (const id of ids as string[]) {
+                const k = kwPrices.get(id);
+                if (k) bookingPrices[id] = k.zmw;
+                else if (kwPrices.size < ids.length) return res.status(503).json({ error: 'Dollar prices can’t be charged right now (no dollar rate is set). Please try again later.' });
+            }
 
             const todayStr = new Date().toISOString().split('T')[0];
             for (const b of bookingItems) {
@@ -1296,9 +1310,12 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
             const ids = [...new Set(apptItems.map((a: any) => a.id))];
             const { data: prods } = await supabase.from('products')
                 .select('id, price, product_type, is_active, appointment_config, deposit_options').in('id', ids).eq('organization_id', wallet.organization_id);
+            const apptKw = await productPrices(ids as string[], wallet.organization_id);
             for (const p of (prods || []) as any[]) {
                 if (p.product_type !== 'SERVICE_APPOINTMENT' || !p.is_active) continue;
-                apptInfo[p.id] = { price: Number(p.price) || 0, duration: resolveConfig(p.appointment_config).duration_minutes, cfg: p.appointment_config };
+                const k = apptKw.get(p.id);
+                if (!k) return res.status(503).json({ error: 'Dollar prices can’t be charged right now (no dollar rate is set). Please try again later.' });
+                apptInfo[p.id] = { price: k.zmw, duration: resolveConfig(p.appointment_config).duration_minutes, cfg: p.appointment_config };
                 apptDepositOptions[p.id] = p.deposit_options;
             }
             for (const a of apptItems) {

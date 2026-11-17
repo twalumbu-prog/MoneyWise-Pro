@@ -5,7 +5,7 @@ import { emailService } from '../services/email.service';
 import { getFrontendUrl } from '../utils/frontendUrl';
 import { cashbookService } from '../services/cashbook.service';
 import { assignShortLink } from '../services/invoiceShortLink.service';
-import { cardPricing, usdToZmw } from '../services/lipila.service';
+import { cardPricing, usdToZmw, productPrices } from '../services/lipila.service';
 import { isValidZambiaMobile, normalizeZambiaPhone, INVALID_PHONE_MESSAGE } from '../utils/zambiaPhone';
 
 /**
@@ -29,7 +29,7 @@ export const createPaymentLink = async (req: any, res: Response): Promise<any> =
             return res.status(403).json({ error: 'Only administrators can create payment links' });
         }
 
-        const { product_id, customer_name, customer_phone, amount } = req.body;
+        const { product_id, customer_name, customer_phone, amount, currency: requestedCurrency } = req.body;
 
         if (!product_id) return res.status(400).json({ error: 'product_id is required' });
         if (!customer_name || !customer_name.trim()) return res.status(400).json({ error: 'Customer name is required' });
@@ -51,6 +51,8 @@ export const createPaymentLink = async (req: any, res: Response): Promise<any> =
         if (productError || !product) {
             return res.status(404).json({ error: 'Product not found' });
         }
+        // Asked on its own so a link still works before the currency column exists (then it is kwacha).
+        const { data: productCurrency } = await supabase.from('products').select('currency').eq('id', product_id).maybeSingle();
         if (product.organization_id !== organization_id) {
             return res.status(403).json({ error: 'Permission denied: Product belongs to another organization' });
         }
@@ -69,10 +71,15 @@ export const createPaymentLink = async (req: any, res: Response): Promise<any> =
 
         const token = generateToken();
 
-        // A business that prices in US dollars: the amount typed is dollars. The link keeps the dollar price; `amount` holds today's kwacha
-        // equivalent (for lists and reports), and the customer's page works the kwacha out again at the rate of the day they pay.
+        // Each link has its own currency: what the sender chose, else the product's own. US dollars must be switched on for the business (and have
+        // a rate). In dollars the amount typed is dollars: the link keeps the dollar price, `amount` holds today's kwacha equivalent (for lists and
+        // reports), and the customer's card is charged in real dollars. Mobile money, which cannot take dollars, pays the kwacha equivalent.
+        const wantsUsd = String(requestedCurrency ?? (productCurrency as any)?.currency ?? 'ZMW').toUpperCase() === 'USD';
         const pricing = await cardPricing(organization_id);
-        const inDollars = pricing.currency === 'USD' && !!pricing.rate;
+        const inDollars = wantsUsd && pricing.currency === 'USD' && !!pricing.rate;
+        if (wantsUsd && requestedCurrency !== undefined && !inDollars) {
+            return res.status(400).json({ error: 'Turn on US dollars in the Lipila settings (and make sure a dollar rate is set) before sending a link in dollars.' });
+        }
 
         const { data, error } = await supabase
             .from('payment_links')
@@ -142,6 +149,9 @@ export const createInvoiceLink = async (req: any, res: Response): Promise<any> =
         const nightsOf = (ci: string, co: string) =>
             Math.round((Date.parse(`${co}T00:00:00Z`) - Date.parse(`${ci}T00:00:00Z`)) / 86400000);
 
+        // Invoices are in kwacha: a product priced in dollars is billed at today's kwacha equivalent.
+        const kwPrices = await productPrices(productIds as string[], organization_id);
+
         let amount = 0;
         const snapshot: any[] = [];
         for (const it of items) {
@@ -153,8 +163,10 @@ export const createInvoiceLink = async (req: any, res: Response): Promise<any> =
 
             const isDonation = p.product_type === 'DONATION';
             const isBooking = !!(it.check_in && it.check_out);
+            const kw = kwPrices.get(p.id);
+            if (!isDonation && !kw) return res.status(503).json({ error: `${p.name} is priced in dollars and no dollar rate is set, so it can't be invoiced right now.` });
             // Donations are payer/admin-priced (no server price); everything else uses the product price.
-            const unit_price = isDonation ? (Number(it.price) || 0) : (Number(p.price) || 0);
+            const unit_price = isDonation ? (Number(it.price) || 0) : (kw?.zmw ?? 0);
             const quantity = isBooking ? nightsOf(String(it.check_in), String(it.check_out)) : Math.max(1, Number(it.quantity) || 1);
             const lineTotal = Math.round(unit_price * quantity * 100) / 100;
             if (lineTotal <= 0) {

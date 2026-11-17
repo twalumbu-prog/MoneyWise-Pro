@@ -75,7 +75,7 @@ export default function LipilaSettingsScreen() {
                     <Text style={styles.warnBox}>Card payments aren’t open for your account yet.</Text>
                 ) : (
                     <>
-                        {!view.encryptionReady ? <Text style={styles.warnBox}>The server can’t store keys safely yet (its encryption key isn’t set). Saving is switched off until that is done.</Text> : null}
+                        {view.unreadable ? <Text style={styles.warnBox}>A key was saved earlier by a different server and can’t be read here. Paste it once more and save: it is then stored so every server can read it.</Text> : null}
                         {error ? <Text style={styles.errorBox}>{error}</Text> : null}
                         {notice ? <Text style={styles.okBox}>{notice}</Text> : null}
 
@@ -133,8 +133,8 @@ export default function LipilaSettingsScreen() {
                                 <Switch value={enabled} onValueChange={setEnabled} disabled={!isAdmin || busy} />
                             </View>
 
-                            <Pressable style={[styles.primary, (!isAdmin || busy || !view.encryptionReady || (!view.configured && !apiKey.trim())) && styles.disabled]} onPress={save}
-                                disabled={!isAdmin || busy || !view.encryptionReady || (!view.configured && !apiKey.trim())}>
+                            <Pressable style={[styles.primary, (!isAdmin || busy || ((!view.configured || !!view.unreadable) && !apiKey.trim())) && styles.disabled]} onPress={save}
+                                disabled={!isAdmin || busy || ((!view.configured || !!view.unreadable) && !apiKey.trim())}>
                                 {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Save</Text>}
                             </Pressable>
                             {view.configured && isAdmin ? <Pressable onPress={remove} disabled={busy} style={styles.danger}><Text style={styles.dangerText}>Remove key</Text></Pressable> : null}

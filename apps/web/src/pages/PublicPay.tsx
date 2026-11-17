@@ -2062,6 +2062,7 @@ Status: VERIFIED`;
                                 <>
                                     <span className="text-orange-600 text-base font-semibold">
                                         K{product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}{isBooking ? ` / ${bookingUnit}` : ''}
+                                        {(product as any).usd_price ? <span className="ml-1.5 text-[11px] font-semibold text-zinc-500">${Number((product as any).usd_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span> : null}
                                     </span>
                                     {!isBooking && product.description && (
                                         <>
@@ -2258,7 +2259,7 @@ Status: VERIFIED`;
                                 ? 'Open amount'
                                 : isBooking
                                     ? `K ${product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })} / ${bookingUnit}`
-                                    : `K ${product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+                                    : `K ${product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}${(product as any).usd_price ? ` · $${Number((product as any).usd_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : ''}`}
                         </span>
                         {isBooking && isInCart && stay && (
                             <span className="text-[10px] font-semibold text-teal-700 truncate">

@@ -59,9 +59,53 @@ export async function cardPricing(orgId: string): Promise<{ currency: 'ZMW' | 'U
     try { return { currency: 'USD', rate: await dollarRate() }; } catch { return { currency: 'ZMW', rate: null }; }
 }
 
+export interface ProductPrice { zmw: number; currency: 'ZMW' | 'USD'; usd: number | null; rate: number | null }
+
+/**
+ * What products cost in kwacha: a kwacha product's own price; a dollar product's price converted at today's rate (the same rate pay links use).
+ * Everything the books and mobile money handle is kwacha, so the store and checkout price carts from this. A dollar product is left out of the
+ * answer when there is no rate to convert with, so it can never be sold at its dollar number as if it were kwacha. The currency is asked for on
+ * its own, so this works (all kwacha) before the products.currency column exists.
+ */
+export async function productPrices(ids: string[], orgId?: string): Promise<Map<string, ProductPrice>> {
+    const out = new Map<string, ProductPrice>();
+    const unique = [...new Set(ids.filter(Boolean))];
+    if (!unique.length) return out;
+    let q = supabase.from('products').select('id, price').in('id', unique);
+    if (orgId) q = q.eq('organization_id', orgId);
+    const { data: rows } = await q;
+    const cur = await supabase.from('products').select('id, currency').in('id', unique);
+    const usdIds = new Set<string>(cur.error ? [] : (cur.data ?? []).filter((r: any) => String(r.currency).toUpperCase() === 'USD').map((r: any) => r.id));
+    let rate: number | null = null;
+    if (usdIds.size) { try { rate = await dollarRate(); } catch { rate = null; } }
+    for (const r of rows ?? []) {
+        const price = num((r as any).price);
+        if (usdIds.has((r as any).id)) { if (rate) out.set((r as any).id, { zmw: usdToZmw(price, rate), currency: 'USD', usd: price, rate }); }
+        else out.set((r as any).id, { zmw: price, currency: 'ZMW', usd: null, rate: null });
+    }
+    return out;
+}
+
 const baseUrl = (env: string) => (env === 'production' ? 'https://blz.lipila.io' : 'https://api.lipila.dev');
 
 /* ───────────── Encryption of the stored keys ───────────── */
+
+/**
+ * Keys are stored the way Master Fees stores them: as they are, in a server-only table that nothing outside the server can read, so every
+ * environment (local, preview, production) that uses this database reads the same key. (They used to be encrypted with a key from each
+ * server's own settings, which meant a key saved by one server couldn't be read by another and showed up as "no key set".) A stored
+ * value starting with `plain:` is the key itself; anything else is an older encrypted one, still readable by a server that has the
+ * encryption key it was saved with.
+ */
+const PLAIN = 'plain:';
+const pack = (secret: string): string => `${PLAIN}${secret}`;
+function unpack(stored: string | null | undefined): { value: string; plain: boolean } | null {
+    if (!stored) return null;
+    if (stored.startsWith(PLAIN)) return { value: stored.slice(PLAIN.length), plain: true };
+    try { return { value: decrypt(stored), plain: false }; } catch { return null; }
+}
+/** Older encrypted keys are rewritten as plain ones when a server can read them, on the live servers (and anywhere it is switched on). */
+const migratesOldKeys = () => !!process.env.VERCEL || process.env.LIPILA_MIGRATE_KEYS === 'true';
 
 function encryptionKey(): Buffer | null {
     const raw = process.env.GATEWAY_CREDENTIALS_KEY || process.env.MESSAGING_TOKEN_KEY;
@@ -69,15 +113,6 @@ function encryptionKey(): Buffer | null {
     const key = /^[0-9a-fA-F]{64}$/.test(raw) ? Buffer.from(raw, 'hex') : Buffer.from(raw, 'base64');
     return key.length === 32 ? key : null;
 }
-export const encryptionReady = () => !!encryptionKey();
-const encrypt = (plain: string): string => {
-    const key = encryptionKey();
-    if (!key) throw new LipilaError('The server has no encryption key set for saving API keys, so nothing was saved. Ask your administrator to set GATEWAY_CREDENTIALS_KEY.', 503, 'NO_ENC_KEY');
-    const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-    const data = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
-    return [iv, cipher.getAuthTag(), data].map((b) => b.toString('base64')).join('.');
-};
 const decrypt = (enc: string): string => {
     const key = encryptionKey();
     if (!key) throw new LipilaError('The server has no encryption key set.', 503, 'NO_ENC_KEY');
@@ -105,15 +140,17 @@ export interface Credentials { apiKey: string; webhookSecret: string | null; env
 export async function getCredentials(orgId: string): Promise<Credentials | null> {
     const { data } = await supabase.from('org_gateway_credentials').select('lipila_api_key_enc, lipila_webhook_secret_enc, lipila_env, lipila_enabled').eq('organization_id', orgId).maybeSingle();
     if (!data?.lipila_api_key_enc) return null;
-    try {
-        return {
-            apiKey: decrypt(data.lipila_api_key_enc), webhookSecret: data.lipila_webhook_secret_enc ? decrypt(data.lipila_webhook_secret_enc) : null,
-            env: data.lipila_env === 'production' ? 'production' : 'sandbox', enabled: data.lipila_enabled === true,
-        };
-    } catch (e: any) {
-        console.error('[Lipila] Could not read the saved key for', orgId, e?.message);
+    const key = unpack(data.lipila_api_key_enc);
+    if (!key) {
+        console.error('[Lipila] The saved key for', orgId, 'was stored encrypted by another server and can’t be read here. It needs to be saved again, or read once by the server that stored it.');
         return null;
     }
+    const secret = unpack(data.lipila_webhook_secret_enc);
+    // An older encrypted key this server can read is saved back as a plain one, so every other server can read it too.
+    if (migratesOldKeys() && (!key.plain || (secret && !secret.plain))) {
+        void supabase.from('org_gateway_credentials').update({ lipila_api_key_enc: pack(key.value), ...(secret ? { lipila_webhook_secret_enc: pack(secret.value) } : {}) }).eq('organization_id', orgId).eq('lipila_api_key_enc', data.lipila_api_key_enc).then(() => undefined, () => undefined);
+    }
+    return { apiKey: key.value, webhookSecret: secret?.value ?? null, env: data.lipila_env === 'production' ? 'production' : 'sandbox', enabled: data.lipila_enabled === true };
 }
 
 /** True when this business may take card payments: in the rollout, has a saved key, and has switched cards on. */
@@ -130,8 +167,11 @@ export async function settingsView(orgId: string, apiBase: string | null) {
     const { data } = await supabase.from('org_gateway_credentials').select('lipila_api_key_enc, lipila_webhook_secret_enc, lipila_env, lipila_enabled, key_hint, updated_at').eq('organization_id', orgId).maybeSingle();
     return {
         cardCurrency: (orgRow?.card_currency === 'USD' ? 'USD' : 'ZMW') as 'ZMW' | 'USD', dollarRate: pricing.rate,
-        available, encryptionReady: encryptionReady(), configured: !!data?.lipila_api_key_enc, enabled: data?.lipila_enabled === true, env: (data?.lipila_env ?? 'sandbox') as 'sandbox' | 'production',
-        keyHint: data?.key_hint ?? null, hasWebhookSecret: !!data?.lipila_webhook_secret_enc, updatedAt: data?.updated_at ?? null,
+        // Keys are stored as they are now, so saving never depends on this server's encryption key. `unreadable`: a key an older server saved encrypted that this one can't open.
+        available, encryptionReady: true, unreadable: !!data?.lipila_api_key_enc && !unpack(data.lipila_api_key_enc), configured: !!data?.lipila_api_key_enc, enabled: data?.lipila_enabled === true, env: (data?.lipila_env ?? 'sandbox') as 'sandbox' | 'production',
+        keyHint: data?.key_hint ?? null, hasWebhookSecret: !!data?.lipila_webhook_secret_enc,
+        // No secret of its own: payments are checked with the shared default (LIPILA_WEBHOOK_SECRET) until the business saves one.
+        usesDefaultWebhookSecret: !data?.lipila_webhook_secret_enc && !!process.env.LIPILA_WEBHOOK_SECRET, updatedAt: data?.updated_at ?? null,
         webhookUrl: apiBase ? `${apiBase.replace(/\/$/, '')}/webhooks/lipila` : null, feeNote: `Lipila keeps ${LIPILA_CARD_RATE * 100}% of each card payment. Customers are charged a little more so you receive the full price.`,
     };
 }
@@ -142,18 +182,21 @@ export async function saveCredentials(orgId: string, userId: string, input: Save
     if (!(await isInRollout(orgId))) throw new LipilaError('Card payments aren’t available for this account yet.', 403, 'NOT_AVAILABLE');
     const env = input.env === 'production' ? 'production' : 'sandbox';
     const { data: existing } = await supabase.from('org_gateway_credentials').select('organization_id, lipila_api_key_enc').eq('organization_id', orgId).maybeSingle();
+    const existingReadable = !!unpack(existing?.lipila_api_key_enc);
     const key = String(input.apiKey ?? '').trim();
     const row: Record<string, unknown> = { organization_id: orgId, lipila_env: env, updated_by: userId, updated_at: new Date().toISOString() };
     if (key) {
         if (key.length < 12 || /\s/.test(key)) throw new LipilaError('That doesn’t look like a Lipila API key.', 400, 'BAD_KEY');
-        row.lipila_api_key_enc = encrypt(key);
+        row.lipila_api_key_enc = pack(key);
         row.key_hint = `…${key.slice(-4)}`;
     } else if (!existing?.lipila_api_key_enc) {
         throw new LipilaError('Paste your Lipila API key.', 400, 'NO_KEY');
+    } else if (!existingReadable) {
+        throw new LipilaError('The saved key can’t be read on this server (it was stored by another one). Paste the key again to save it for every server.', 400, 'KEY_UNREADABLE');
     }
     if (input.webhookSecret !== undefined) {
         const secret = String(input.webhookSecret).trim();
-        row.lipila_webhook_secret_enc = secret ? encrypt(secret) : null;
+        row.lipila_webhook_secret_enc = secret ? pack(secret) : null;
     }
     // Turning cards on needs a saved key; the status of the connection is shown in the screen.
     row.lipila_enabled = input.enabled === true;
@@ -208,14 +251,18 @@ export async function testKey(orgId: string) {
 /** The mobile networks Lipila pays to. (A bank payout is the other rail: it needs the bank's SWIFT code, the holder's names and a phone number.) */
 export const PAYOUT_NETWORKS = ['mtn', 'airtel', 'zamtel'];
 
-/** Lipila's payout charge is 1.5% of the amount, taken from the wallet on top of it. */
+/** Mobile money payouts: Lipila's charge is 1.5% of the amount, taken from the wallet on top of it. */
 export const PAYOUT_FEE_RATE = 0.015;
+/** Never less than K5 (a real K5 and K10 bank payout each cost K5). Same rule Master Fees uses in production. */
+export const PAYOUT_MIN_FEE = 5;
 /**
- * The charge for a payout of this amount, to the ngwee. Kept in this one place (and mirrored in core's lencoService) so it is easy to
- * correct if Lipila changes it. Lipila gave the rate as 1.5%; its docs' table of fixed charges is no longer used.
+ * The charge for a payout of this amount: 1.5% rounded UP to the cent, never less than K5, taken from the wallet on top. The rail is kept in
+ * the signature (callers pass it) but both rails use the same rule. Mirrored in core's lencoService.
  */
-export function payoutFee(amount: number): number {
-    return Math.round(Number(amount) * PAYOUT_FEE_RATE * 100) / 100;
+export function payoutFee(amount: number, _rail: 'mobile' | 'bank' = 'mobile'): number {
+    const a = Number(amount);
+    if (!(a > 0)) return 0;
+    return Math.max(PAYOUT_MIN_FEE, Math.ceil(a * PAYOUT_FEE_RATE * 100 - 1e-9) / 100);
 }
 
 /** A Zambian mobile number Lipila can pay: 260 and nine digits. */
@@ -234,6 +281,60 @@ export const isBankAccountNumber = (v: unknown): boolean => String(v ?? '').repl
 export function payoutNumber(phone: string): string {
     const d = String(phone ?? '').replace(/\D/g, '');
     return d.startsWith('260') ? d : d.startsWith('0') ? `260${d.slice(1)}` : `260${d}`;
+}
+
+/**
+ * Lipila refuses a narration with anything but letters, numbers, spaces, hyphens, slashes and dots (a "#" or an apostrophe gets a 400).
+ * Anything else becomes a space, accents are dropped to their plain letter, runs of spaces collapse, and it is kept to 100 characters and at
+ * least 4 (the Lipila dashboard asks for that much too).
+ */
+export function cleanNarration(text: unknown): string {
+    const plain = String(text ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9 \-/.]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100).trim();
+    return plain.length >= 4 ? plain : 'Payout';
+}
+
+/* ───────────── The banks Lipila can pay ───────────── */
+
+export interface LipilaBank { name: string; swiftCode: string }
+
+/** The banks Lipila had on its own list when it was last checked (used only if Lipila can't be asked). */
+const KNOWN_BANKS: LipilaBank[] = [
+    { name: 'AB BANK ZAMBIA LIMITED', swiftCode: 'ABBAZMLUXXX' }, { name: 'ABSA', swiftCode: 'BARCZMLXKPC' }, { name: 'ACCESS', swiftCode: 'AZAMZMLU' },
+    { name: 'BANK OF CHINA ZAMBIA LIMITED', swiftCode: 'BKCHZMLU' }, { name: 'CITI BANK', swiftCode: 'CITIZMLU' }, { name: 'FIRST ALLIANCE BANK', swiftCode: 'FALLZMLU' },
+    { name: 'FIRST CAPITAL BANK', swiftCode: 'FRCGZMLU' }, { name: 'FIRST NATIONAL BANK', swiftCode: 'FIRNZMLX' }, { name: 'INDO', swiftCode: 'INZAZMLX' },
+    { name: 'STANBIC', swiftCode: 'SBICZMLX' }, { name: 'STANDARD CHARTERED', swiftCode: 'SCBLZMLX' }, { name: 'UNITED BANK FOR AFRICA', swiftCode: 'UNAFZMLU' },
+    { name: 'ZAMBIA INDUSTRIAL COMMERCIAL BANK', swiftCode: 'ZICBZMLU' }, { name: 'ZANACO', swiftCode: 'ZNCOZMLU' },
+];
+const bankCache = new Map<string, { at: number; banks: LipilaBank[]; live: boolean }>();
+
+/**
+ * The banks Lipila will pay out to, with the exact SWIFT code Lipila uses for each (GET /banks, active ones only). Lipila refuses any other code
+ * ("Bank code … is not supported or inactive"), so the app offers these instead of a free-typed code. Kept for six hours.
+ */
+export async function listBanks(orgId: string): Promise<{ banks: LipilaBank[]; live: boolean }> {
+    const creds = await getCredentials(orgId);
+    if (!creds) return { banks: KNOWN_BANKS, live: false };
+    const hit = bankCache.get(creds.env);
+    if (hit && Date.now() - hit.at < 6 * 3_600_000) return { banks: hit.banks, live: hit.live };
+    try {
+        const res = await fetch(`${baseUrl(creds.env)}/api/v1/banks`, { headers: { accept: 'application/json', 'x-api-key': creds.apiKey }, signal: AbortSignal.timeout(15_000) });
+        const data: any = await res.json().catch(() => null);
+        const rows = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : null;
+        if (!res.ok || !rows) throw new Error(`HTTP ${res.status}`);
+        const banks = rows.filter((b: any) => b && b.isActive !== false && typeof b.swiftCode === 'string' && typeof b.name === 'string').map((b: any) => ({ name: String(b.name).trim(), swiftCode: String(b.swiftCode).trim().toUpperCase() })).sort((a: LipilaBank, b: LipilaBank) => a.name.localeCompare(b.name));
+        if (!banks.length) throw new Error('empty list');
+        bankCache.set(creds.env, { at: Date.now(), banks, live: true });
+        return { banks, live: true };
+    } catch (e: any) {
+        console.warn('[Lipila] could not load the bank list:', e?.message ?? e);
+        return { banks: hit?.banks ?? KNOWN_BANKS, live: false };
+    }
+}
+
+/** false only when Lipila's own list was read and the code isn't on it; with no list to check against it doesn't block (Lipila will say). */
+export async function isSupportedBank(orgId: string, swift: string): Promise<boolean> {
+    const { banks, live } = await listBanks(orgId);
+    return !live || banks.some((b) => b.swiftCode === normalizeSwift(swift));
 }
 
 export interface PayoutAnswer { status: 'pending' | 'successful' | 'failed'; identifier?: string | null; message?: string | null }
@@ -277,7 +378,7 @@ export async function createMobileMoneyPayout(input: { orgId: string; reference:
     // EXPERIMENT (requested): a bank payout from this same key was accepted while the mobile money one was refused with a 401, so the mobile
     // money request also carries a default `branch: 'main'`, in case Lipila's payout check keys on it. It is not in Lipila's documented mobile
     // money request: if Lipila rejects it, remove it. A 4xx means nothing was sent.
-    return sendPayout(input.orgId, input.reference, 'mobile-money', { referenceId: input.reference, amount: round2(input.amount), accountNumber: payoutNumber(input.phone), currency: 'ZMW', narration: input.narration.slice(0, 100), branch: 'main' });
+    return sendPayout(input.orgId, input.reference, 'mobile-money', { referenceId: input.reference, amount: round2(input.amount), accountNumber: payoutNumber(input.phone), currency: 'ZMW', narration: cleanNarration(input.narration), branch: 'main' });
 }
 
 /**
@@ -292,10 +393,22 @@ export async function createBankPayout(input: { orgId: string; reference: string
     if (!isPayableNumber(input.phone)) throw new LipilaError('Enter the account holder’s phone number (260 and nine digits). Lipila needs it for a bank transfer.', 400, 'PHONE');
     const [first, ...rest] = name.split(' ');
     return sendPayout(input.orgId, input.reference, 'bank', {
-        referenceId: input.reference, amount: round2(input.amount), currency: 'ZMW', narration: input.narration.slice(0, 100),
+        referenceId: input.reference, amount: round2(input.amount), currency: 'ZMW', narration: cleanNarration(input.narration),
         accountNumber: String(input.accountNumber).replace(/\s/g, ''), swiftCode: normalizeSwift(input.swiftCode),
         firstName: first, lastName: rest.join(' ') || first, accountHolderName: name, phoneNumber: payoutNumber(input.phone),
     });
+}
+
+/**
+ * Lipila only processes payouts from IP addresses whitelisted on the wallet, and Vercel's change. When LIPILA_RELAY_URL and LIPILA_RELAY_SECRET
+ * are set, payout calls (sending, and asking where one stands) go through the small relay on the fixed-IP server (relay/lipila-relay.mjs),
+ * which forwards them to Lipila unchanged. With neither set, calls go straight to Lipila as before.
+ */
+export const relayConfigured = (): boolean => !!(process.env.LIPILA_RELAY_URL && process.env.LIPILA_RELAY_SECRET);
+function payoutFetch(env: string, path: string, init: RequestInit): Promise<Response> {
+    if (!relayConfigured()) return fetch(`${baseUrl(env)}${path}`, init);
+    const headers = { ...(init.headers as Record<string, string> | undefined), 'x-relay-secret': String(process.env.LIPILA_RELAY_SECRET), 'x-lipila-env': env === 'production' ? 'production' : 'sandbox' };
+    return fetch(`${String(process.env.LIPILA_RELAY_URL).replace(/\/$/, '')}${path}`, { ...init, headers });
 }
 
 async function sendPayout(orgId: string, reference: string, rail: 'mobile-money' | 'bank', body: Record<string, unknown>): Promise<PayoutAnswer> {
@@ -304,7 +417,7 @@ async function sendPayout(orgId: string, reference: string, rail: 'mobile-money'
     if (!creds || !(await isInRollout(orgId))) throw new LipilaError('The Card Wallet isn’t connected for this business.', 403, 'NOT_ENABLED');
     let res: Response;
     try {
-        res = await fetch(`${baseUrl(creds.env)}/api/v1/disbursements/${rail}`, {
+        res = await payoutFetch(creds.env, `/api/v1/disbursements/${rail}`, {
             method: 'POST', headers: { 'Content-Type': 'application/json', accept: 'application/json', 'x-api-key': creds.apiKey },
             body: JSON.stringify(body), signal: AbortSignal.timeout(20_000),
         });
@@ -332,7 +445,7 @@ export async function checkPayoutStatus(orgId: string, reference: string): Promi
     const creds = await getCredentials(orgId);
     if (!creds) return { status: 'pending', message: 'No Lipila key is saved for this business.' };
     try {
-        const res = await fetch(`${baseUrl(creds.env)}/api/v1/disbursements/check-status?referenceId=${encodeURIComponent(reference)}`, { headers: { accept: 'application/json', 'x-api-key': creds.apiKey }, signal: AbortSignal.timeout(15_000) });
+        const res = await payoutFetch(creds.env, `/api/v1/disbursements/check-status?referenceId=${encodeURIComponent(reference)}`, { headers: { accept: 'application/json', 'x-api-key': creds.apiKey }, signal: AbortSignal.timeout(15_000) });
         // A reference Lipila has never seen answers 404 or 400: that is "no record", not an error.
         if (res.status === 404 || res.status === 400) return { status: 'pending', notFound: true, message: 'Lipila has no payout with this reference.' };
         if (!res.ok) return { status: 'pending', message: `Lipila answered ${res.status}` };
@@ -386,10 +499,10 @@ export async function walletSummary(orgId: string) {
 
 /** Card payments started on this business's pages, including ones that were abandoned or declined (the Wallets list only shows paid ones). */
 export async function recentCardPayments(orgId: string, limit = 50) {
-    const { data, error } = await supabase.from('lipila_card_sessions').select('reference, net_amount, charged_amount, fee_amount, status, customer, context, failure_reason, record_error, created_at, finalized_at').eq('organization_id', orgId).order('created_at', { ascending: false }).limit(Math.min(200, Math.max(1, limit)));
+    const { data, error } = await supabase.from('lipila_card_sessions').select('*').eq('organization_id', orgId).order('created_at', { ascending: false }).limit(Math.min(200, Math.max(1, limit)));
     if (error) throw error;
     return (data ?? []).map((s: any) => ({
-        reference: s.reference, status: s.status as string, net: num(s.net_amount), charged: num(s.charged_amount), fee: num(s.fee_amount), customer: s.customer?.name ?? null, phone: s.customer?.phone ?? null,
+        reference: s.reference, status: s.status as string, net: num(s.net_amount), charged: num(s.charged_amount), fee: num(s.fee_amount), chargeCurrency: (s.context?.charge_currency === 'USD' ? 'USD' : 'ZMW') as 'ZMW' | 'USD', customer: s.customer?.name ?? null, phone: s.customer?.phone ?? null,
         source: s.context?.kind ?? null, reason: s.failure_reason ?? null, problem: s.record_error ?? null, startedAt: s.created_at, finishedAt: s.finalized_at,
     }));
 }
@@ -437,7 +550,9 @@ async function assertAmountIsRight(orgId: string, reference: string, net: number
         if (Math.abs(sum - net) > 0.01) throw wrong();
         const ids = [...new Set(lines.map((l: any) => l.product_id).filter(Boolean))];
         const { data: prods } = ids.length ? await supabase.from('products').select('id, price, deposit_options').in('id', ids).eq('organization_id', orgId) : { data: [] as any[] };
-        const price = new Map<string, number>((prods ?? []).map((p: any) => [p.id, num(p.price)]));
+        // In kwacha: a dollar product's price is converted at today's rate, and a rate that moved a little since the page opened is allowed (2%).
+        const kw = await productPrices(ids as string[], orgId);
+        const price = new Map<string, number>((prods ?? []).map((p: any) => { const k = kw.get(p.id); return [p.id, k ? (k.currency === 'USD' ? round2(k.zmw * 0.98) : k.zmw) : Number.POSITIVE_INFINITY]; }));
         const prodById = new Map<string, any>((prods ?? []).map((p: any) => [p.id, p]));
         // A product with a price can't be bought for less. (Donations have no price: the payer chooses.)
         for (const l of lines) {
@@ -448,6 +563,17 @@ async function assertAmountIsRight(orgId: string, reference: string, net: number
             if (p > 0 && num(l.amount_paid) + 0.01 < round2(p * num(l.quantity))) throw wrong();
         }
     }
+}
+
+/**
+ * The dollar price when this sale is to be charged to the card in real US dollars, else null (kwacha). Read from the payment link on the
+ * server, never from the browser. The books still record the kwacha sale (pend.net); only the card is charged in dollars.
+ */
+async function usdNetFor(orgId: string, ctx?: Record<string, unknown>): Promise<number | null> {
+    if (ctx?.kind !== 'payment_link' || !ctx?.token) return null;
+    const { data: link } = await supabase.from('payment_links').select('organization_id, currency, foreign_amount').eq('token', String(ctx.token)).maybeSingle();
+    if (!link || link.organization_id !== orgId) return null;
+    return link.currency === 'USD' && num(link.foreign_amount) > 0 ? round2(num(link.foreign_amount)) : null;
 }
 
 export async function initiateCard(input: InitiateInput) {
@@ -461,21 +587,25 @@ export async function initiateCard(input: InitiateInput) {
     const { data: prior } = await supabase.from('lipila_card_sessions').select('*').eq('reference', reference).maybeSingle();
     if (prior) {
         if (prior.organization_id !== orgId) throw new LipilaError('Invalid payment reference.', 400, 'REFERENCE');
-        if (prior.status === 'SUCCESSFUL') return { redirectUrl: null, alreadyPaid: true, charged: num(prior.charged_amount), fee: num(prior.fee_amount) };
-        if (prior.status === 'INITIATED' && prior.redirect_url) return { redirectUrl: prior.redirect_url as string, alreadyPaid: false, charged: num(prior.charged_amount), fee: num(prior.fee_amount) };
+        const priorCurrency: 'ZMW' | 'USD' = prior.context?.charge_currency === 'USD' ? 'USD' : 'ZMW';
+        if (prior.status === 'SUCCESSFUL') return { redirectUrl: null, alreadyPaid: true, charged: num(prior.charged_amount), fee: num(prior.fee_amount), currency: priorCurrency };
+        if (prior.status === 'INITIATED' && prior.redirect_url) return { redirectUrl: prior.redirect_url as string, alreadyPaid: false, charged: num(prior.charged_amount), fee: num(prior.fee_amount), currency: priorCurrency };
     }
 
     const pend = await pendingNet(orgId, reference);
     if (!pend) throw new LipilaError('Start the payment from the checkout page first.', 409, 'NO_INTENT');
     await assertAmountIsRight(orgId, reference, pend.net, input.context);
-    const { charged, fee } = grossUp(pend.net);
+    // A dollar-priced sale is charged to the card in real dollars (Lipila converts to the wallet's currency); everything else in kwacha.
+    const usdNet = await usdNetFor(orgId, input.context);
+    const chargeCurrency: 'ZMW' | 'USD' = usdNet ? 'USD' : 'ZMW';
+    const { charged, fee } = grossUp(usdNet ?? pend.net);
 
     const c = input.customer ?? {};
     const email = String(c.email ?? '').trim() || 'no-reply@moneywise.co';
     const callbackUrl = input.apiBase ? `${input.apiBase.replace(/\/$/, '')}/webhooks/lipila` : '';
     const payload = {
         customerInfo: { firstName: String(c.firstName || 'Customer').slice(0, 60), lastName: String(c.lastName || 'User').slice(0, 60), phoneNumber: String(c.phone ?? '').slice(0, 20), city: 'Lusaka', country: 'ZM', address: 'Lusaka', zip: '10101', email },
-        collectionRequest: { referenceId: reference, amount: charged, narration: 'Payment', accountNumber: email, currency: 'ZMW', backUrl: input.returnUrl || 'https://moneywise.co', referenceData: reference },
+        collectionRequest: { referenceId: reference, amount: charged, narration: 'Payment', accountNumber: email, currency: chargeCurrency, backUrl: input.returnUrl || 'https://moneywise.co', referenceData: reference },
     };
     const res = await fetch(`${baseUrl(creds.env)}/api/v1/collections/card`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', accept: 'application/json', 'x-api-key': creds.apiKey, ...(callbackUrl ? { callbackUrl } : {}) }, body: JSON.stringify(payload), signal: AbortSignal.timeout(20_000),
@@ -490,11 +620,11 @@ export async function initiateCard(input: InitiateInput) {
 
     const row = {
         reference, organization_id: orgId, net_amount: pend.net, charged_amount: charged, fee_amount: fee, currency: 'ZMW', status: 'INITIATED', redirect_url: data.cardRedirectionUrl,
-        customer: { name: [c.firstName, c.lastName].filter(Boolean).join(' ').trim() || null, phone: c.phone ?? null, email: c.email ?? null }, context: input.context ?? {}, updated_at: new Date().toISOString(),
+        customer: { name: [c.firstName, c.lastName].filter(Boolean).join(' ').trim() || null, phone: c.phone ?? null, email: c.email ?? null }, context: { ...(input.context ?? {}), ...(chargeCurrency === 'USD' ? { charge_currency: 'USD' } : {}) }, updated_at: new Date().toISOString(),
     };
     const { error } = await supabase.from('lipila_card_sessions').upsert(row, { onConflict: 'reference' });
     if (error) throw error;
-    return { redirectUrl: data.cardRedirectionUrl as string, alreadyPaid: false, charged, fee };
+    return { redirectUrl: data.cardRedirectionUrl as string, alreadyPaid: false, charged, fee, currency: chargeCurrency };
 }
 
 /**
@@ -612,7 +742,7 @@ export async function finalizeCard(reference: string): Promise<Outcome> {
     try {
         await recordPayment(s);
         await supabase.from('lipila_card_sessions').update({ status: 'SUCCESSFUL', record_error: null, updated_at: new Date().toISOString(), finalized_at: new Date().toISOString() }).eq('reference', reference);
-        recordUsage({ category: 'payments', kind: 'card_collection', provider: 'lipila', organizationId: s.organization_id, cost: num(s.fee_amount), currency: s.currency || 'ZMW', units: num(s.charged_amount), unit: 'ZMW collected', reference, meta: { net: num(s.net_amount) } });
+        recordUsage({ category: 'payments', kind: 'card_collection', provider: 'lipila', organizationId: s.organization_id, cost: num(s.fee_amount), currency: s.context?.charge_currency || s.currency || 'ZMW', units: num(s.charged_amount), unit: `${s.context?.charge_currency || 'ZMW'} collected`, reference, meta: { net: num(s.net_amount) } });
         return { state: 'successful', referenceNumber: await receiptNumber(s.organization_id, reference) };
     } catch (e: any) {
         // Lipila confirmed the money but we could not write it down. Keep the real error and stay open: the next check retries.

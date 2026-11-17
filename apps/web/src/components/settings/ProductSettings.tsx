@@ -80,6 +80,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
         name: '',
         description: '',
         price: '',
+        currency: 'ZMW' as 'ZMW' | 'USD',
         product_type: 'PRODUCT' as ProductType,
         wallet_id: '',
         income_account_id: '',
@@ -224,6 +225,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
             name: '',
             description: '',
             price: '',
+            currency: 'ZMW',
             product_type: 'PRODUCT',
             wallet_id: '',
             income_account_id: '',
@@ -273,6 +275,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
             name: product.name,
             description: product.description || '',
             price: product.price?.toString() ?? '',
+            currency: product.currency === 'USD' ? 'USD' : 'ZMW',
             product_type: product.product_type || 'PRODUCT',
             wallet_id: product.wallet_id || '',
             income_account_id: product.income_account_id || '',
@@ -503,6 +506,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                 name: formData.name.trim(),
                 description: formData.description.trim() || undefined,
                 price: priceNum,
+                currency: formData.currency,
                 product_type: formData.product_type,
                 wallet_id: formData.wallet_id || null,
                 income_account_id: formData.income_account_id || null,
@@ -1174,8 +1178,17 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                             {isBooking ? `Price per ${isDailyBooking ? 'day' : 'night'}` : isAppointment ? 'Price per appointment' : isVariable ? 'Default / quoted price' : 'Selling price'}
                                             {priceRequired && <span className="text-red-500"> *</span>}
                                         </label>
+                                        <div className="mb-2 flex gap-2" role="radiogroup" aria-label="Currency">
+                                            {([['ZMW', 'Kwacha (K)'], ['USD', 'US dollars ($)']] as const).map(([code, label]) => (
+                                                <button key={code} type="button" role="radio" aria-checked={formData.currency === code} disabled={submitting}
+                                                    onClick={() => setFormData(prev => ({ ...prev, currency: code }))}
+                                                    className={`rounded-full border px-3.5 py-1.5 text-xs font-bold transition-colors ${formData.currency === code ? 'border-[#0B57D0] bg-[#E8F0FE] text-[#0B57D0]' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>
+                                                    {label}
+                                                </button>
+                                            ))}
+                                        </div>
                                         <div className="relative">
-                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400">ZMW</span>
+                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400">{formData.currency}</span>
                                             <input
                                                 type="number"
                                                 name="price"
@@ -1189,6 +1202,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                                 placeholder="0.00"
                                             />
                                         </div>
+                                        {formData.currency === 'USD' && <p className="text-xs text-gray-400 mt-1">Priced in US dollars. Payment links charge cards in dollars once US dollars are turned on in the Lipila settings. Mobile money pays the kwacha equivalent.</p>}
                                         {isVariable && <p className="text-xs text-gray-400 mt-1">You'll confirm the final amount when sharing a link.</p>}
                                     </div>
                                 )}

@@ -124,7 +124,7 @@ export const createProduct = async (req: any, res: Response): Promise<any> => {
 
         const { name, description, price, image_url, product_type, wallet_id, income_account_id, category, digital_assets,
                 requires_delivery, allow_external_delivery, own_delivery_charge, weight_kg, parcel_size, track_stock, stock_quantity, low_stock_threshold, variants,
-                additional_images, whats_included, checkout_fields, marketplace_listed, catalog_item_id, appointment_config, deposit_options } = req.body;
+                additional_images, whats_included, checkout_fields, marketplace_listed, catalog_item_id, appointment_config, deposit_options, currency } = req.body;
 
         if (!name || name.trim() === '') {
             return res.status(400).json({ error: 'Product name is required' });
@@ -160,6 +160,8 @@ export const createProduct = async (req: any, res: Response): Promise<any> => {
                 name: name.trim(),
                 description: description || null,
                 price: productPrice,
+                // The currency the price is in. Sent only for dollars, so a kwacha product saves even before the currency column exists.
+                ...(String(currency ?? '').toUpperCase() === 'USD' ? { currency: 'USD' } : {}),
                 image_url: image_url || null,
                 product_type: productType,
                 wallet_id: wallet_id || null,
@@ -228,8 +230,15 @@ export const updateProduct = async (req: any, res: Response): Promise<any> => {
 
         const { name, description, price, is_active, image_url, product_type, wallet_id, income_account_id, category, digital_assets,
                 requires_delivery, allow_external_delivery, own_delivery_charge, weight_kg, parcel_size, track_stock, stock_quantity, low_stock_threshold, variants,
-                additional_images, whats_included, checkout_fields, marketplace_listed, catalog_item_id, appointment_config, deposit_options } = req.body;
+                additional_images, whats_included, checkout_fields, marketplace_listed, catalog_item_id, appointment_config, deposit_options, currency } = req.body;
         const updateData: any = {};
+        if (currency !== undefined) {
+            const cur = String(currency).toUpperCase();
+            if (cur !== 'ZMW' && cur !== 'USD') return res.status(400).json({ error: 'Currency must be ZMW (kwacha) or USD (US dollars).' });
+            // Only a real change is written (the current value is asked for on its own), so saving a product works before the currency column exists.
+            const { data: was } = await supabase.from('products').select('currency').eq('id', id).maybeSingle();
+            if (cur !== String((was as any)?.currency ?? 'ZMW').toUpperCase()) updateData.currency = cur;
+        }
         if (catalog_item_id !== undefined) {
             if (catalog_item_id === null || catalog_item_id === '') updateData.catalog_item_id = null;
             else if (await catalogItemExists(String(catalog_item_id))) updateData.catalog_item_id = catalog_item_id;

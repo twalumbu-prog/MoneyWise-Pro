@@ -46,6 +46,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
             // The destination is checked here, before Lipila is called.
             if (cardBankRail) {
                 if (!lipila.isSwiftCode(cardSwift)) return res.status(400).json({ error: 'Enter the bank’s SWIFT code (8 or 11 letters and digits, for example SCBLZMLX). A bank transfer from the Card Wallet needs it.' });
+                if (!(await lipila.isSupportedBank(organizationId, cardSwift))) return res.status(400).json({ error: `The Card Wallet can’t pay a bank with the code ${cardSwift}. Choose the bank from the list so the right code is used.` });
                 if (!lipila.isBankAccountNumber(recipient_account)) return res.status(400).json({ error: 'That doesn’t look like a bank account number (at least 6 digits). Check it and try again.' });
                 if (!String(recipient_account_name || '').trim()) return res.status(400).json({ error: 'Enter the account holder’s name. A bank transfer from the Card Wallet needs it.' });
                 if (!lipila.isPayableNumber(cardHolderPhone)) return res.status(400).json({ error: 'Enter the account holder’s phone number (260 and nine digits). A bank transfer from the Card Wallet needs it.' });
@@ -70,7 +71,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                 .select('id, requisitions!inner(updated_at)')
                 .eq('organization_id', organizationId)
                 .like('external_reference', `${lipila.PAYOUT_REF_PREFIX}%`)
-                .eq('total_prepared', Math.round((asked + lipila.payoutFee(asked)) * 100) / 100)
+                .eq('total_prepared', Math.round((asked + lipila.payoutFee(asked, cardBankRail ? 'bank' : 'mobile')) * 100) / 100)
                 // A disbursement record has no timestamp of its own; its requisition is stamped when it is disbursed.
                 .gte('requisitions.updated_at', new Date(Date.now() - 2 * 60_000).toISOString())
                 .limit(1);
@@ -151,7 +152,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
             payment_method === 'MONEYWISE_PAY' ||
             payment_method === 'MONEYWISE';
         // A Card Wallet payout carries Lipila's own charge, on top of the amount and taken from the wallet.
-        const fee = fromCard ? lipila.payoutFee(totalPreparedNum) : (isDigital ? (isMoneyWisePay ? 0 : LencoService.calculatePayoutFee(totalPreparedNum, payment_method)) : 0);
+        const fee = fromCard ? lipila.payoutFee(totalPreparedNum, cardBankRail ? 'bank' : 'mobile') : (isDigital ? (isMoneyWisePay ? 0 : LencoService.calculatePayoutFee(totalPreparedNum, payment_method)) : 0);
         const totalDeduction = totalPreparedNum + fee;
 
         if (totalPreparedNum < estimatedTotal) {

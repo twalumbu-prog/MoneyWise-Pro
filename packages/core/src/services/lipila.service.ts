@@ -9,10 +9,11 @@ export interface LipilaCardPayment {
     reason: string | null; problem: string | null; startedAt: string; finishedAt: string | null;
 }
 export interface LipilaSettingsView {
-    available: boolean; encryptionReady: boolean; configured: boolean; enabled: boolean; env: 'sandbox' | 'production';
+    available: boolean; encryptionReady: boolean; unreadable?: boolean; configured: boolean; enabled: boolean; env: 'sandbox' | 'production';
     cardCurrency?: 'ZMW' | 'USD'; dollarRate?: number | null;
-    keyHint: string | null; hasWebhookSecret: boolean; updatedAt: string | null; webhookUrl: string | null; feeNote: string;
+    keyHint: string | null; hasWebhookSecret: boolean; usesDefaultWebhookSecret?: boolean; updatedAt: string | null; webhookUrl: string | null; feeNote: string;
 }
+export interface LipilaBankOption { name: string; swiftCode: string }
 export interface LipilaCardOutcome { verified: boolean; status: string; message?: string; referenceNumber?: string | null }
 
 /** Card payments (Lipila): the money lands in the business's Card Wallet. */
@@ -34,6 +35,11 @@ export const lipilaService = {
 
     saveSettings(input: { apiKey?: string; webhookSecret?: string; env?: 'sandbox' | 'production'; enabled?: boolean; cardCurrency?: 'ZMW' | 'USD' }): Promise<LipilaSettingsView> {
         return apiJson('/lipila/settings', { method: 'PUT', body: JSON.stringify(input) });
+    },
+
+    /** The banks Lipila can pay out to, with the exact SWIFT code each one uses. */
+    banks(): Promise<{ banks: LipilaBankOption[]; live: boolean }> {
+        return apiJson('/lipila/banks');
     },
 
     testSettings(): Promise<{ ok: boolean; message: string }> {
@@ -64,3 +70,21 @@ export const lipilaService = {
         return apiJson(`/lipila/public/status/${encodeURIComponent(reference)}`);
     },
 };
+
+const bankWords = (s: string) => s.toLowerCase().replace(/\b(bank|zambia|limited|ltd|plc|of|the)\b/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+
+/**
+ * The bank on Lipila's list that is the bank the app already has (Lenco's list names them differently: "Standard Chartered Bank Zambia Plc" is
+ * "STANDARD CHARTERED" at Lipila). Returns null when it can't tell, and then the person picks it.
+ */
+export function matchLipilaBank(name: string, banks: LipilaBankOption[]): LipilaBankOption | null {
+    const n = bankWords(String(name ?? ''));
+    if (!n) return null;
+    let best: LipilaBankOption | null = null, bestLen = 0;
+    for (const b of banks) {
+        const m = bankWords(b.name);
+        if (!m) continue;
+        if ((n === m || n.includes(m) || m.includes(n)) && m.length > bestLen) { best = b; bestLen = m.length; }
+    }
+    return best;
+}

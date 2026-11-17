@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Download, Edit2, Gavel, Loader2, MoreHorizontal, Package, Search, Share2, Store, Trash2 } from 'lucide-react';
-import { formatKwacha } from 'core';
+import { formatKwacha, formatMoney } from 'core';
 import { PRODUCT_TYPE_OPTIONS } from '../../services/product.service';
 import type { Product } from '../../services/product.service';
 import { resized } from '../../lib/images';
@@ -124,7 +124,7 @@ export const ProductList: React.FC<Props> = ({ products, isAdmin, onMarketplace,
                                 </div>
 
                                 <div className="w-24 text-right">
-                                    <p className="text-base font-bold tabular-nums text-[#1F1F1F]">{p.price != null && !(p.product_type === 'DONATION') ? formatKwacha(Number(p.price)) : <span className="text-xs font-medium text-[#80868B]">{p.product_type === 'DONATION' ? 'Any amount' : 'Variable'}</span>}</p>
+                                    <p className="text-base font-bold tabular-nums text-[#1F1F1F]">{p.price != null && !(p.product_type === 'DONATION') ? formatMoney(Number(p.price), p.currency) : <span className="text-xs font-medium text-[#80868B]">{p.product_type === 'DONATION' ? 'Any amount' : 'Variable'}</span>}</p>
                                     {liveAuction && a!.currentBid != null && <p className="text-[11px] text-[#B06000]">Top bid {formatKwacha(a!.currentBid)}</p>}
                                 </div>
 

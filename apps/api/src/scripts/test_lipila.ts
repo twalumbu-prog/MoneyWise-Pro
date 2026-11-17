@@ -68,7 +68,7 @@ const sign = (secret: string, id: string, ts: number, body: string) => `v1,${cry
         check('settings show the key hint, never the key', saved.configured && saved.enabled && saved.keyHint === `…${KEY_A.slice(-4)}` && !JSON.stringify(saved).includes(KEY_A) && saved.hasWebhookSecret, JSON.stringify(saved));
         check('the webhook address to give Lipila is shown', saved.webhookUrl === 'https://api.example.com/webhooks/lipila');
         const { data: raw } = await supabase.from('org_gateway_credentials').select('lipila_api_key_enc, lipila_webhook_secret_enc').eq('organization_id', A).single();
-        check('the key is stored encrypted, not as text', !!raw && !raw.lipila_api_key_enc.includes(KEY_A) && !raw.lipila_webhook_secret_enc.includes(SECRET_A));
+        check('the key is stored as it is (marked plain) in the server-only table, so every server reads the same one', !!raw && raw.lipila_api_key_enc === `plain:${KEY_A}` && raw.lipila_webhook_secret_enc === `plain:${SECRET_A}`);
         const re = await lipila.saveCredentials(A, randomUUID(), { enabled: true, env: 'sandbox' }, null);
         check('saving again without the key keeps the saved key', re.configured && (await lipila.getCredentials(A))?.apiKey === KEY_A);
         check('cards are on for A and B, off for C', (await lipila.cardsEnabledFor(A)) && (await lipila.cardsEnabledFor(B)) && !(await lipila.cardsEnabledFor(C)));
@@ -210,9 +210,34 @@ const sign = (secret: string, id: string, ts: number, body: string) => `v1,${cry
         await lipila.removeCredentials(A);
         check('removing the key turns cards off', !(await lipila.cardsEnabledFor(A)) && !(await lipila.getCredentials(A)));
 
-        // ── no encryption key on the server
+        // ── keys don't depend on any one server's encryption key
         const saveKey = process.env.GATEWAY_CREDENTIALS_KEY; delete process.env.GATEWAY_CREDENTIALS_KEY; delete process.env.MESSAGING_TOKEN_KEY;
-        await expectErr('with no server encryption key, nothing is saved in plain text', () => lipila.saveCredentials(A, randomUUID(), { apiKey: KEY_A }, null), 'NO_ENC_KEY');
+        const noEnc = await lipila.saveCredentials(A, randomUUID(), { apiKey: KEY_A, enabled: true, env: 'sandbox' }, null);
+        check('saving works on a server with no encryption key', noEnc.configured && noEnc.encryptionReady === true && !(noEnc as any).unreadable);
+        check('and the key reads back there', (await lipila.getCredentials(A))?.apiKey === KEY_A);
+
+        // an older key, encrypted by a server that had an encryption key
+        const legacy = (plain: string, hex: string) => { const iv = crypto.randomBytes(12); const c = crypto.createCipheriv('aes-256-gcm', Buffer.from(hex, 'hex'), iv); const d = Buffer.concat([c.update(plain, 'utf8'), c.final()]); return [iv, c.getAuthTag(), d].map((x) => x.toString('base64')).join('.'); };
+        const hexA = crypto.randomBytes(32).toString('hex'), hexB = crypto.randomBytes(32).toString('hex');
+        await supabase.from('org_gateway_credentials').update({ lipila_api_key_enc: legacy(KEY_A, hexA), lipila_webhook_secret_enc: legacy(SECRET_A, hexA) }).eq('organization_id', A);
+        process.env.GATEWAY_CREDENTIALS_KEY = hexB;
+        check('an older key encrypted by a different server can’t be read, and is flagged', (await lipila.getCredentials(A)) === null && (await lipila.settingsView(A, null) as any).unreadable === true);
+        await expectErr('saving without pasting the key is refused while it is unreadable', () => lipila.saveCredentials(A, randomUUID(), { enabled: true }, null), 'KEY_UNREADABLE');
+        process.env.GATEWAY_CREDENTIALS_KEY = hexA;
+        check('the server that has the right encryption key can still read it', (await lipila.getCredentials(A))?.apiKey === KEY_A && (await lipila.getCredentials(A))?.webhookSecret === SECRET_A);
+        const stillOld = (await supabase.from('org_gateway_credentials').select('lipila_api_key_enc').eq('organization_id', A).single()).data as any;
+        check('a local run leaves old keys alone (it does not rewrite live data)', !stillOld.lipila_api_key_enc.startsWith('plain:'));
+        process.env.LIPILA_MIGRATE_KEYS = 'true';
+        await lipila.getCredentials(A);
+        await new Promise((r) => setTimeout(r, 800));
+        delete process.env.LIPILA_MIGRATE_KEYS;
+        const moved = (await supabase.from('org_gateway_credentials').select('lipila_api_key_enc, lipila_webhook_secret_enc').eq('organization_id', A).single()).data as any;
+        check('where migration is on, an older key is rewritten as a plain one', moved.lipila_api_key_enc === `plain:${KEY_A}` && moved.lipila_webhook_secret_enc === `plain:${SECRET_A}`, moved);
+        process.env.GATEWAY_CREDENTIALS_KEY = hexB;
+        check('after that, a server with a different encryption key reads it fine', (await lipila.getCredentials(A))?.apiKey === KEY_A);
+        await supabase.from('org_gateway_credentials').update({ lipila_api_key_enc: legacy(KEY_A, hexA) }).eq('organization_id', A);
+        const fixed = await lipila.saveCredentials(A, randomUUID(), { apiKey: KEY_A, enabled: true }, null);
+        check('pasting the key again fixes an unreadable one for every server', fixed.configured && !(fixed as any).unreadable && (await lipila.getCredentials(A))?.apiKey === KEY_A);
         process.env.GATEWAY_CREDENTIALS_KEY = saveKey;
     } catch (e: any) {
         console.log('ERROR:', e?.stack ?? e?.message ?? JSON.stringify(e)); failed++;

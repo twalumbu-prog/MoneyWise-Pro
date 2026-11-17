@@ -79,7 +79,7 @@ import pool from './db';
 // each cold Vercel instance otherwise opened a fresh direct connection and reran
 // ~15 sequential DDL statements just to find out they were all no-ops, which is
 // what was exhausting Postgres's connection limit under concurrent traffic.
-const MIGRATION_VERSION = 35;
+const MIGRATION_VERSION = 36;
 
 const runMigration = async () => {
     const directUrl = process.env.DIRECT_DATABASE_URL;
@@ -820,6 +820,11 @@ LANGUAGE sql SET search_path = public AS $fn$
      WHERE id = p_id AND status = 'APPROVED';
 $fn$;
 ALTER TABLE public.ad_campaigns ENABLE ROW LEVEL SECURITY;
+
+-- The currency a product or service is priced in (see supabase/migrations/20261116130000_usd_charging.sql).
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'ZMW';
+ALTER TABLE public.products DROP CONSTRAINT IF EXISTS products_currency_check;
+ALTER TABLE public.products ADD CONSTRAINT products_currency_check CHECK (currency IN ('ZMW', 'USD'));
 
 -- Stock for products (see supabase/migrations/20261103100000_product_stock.sql).
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS track_stock BOOLEAN NOT NULL DEFAULT false;

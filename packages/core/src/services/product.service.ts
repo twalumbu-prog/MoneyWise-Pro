@@ -183,6 +183,8 @@ export interface Product {
     name: string;
     description?: string;
     price: number;
+    /** The currency the price is in: ZMW (kwacha, the default) or USD (US dollars). */
+    currency?: 'ZMW' | 'USD';
     is_active: boolean;
     image_url?: string | null;
     product_type?: ProductType;
@@ -366,6 +368,8 @@ export const paymentLinkService = {
         customer_name: string;
         customer_phone: string;
         amount: number;
+        /** The link's own currency; leave out to use the product's. In USD, `amount` is dollars. */
+        currency?: 'ZMW' | 'USD';
     }): Promise<PaymentLink> {
         return apiJson<PaymentLink>('/organizations/payment-links', {
             method: 'POST',

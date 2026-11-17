@@ -5,6 +5,7 @@ import { RequisitionMessage, requisitionService } from '../../services/requisiti
 import { lencoService } from '../../services/lenco.service';
 import { cashbookService } from '../../services/cashbook.service';
 import { User, ChevronDown, Loader2, Check, CheckCircle, X, FileText, Smartphone, Coins, Wallet, Building2, ArrowRight, RefreshCw, Search, Beaker, AlertTriangle, Image as ImageIcon, Plus, Sparkles, RotateCcw, Edit3, Clock, Phone, MessageCircle } from 'lucide-react';
+import { lipilaService, matchLipilaBank } from 'core';
 import { SUPPORT_PHONE_DISPLAY, SUPPORT_TEL_URL, SUPPORT_WHATSAPP_URL, NETWORK_RETRY_MINUTES, isNetworkTransferFailure, retryAfterLabel } from 'core';
 import { accountService, Account } from '../../services/account.service';
 import { integrationService } from '../../services/integration.service';
@@ -21,6 +22,9 @@ interface RequisitionMessageCardProps {
     requisitionData?: any;
     isInitial?: boolean;
 }
+
+// A payout still Processing is asked about once when its requisition is opened (not once per message in the chat).
+const checkedWhileProcessing = new Set<string>();
 
 const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({ 
     message, 
@@ -162,6 +166,16 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     // A bank transfer from the Card Wallet (Lipila) also needs the bank's SWIFT code and the account holder's phone number.
     const [swiftCode, setSwiftCode] = useState('');
     const [holderPhone, setHolderPhone] = useState('');
+    // Browser auto-fill can put a number in the box without telling the page, so what is really in the box is read when sending.
+    const holderPhoneRef = useRef<HTMLInputElement>(null);
+    // Opening a requisition whose payout is still Processing asks the provider where it stands, so a payout that has since failed (or succeeded)
+    // is settled now instead of waiting for the next background check.
+    useEffect(() => {
+        const id = requisitionData?.id;
+        if (!id || requisitionData?.status !== 'PROCESSING' || checkedWhileProcessing.has(id)) return;
+        checkedWhileProcessing.add(id);
+        requisitionService.verifyDisbursement(id).then(() => onAction?.('REFRESH')).catch(() => undefined);
+    }, [requisitionData?.id, requisitionData?.status]); // eslint-disable-line react-hooks/exhaustive-deps
     const [isLookingUp, setIsLookingUp] = useState(false);
     const [banks, setBanks] = useState<any[]>([]);
     const [isFetchingBanks, setIsFetchingBanks] = useState(false);
@@ -470,13 +484,28 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
 
     // Paying from the Card Wallet (Lipila): mobile money numbers only, and no payout fee is added on our side.
     const selectedIsCard = !!wallets.find((w: any) => w.id === selectedWalletId && w.is_card_wallet);
+    // The banks Lipila can pay, each with the SWIFT code Lipila itself uses (picked, never typed). Filled in from the bank chosen where the lists agree.
+    const [lipilaBanks, setLipilaBanks] = useState<{ name: string; swiftCode: string }[]>([]);
+    useEffect(() => {
+        if (!(selectedIsCard && paymentType === 'BANK')) return;
+        let cancelled = false;
+        lipilaService.banks().then((r) => { if (!cancelled) setLipilaBanks(r.banks); }).catch(() => { if (!cancelled) setLipilaBanks([]); });
+        return () => { cancelled = true; };
+    }, [selectedIsCard, paymentType]);
+    useEffect(() => {
+        if (!(selectedIsCard && paymentType === 'BANK') || lipilaBanks.length === 0) return;
+        const name = banks.find((b: any) => (b.id || b.code) === recipientProvider)?.name ?? '';
+        const found = matchLipilaBank(name, lipilaBanks)?.swiftCode ?? '';
+        setSwiftCode(found);
+        if (found) setDisburseError((e) => (e && /SWIFT/i.test(e) ? null : e));
+    }, [recipientProvider, lipilaBanks, selectedIsCard, paymentType]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // MoneyWise Pay (wallet-to-wallet) is an on-us transfer: no payout fee.
     const isMoneyWisePayReq = String(requisitionData?.payment_method || '').toUpperCase() === 'MONEYWISE_PAY' ||
         String(requisitionData?.recipient_bank_code || '').toUpperCase() === 'MONEYWISE';
     const payoutFeeType = isMoneyWisePayReq ? 'MONEYWISE_PAY' : (activeMethod || paymentType);
     const walletTotalDue = Number(requisitionData?.estimated_total || 0) +
-        (selectedIsCard ? lencoService.calculateLipilaPayoutFee(Number(requisitionData?.estimated_total || 0)) : lencoService.calculatePayoutFee(Number(requisitionData?.estimated_total || 0), payoutFeeType));
+        (selectedIsCard ? lencoService.calculateLipilaPayoutFee(Number(requisitionData?.estimated_total || 0), paymentType === 'BANK' ? 'bank' : 'mobile') : lencoService.calculatePayoutFee(Number(requisitionData?.estimated_total || 0), payoutFeeType));
     const isWalletBalanceInsufficient = activeMethod === 'MONEYWISE_WALLET' &&
         !!selectedWalletId &&
         selectedWalletBalance !== null &&
@@ -756,7 +785,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
         if (cardBank) {
             if (!/^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(swiftCode.replace(/\s/g, '').toUpperCase())) { setDisburseError('Enter the bank\u2019s SWIFT code (8 or 11 letters and digits, for example SCBLZMLX). A bank transfer from the Card Wallet needs it.'); return; }
             if (!cardHolder) { setDisburseError('The account holder\u2019s name couldn\u2019t be confirmed. Check the account number and bank first.'); return; }
-            if (holderPhone.replace(/\D/g, '').length < 9) { setDisburseError('Enter the account holder\u2019s phone number. A bank transfer from the Card Wallet needs it.'); return; }
+            if ((holderPhoneRef.current?.value || holderPhone).replace(/\D/g, '').length < 9) { setDisburseError('Enter the account holder\u2019s phone number. A bank transfer from the Card Wallet needs it.'); return; }
         }
 
         setIsProcessing(true);
@@ -788,7 +817,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                 recipient_account: normalizedPhone || recipientValue || undefined,
                 recipient_bank_code: recipientBankCode,
                 recipient_account_name: lookupName || undefined,
-                ...(cardBank ? { recipient_account_name: cardHolder, recipient_swift_code: swiftCode.replace(/\s/g, '').toUpperCase(), recipient_phone: holderPhone } : {}),
+                ...(cardBank ? { recipient_account_name: cardHolder, recipient_swift_code: swiftCode.replace(/\s/g, '').toUpperCase(), recipient_phone: holderPhoneRef.current?.value || holderPhone } : {}),
                 wallet_id: selectedWalletId || undefined,
             });
 
@@ -2062,7 +2091,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                         <div className="absolute right-6 top-1/2 -translate-y-1/2 flex items-center space-x-1.5 px-3 py-1 bg-gray-50 rounded-full border border-gray-100">
                                                                             <span className="text-[9px] font-black text-gray-400 uppercase">Fee:</span>
                                                                             <span className="text-[11px] font-black text-gray-500">
-                                                                                K{(selectedIsCard ? lencoService.calculateLipilaPayoutFee(Number(requisitionData?.estimated_total || 0)) : lencoService.calculatePayoutFee(Number(requisitionData?.estimated_total || 0), payoutFeeType)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                                                K{(selectedIsCard ? lencoService.calculateLipilaPayoutFee(Number(requisitionData?.estimated_total || 0), paymentType === 'BANK' ? 'bank' : 'mobile') : lencoService.calculatePayoutFee(Number(requisitionData?.estimated_total || 0), payoutFeeType)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                                                             </span>
                                                                         </div>
                                                                     </div>
@@ -2083,7 +2112,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                         </div>
                                                                         {selectedIsCard && (
                                                                             <p className="px-4 text-[11px] font-medium text-slate-500 leading-relaxed">
-                                                                                {`Paid from your Card Wallet to the ${paymentType === 'MOBILE_MONEY' ? 'mobile money number' : 'bank account'}. A payout charge of K${lencoService.calculateLipilaPayoutFee(Number(requisitionData?.estimated_total || 0)).toFixed(2)} is added and taken from the wallet.`}
+                                                                                {`Paid from your Card Wallet to the ${paymentType === 'MOBILE_MONEY' ? 'mobile money number' : 'bank account'}. A payout charge of K${lencoService.calculateLipilaPayoutFee(Number(requisitionData?.estimated_total || 0), paymentType === 'BANK' ? 'bank' : 'mobile').toFixed(2)} is added and taken from the wallet.`}
                                                                             </p>
                                                                         )}
                                                                         {isWalletBalanceInsufficient && (
@@ -2124,9 +2153,12 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                     )}
                                                                     {paymentType === 'BANK' && selectedIsCard && !isMoneyWisePayReq && (
                                                                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 animate-in fade-in slide-in-from-top-2 duration-300">
-                                                                            <input type="text" placeholder="Bank SWIFT code (e.g. SCBLZMLX)" value={swiftCode} onChange={(e) => setSwiftCode(e.target.value.toUpperCase())} maxLength={11}
-                                                                                className="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#0B57D0]/20 transition-all shadow-sm" />
-                                                                            <input type="tel" placeholder="Account holder's phone (097...)" value={holderPhone} onChange={(e) => setHolderPhone(e.target.value)}
+                                                                            <select value={swiftCode} onChange={(e) => setSwiftCode(e.target.value)}
+                                                                                className="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#0B57D0]/20 transition-all shadow-sm">
+                                                                                <option value="">{lipilaBanks.length ? 'Choose the bank…' : 'Loading banks…'}</option>
+                                                                                {lipilaBanks.map((b) => <option key={b.swiftCode} value={b.swiftCode}>{b.name} ({b.swiftCode})</option>)}
+                                                                            </select>
+                                                                            <input type="tel" ref={holderPhoneRef} autoComplete="off" onInput={(e) => setHolderPhone((e.target as HTMLInputElement).value)} placeholder="Account holder's phone (097...)" value={holderPhone} onChange={(e) => setHolderPhone(e.target.value)}
                                                                                 className="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#0B57D0]/20 transition-all shadow-sm" />
                                                                         </div>
                                                                     )}
