@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Animated, { useSharedValue, useAnimatedProps, withTiming, withDelay, Easing } from 'react-native-reanimated';
 import {
     View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, Alert, useWindowDimensions, TextInput,
@@ -112,6 +112,24 @@ function GrowDashboard({ plan }: { plan: GrowPlan }) {
         if (state && selected === null) setSelected(state.currentIndex);
     }, [state, selected]);
 
+    const currentNetWorth = state?.currentNetWorth ?? 0;
+    const monthsLeft = Math.max(0, monthsBetween(monthKeyOf(new Date()), plan.goalMonth));
+    const goal = state?.projection.goal ?? 0;
+    const goalText = goal - currentNetWorth <= 0
+        ? `Goal ${formatK(goal)} reached`
+        : `${formatK(goal)} by ${monthLabelWithYear(plan.goalMonth)} · ${monthsLeft === 0 ? 'final month' : `${monthsLeft} mo to go`}`;
+    // Stable header, so the (memoised) chart doesn't re-render when unrelated dashboard state changes.
+    const header = useMemo(() => (
+        <View>
+            <Text style={styles.heroLabel}>Current Net Worth</Text>
+            <View style={styles.heroRow}>
+                <CountUpAmount value={currentNetWorth} ready style={styles.heroValue} />
+                {isFetching && <ActivityIndicator size="small" color={colors.textFaint} />}
+            </View>
+            <Text style={styles.goalLine} numberOfLines={1}>{goalText}</Text>
+        </View>
+    ), [currentNetWorth, isFetching, goalText]);
+
     if (isLoading || !state) {
         return (
             <View style={styles.center}>
@@ -120,12 +138,6 @@ function GrowDashboard({ plan }: { plan: GrowPlan }) {
             </View>
         );
     }
-
-    const monthsLeft = Math.max(0, monthsBetween(monthKeyOf(new Date()), plan.goalMonth));
-    const reached = state.projection.goal - state.currentNetWorth <= 0;
-    const goalText = reached
-        ? `Goal ${formatK(state.projection.goal)} reached`
-        : `${formatK(state.projection.goal)} by ${monthLabelWithYear(plan.goalMonth)} · ${monthsLeft === 0 ? 'final month' : `${monthsLeft} mo to go`}`;
 
     return (
         <View style={{ flex: 1, paddingBottom: Math.max(insets.bottom, 12) }}>
@@ -145,17 +157,8 @@ function GrowDashboard({ plan }: { plan: GrowPlan }) {
                         results={state.results}
                         baseline={state.baseline}
                         selected={sel}
-                        onSelect={(i: number) => setSelected(i)}
-                        header={(
-                            <View>
-                                <Text style={styles.heroLabel}>Current Net Worth</Text>
-                                <View style={styles.heroRow}>
-                                    <CountUpAmount value={state.currentNetWorth} ready style={styles.heroValue} />
-                                    {isFetching && <ActivityIndicator size="small" color={colors.textFaint} />}
-                                </View>
-                                <Text style={styles.goalLine} numberOfLines={1}>{goalText}</Text>
-                            </View>
-                        )}
+                        onSelect={setSelected}
+                        header={header}
                     />
                 )}
             </View>

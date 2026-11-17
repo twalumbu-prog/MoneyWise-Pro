@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Animated, {
-    useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, useAnimatedProps, useAnimatedRef, useAnimatedReaction,
-    scrollTo as reanimatedScrollTo, interpolate, Extrapolation, withTiming, withDelay, Easing,
+    useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, useAnimatedRef, useAnimatedReaction,
+    scrollTo as reanimatedScrollTo, interpolate, Extrapolation, withTiming, withDelay, Easing, runOnJS,
 } from 'react-native-reanimated';
-import Svg, { Path, Defs, LinearGradient, Stop, Circle, G, Mask, Rect, ClipPath } from 'react-native-svg';
+import Svg, { Path, Defs, LinearGradient, Stop, Mask, Rect } from 'react-native-svg';
+import { LinearGradient as NativeGradient } from 'expo-linear-gradient';
 import { monthName, monthRange } from 'core';
 import type { GrowMonthResult, GrowProjection } from 'core';
 import { colors, fonts } from '../../theme/tokens';
@@ -27,8 +28,6 @@ const MAX_DROP = 140;
 const CARD_TOP_TARGET = 104;
 /** Opening animation: the line draws left → current month, then the markers and cards fade in. */
 export const DRAW_MS = 1900;
-const AnimatedRect = Animated.createAnimatedComponent(Rect);
-const AnimatedG = Animated.createAnimatedComponent(G);
 
 type Pt = { x: number; y: number };
 
@@ -59,6 +58,71 @@ function smoothPath(pts: Pt[]): string {
 const areaOf = (line: string, pts: Pt[], baseY: number) =>
     pts.length < 2 ? '' : `${line} L${pts[pts.length - 1].x.toFixed(2)},${baseY} L${pts[0].x.toFixed(2)},${baseY} Z`;
 
+/*
+ * PERFORMANCE NOTES — why the chart is built this way (iOS, New Architecture):
+ *  - react-native-svg redraws its WHOLE canvas whenever any child prop changes. One SVG across a 12-month plan is
+ *    ~2,200×570pt (~46 MB at 3x; 36+ months exceeds the GPU texture limit), so it is split into month-wide tiles and
+ *    only the tiles near the screen are mounted. Tiles take static props and are memoised: they draw once.
+ *  - Nothing inside an SVG is ever animated. The line "drawing in" is two counter-moving view transforms (a clip),
+ *    the fades are view opacity, and the markers are plain views — so no frame redraws an SVG.
+ */
+
+const PlanTile = memo(function PlanTile({ x0, w, h, line, area }: { x0: number; w: number; h: number; line: string; area: string }) {
+    return (
+        <Svg width={w} height={h} viewBox={`${x0} 0 ${w} ${h}`} style={[styles.tile, { left: x0, width: w, height: h }]}>
+            <Defs>
+                <LinearGradient id="pf" x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0" stopColor={GROW_COLORS.plan} stopOpacity={0.14} />
+                    <Stop offset="1" stopColor={GROW_COLORS.plan} stopOpacity={0} />
+                </LinearGradient>
+            </Defs>
+            <Path d={area} fill="url(#pf)" />
+            <Path d={line} fill="none" stroke={GROW_COLORS.plan} strokeWidth={1.25} strokeDasharray="5,6" strokeLinecap="round" />
+        </Svg>
+    );
+});
+
+const ActualTile = memo(function ActualTile({ x0, w, h, line, area, color, lastX }: {
+    x0: number; w: number; h: number; line: string; area: string; color: string; lastX: number;
+}) {
+    // The green wash fades out toward the latest point instead of ending in a cliff — only the tile(s) there need the mask.
+    const fade = x0 < lastX && x0 + w > lastX - 60;
+    return (
+        <Svg width={w} height={h} viewBox={`${x0} 0 ${w} ${h}`} style={[styles.tile, { left: x0, width: w, height: h }]}>
+            <Defs>
+                <LinearGradient id="af" x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0" stopColor={color} stopOpacity={0.26} />
+                    <Stop offset="0.7" stopColor={color} stopOpacity={0.06} />
+                    <Stop offset="1" stopColor={color} stopOpacity={0} />
+                </LinearGradient>
+                {fade && (
+                    <LinearGradient id="fx" gradientUnits="userSpaceOnUse" x1={Math.max(0, lastX - 60)} y1="0" x2={lastX} y2="0">
+                        <Stop offset="0" stopColor="#FFFFFF" stopOpacity={1} />
+                        <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0} />
+                    </LinearGradient>
+                )}
+                {fade && (
+                    <Mask id="am" x={x0} y="0" width={w} height={h} maskUnits="userSpaceOnUse">
+                        <Rect x={x0} y="0" width={w} height={h} fill="url(#fx)" />
+                    </Mask>
+                )}
+            </Defs>
+            <Path d={area} fill="url(#af)" mask={fade ? 'url(#am)' : undefined} />
+            <Path d={line} fill="none" stroke={color} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+        </Svg>
+    );
+});
+
+/** A ringed marker as a plain view (cheap to restyle when the selection changes). */
+function Dot({ x, y, r, fill, stroke, width: bw, halo }: { x: number; y: number; r: number; fill: string; stroke: string; width: number; halo?: string }) {
+    return (
+        <>
+            {halo && <View pointerEvents="none" style={[styles.abs, { left: x - 11, top: y - 11, width: 22, height: 22, borderRadius: 11, backgroundColor: halo }]} />}
+            <View pointerEvents="none" style={[styles.abs, { left: x - r, top: y - r, width: r * 2, height: r * 2, borderRadius: r, backgroundColor: fill, borderWidth: bw, borderColor: stroke }]} />
+        </>
+    );
+}
+
 export interface GrowChartProps {
     width: number;
     height: number;
@@ -72,14 +136,16 @@ export interface GrowChartProps {
 }
 
 /**
- * Every month is on the chart with its own card. The scale is fixed (not window-dependent), so the lines are
- * drawn once and scrolling is pure translation. The whole drawing eases down a little as the line climbs so
- * the cards in view never ride too high.
+ * Every month is on the chart with its own card. The scale is fixed, so the lines are drawn once and scrolling is
+ * pure translation; the whole drawing eases down a little as the line climbs so the cards never ride too high.
  */
-export function GrowChart({ width, height, header, projection, results, baseline, selected, onSelect }: GrowChartProps) {
+export const GrowChart = memo(function GrowChart({ width, height, header, projection, results, baseline, selected, onSelect }: GrowChartProps) {
     const n = results.length;
-    const colW = Math.max(CALLOUT_W + 12, (width - PAD_LEFT - PAD_RIGHT) / Math.min(VISIBLE_MONTHS, n));
+    // Whole points, so neighbouring tiles meet on a pixel boundary with no seam.
+    const colW = Math.round(Math.max(CALLOUT_W + 12, (width - PAD_LEFT - PAD_RIGHT) / Math.min(VISIBLE_MONTHS, n)));
     const contentW = Math.max(width, PAD_LEFT + colW * n + PAD_RIGHT);
+    const layerH = height + MAX_DROP;
+    const tileCount = Math.ceil(contentW / colW);
     const baseY = height - PLOT_BOTTOM;
     const top = TOP_ROOM;
     const bottom = baseY - FLOOR_GAP;
@@ -117,7 +183,7 @@ export function GrowChart({ width, height, header, projection, results, baseline
             }
             return projection.months[projection.months.length - 1].targetNetWorth;
         }
-        const ahead = !last || last.v + 0.005 >= (last ? interpPlan(last.x) : baseline);
+        const ahead = !last || last.v + 0.005 >= interpPlan(last.x);
 
         // One card per month, anchored on its point; kept clear of the previous card.
         let prevRight = -Infinity;
@@ -127,18 +193,18 @@ export function GrowChart({ width, height, header, projection, results, baseline
             const py = yOf(m ? m.v : r.plan.targetNetWorth);
             const left = Math.max(px - CALLOUT_W / 2, prevRight + 8, 4);
             prevRight = left + CALLOUT_W;
-            return { i, r, px, py, left, planX: xAt(i), planY: yOf(r.plan.targetNetWorth) };
+            return { i, r, px, py, left, planX: xAt(i), planY: yOf(r.plan.targetNetWorth), actualY: m ? yOf(m.v) : null };
         });
 
         return {
-            xAt, markers, cards, ahead, actualPts,
+            xAt, cards, ahead, hasActual: actualPts.length > 1,
             planLine, actualLine,
-            planArea: areaOf(planLine, planPts, height + MAX_DROP),
-            actualArea: areaOf(actualLine, actualPts, height + MAX_DROP),
+            planArea: areaOf(planLine, planPts, layerH),
+            actualArea: areaOf(actualLine, actualPts, layerH),
             lastX: last ? last.x : xAt(-1),
             goalY: yOf(projection.goal),
         };
-    }, [results, projection, baseline, colW, top, bottom, height]);
+    }, [results, projection, baseline, colW, top, bottom, layerH]);
 
     const lineColor = geo.ahead ? GROW_COLORS.success : GROW_COLORS.danger;
 
@@ -156,9 +222,22 @@ export function GrowChart({ width, height, header, projection, results, baseline
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selected]);
 
-    // The content eases down as the line climbs: a plain vertical translate keyed to the scroll position.
+    // Only the tiles near the screen are mounted; the window moves (in whole tiles) as you scroll.
     const scrollX = useSharedValue(0);
     const onScroll = useAnimatedScrollHandler({ onScroll: (e) => { scrollX.value = e.contentOffset.x; } });
+    const [tileAt, setTileAt] = useState(0);
+    useAnimatedReaction(
+        () => Math.floor(scrollX.value / colW),
+        (i, prev) => { if (i !== prev) runOnJS(setTileAt)(i); },
+        [colW],
+    );
+    const firstTile = Math.max(0, tileAt - 1);
+    const lastTile = Math.min(tileCount - 1, tileAt + Math.ceil(width / colW) + 1);
+    const winL = firstTile * colW, winR = (lastTile + 1) * colW;
+    const tiles: number[] = [];
+    for (let t = firstTile; t <= lastTile; t++) tiles.push(t);
+
+    // The content eases down as the line climbs: a plain vertical translate keyed to the scroll position.
     const { dropX, dropY } = useMemo(() => {
         const xs: number[] = [], ys: number[] = [];
         geo.cards.forEach((_c, i) => {
@@ -179,7 +258,7 @@ export function GrowChart({ width, height, header, projection, results, baseline
         transform: [{ translateY: interpolate(scrollX.value, dropX, dropY, Extrapolation.CLAMP) }],
     }));
 
-    // ── Opening animation ──
+    // ── Opening animation (view transforms and opacity only — no SVG redraws) ──
     const reveal = useSharedValue(0);
     const cardsO = useSharedValue(0);
     const [ready, setReady] = useState(false);
@@ -197,9 +276,13 @@ export function GrowChart({ width, height, header, projection, results, baseline
         (v) => { if (v < 1) reanimatedScrollTo(scrollRef, startOffset * v, 0, false); },
         [startOffset],
     );
-    const clipProps = useAnimatedProps(() => ({ width: reveal.value * (geo.lastX + 24) }));
-    const fadeProps = useAnimatedProps(() => ({ opacity: cardsO.value }));
+    // The actual line is revealed by a clip that grows from the left: the box slides right while its contents slide back.
+    const revealW = Math.min(contentW, geo.lastX + 24);
+    const clipOuter = useAnimatedStyle(() => ({ transform: [{ translateX: -(1 - reveal.value) * revealW }] }));
+    const clipInner = useAnimatedStyle(() => ({ transform: [{ translateX: (1 - reveal.value) * revealW }] }));
     const cardsStyle = useAnimatedStyle(() => ({ opacity: cardsO.value }));
+
+    const visibleCards = geo.cards.filter((c) => c.left + CALLOUT_W >= winL - 40 && c.left <= winR + 40);
 
     return (
         <View style={{ width, height, overflow: 'hidden' }}>
@@ -214,66 +297,41 @@ export function GrowChart({ width, height, header, projection, results, baseline
                 contentContainerStyle={{ width: contentW, height }}
             >
                 <View style={{ width: contentW, height }}>
-                  <Animated.View style={[{ position: 'absolute', left: 0, top: 0, width: contentW, height: height + MAX_DROP }, dropStyle]}>
-                    <Svg width={contentW} height={height + MAX_DROP}>
-                        <Defs>
-                            <LinearGradient id="growPlanFill" x1="0" y1="0" x2="0" y2="1">
-                                <Stop offset="0" stopColor={GROW_COLORS.plan} stopOpacity={0.14} />
-                                <Stop offset="1" stopColor={GROW_COLORS.plan} stopOpacity={0} />
-                            </LinearGradient>
-                            <LinearGradient id="growActualFill" x1="0" y1="0" x2="0" y2="1">
-                                <Stop offset="0" stopColor={lineColor} stopOpacity={0.26} />
-                                <Stop offset="0.7" stopColor={lineColor} stopOpacity={0.06} />
-                                <Stop offset="1" stopColor={lineColor} stopOpacity={0} />
-                            </LinearGradient>
-                            {/* The green wash fades out toward the latest point instead of ending in a cliff */}
-                            <LinearGradient id="growFadeX" gradientUnits="userSpaceOnUse" x1={Math.max(0, geo.lastX - 60)} y1="0" x2={geo.lastX} y2="0">
-                                <Stop offset="0" stopColor="#FFFFFF" stopOpacity={1} />
-                                <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0} />
-                            </LinearGradient>
-                            <Mask id="growFadeMask" x="0" y="0" width={contentW} height={height + MAX_DROP} maskUnits="userSpaceOnUse">
-                                <Rect x="0" y="0" width={contentW} height={height + MAX_DROP} fill="url(#growFadeX)" />
-                            </Mask>
-                            <ClipPath id="growReveal">
-                                <AnimatedRect x="0" y="0" height={height + MAX_DROP} animatedProps={clipProps} />
-                            </ClipPath>
-                        </Defs>
+                  <Animated.View style={[{ position: 'absolute', left: 0, top: 0, width: contentW, height: layerH }, dropStyle]}>
+                    {/* Plan: soft grey wash + dashed line */}
+                    {tiles.map((t) => (
+                        <PlanTile key={`p${t}`} x0={t * colW} w={colW} h={layerH} line={geo.planLine} area={geo.planArea} />
+                    ))}
 
-                        <Path d={geo.planArea} fill="url(#growPlanFill)" />
-                        <Path d={geo.planLine} fill="none" stroke={GROW_COLORS.plan} strokeWidth={1.25} strokeDasharray="5,6" strokeLinecap="round" />
-                        <AnimatedG animatedProps={fadeProps}>
-                            {geo.cards.map((c) => (
-                                <Circle key={`p${c.i}`} cx={c.planX} cy={c.planY} r={c.i === selected ? 4.5 : 3.5} fill="#FFFFFF" stroke={GROW_COLORS.planInk} strokeWidth={2} />
-                            ))}
-                        </AnimatedG>
+                    {/* Actual: coloured wash + solid line, drawn in from the left */}
+                    {geo.hasActual && (
+                        <Animated.View pointerEvents="none" style={[styles.clip, { width: revealW, height: layerH }, clipOuter]}>
+                            <Animated.View style={[{ position: 'absolute', left: 0, top: 0, width: contentW, height: layerH }, clipInner]}>
+                                {tiles.filter((t) => t * colW < revealW).map((t) => (
+                                    <ActualTile key={`a${t}`} x0={t * colW} w={colW} h={layerH} line={geo.actualLine} area={geo.actualArea} color={lineColor} lastX={geo.lastX} />
+                                ))}
+                            </Animated.View>
+                        </Animated.View>
+                    )}
 
-                        {geo.actualPts.length > 1 && (
-                            <G clipPath="url(#growReveal)">
-                                <Path d={geo.actualArea} fill="url(#growActualFill)" mask="url(#growFadeMask)" />
-                                <Path d={geo.actualLine} fill="none" stroke={lineColor} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
-                            </G>
-                        )}
-                        <AnimatedG animatedProps={fadeProps}>
-                            {geo.markers.map((a) => {
-                                const r = results[a.i];
-                                const c = r.status === 'OFF_TRACK' ? GROW_COLORS.danger : r.status === 'IN_PROGRESS' ? lineColor : GROW_COLORS.success;
-                                const card = geo.cards[a.i];
-                                const isSel = a.i === selected;
-                                return (
-                                    <G key={`a${a.i}`}>
-                                        {isSel && <Circle cx={card.px} cy={card.py} r={11} fill={c} fillOpacity={0.15} />}
-                                        <Circle cx={card.px} cy={card.py} r={isSel ? 6 : 4.5} fill={GROW_COLORS.successBg} stroke={c} strokeWidth={isSel ? 3 : 2.5} />
-                                    </G>
-                                );
-                            })}
-                        </AnimatedG>
-                    </Svg>
-
-                    <Animated.Text style={[cardsStyle, styles.trophy, { left: geo.xAt(n - 1) + 8, top: geo.goalY - 14 }]}>🏆</Animated.Text>
-
-                    {/* Every month's card sits above its point; tap one to jump to that month */}
+                    {/* Markers, trophy and cards fade in once the line has arrived; tap a card to jump to that month */}
                     <Animated.View pointerEvents={ready ? 'box-none' : 'none'} style={[StyleSheet.absoluteFill, cardsStyle]}>
-                        {geo.cards.map((c) => {
+                        {visibleCards.map((c) => {
+                            const active = c.i === selected;
+                            const ring = c.r.status === 'OFF_TRACK' ? GROW_COLORS.danger : c.r.status === 'IN_PROGRESS' ? lineColor : GROW_COLORS.success;
+                            return (
+                                <View key={`d${c.i}`} pointerEvents="none" style={StyleSheet.absoluteFill}>
+                                    <Dot x={c.planX} y={c.planY} r={active ? 4.5 : 3.5} fill="#FFFFFF" stroke={GROW_COLORS.planInk} width={2} />
+                                    {c.actualY != null && (
+                                        <Dot x={c.px} y={c.actualY} r={active ? 6 : 4.5} fill={GROW_COLORS.successBg} stroke={ring} width={active ? 3 : 2.5} halo={active ? `${ring}26` : undefined} />
+                                    )}
+                                </View>
+                            );
+                        })}
+
+                        <Text style={[styles.trophy, { left: geo.xAt(n - 1) + 8, top: geo.goalY - 14 }]}>🏆</Text>
+
+                        {visibleCards.map((c) => {
                             const active = c.i === selected;
                             const stem = c.r.status === 'OFF_TRACK' ? GROW_COLORS.danger : c.r.status === 'UPCOMING' ? GROW_COLORS.plan : lineColor;
                             return (
@@ -282,7 +340,7 @@ export function GrowChart({ width, height, header, projection, results, baseline
                                     <Pressable
                                         onPress={() => onSelect(c.i)}
                                         accessibilityLabel={`Show ${monthName(c.r.plan.key)}`}
-                                        style={[styles.calloutWrap, { left: c.left, top: c.py - 6 - STEM - CALLOUT_H, opacity: active ? 1 : 0.62, zIndex: active ? 2 : 1 }]}
+                                        style={[styles.calloutWrap, { left: c.left, top: c.py - 6 - STEM - CALLOUT_H, zIndex: active ? 2 : 1 }]}
                                     >
                                         <Callout result={c.r} active={active} />
                                     </Pressable>
@@ -292,20 +350,13 @@ export function GrowChart({ width, height, header, projection, results, baseline
                     </Animated.View>
                   </Animated.View>
 
-                    {/* Soft fade so the grey wash melts into the page instead of ending on a hard edge */}
-                    <View pointerEvents="none" style={{ position: 'absolute', left: 0, width: contentW, bottom: 0, height: FADE_H + PLOT_BOTTOM }}>
-                        <Svg width={contentW} height={FADE_H + PLOT_BOTTOM}>
-                            <Defs>
-                                <LinearGradient id="growBottomFade" x1="0" y1="0" x2="0" y2="1">
-                                    <Stop offset="0" stopColor="#FFFFFF" stopOpacity={0} />
-                                    <Stop offset={(FADE_H * 0.55) / (FADE_H + PLOT_BOTTOM)} stopColor="#FFFFFF" stopOpacity={0.55} />
-                                    <Stop offset={FADE_H / (FADE_H + PLOT_BOTTOM)} stopColor="#FFFFFF" stopOpacity={1} />
-                                    <Stop offset="1" stopColor="#FFFFFF" stopOpacity={1} />
-                                </LinearGradient>
-                            </Defs>
-                            <Rect x="0" y="0" width={contentW} height={FADE_H + PLOT_BOTTOM} fill="url(#growBottomFade)" />
-                        </Svg>
-                    </View>
+                    {/* Soft fade so the wash melts into the page — a native gradient, not an SVG */}
+                    <NativeGradient
+                        pointerEvents="none"
+                        colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.55)', '#FFFFFF', '#FFFFFF']}
+                        locations={[0, (FADE_H * 0.55) / (FADE_H + PLOT_BOTTOM), FADE_H / (FADE_H + PLOT_BOTTOM), 1]}
+                        style={{ position: 'absolute', left: 0, width: contentW, bottom: 0, height: FADE_H + PLOT_BOTTOM }}
+                    />
 
                     {results.map((r, i) => (
                         <Pressable
@@ -323,27 +374,29 @@ export function GrowChart({ width, height, header, projection, results, baseline
             {header && <View pointerEvents="box-none" style={styles.header}>{header}</View>}
         </View>
     );
-}
+});
 
+/** Inactive cards are muted by colour, not by view opacity (opacity on a view with children forces an offscreen pass). */
 function Callout({ result, active }: { result: GrowMonthResult; active: boolean }) {
     const { status, plan, actuals } = result;
+    const mute = active ? null : styles.muted;
     const dot = status === 'OFF_TRACK' ? 'danger' : status === 'UPCOMING' ? 'plan' : 'success';
     const Icon = status === 'ON_TRACK' ? CheckCircle2 : status === 'OFF_TRACK' ? XCircle : status === 'IN_PROGRESS' ? Clock3 : CalendarClock;
     return (
         <View style={[styles.callout, !active && styles.calloutIdle]}>
             <View style={styles.calloutHead}>
                 <View style={[styles.dot, dot === 'danger' ? styles.dotDanger : dot === 'plan' ? styles.dotPlan : styles.dotSuccess]} />
-                <Text style={styles.calloutMonth} numberOfLines={1}>{monthName(plan.key)}</Text>
-                <Icon size={13} color={colors.text} />
+                <Text style={[styles.calloutMonth, mute]} numberOfLines={1}>{monthName(plan.key)}</Text>
+                <Icon size={13} color={active ? colors.text : '#A1A1AA'} />
             </View>
             {actuals ? (
-                <Text style={styles.calloutValue} numberOfLines={1}>
+                <Text style={[styles.calloutValue, mute]} numberOfLines={1}>
                     {formatK(actuals.netWorth)} <Text style={styles.calloutSub}>{status === 'IN_PROGRESS' ? 'so far' : 'closed'}</Text>
                 </Text>
             ) : (
-                <Text style={styles.calloutValue} numberOfLines={1}>{formatK(plan.targetNetWorth)}</Text>
+                <Text style={[styles.calloutValue, mute]} numberOfLines={1}>{formatK(plan.targetNetWorth)}</Text>
             )}
-            <Text style={styles.calloutSub} numberOfLines={1}>
+            <Text style={[styles.calloutSub, mute]} numberOfLines={1}>
                 {actuals ? `– – ${formatK(plan.targetNetWorth)} target` : 'planned net worth'}
             </Text>
         </View>
@@ -358,7 +411,12 @@ const styles = StyleSheet.create({
     header: { position: 'absolute', top: 6, left: 20, right: 20 },
     stem: { position: 'absolute', width: 2, height: STEM, borderRadius: 1 },
     calloutWrap: { position: 'absolute', width: 132 },
-    calloutIdle: { shadowOpacity: 0.04, elevation: 0 },
+    // Only the active card casts a shadow: a dozen shadowed views are a dozen offscreen passes per frame.
+    calloutIdle: { shadowOpacity: 0, elevation: 0, borderColor: '#EFEFF1' },
+    muted: { color: '#A1A1AA' },
+    tile: { position: 'absolute', top: 0 },
+    clip: { position: 'absolute', left: 0, top: 0, overflow: 'hidden' },
+    abs: { position: 'absolute' },
     callout: {
         backgroundColor: '#FFFFFF', borderRadius: 16, paddingHorizontal: 12, paddingVertical: 10,
         borderWidth: 1, borderColor: '#E4E4E7',
