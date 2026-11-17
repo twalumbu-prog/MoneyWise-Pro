@@ -30,11 +30,12 @@ export const composioConnect = async (req: Request, res: Response) => {
     try {
         const callbackUrl = `${frontend()}/settings?tab=integrations&composio=${g.toolkit}`;
         const redirectUrl = await startConnect(g.orgId, g.toolkit, callbackUrl);
-        if (!redirectUrl) return res.status(502).json({ error: 'Composio did not return a sign-in link' });
+        if (!redirectUrl) return res.status(500).json({ error: 'Composio did not return a sign-in link' });
         res.json({ redirectUrl });
     } catch (e: any) {
         console.error('[Composio] connect failed:', e?.message);
-        res.status(502).json({ error: String(e?.message || 'Could not start the connection').slice(0, 300) });
+        // 500, not 502/504: Cloudflare in front of the web app swaps those for its own HTML page and hides this message.
+        res.status(500).json({ error: String(e?.message || 'Could not start the connection').slice(0, 300) });
     }
 };
 

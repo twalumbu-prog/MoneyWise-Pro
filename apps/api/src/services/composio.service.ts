@@ -1,3 +1,4 @@
+import { pathToFileURL } from 'url';
 import { supabase } from '../lib/supabase';
 import { passesPrefilter, classifyEmail } from './emailIntent.service';
 import { classifyMessage } from './messageIntent.service';
@@ -34,20 +35,22 @@ const BODY_CAP = 20_000;
 const SKIP_LABELS = ['SPAM', 'TRASH', 'DRAFT'];
 const syncEveryMs = () => Math.max(1, Number(process.env.COMPOSIO_SYNC_MINUTES) || 10) * 60_000;
 
-// @composio/core is ESM-only (needs Node >= 22.12 to be require()d; prod runs 24). It is loaded lazily, inside this
-// function, so a runtime that cannot load it only ever breaks Composio — never the rest of the API at startup.
+// @composio/core is ESM-only and this API compiles to CommonJS, where require() of an ES module is refused on Vercel
+// (it worked locally, which hid it). So it is loaded with a native import(): `new Function` keeps TypeScript from
+// rewriting import() into require(). require.resolve() is only there so Vercel's file tracing still bundles the package
+// (and hands us its absolute path). Loaded lazily, so a failure here only ever breaks Composio — never the API at startup.
+const nativeImport = new Function('specifier', 'return import(specifier)') as (specifier: string) => Promise<any>;
 let cached: any = null;
-function client(): any {
+async function client(): Promise<any> {
     if (!cached) {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { Composio } = require('@composio/core');
+        const { Composio } = await nativeImport(pathToFileURL(require.resolve('@composio/core')).href);
         cached = new Composio({ apiKey: process.env.COMPOSIO_API_KEY ?? '' });
     }
     return cached;
 }
 
 async function runTool(userId: string, slug: string, connectedAccountId: string, args: object): Promise<any> {
-    const res = await client().tools.execute(slug, { userId, connectedAccountId, arguments: args, dangerouslySkipVersionCheck: true });
+    const res = await (await client()).tools.execute(slug, { userId, connectedAccountId, arguments: args, dangerouslySkipVersionCheck: true });
     if (!res?.successful) throw new Error(`${slug} failed: ${String(res?.error ?? 'unknown error').slice(0, 300)}`);
     return res.data;
 }
@@ -61,13 +64,13 @@ const reason = (e: unknown) => (e instanceof Error ? e.message : String(e)).slic
 
 /** ACTIVE connected accounts Composio holds for this organisation (user id = org id) on one toolkit. */
 async function activeAccounts(orgId: string, toolkit: ComposioToolkit): Promise<{ id: string }[]> {
-    const list = await client().connectedAccounts.list({ userIds: [orgId], toolkitSlugs: [toolkit], statuses: ['ACTIVE'] });
+    const list = await (await client()).connectedAccounts.list({ userIds: [orgId], toolkitSlugs: [toolkit], statuses: ['ACTIVE'] });
     return (list?.items ?? []).map((i: any) => ({ id: String(i.id) }));
 }
 
 /** Step 1: Composio's hosted sign-in link for this org. The browser comes back to callbackUrl afterwards. */
 export async function startConnect(orgId: string, toolkit: ComposioToolkit, callbackUrl: string): Promise<string | null> {
-    const composio = client();
+    const composio = await client();
     // Only reuse a Composio-managed auth config — a custom one may have been created with placeholder credentials.
     const existing = await composio.authConfigs.list({ toolkit });
     const managed = (existing?.items ?? []).find((c: any) => c.isComposioManaged);
@@ -185,7 +188,7 @@ export async function disconnectComposioConnection(kind: 'email' | 'messaging', 
             supabase.from('messaging_connections').select('id', { count: 'exact', head: true }).eq('composio_account_id', acct).neq('status', 'DISCONNECTED'),
         ]);
         if (!(a.count ?? 0) && !(b.count ?? 0)) {
-            try { await client().connectedAccounts.delete(acct); }
+            try { await (await client()).connectedAccounts.delete(acct); }
             catch (e) { console.warn('[Composio] could not delete connected account (continuing):', reason(e)); }
         }
     }
