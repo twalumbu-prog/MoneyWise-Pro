@@ -1,7 +1,7 @@
 /**
  * Money-flow telemetry: how long deposits, collections and payouts take, how often they happen, and how often they fail.
  *
- * Three events, one shape, for every Lenco money movement:
+ * Three events, one shape, for every Lenco and Lipila (card) money movement:
  *
  *   money_flow_started    an attempt began (customer/user submitted it)
  *   money_flow_completed  it finished successfully            → `duration_seconds` = attempt start → confirmed
@@ -32,6 +32,8 @@ export type FailureType = 'declined' | 'system_error' | 'customer_cancelled' | '
 
 export interface FlowInput {
     reference: string;
+    /** The payment provider. Defaults to Lenco; Lipila carries cards and Card Wallet payouts. */
+    provider?: 'lenco' | 'lipila';
     /** Known flow; when omitted it is worked out from the reference (collections only). */
     flow?: FlowType;
     organizationId?: string | null;
@@ -75,6 +77,7 @@ export function trackFlow(stage: FlowStage, input: FlowInput): void {
     void (async () => {
         try {
             const event = `money_flow_${stage}`;
+            const provider = input.provider ?? 'lenco';
             const dedupeKey = `${event}:${input.reference}`;
             if (!input.allowRepeat) {
                 const now = Date.now();
@@ -117,7 +120,7 @@ export function trackFlow(stage: FlowStage, input: FlowInput): void {
                 properties: {
                     flow,
                     direction: isPayout ? 'out' : 'in',
-                    provider: 'lenco',
+                    provider,
                     account_type: org?.accountType ?? 'unknown',
                     organization_id: organizationId,
                     method: input.method,
@@ -147,7 +150,7 @@ export function payoutMethod(recipientBankCode?: string | null, paymentMethod?: 
 }
 
 /**
- * A Lenco payout that settled as failed or vanished (webhook, poller, verify). Looks the disbursement up for its
+ * A payout (Lenco or Lipila) that settled as failed or vanished (webhook, poller, verify). Looks the disbursement up for its
  * start time, organisation and sender, so call it BEFORE the row is deleted. Never throws.
  */
 export async function trackPayoutFailure(
@@ -162,8 +165,9 @@ export async function trackPayoutFailure(
             .select('external_reference, organization_id, cashier_id, payment_method, recipient_bank_code, created_at')
             .eq('requisition_id', requisitionId)
             .maybeSingle();
-        if (!d?.external_reference || String(d.external_reference).startsWith('LPLPAY-')) return; // card payouts are Lipila's
+        if (!d?.external_reference) return;
         trackFlow('failed', {
+            provider: providerOfPayoutRef(d.external_reference),
             flow: 'payout', reference: d.external_reference, organizationId: d.organization_id, userId: d.cashier_id,
             method: payoutMethod(d.recipient_bank_code, d.payment_method), failureType, errorCode,
             durationSeconds: d.created_at ? Math.round((Date.now() - new Date(d.created_at).getTime()) / 100) / 10 : undefined,
@@ -172,10 +176,14 @@ export async function trackPayoutFailure(
     } catch { /* analytics must never affect money movement */ }
 }
 
-/** A Lenco payout confirmed by whichever path got there first (webhook, verify, poller, immediate). */
+/** Card Wallet payouts carry the LPLPAY- reference and are sent by Lipila; everything else goes through Lenco. */
+const providerOfPayoutRef = (ref: unknown): 'lenco' | 'lipila' => (typeof ref === 'string' && ref.startsWith('LPLPAY-') ? 'lipila' : 'lenco');
+
+/** A payout confirmed by whichever path got there first (webhook, verify, poller, immediate). */
 export function trackPayoutCompleted(d: any): void {
-    if (!d?.external_reference || String(d.external_reference).startsWith('LPLPAY-')) return; // card payouts are Lipila's
+    if (!d?.external_reference) return;
     trackFlow('completed', {
+        provider: providerOfPayoutRef(d.external_reference),
         flow: 'payout', reference: d.external_reference, organizationId: d.organization_id, userId: d.cashier_id,
         method: payoutMethod(d.recipient_bank_code, d.payment_method),
         durationSeconds: d.created_at ? Math.round((Date.now() - new Date(d.created_at).getTime()) / 100) / 10 : undefined,

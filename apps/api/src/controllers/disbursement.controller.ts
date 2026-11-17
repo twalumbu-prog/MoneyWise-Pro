@@ -281,6 +281,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                     (req as any).preWrittenDisbursementId = pre.id;
 
                     let cardPayout: lipila.PayoutAnswer;
+                    const cardT0 = Date.now();
                     if (existing && existing.status !== 'failed') {
                         cardPayout = existing; // an earlier attempt for this requisition is already on its way or done
                     } else {
@@ -304,7 +305,11 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                         }
                     }
                     lencoReference = cardRef;
-                    if (cardPayout.status === 'failed') throw new Error(cardPayout.message || 'Rejected by Lipila');
+                    if (cardPayout.status === 'failed') { (req as any).payoutDeclined = true; throw new Error(cardPayout.message || 'Rejected by Lipila'); }
+                    trackFlow('started', {
+                        provider: 'lipila', flow: 'payout', reference: cardRef, organizationId: targetOrgId, userId: cashier_id,
+                        method: cardBankRail ? 'bank' : 'mobile_money', providerMs: Date.now() - cardT0,
+                    });
                     (req as any).lencoStatus = cardPayout.status;       // 'successful' | 'pending'
                     (req as any).lencoFee = undefined;
                     (req as any).resolvedRef = cardRef;
@@ -429,6 +434,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                 console.error('[Lenco Payout Failed] Error during wallet disbursal:', payoutError);
                 // Rejected by Lenco = declined; anything else (timeout, bad config, our own error) = system error.
                 trackFlow('failed', {
+                    provider: fromCard ? 'lipila' : 'lenco',
                     flow: 'payout', reference: `${stableRef}:${Date.now()}`, organizationId: targetOrgId, userId: cashier_id,
                     method: payoutMethod(recipient_bank_code, payment_method), allowRepeat: true,
                     failureType: (req as any).payoutDeclined ? 'declined' : 'system_error',
@@ -1073,7 +1079,7 @@ async function revertDisbursementAndCleanup(
     console.warn(`[Revert Disbursement] Starting revert and cleanup for requisition: ${requisitionId}`);
     // Money-flow telemetry. Looked up before the disbursement row is deleted below. A transfer Lenco no longer
     // knows about is not "declined", it is lost; everything else that reaches here failed on Lenco.
-    if (provider === 'Lenco') await trackPayoutFailure(requisitionId, failureType, failureType === 'declined' ? 'transfer_failed_on_lenco' : 'transfer_not_found_on_lenco');
+    await trackPayoutFailure(requisitionId, failureType, failureType === 'declined' ? `transfer_failed_on_${provider.toLowerCase()}` : `transfer_not_found_on_${provider.toLowerCase()}`);
 
     // A. Revert Requisition to AUTHORISED
     await supabase

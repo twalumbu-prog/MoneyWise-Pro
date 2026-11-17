@@ -717,7 +717,7 @@ export const cashbookService = {
     async finalizeCardDisbursementLedger(requisitionId: string, transactionAt?: string): Promise<void> {
         const { data: disbursement } = await supabase
             .from('disbursements')
-            .select('organization_id, cashier_id, payment_method, total_prepared, requisitions(estimated_total, actual_total)')
+            .select('organization_id, cashier_id, payment_method, total_prepared, external_reference, recipient_bank_code, created_at, requisitions(estimated_total, actual_total)')
             .eq('requisition_id', requisitionId)
             .maybeSingle();
         if (!disbursement) { console.error(`[Card Ledger] Disbursement record not found for requisition ${requisitionId}`); return; }
@@ -726,6 +726,7 @@ export const cashbookService = {
             .from('cashbook_entries').select('id')
             .eq('requisition_id', requisitionId).eq('entry_type', 'DISBURSEMENT').neq('status', 'PENDING').limit(1);
         if (existing && existing.length > 0) return;
+        trackPayoutCompleted(disbursement); // Card Wallet payout confirmed by Lipila (provider derived from its LPLPAY- reference)
 
         // The disbursement record holds what left the wallet: the amount plus Lipila's charge. The charge is the difference.
         const net = Number((disbursement as any).requisitions?.estimated_total || 0);

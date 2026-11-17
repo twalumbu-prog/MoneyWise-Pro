@@ -15,6 +15,7 @@ import { emailService } from './email.service';
 import { pushService } from './push.service';
 import { loadSettings } from './imports.service';
 import { recordUsage } from './usage.service';
+import { trackFlow } from '../lib/moneyFlowTracking';
 import { checkDeposit } from './salon.service';
 
 export class LipilaError extends Error {
@@ -479,11 +480,15 @@ export async function initiateCard(input: InitiateInput) {
     };
     const res = await fetch(`${baseUrl(creds.env)}/api/v1/collections/card`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', accept: 'application/json', 'x-api-key': creds.apiKey, ...(callbackUrl ? { callbackUrl } : {}) }, body: JSON.stringify(payload), signal: AbortSignal.timeout(20_000),
-    }).catch((e: any) => { throw new LipilaError(`Couldn’t reach the card provider: ${e?.message ?? e}`, 502, 'UPSTREAM'); });
+    }).catch((e: any) => {
+        trackFlow('failed', { provider: 'lipila', method: 'card', reference, organizationId: orgId, failureType: 'system_error', errorCode: 'unreachable' });
+        throw new LipilaError(`Couldn’t reach the card provider: ${e?.message ?? e}`, 502, 'UPSTREAM');
+    });
     const data: any = await res.json().catch(() => null);
     if (!res.ok || !data?.cardRedirectionUrl) {
         const detail = data?.message || data?.title || data?.error || (data?.errors ? JSON.stringify(data.errors).slice(0, 200) : '');
         console.error('[Lipila] initiate failed', res.status, JSON.stringify(data)?.slice(0, 300));
+        trackFlow('failed', { provider: 'lipila', method: 'card', reference, organizationId: orgId, failureType: res.status >= 500 ? 'system_error' : 'declined', errorCode: `lipila_${res.status}` });
         if (res.status === 401 || res.status === 403) throw new LipilaError('The card provider refused this business’s key. The owner needs to check the Lipila settings.', 502, 'BAD_KEY');
         throw new LipilaError(detail || 'Couldn’t start the card payment. Please try again or use Mobile Money.', 502, 'UPSTREAM');
     }
@@ -494,6 +499,8 @@ export async function initiateCard(input: InitiateInput) {
     };
     const { error } = await supabase.from('lipila_card_sessions').upsert(row, { onConflict: 'reference' });
     if (error) throw error;
+    // Money-flow telemetry: the card page is ready. A reference started twice (a repeated request) is counted once.
+    trackFlow('started', { provider: 'lipila', method: 'card', reference, organizationId: orgId, userId: (input.context as any)?.user });
     return { redirectUrl: data.cardRedirectionUrl as string, alreadyPaid: false, charged, fee };
 }
 
@@ -591,6 +598,10 @@ export async function finalizeCard(reference: string): Promise<Outcome> {
     if (!creds) return { state: 'pending', message: 'Waiting for the card provider.' };
     const st = await checkStatus(reference, creds.apiKey, creds.env);
     if (st.status === 'failed') {
+        trackFlow('failed', {
+            provider: 'lipila', method: 'card', reference, organizationId: s.organization_id, failureType: 'declined', errorCode: 'card_declined',
+            durationSeconds: s.created_at ? Math.round((Date.now() - new Date(s.created_at).getTime()) / 100) / 10 : undefined,
+        });
         await supabase.from('lipila_card_sessions').update({ status: 'FAILED', failure_reason: st.message ?? null, updated_at: new Date().toISOString(), finalized_at: new Date().toISOString() }).eq('reference', reference).in('status', ['INITIATED', 'PROCESSING']);
         return { state: 'failed', message: st.message || 'The card payment failed. Nothing was charged.' };
     }
@@ -612,11 +623,17 @@ export async function finalizeCard(reference: string): Promise<Outcome> {
     try {
         await recordPayment(s);
         await supabase.from('lipila_card_sessions').update({ status: 'SUCCESSFUL', record_error: null, updated_at: new Date().toISOString(), finalized_at: new Date().toISOString() }).eq('reference', reference);
+        trackFlow('completed', {
+            provider: 'lipila', method: 'card', reference, organizationId: s.organization_id,
+            durationSeconds: s.created_at ? Math.round((Date.now() - new Date(s.created_at).getTime()) / 100) / 10 : undefined,
+        });
         recordUsage({ category: 'payments', kind: 'card_collection', provider: 'lipila', organizationId: s.organization_id, cost: num(s.fee_amount), currency: s.currency || 'ZMW', units: num(s.charged_amount), unit: 'ZMW collected', reference, meta: { net: num(s.net_amount) } });
         return { state: 'successful', referenceNumber: await receiptNumber(s.organization_id, reference) };
     } catch (e: any) {
         // Lipila confirmed the money but we could not write it down. Keep the real error and stay open: the next check retries.
         console.error(`[Lipila] PAID BUT NOT RECORDED: ${reference}:`, e?.message ?? e);
+        // The customer paid and we could not book it: the worst kind of failure, and it retries, so only the first is counted.
+        trackFlow('failed', { provider: 'lipila', method: 'card', reference, organizationId: s.organization_id, failureType: 'system_error', errorCode: 'paid_not_recorded' });
         await supabase.from('lipila_card_sessions').update({ status: 'INITIATED', record_error: String(e?.message ?? e).slice(0, 500), updated_at: new Date().toISOString() }).eq('reference', reference);
         return { state: 'pending', message: 'Your payment was received and is being recorded.' };
     }
