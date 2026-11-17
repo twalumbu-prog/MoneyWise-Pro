@@ -69,6 +69,13 @@ export const Settings: React.FC = () => {
             }
             return;
         }
+        // Back from Composio's sign-in (?composio=gmail|facebook|instagram) — the card finishes the connection itself
+        const quickConnect = searchParams.get('composio');
+        if (quickConnect === 'gmail' || quickConnect === 'facebook' || quickConnect === 'instagram') {
+            setActiveTab('integrations');
+            setActiveIntegration(quickConnect === 'gmail' ? 'gmail' : 'meta');
+            return;
+        }
         // Gmail OAuth callback (?gmail=connected|error) — the card reads and clears its own params
         const gmailStatus = searchParams.get('gmail');
         if (gmailStatus === 'connected' || gmailStatus === 'error') {

@@ -46,6 +46,7 @@ import {
     updateSageMapping,
     syncSageNow,
 } from '../controllers/sage.controller';
+import { composioConnect, composioComplete } from '../controllers/composio.controller';
 import {
     getGmailStatus,
     getGmailConnectUrl,
@@ -124,5 +125,9 @@ router.post('/gmail/sync', gmailSyncCron);
 router.get('/gmail/status', requireAuth, getGmailStatus);
 router.get('/gmail/connect', requireAuth, getGmailConnectUrl);
 router.delete('/gmail/:id', requireAuth, disconnectGmail);
+
+// ── Quick connect via Composio (Gmail, Facebook, Instagram) — the alternative to the direct connections above ──
+router.post('/composio/:toolkit/connect', requireAuth, composioConnect);
+router.post('/composio/:toolkit/complete', requireAuth, composioComplete);
 
 export default router;

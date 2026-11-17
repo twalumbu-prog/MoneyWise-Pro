@@ -312,7 +312,7 @@ export async function syncConnection(conn: any, deadline: number): Promise<SyncR
 export async function syncAllGmail(budgetMs = 15_000): Promise<{ connections: SyncResult[]; backlogClassified: number }> {
     const deadline = Date.now() + budgetMs;
     const { data: conns } = await supabase.from('email_connections').select('*')
-        .eq('status', 'ACTIVE').order('last_synced_at', { ascending: true, nullsFirst: true }).limit(25);
+        .eq('status', 'ACTIVE').eq('auth_mode', 'DIRECT').order('last_synced_at', { ascending: true, nullsFirst: true }).limit(25);
 
     const connections: SyncResult[] = [];
     for (const conn of conns || []) {

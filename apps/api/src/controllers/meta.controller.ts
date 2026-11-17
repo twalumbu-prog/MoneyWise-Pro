@@ -4,16 +4,17 @@ import {
     isMetaConfigured, verifySignature, parseWebhook, ingestMessages, graphVersion,
 } from '../services/meta.service';
 import { classifyMessage } from '../services/messageIntent.service';
+import { isComposioConfigured, disconnectComposioConnection } from '../services/composio.service';
 
 /** GET /integrations/meta/status — connections for the caller's org + whether the platform is configured server-side. */
 export const getMetaStatus = async (req: Request, res: Response) => {
     const organizationId = (req as any).user.organization_id;
     if (!organizationId) return res.status(400).json({ error: 'User does not belong to an organization' });
     const { data, error } = await supabase.from('messaging_connections')
-        .select('id, platform, display_name, display_phone, status, last_error, last_message_at, created_at')
+        .select('id, platform, display_name, display_phone, status, last_error, last_message_at, created_at, auth_mode')
         .eq('organization_id', organizationId).neq('status', 'DISCONNECTED');
     if (error) return res.status(500).json({ error: error.message });
-    res.json({ configured: isMetaConfigured(), connections: data || [] });
+    res.json({ configured: isMetaConfigured(), composio: isComposioConfigured(), connections: data || [] });
 };
 
 /**
@@ -38,6 +39,7 @@ export const metaOAuthCallback = async (_req: Request, res: Response) => {
 
 export const disconnectMeta = async (req: Request, res: Response) => {
     const organizationId = (req as any).user.organization_id;
+    if (await disconnectComposioConnection('messaging', String(req.params.id), organizationId)) return res.json({ success: true });
     const { error } = await supabase.from('messaging_connections')
         .update({ status: 'DISCONNECTED', access_token_enc: null, updated_at: new Date().toISOString() })
         .eq('id', req.params.id).eq('organization_id', organizationId);
