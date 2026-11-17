@@ -2,7 +2,7 @@ import { useMemo, useRef, useState, useCallback } from 'react';
 import { TourTarget } from '../../src/components/walkthrough/TourTarget';
 import {
     View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator,
-    Modal, TextInput, RefreshControl,
+    Modal, TextInput, RefreshControl, Animated, Easing,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -212,9 +212,25 @@ export default function ReportingScreen() {
         return periodRange(period, period === 'custom' ? 0 : periodOffset);
     }, [period, periodOffset, customFilter]);
     const canStep = period !== 'custom';
+    // Slide the report out in the swipe direction, swap the period, then slide the new one in from the other side.
+    const slideX = useRef(new Animated.Value(0)).current;
+    const slideOpacity = useRef(new Animated.Value(1)).current;
+    const sliding = useRef(false);
     const stepPeriod = useCallback((dir: -1 | 1) => {
-        setPeriodOffset((o) => Math.min(0, o + dir)); // never past the current period
-    }, []);
+        if (sliding.current || periodOffset + dir > 0) return; // never past the current period
+        sliding.current = true;
+        Animated.parallel([
+            Animated.timing(slideX, { toValue: -dir * 70, duration: 130, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(slideOpacity, { toValue: 0, duration: 130, useNativeDriver: true }),
+        ]).start(() => {
+            setPeriodOffset((o) => Math.min(0, o + dir));
+            slideX.setValue(dir * 70);
+            Animated.parallel([
+                Animated.timing(slideX, { toValue: 0, duration: 220, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+                Animated.timing(slideOpacity, { toValue: 1, duration: 220, useNativeDriver: true }),
+            ]).start(() => { sliding.current = false; });
+        });
+    }, [periodOffset, slideX, slideOpacity]);
 
     const prevRange = useMemo(() => {
         const s = new Date(range.start); s.setFullYear(s.getFullYear() - 1);
@@ -490,6 +506,7 @@ export default function ReportingScreen() {
                             </View>
                         )}
 
+                        <Animated.View style={{ gap: 14, opacity: slideOpacity, transform: [{ translateX: slideX }] }}>
                         {isError && !!data && <OfflineNotice style={{ marginHorizontal: 0 }} />}
                         {isError && !data && (
                             <View style={styles.errorCard}>
@@ -632,6 +649,7 @@ export default function ReportingScreen() {
                                 <Text style={styles.emptyText}>No activity in this period.</Text>
                             </View>
                         )}
+                        </Animated.View>
                     </>
             </AnimatedTabContent>
 
