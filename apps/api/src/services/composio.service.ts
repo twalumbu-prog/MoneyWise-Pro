@@ -30,7 +30,9 @@ export const isComposioConfigured = () => !!process.env.COMPOSIO_API_KEY;
 
 const FIRST_SYNC_DAYS = 7;
 const MAX_EMAILS_PER_PAGE = 50;
-const MAX_EMAIL_PAGES = 3;
+const MAX_EMAIL_PAGES = 5;
+/** A backfill that ran out of time/pages resumes from this cursor (kept in last_history_id): PT:<sinceSec>:<startedMs>:<pageToken>. */
+const CURSOR = /^PT:(\d+):(\d+):(.+)$/;
 const BODY_CAP = 20_000;
 const SKIP_LABELS = ['SPAM', 'TRASH', 'DRAFT'];
 const syncEveryMs = () => Math.max(1, Number(process.env.COMPOSIO_SYNC_MINUTES) || 10) * 60_000;
@@ -211,18 +213,26 @@ async function syncEmail(conn: any, deadline: number): Promise<ComposioSyncResul
     const result: ComposioSyncResult = { connectionId: conn.id, kind: 'email', fetched: 0, stored: 0, classified: 0 };
     try {
         if (!conn.composio_account_id) throw new Error('Composio connection is missing; reconnect it.');
-        const since = conn.last_synced_at ? Date.parse(conn.last_synced_at) - 3_600_000 : Date.now() - FIRST_SYNC_DAYS * 86_400_000;
-        let pageToken: string | null = null;
 
-        for (let page = 0; page < MAX_EMAIL_PAGES && Date.now() < deadline - 2_000; page++) {
+        // Resume an unfinished backfill (same query window + page token), else start a new window.
+        const resume = CURSOR.exec(conn.last_history_id ?? '');
+        const startedMs = resume ? Number(resume[2]) : Date.now();
+        const sinceSec = resume ? Number(resume[1])
+            : Math.floor((conn.last_synced_at ? Date.parse(conn.last_synced_at) - 3_600_000 : Date.now() - FIRST_SYNC_DAYS * 86_400_000) / 1000);
+        let pageToken: string | null = resume ? resume[3] : null;
+        const fresh: { id: string; organization_id: string }[] = [];
+
+        // Phase 1 — fetch and STORE everything (bulk writes, no AI), so running out of time never loses mail.
+        for (let page = 0; page < MAX_EMAIL_PAGES && Date.now() < deadline - 3_000; page++) {
             const data = await runTool(conn.organization_id, 'GMAIL_FETCH_EMAILS', conn.composio_account_id, {
                 user_id: 'me',
-                query: `after:${Math.floor(since / 1000)} -in:spam -in:trash -in:drafts`,
+                query: `after:${sinceSec} -in:spam -in:trash -in:drafts`,
                 max_results: MAX_EMAILS_PER_PAGE, include_payload: true, verbose: true,
                 ...(pageToken ? { page_token: pageToken } : {}),
             });
             const { messages, nextPageToken } = gmailPage(data);
 
+            const rows: any[] = [];
             for (const raw of messages) {
                 const id = String(raw.messageId ?? raw.id ?? '');
                 if (!id) continue;
@@ -239,26 +249,40 @@ async function syncEmail(conn: any, deadline: number): Promise<ComposioSyncResul
                         size: Number(a.size ?? 0), attachment_id: a.attachmentId ?? a.attachment_id ?? null,
                     }));
                 const subject = raw.subject ? String(raw.subject) : null;
-
-                const { data: ins, error } = await supabase.from('inbound_emails').upsert({
+                rows.push({
                     organization_id: conn.organization_id, connection_id: conn.id, provider_message_id: id,
                     thread_id: raw.threadId ? String(raw.threadId) : null,
                     from_address: raw.sender ?? raw.from ?? null, to_address: raw.to ?? null, subject,
-                    snippet: raw.snippet ? String(raw.snippet) : null, body_text: text || null,
+                    snippet: raw.snippet ? String(raw.snippet) : raw.preview ? String(raw.preview) : null, body_text: text || null,
                     received_at: parseTimestamp(raw.messageTimestamp ?? raw.internalDate ?? raw.date).toISOString(),
                     has_attachments: attachments.length > 0, attachments,
                     prefilter_passed: passesPrefilter(subject, text, attachments),
-                }, { onConflict: 'connection_id,provider_message_id', ignoreDuplicates: true }).select('id, prefilter_passed');
+                });
+            }
+            if (rows.length) {
+                // ignoreDuplicates: only rows we did not already have come back.
+                const { data: ins, error } = await supabase.from('inbound_emails')
+                    .upsert(rows, { onConflict: 'connection_id,provider_message_id', ignoreDuplicates: true }).select('id, prefilter_passed');
                 if (error) throw new Error(`store failed: ${error.message}`);
-                const stored = ins?.[0];
-                if (!stored) continue; // already had it
-                result.stored++;
-                if (stored.prefilter_passed && Date.now() < deadline - 3_000 && await classifyEmail(stored.id, conn.organization_id)) result.classified++;
+                for (const r of ins ?? []) {
+                    result.stored++;
+                    if (r.prefilter_passed) fresh.push({ id: r.id, organization_id: conn.organization_id });
+                }
             }
             pageToken = nextPageToken;
             if (!pageToken) break;
         }
-        await supabase.from('email_connections').update({ last_synced_at: new Date().toISOString(), last_error: null }).eq('id', conn.id);
+
+        // Done only when Gmail has no further page. Otherwise remember where to resume and keep the old sync time.
+        await supabase.from('email_connections').update(pageToken
+            ? { last_history_id: `PT:${sinceSec}:${startedMs}:${pageToken}`, last_error: null }
+            : { last_history_id: null, last_synced_at: new Date(startedMs).toISOString(), last_error: null }).eq('id', conn.id);
+
+        // Phase 2 — classify what is new while time allows; the rest is picked up by classifyBacklog().
+        for (const f of fresh) {
+            if (Date.now() > deadline - 3_000) break;
+            if (await classifyEmail(f.id, f.organization_id)) result.classified++;
+        }
     } catch (e) {
         result.error = reason(e);
         await markFailure('email_connections', conn.id, result.error);
@@ -322,8 +346,34 @@ async function syncSocial(conn: any, deadline: number): Promise<ComposioSyncResu
     return result;
 }
 
+/**
+ * Mail / messages that were stored but not classified before an earlier run's time ran out (the direct Gmail sync does the
+ * same for its own mail, but only when Google is configured — Quick connect must not depend on that).
+ */
+async function classifyBacklog(deadline: number): Promise<number> {
+    let done = 0;
+    if (Date.now() < deadline - 3_000) {
+        const { data: mails } = await supabase.from('inbound_emails').select('id, organization_id')
+            .eq('prefilter_passed', true).is('classified_at', null).order('created_at', { ascending: true }).limit(10);
+        for (const m of mails ?? []) {
+            if (Date.now() > deadline - 3_000) break;
+            if (await classifyEmail(m.id, m.organization_id)) done++;
+        }
+    }
+    if (Date.now() < deadline - 3_000) {
+        const { data: msgs } = await supabase.from('messaging_messages').select('id, organization_id')
+            .eq('direction', 'IN').is('classified_at', null).not('body', 'is', null).order('created_at', { ascending: true }).limit(10);
+        for (const m of msgs ?? []) {
+            if (Date.now() > deadline - 2_000) break;
+            await classifyMessage(m.id, m.organization_id);
+            done++;
+        }
+    }
+    return done;
+}
+
 /** One cron tick: the longest-unsynced COMPOSIO connections (mail and messages together) that are due, within budgetMs. */
-export async function syncAllComposio(budgetMs = 15_000): Promise<{ connections: ComposioSyncResult[] }> {
+export async function syncAllComposio(budgetMs = 15_000): Promise<{ connections: ComposioSyncResult[]; backlogClassified: number }> {
     const deadline = Date.now() + budgetMs;
     const dueBefore = new Date(Date.now() - syncEveryMs()).toISOString();
     const due = (q: any) => q.eq('status', 'ACTIVE').eq('auth_mode', 'COMPOSIO')
@@ -344,5 +394,6 @@ export async function syncAllComposio(budgetMs = 15_000): Promise<{ connections:
         if (Date.now() > deadline - 2_000) break;
         connections.push(kind === 'email' ? await syncEmail(c, deadline) : await syncSocial(c, deadline));
     }
-    return { connections };
+    const backlogClassified = await classifyBacklog(deadline);
+    return { connections, backlogClassified };
 }

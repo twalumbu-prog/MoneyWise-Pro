@@ -73,13 +73,13 @@ export const gmailSyncCron = async (req: Request, res: Response) => {
         // One tick serves both connection modes: direct Google first (cheap, own tokens), Composio gets the rest of the budget.
         const started = Date.now();
         const r = direct ? await syncAllGmail(quick ? 7_000 : 15_000) : { connections: [], backlogClassified: 0 };
-        const q = quick ? await syncAllComposio(Math.max(5_000, 15_000 - (Date.now() - started))) : { connections: [] };
+        const q = quick ? await syncAllComposio(Math.max(5_000, 15_000 - (Date.now() - started))) : { connections: [], backlogClassified: 0 };
         const all = [...r.connections, ...q.connections];
         res.json({
             connections: all.length,
             composio: q.connections.length,
             stored: all.reduce((s, c) => s + c.stored, 0),
-            classified: all.reduce((s, c) => s + c.classified, 0) + r.backlogClassified,
+            classified: all.reduce((s, c) => s + c.classified, 0) + r.backlogClassified + q.backlogClassified,
             errors: all.filter(c => c.error).map(c => ({ id: c.connectionId, error: c.error })),
         });
     } catch (e: any) {
