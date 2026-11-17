@@ -5,6 +5,7 @@ import { isPlatformSweepDebit, findUnclaimedMerchantRow } from '../services/ledg
 import { recordSyncFailure, claimDebitBooking, releaseDebitClaim, runGuardianCycle, guardianMode, runOrgGuardian } from '../services/ledgerGuardian/guardian.service';
 import { Request, Response } from 'express';
 import { LencoService, classifyLencoFailureReason } from '../services/lenco.service';
+import { trackFlow, failureTypeFromCode } from '../lib/moneyFlowTracking';
 import { isLencoAccountId, ensureValidLencoAccountId } from '../services/lencoAccountLink.service';
 import { emailService } from '../services/email.service';
 import { supabase } from '../lib/supabase';
@@ -325,6 +326,7 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
                 // customer and our own diagnostics can tell an insufficient-funds
                 // decline apart from an expired prompt, wrong PIN, etc.
                 const { code, message } = classifyLencoFailureReason(lencoStatus.reasonForFailure);
+                trackFlow('failed', { reference: String(reference), organizationId, failureType: failureTypeFromCode(code), errorCode: code });
                 console.log(`[Lenco Verify] Collection failed for ref ${reference}: reason="${lencoStatus.reasonForFailure || 'N/A'}" code=${code}`);
                 return res.json({
                     verified: false,
@@ -365,6 +367,10 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
                 if (!intents || intents.length === 0 || stale.length === intents.length) {
                     console.log(`[Lenco Verify] Reference ${reference} not found on Lenco and intents are stale. Cleaning up pending entries.`);
                     for (const i of stale) {
+                        trackFlow('failed', {
+                            reference: String(reference), organizationId, failureType: 'not_found_on_provider', errorCode: 'not_found',
+                            durationSeconds: Math.round((Date.now() - new Date(i.created_at).getTime()) / 1000),
+                        });
                         await supabase.from('cashbook_entries').delete().eq('id', i.id).eq('status', 'PENDING');
                     }
                     await supabase.from('product_sales').delete().eq('reference', reference).eq('status', 'PENDING');
@@ -479,6 +485,7 @@ export const longPollCollectionStatus = async (req: Request, res: Response) => {
 
             if (lencoStatus.status === 'failed') {
                 const { code, message } = classifyLencoFailureReason(lencoStatus.reasonForFailure);
+                trackFlow('failed', { reference: String(reference), organizationId, failureType: failureTypeFromCode(code), errorCode: code });
                 console.log(`[LongPoll] ${reference} failed: ${lencoStatus.reasonForFailure || 'unknown'}`);
                 return res.json({
                     verified: false,
@@ -1481,6 +1488,10 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
         }
 
         captureEvent(`${feature}_intent_logged`, { ...analyticsBase, status: 'succeeded' });
+        trackFlow('started', {
+            reference, organizationId: wallet.organization_id, userId: (req as any).user?.id,
+            flow: paymentLinkToken ? 'payment_link' : allowPastBooking ? 'pos_sale' : undefined,
+        });
         res.json({ message: 'Intent logged successfully' });
     } catch (error: any) {
         console.error('[Lenco Public Intent] Error:', error);
@@ -1639,6 +1650,12 @@ export const initiatePublicMobileMoneyCollection = async (req: Request, res: Res
         return res.json({ success: true, data: collection });
     } catch (error: any) {
         console.error('[Lenco Public Collection] Initiate error:', error.message);
+        const upstream = Number(error?.upstreamStatus);
+        trackFlow('failed', {
+            reference: String(req.body?.reference || ''),
+            failureType: upstream >= 400 && upstream < 500 ? 'declined' : 'system_error',
+            errorCode: upstream ? `lenco_${upstream}` : 'initiate_failed',
+        });
         return res.status(500).json({ error: error.message || 'Failed to initiate mobile money collection' });
     }
 };
@@ -1702,6 +1719,7 @@ export const cancelPublicCollectionIntent = async (req: Request, res: Response) 
             return res.status(400).json({ error: 'reference is required' });
         }
 
+        trackFlow('failed', { reference: String(reference), failureType: 'customer_cancelled', errorCode: 'cancelled_by_customer' });
         captureEvent('payment_collection_cancelled_by_customer', {
             feature: 'payment_collection', workflow_id: reference, organization_id: 'unknown', user_id: 'anonymous',
         });
@@ -1907,6 +1925,7 @@ export const initiateQuickLinkIntent = async (req: Request, res: Response) => {
             console.error('[Lenco Quick Link] Failed to log purpose tracking row:', trackingError);
         }
 
+        trackFlow('started', { reference, organizationId: wallet.organization_id, flow: 'quick_pay' });
         captureEvent('quick_link_intent_logged', {
             feature: 'quick_link_checkout', workflow_id: reference, organization_id: wallet.organization_id,
             user_id: 'anonymous', status: 'succeeded', amount: Number(amount),
@@ -3457,6 +3476,14 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
                         (definitiveNotFound || colStatus === 'failed' || colStatus === 'expired' || colStatus === 'cancelled') &&
                         (Date.now() - new Date(intent.created_at).getTime()) > JANITOR_DELETE_AGE_MS
                     ) {
+                        // Authoritative dropped/declined attempt: Lenco says it never completed and it is long past
+                        // its window. Emitted here (not from the client) so it counts even if the payer just left.
+                        trackFlow('failed', {
+                            reference: intentRef, organizationId: orgId,
+                            failureType: definitiveNotFound ? 'not_found_on_provider' : colStatus === 'expired' ? 'expired' : colStatus === 'cancelled' ? 'customer_cancelled' : 'declined',
+                            errorCode: definitiveNotFound ? 'not_found' : String(colStatus),
+                            durationSeconds: Math.round((Date.now() - new Date(intent.created_at).getTime()) / 1000),
+                        });
                         await supabase.from('cashbook_entries').delete().eq('id', intent.id).eq('status', 'PENDING');
                         await supabase
                             .from('product_sales')

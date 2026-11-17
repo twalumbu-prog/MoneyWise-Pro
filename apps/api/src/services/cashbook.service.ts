@@ -8,6 +8,7 @@ import { withTiming } from '../utils/analytics';
 import { emailService } from './email.service';
 import { pushService } from './push.service';
 import { recordUsage } from './usage.service';
+import { trackFlow, trackPayoutCompleted } from '../lib/moneyFlowTracking';
 
 // Fire-and-forget: never let a notification failure affect the ledger write.
 const notifyInflowAsync = (organizationId: string, entry: any) => {
@@ -471,6 +472,17 @@ export const cashbookService = {
             return current || intent;
         }
 
+        // Money-flow telemetry: this is the one place every confirmed customer/user collection passes through
+        // (webhook, verify-status and the sync janitor), so the time from the attempt starting (the pending
+        // intent's creation) to now is recorded exactly once. Internal pre-classified credits (sweeps) are not attempts.
+        if (!opts.account_id) {
+            trackFlow('completed', {
+                reference: opts.externalReference,
+                organizationId,
+                durationSeconds: Math.max(0, Math.round((Date.now() - new Date(intent.created_at).getTime()) / 100) / 10),
+            });
+        }
+
         // Recalculate from the earlier of the old/new ledger position.
         const recalcDate = newDate < intent.date ? newDate : intent.date;
         await this.recalculateBalancesFrom(
@@ -588,6 +600,9 @@ export const cashbookService = {
             console.error(`[Ledger Finalization] Disbursement record not found for requisition ${requisitionId}`);
             return;
         }
+
+        // Money-flow telemetry: every confirmed Lenco payout (webhook, verify, deferred poll, immediate) lands here.
+        trackPayoutCompleted(disbursement);
 
         // Determine fee: Use actualFee if provided, else calculate estimate based on the NET amount.
         // We use the requisition's estimated_total because it represents the amount the user 

@@ -190,6 +190,9 @@ const config: ExpoConfig = {
         supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '',
         webOrigin: WEB_ORIGIN,
         // iCloud link to the "MoneyWise MoMo Capture" shortcut (see docs/momo-capture.md). Empty until it's published.
+        // PostHog (usage analytics). Unset → analytics are simply off. Public project key, safe to ship in the app.
+        posthogKey: process.env.EXPO_PUBLIC_POSTHOG_KEY ?? '',
+        posthogHost: process.env.EXPO_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com',
         momoShortcutUrl: process.env.EXPO_PUBLIC_MOMO_SHORTCUT_URL ?? '',
         eas: { projectId: 'd844c494-6997-4b34-aad1-194ddb3e6362' },
     },
