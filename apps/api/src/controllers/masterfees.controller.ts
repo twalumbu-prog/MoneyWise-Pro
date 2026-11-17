@@ -14,6 +14,8 @@ import {
     applyPaymentDateCorrections,
     reconcileMasterfees,
     syncStudentsToCrm,
+    syncStudentsToCrmIfDue,
+    isStudentSyncDue,
     purgeMasterFeesData,
     MasterFeesConfig,
 } from '../services/masterfees.service';
@@ -542,8 +544,18 @@ export const syncAllMasterFees = async (req: Request, res: Response) => {
         // Fast-path early exit: if no organizations are currently due for sync per
         // adaptive backoff, return immediately in <50ms without initializing heavy clients.
         const dueRows = (rows || []).filter(row => isMasterFeesSyncDue((row.config || {}) as MasterFeesConfig));
+        // Student→CRM mirror: independent of the payment back-off (an idle school can still enrol
+        // students). At most 2 stale orgs per tick, only while budget remains.
+        const students: any[] = [];
+        const runStudentMirror = async () => {
+            for (const row of (rows || []).filter(r => isStudentSyncDue((r.config || {}) as MasterFeesConfig)).slice(0, 2)) {
+                if (Date.now() - START > GLOBAL_BUDGET_MS - 8_000) break;
+                students.push({ organizationId: row.organization_id, ...(await syncStudentsToCrmIfDue(row.organization_id, (row.config || {}) as MasterFeesConfig)) });
+            }
+        };
         if (dueRows.length === 0) {
-            return res.json({ success: true, processed: 0, skippedNotDue: rows?.length || 0, results: [] });
+            await runStudentMirror();
+            return res.json({ success: true, processed: 0, skippedNotDue: rows?.length || 0, results: [], students });
         }
 
         const results: any[] = [];
@@ -587,7 +599,8 @@ export const syncAllMasterFees = async (req: Request, res: Response) => {
                 results.push({ organizationId: row.organization_id, success: false, error: err.message });
             }
         }
-        res.json({ success: true, processed: results.length, skippedNotDue, results });
+        await runStudentMirror();
+        res.json({ success: true, processed: results.length, skippedNotDue, results, students });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }
