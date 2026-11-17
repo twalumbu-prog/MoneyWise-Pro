@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-    ChevronDown, ChevronRight, Filter, ArrowUpDown, Check, Settings, Share2,
+    ChevronDown, ChevronLeft, ChevronRight, Filter, ArrowUpDown, Check, Settings, Share2, Sprout,
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -101,30 +101,42 @@ const PERIOD_LABELS: Record<ReportPeriod, string> = {
 };
 const PERIOD_ORDER: ReportPeriod[] = ['week', 'month', 'quarter', 'year', 'ytd', 'custom'];
 
-/** Date span for a preset period (weeks start on Monday; "Year to date" runs to today, "This year" to 31 Dec). */
-function periodRange(period: Exclude<ReportPeriod, 'custom'> | ReportPeriod) {
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const shortDate = (d: Date) => `${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)}`;
+
+/**
+ * Date span for a preset period, `offset` periods back from the current one (0 = current, -1 = previous, …).
+ * Weeks start on Monday; "Year to date" runs Jan 1 → today (or the same day in earlier years); "This year" → 31 Dec.
+ * `title` says which period is being viewed (e.g. "November 2026", "Q4 2026").
+ */
+function periodRange(period: ReportPeriod, offset = 0) {
     const now = new Date();
     const y = now.getFullYear();
-    let start: Date, end: Date;
+    let start: Date, end: Date, title: string;
     if (period === 'week') {
-        const back = (now.getDay() + 6) % 7;
+        const back = (now.getDay() + 6) % 7 - 7 * offset;
         start = new Date(y, now.getMonth(), now.getDate() - back);
         end = new Date(y, now.getMonth(), now.getDate() - back + 6);
+        title = `${shortDate(start)} – ${shortDate(end)} ${end.getFullYear()}`;
     } else if (period === 'month') {
-        start = new Date(y, now.getMonth(), 1);
-        end = new Date(y, now.getMonth() + 1, 0);
+        start = new Date(y, now.getMonth() + offset, 1);
+        end = new Date(y, now.getMonth() + offset + 1, 0);
+        title = `${MONTHS[start.getMonth()]} ${start.getFullYear()}`;
     } else if (period === 'quarter') {
-        const q = Math.floor(now.getMonth() / 3) * 3;
+        const q = Math.floor(now.getMonth() / 3) * 3 + 3 * offset;
         start = new Date(y, q, 1);
         end = new Date(y, q + 3, 0);
+        title = `Q${Math.floor(start.getMonth() / 3) + 1} ${start.getFullYear()}`;
     } else if (period === 'year') {
-        start = new Date(y, 0, 1);
-        end = new Date(y, 11, 31);
+        start = new Date(y + offset, 0, 1);
+        end = new Date(y + offset, 11, 31);
+        title = `${y + offset}`;
     } else {
-        start = new Date(y, 0, 1);
-        end = now;
+        start = new Date(y + offset, 0, 1);
+        end = new Date(y + offset, now.getMonth(), now.getDate());
+        title = offset === 0 ? `Year to date ${y}` : `Jan 1 – ${shortDate(end)} ${y + offset}`;
     }
-    return { start: toLocalISODate(start), end: toLocalISODate(end), label: PERIOD_LABELS[period] };
+    return { start: toLocalISODate(start), end: toLocalISODate(end), label: PERIOD_LABELS[period], title };
 }
 
 function currentMonthRange() {
@@ -177,6 +189,9 @@ export default function ReportingScreen() {
     // Custom Date Range Filter
     const [customFilter, setCustomFilter] = useState<{ start: string; end: string } | null>(null);
     const [period, setPeriod] = useState<ReportPeriod>('ytd');
+    const [periodOffset, setPeriodOffset] = useState(0); // 0 = current period, -1 = the one before, …
+    const swipeIgnore = useRef(false); // set by the highlights carousel so its own horizontal swipes don't change the period
+    const swipe = useRef<{ x: number; y: number; ignore: boolean } | null>(null);
     const [isPeriodMenuOpen, setIsPeriodMenuOpen] = useState(false);
     const [periodMenuTop, setPeriodMenuTop] = useState(0);
     const periodBtnRef = useRef<View>(null);
@@ -194,8 +209,12 @@ export default function ReportingScreen() {
 
     const range = useMemo(() => {
         if (period === 'custom' && customFilter) return { start: customFilter.start, end: customFilter.end, label: `${customFilter.start} – ${customFilter.end}` };
-        return periodRange(period);
-    }, [period, customFilter]);
+        return periodRange(period, period === 'custom' ? 0 : periodOffset);
+    }, [period, periodOffset, customFilter]);
+    const canStep = period !== 'custom';
+    const stepPeriod = useCallback((dir: -1 | 1) => {
+        setPeriodOffset((o) => Math.min(0, o + dir)); // never past the current period
+    }, []);
 
     const prevRange = useMemo(() => {
         const s = new Date(range.start); s.setFullYear(s.getFullYear() - 1);
@@ -329,6 +348,13 @@ export default function ReportingScreen() {
     return (
         <ScrollView
             style={styles.root}
+            onTouchStart={(e) => { swipe.current = { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY, ignore: swipeIgnore.current }; swipeIgnore.current = false; }}
+            onTouchEnd={(e) => {
+                const s0 = swipe.current; swipe.current = null;
+                if (!s0 || s0.ignore || !canStep) return;
+                const dx = e.nativeEvent.pageX - s0.x, dy = e.nativeEvent.pageY - s0.y;
+                if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 2) stepPeriod(dx > 0 ? -1 : 1);
+            }}
             contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 12 }]}
             refreshControl={
                 <RefreshControl refreshing={refreshing || isRefetching} onRefresh={onRefresh} tintColor={colors.blue} />
@@ -394,10 +420,20 @@ export default function ReportingScreen() {
                                     <Text style={styles.heroValue}>{formatKwacha(headline)}</Text>
                                 )}
                             </Pressable>
+                            <Pressable
+                                style={({ pressed }) => [styles.growBtn, pressed && { opacity: 0.8 }]}
+                                onPress={() => router.push('/grow')}
+                                hitSlop={8}
+                                accessibilityRole="button"
+                                accessibilityLabel="Grow — plan your net worth"
+                            >
+                                <Sprout size={15} color="#4ADE80" />
+                                <Text style={styles.growText}>Grow</Text>
+                            </Pressable>
                         </LinearGradient>
 
                         {/* Financial Highlights Stack */}
-                        <FinancialHighlights />
+                        <View onTouchStart={() => { swipeIgnore.current = true; }}><FinancialHighlights /></View>
 
                         {/* Toolbar: Date Range Label + Sort & Filter Buttons */}
                         <View style={styles.toolbar}>
@@ -435,6 +471,24 @@ export default function ReportingScreen() {
                                 </Pressable>
                             </View>
                         </View>
+
+                        {canStep && (
+                            <View style={styles.stepRow}>
+                                <Pressable onPress={() => stepPeriod(-1)} style={styles.stepBtn} hitSlop={8} accessibilityLabel="Previous period">
+                                    <ChevronLeft size={18} color={colors.text} />
+                                </Pressable>
+                                <Text style={styles.stepTitle} numberOfLines={1}>{(range as any).title}</Text>
+                                <Pressable
+                                    onPress={() => stepPeriod(1)}
+                                    disabled={periodOffset >= 0}
+                                    style={[styles.stepBtn, periodOffset >= 0 && { opacity: 0.3 }]}
+                                    hitSlop={8}
+                                    accessibilityLabel="Next period"
+                                >
+                                    <ChevronRight size={18} color={colors.text} />
+                                </Pressable>
+                            </View>
+                        )}
 
                         {isError && !!data && <OfflineNotice style={{ marginHorizontal: 0 }} />}
                         {isError && !data && (
@@ -600,6 +654,7 @@ export default function ReportingScreen() {
                                                 setIsDateFilterOpen(true);
                                             } else {
                                                 setPeriod(key);
+                                                setPeriodOffset(0);
                                             }
                                         }}
                                     >
@@ -727,13 +782,22 @@ const styles = StyleSheet.create({
     segmentText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.textMuted },
     segmentTextActive: { color: colors.text },
     hero: { borderRadius: 18, padding: 20, minHeight: 100, overflow: 'hidden' },
-    heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    heroTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    growBtn: {
+        position: 'absolute', top: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 6,
+        paddingHorizontal: 14, height: 34, borderRadius: 17,
+        backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
+    },
+    growText: { fontFamily: fonts.bodyBold, fontSize: 13, color: '#FFFFFF' },
     heroLabel: { fontFamily: fonts.bodyBold, fontSize: 11, color: '#94A3B8', letterSpacing: 0.8 },
     heroValue: { fontFamily: fonts.bodyBold, fontSize: 32, color: '#FFFFFF', marginTop: 6 },
     heroChevronWrap: {
         width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(255, 255, 255, 0.15)',
         alignItems: 'center', justifyContent: 'center',
     },
+    stepRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    stepBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
+    stepTitle: { flex: 1, textAlign: 'center', fontFamily: fonts.bodyBold, fontSize: 15, color: colors.navy },
     toolbar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 },
     periodBtn: {
         flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14,
