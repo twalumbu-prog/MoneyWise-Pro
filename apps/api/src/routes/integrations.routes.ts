@@ -4,6 +4,7 @@ import {
     connectQuickBooks,
     quickBooksCallback,
     getIntegrationStatus,
+    getIntegrationsOverview,
     getQuickBooksAccounts,
     getQuickBooksAccountTransactions,
     getQuickBooksInvoices,
@@ -64,6 +65,7 @@ router.delete('/quickbooks', requireAuth, disconnectQuickBooks);
 
 // Status and Data
 router.get('/status', requireAuth, getIntegrationStatus);
+router.get('/overview', requireAuth, getIntegrationsOverview);
 router.get('/quickbooks/accounts', requireAuth, getQuickBooksAccounts);
 router.get('/quickbooks/accounts/:qbAccountId/transactions', requireAuth, getQuickBooksAccountTransactions);
 router.get('/quickbooks/invoices', requireAuth, getQuickBooksInvoices);

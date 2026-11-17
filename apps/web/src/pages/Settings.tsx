@@ -21,7 +21,8 @@ import {
     User,
     CreditCard,
     Code2,
-    Landmark
+    Landmark,
+    CheckCircle2
 } from 'lucide-react';
 import { GeneralSettings } from '../components/settings/GeneralSettings';
 import { UserManagement } from '../components/settings/UserManagement';
@@ -30,6 +31,18 @@ import { MyProfileSettings } from '../components/settings/MyProfileSettings';
 import { SubscriptionBilling } from '../components/settings/SubscriptionBilling';
 import { Layout } from '../components/Layout';
 import { ImportPanel, VatSettingsPanel } from '../components/accounting/AccountingParts';
+
+/** Which integrations this organisation has connected — drives the "Connected" label on the cards. */
+interface IntegrationsOverview {
+    quickbooks: boolean; sage: boolean; masterfees: boolean; lenco: boolean; gmail: boolean; meta: boolean;
+    messaging: { whatsapp: boolean; facebook: boolean; instagram: boolean };
+}
+
+const ConnectedBadge: React.FC = () => (
+    <span className="absolute top-4 right-4 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
+        <CheckCircle2 className="h-3.5 w-3.5" /> Connected
+    </span>
+);
 
 export const Settings: React.FC = () => {
     const [searchParams, setSearchParams] = useSearchParams();
@@ -43,10 +56,25 @@ export const Settings: React.FC = () => {
         staleTime: 5 * 60_000,
     });
 
+    const { data: overview, refetch: refetchOverview } = useQuery({
+        queryKey: ['integrations-overview'],
+        queryFn: () => apiJson<IntegrationsOverview>('/integrations/overview'),
+        retry: false,
+        staleTime: 60_000,
+    });
+
     const [activeIntegration, setActiveIntegration] = useState<'quickbooks' | 'sage' | 'lenco' | 'masterfees' | 'meta' | 'gmail' | 'lipila' | null>(null);
     // Card payments through Lipila are switched on business by business, so the card only shows for those that have it.
-    const lipilaAvailable = useQuery({ queryKey: ['lipila', 'available'], queryFn: () => apiJson<{ available?: boolean }>('/lipila/settings'), staleTime: 300_000, retry: false });
+    const lipilaAvailable = useQuery({ queryKey: ['lipila', 'available'], queryFn: () => apiJson<{ available?: boolean; configured?: boolean }>('/lipila/settings'), staleTime: 300_000, retry: false });
     const [integrationError, setIntegrationError] = useState<string | null>(null);
+
+    // Back on the grid (they may just have connected something inside a card): refresh the "Connected" labels.
+    useEffect(() => {
+        if (activeTab === 'integrations' && !activeIntegration) {
+            refetchOverview();
+            lipilaAvailable.refetch();
+        }
+    }, [activeTab, activeIntegration]);
 
     useEffect(() => {
         // Handle QuickBooks OAuth callback params (?status=success|error)
@@ -173,8 +201,9 @@ export const Settings: React.FC = () => {
                                                         {/* QuickBooks Card */}
                                                         <button
                                                             onClick={() => setActiveIntegration('quickbooks')}
-                                                            className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-green/30 transition-all text-left group"
+                                                            className="relative flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-green/30 transition-all text-left group"
                                                         >
+                                                            {overview?.quickbooks && <ConnectedBadge />}
                                                             <IntegrationLogo name="quickbooks" className="mb-4 group-hover:scale-105 transition-transform" />
                                                             <h4 className="text-base font-bold text-gray-900 mb-1">QuickBooks Online</h4>
                                                             <p className="text-sm text-gray-500">Sync expenses and chart of accounts</p>
@@ -183,8 +212,9 @@ export const Settings: React.FC = () => {
                                                         {/* Sage Card */}
                                                         <button
                                                             onClick={() => setActiveIntegration('sage')}
-                                                            className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-green/30 transition-all text-left group"
+                                                            className="relative flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-green/30 transition-all text-left group"
                                                         >
+                                                            {overview?.sage && <ConnectedBadge />}
                                                             <IntegrationLogo name="sage" className="mb-4 group-hover:scale-105 transition-transform" />
                                                             <h4 className="text-base font-bold text-gray-900 mb-1">Sage Accounting</h4>
                                                             <p className="text-sm text-gray-500">Post journals to Sage Business Cloud (Pastel Online)</p>
@@ -193,8 +223,9 @@ export const Settings: React.FC = () => {
                                                         {/* Lenco Card */}
                                                         <button
                                                             onClick={() => setActiveIntegration('lenco')}
-                                                            className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-pink/30 transition-all text-left group"
+                                                            className="relative flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-pink/30 transition-all text-left group"
                                                         >
+                                                            {overview?.lenco && <ConnectedBadge />}
                                                             <IntegrationLogo name="lenco" wide className="mb-4 group-hover:scale-105 transition-transform" />
                                                             <h4 className="text-base font-bold text-gray-900 mb-1">Lenco Banking</h4>
                                                             <p className="text-sm text-gray-500">Manage corporate wallets and transfers</p>
@@ -203,8 +234,9 @@ export const Settings: React.FC = () => {
                                                         {/* Master Fees Card */}
                                                         <button
                                                             onClick={() => setActiveIntegration('masterfees')}
-                                                            className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-navy/30 transition-all text-left group"
+                                                            className="relative flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-navy/30 transition-all text-left group"
                                                         >
+                                                            {overview?.masterfees && <ConnectedBadge />}
                                                             <IntegrationLogo name="masterfees" className="mb-4 group-hover:scale-105 transition-transform" />
                                                             <h4 className="text-base font-bold text-gray-900 mb-1">Master Fees</h4>
                                                             <p className="text-sm text-gray-500">Sync school invoices, fee revenue &amp; receivables</p>
@@ -212,8 +244,9 @@ export const Settings: React.FC = () => {
                                                         {/* Messaging (Meta) Card */}
                                                         <button
                                                             onClick={() => setActiveIntegration('meta')}
-                                                            className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-navy/30 transition-all text-left group"
+                                                            className="relative flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-navy/30 transition-all text-left group"
                                                         >
+                                                            {overview?.meta && <ConnectedBadge />}
                                                             <div className="flex -space-x-2 mb-4">
                                                                 <IntegrationLogo name="whatsapp" className="group-hover:scale-105 transition-transform" />
                                                                 <IntegrationLogo name="facebook" className="group-hover:scale-105 transition-transform" />
@@ -226,8 +259,9 @@ export const Settings: React.FC = () => {
                                                         {lipilaAvailable.data?.available && (
                                                             <button
                                                                 onClick={() => setActiveIntegration('lipila')}
-                                                                className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-navy/30 transition-all text-left group"
+                                                                className="relative flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-navy/30 transition-all text-left group"
                                                             >
+                                                            {lipilaAvailable.data?.configured && <ConnectedBadge />}
                                                                 <div className="h-12 w-12 bg-[#0B57D0] rounded-xl flex items-center justify-center text-white mb-4 group-hover:scale-105 transition-transform shadow-sm">
                                                                     <CreditCard className="h-6 w-6" />
                                                                 </div>
@@ -238,8 +272,9 @@ export const Settings: React.FC = () => {
                                                         {/* Gmail Card */}
                                                         <button
                                                             onClick={() => setActiveIntegration('gmail')}
-                                                            className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-navy/30 transition-all text-left group"
+                                                            className="relative flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-navy/30 transition-all text-left group"
                                                         >
+                                                            {overview?.gmail && <ConnectedBadge />}
                                                             <GmailLogo className="mb-4 group-hover:scale-105 transition-transform" />
                                                             <h4 className="text-base font-bold text-gray-900 mb-1">Gmail</h4>
                                                             <p className="text-sm text-gray-500">Pick up receipts, invoices and payment emails</p>
