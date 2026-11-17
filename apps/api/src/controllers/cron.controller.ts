@@ -3,6 +3,7 @@ import { emailService } from '../services/email.service';
 import { refreshStale } from '../services/imports.service';
 import { pullLonghorn } from '../services/fundFeeds.service';
 import { healMissingPlatformFeesWithinBudget, runDailyBalanceCheck, checkUnlinkedLencoAccounts, RECON_TOLERANCE } from '../services/reconciliation.service';
+import { trackingHealth, assessTrackingHealth } from '../services/posthogQuery.service';
 import { autoCompleteRequisition, sendAutoCategorizationReminder } from './requisition.controller';
 
 /**
@@ -243,6 +244,39 @@ export const dailyReconCron = async (req: any, res: any) => {
         return res.json({ checked, skipped, differences: diffs.map(d => ({ name: d.name, difference: d.difference, unexplained: d.unexplained })), errors: errors.length, emailed: to.length > 0 });
     } catch (e: any) {
         console.error('[Cron] daily-recon failed:', e.message);
+        return res.status(500).json({ error: e.message });
+    }
+};
+
+/**
+ * Daily check that the usage / session / money-flow analytics are still arriving in PostHog (iOS, Android, web, API).
+ * Emails super-admins only when something is wrong; the snapshot always lands in app_settings.tracking_health_last.
+ */
+export const trackingHealthCron = async (req: any, res: any) => {
+    if (!isCronCall(req)) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+        const health = await trackingHealth();
+        const problems = assessTrackingHealth(health);
+        const ranAt = new Date().toISOString();
+        await supabase.from('app_settings').upsert({
+            key: 'tracking_health_last',
+            value: { ranAt, problems, rows: health.rows },
+            description: 'Latest daily PostHog tracking-health check',
+            updated_at: ranAt,
+        }, { onConflict: 'key' });
+
+        const to = String(process.env.SUPER_ADMIN_EMAILS || '').split(',').map(s => s.trim()).filter(Boolean);
+        const broken = problems.filter(p => p.severity === 'broken');
+        if (to.length > 0 && problems.length > 0) {
+            await emailService.sendEmail({
+                to,
+                subject: `${broken.length ? '⚠️' : 'ℹ️'} Tracking check: ${broken.length} broken, ${problems.length - broken.length} to watch`,
+                html: `<p>Daily check of the PostHog analytics (iOS, Android, web, API).</p><ul>${problems.map(p => `<li><b>${p.severity === 'broken' ? 'BROKEN' : 'Watch'}</b>: ${p.message}</li>`).join('')}</ul>`,
+            }).catch((e: any) => console.error('[Cron] tracking-health email failed:', e?.message));
+        }
+        return res.json({ ok: true, problems, emailed: to.length > 0 && problems.length > 0 });
+    } catch (e: any) {
+        console.error('[Cron] tracking-health failed:', e.message);
         return res.status(500).json({ error: e.message });
     }
 };
