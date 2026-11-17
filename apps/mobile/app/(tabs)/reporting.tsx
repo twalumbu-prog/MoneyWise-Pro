@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useRef, useState, useCallback } from 'react';
 import { TourTarget } from '../../src/components/walkthrough/TourTarget';
 import {
     View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator,
@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-    ChevronDown, ChevronRight, Filter, ArrowUpDown, CalendarDays, X, Check, Settings, Share2,
+    ChevronDown, ChevronRight, Filter, ArrowUpDown, Check, Settings, Share2,
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -95,6 +95,38 @@ const toLocalISODate = (d: Date) =>
  * fetching with the report's own range excludes the in-progress month, since
  * its end_date (the last day of the month) hasn't happened yet and fails a
  * "budget ends on/before <today>" filter on the backend. */
+type ReportPeriod = 'week' | 'month' | 'quarter' | 'year' | 'ytd' | 'custom';
+const PERIOD_LABELS: Record<ReportPeriod, string> = {
+    week: 'This week', month: 'This month', quarter: 'This quarter', year: 'This year', ytd: 'Year to date', custom: 'Custom',
+};
+const PERIOD_ORDER: ReportPeriod[] = ['week', 'month', 'quarter', 'year', 'ytd', 'custom'];
+
+/** Date span for a preset period (weeks start on Monday; "Year to date" runs to today, "This year" to 31 Dec). */
+function periodRange(period: Exclude<ReportPeriod, 'custom'> | ReportPeriod) {
+    const now = new Date();
+    const y = now.getFullYear();
+    let start: Date, end: Date;
+    if (period === 'week') {
+        const back = (now.getDay() + 6) % 7;
+        start = new Date(y, now.getMonth(), now.getDate() - back);
+        end = new Date(y, now.getMonth(), now.getDate() - back + 6);
+    } else if (period === 'month') {
+        start = new Date(y, now.getMonth(), 1);
+        end = new Date(y, now.getMonth() + 1, 0);
+    } else if (period === 'quarter') {
+        const q = Math.floor(now.getMonth() / 3) * 3;
+        start = new Date(y, q, 1);
+        end = new Date(y, q + 3, 0);
+    } else if (period === 'year') {
+        start = new Date(y, 0, 1);
+        end = new Date(y, 11, 31);
+    } else {
+        start = new Date(y, 0, 1);
+        end = now;
+    }
+    return { start: toLocalISODate(start), end: toLocalISODate(end), label: PERIOD_LABELS[period] };
+}
+
 function currentMonthRange() {
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -144,6 +176,10 @@ export default function ReportingScreen() {
 
     // Custom Date Range Filter
     const [customFilter, setCustomFilter] = useState<{ start: string; end: string } | null>(null);
+    const [period, setPeriod] = useState<ReportPeriod>('ytd');
+    const [isPeriodMenuOpen, setIsPeriodMenuOpen] = useState(false);
+    const [periodMenuTop, setPeriodMenuTop] = useState(0);
+    const periodBtnRef = useRef<View>(null);
     const [isDateFilterOpen, setIsDateFilterOpen] = useState(false);
     const [filterStartInput, setFilterStartInput] = useState('');
     const [filterEndInput, setFilterEndInput] = useState('');
@@ -157,11 +193,9 @@ export default function ReportingScreen() {
     const [accountItemsLoading, setAccountItemsLoading] = useState<Record<string, boolean>>({});
 
     const range = useMemo(() => {
-        if (customFilter) return { start: customFilter.start, end: customFilter.end, label: `${customFilter.start} – ${customFilter.end}` };
-        const now = new Date();
-        const start = new Date(now.getFullYear(), 0, 1);
-        return { start: toLocalISODate(start), end: toLocalISODate(now), label: `YTD ${now.getFullYear()}` };
-    }, [customFilter]);
+        if (period === 'custom' && customFilter) return { start: customFilter.start, end: customFilter.end, label: `${customFilter.start} – ${customFilter.end}` };
+        return periodRange(period);
+    }, [period, customFilter]);
 
     const prevRange = useMemo(() => {
         const s = new Date(range.start); s.setFullYear(s.getFullYear() - 1);
@@ -367,22 +401,22 @@ export default function ReportingScreen() {
 
                         {/* Toolbar: Date Range Label + Sort & Filter Buttons */}
                         <View style={styles.toolbar}>
-                            <Pressable
-                                style={styles.dateRangeBtn}
-                                onPress={() => {
-                                    setFilterStartInput(customFilter?.start ?? range.start);
-                                    setFilterEndInput(customFilter?.end ?? range.end);
-                                    setIsDateFilterOpen(true);
-                                }}
-                            >
-                                <Text style={styles.dateRangeText}>{range.label}</Text>
-                                <CalendarDays size={16} color={customFilter ? colors.blue : colors.textMuted} />
-                            </Pressable>
-                            {customFilter && (
-                                <Pressable onPress={() => setCustomFilter(null)} style={styles.clearFilterBtn} hitSlop={6}>
-                                    <X size={12} color={colors.textMuted} />
+                            <View ref={periodBtnRef} collapsable={false}>
+                                <Pressable
+                                    style={styles.periodBtn}
+                                    onPress={() => {
+                                        periodBtnRef.current?.measureInWindow((_x: number, y: number, _w: number, h: number) => {
+                                            setPeriodMenuTop(y + h + 6);
+                                            setIsPeriodMenuOpen(true);
+                                        });
+                                    }}
+                                >
+                                    <Text style={styles.periodBtnText} numberOfLines={1}>
+                                        {period === 'custom' ? range.label : PERIOD_LABELS[period]}
+                                    </Text>
+                                    <ChevronDown size={16} color={colors.textMuted} />
                                 </Pressable>
-                            )}
+                            </View>
 
                             <View style={styles.toolbarActions}>
                                 <Pressable
@@ -547,6 +581,40 @@ export default function ReportingScreen() {
                     </>
             </AnimatedTabContent>
 
+            {/* Period dropdown */}
+            {isPeriodMenuOpen && (
+                <Modal visible transparent animationType="fade" onRequestClose={() => setIsPeriodMenuOpen(false)}>
+                    <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsPeriodMenuOpen(false)}>
+                        <View style={[styles.periodMenu, { top: periodMenuTop }]}>
+                            {PERIOD_ORDER.map((key) => {
+                                const selected = period === key;
+                                return (
+                                    <Pressable
+                                        key={key}
+                                        style={[styles.periodOption, selected && styles.sortOptionSelected]}
+                                        onPress={() => {
+                                            setIsPeriodMenuOpen(false);
+                                            if (key === 'custom') {
+                                                setFilterStartInput(customFilter?.start ?? range.start);
+                                                setFilterEndInput(customFilter?.end ?? range.end);
+                                                setIsDateFilterOpen(true);
+                                            } else {
+                                                setPeriod(key);
+                                            }
+                                        }}
+                                    >
+                                        <Text style={[styles.sortOptionText, selected && styles.sortOptionTextSelected]}>
+                                            {PERIOD_LABELS[key]}
+                                        </Text>
+                                        {selected && <Check size={14} color={colors.blue} />}
+                                    </Pressable>
+                                );
+                            })}
+                        </View>
+                    </Pressable>
+                </Modal>
+            )}
+
             {/* Sort Modal */}
             {isSortModalOpen && (
                 <Modal visible={isSortModalOpen} transparent animationType="fade" onRequestClose={() => setIsSortModalOpen(false)}>
@@ -607,7 +675,7 @@ export default function ReportingScreen() {
                             <View style={styles.dateBtnRow}>
                                 <Pressable
                                     style={styles.resetBtn}
-                                    onPress={() => { setCustomFilter(null); setIsDateFilterOpen(false); }}
+                                    onPress={() => { setCustomFilter(null); setPeriod('ytd'); setIsDateFilterOpen(false); }}
                                 >
                                     <Text style={styles.resetBtnText}>Reset to YTD</Text>
                                 </Pressable>
@@ -616,6 +684,7 @@ export default function ReportingScreen() {
                                     onPress={() => {
                                         if (filterStartInput && filterEndInput) {
                                             setCustomFilter({ start: filterStartInput, end: filterEndInput });
+                                            setPeriod('custom');
                                         }
                                         setIsDateFilterOpen(false);
                                     }}
@@ -666,6 +735,17 @@ const styles = StyleSheet.create({
         alignItems: 'center', justifyContent: 'center',
     },
     toolbar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 },
+    periodBtn: {
+        flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14,
+        borderRadius: radius.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderStrong,
+    },
+    periodBtnText: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.text },
+    periodMenu: {
+        position: 'absolute', left: 20, minWidth: 190, backgroundColor: colors.surface, borderRadius: radius.lg,
+        padding: 6, borderWidth: 1, borderColor: colors.border,
+        shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 8,
+    },
+    periodOption: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 11, paddingHorizontal: 12, borderRadius: radius.md },
     dateRangeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     dateRangeText: { fontFamily: fonts.bodyBold, fontSize: 18, color: colors.navy },
     clearFilterBtn: { padding: 4 },
