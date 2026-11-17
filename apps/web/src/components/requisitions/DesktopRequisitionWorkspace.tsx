@@ -370,6 +370,10 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
             if (!description.trim()) { setError('Please describe the purpose.'); return; }
             if (useDepartments && !department) { setError('Please select a department.'); return; }
             if (importInvoice && !scannedInvoice) { setError('Please upload and scan your invoice before continuing.'); return; }
+        } else if (stage === 2) {
+            if (lineItems.length === 0) { setError('Add at least one item to the expense list.'); return; }
+            const bad = lineItems.findIndex(i => !i.description.trim() || !(Number(i.unit_price) > 0) || !(Number(i.quantity) > 0));
+            if (bad !== -1) { setError(`Complete all details for item ${bad + 1}: description, price and quantity.`); return; }
         } else if (stage === 5) {
             if (!manualAmount || Number(manualAmount) <= 0) { setError('Please enter an amount greater than zero.'); return; }
         } else if (stage === 3) {
@@ -729,7 +733,7 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
                                     {lineItems.map((item) => (
                                         <div key={item.id} className={`flex gap-4 items-start p-4 rounded-xl border ${item.price_locked ? 'bg-blue-50/40 border-blue-100' : 'bg-gray-50 border-gray-100'}`}>
                                             <div className="flex-1 space-y-3">
-                                                <input type="text" value={item.description} onChange={e => updateLineItem(item.id, 'description', e.target.value)} readOnly={!!item.price_locked} placeholder="Item Description" className={`w-full text-sm font-semibold text-gray-900 bg-transparent border-b pb-1 placeholder:font-normal focus:outline-none transition-colors ${item.price_locked ? 'border-gray-100 cursor-default text-gray-700' : 'border-gray-200 focus:border-[#0B57D0]'}`} />
+                                                <input type="text" value={item.description} onChange={e => updateLineItem(item.id, 'description', e.target.value)} readOnly={!!item.price_locked} placeholder="Type to Enter Description" className={`w-full h-10 px-3 text-sm font-semibold text-gray-900 border rounded-lg placeholder:font-normal focus:outline-none transition-colors ${item.price_locked ? 'bg-gray-100 border-gray-200 cursor-default text-gray-700' : 'bg-white border-gray-200 focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0]'}`} />
                                                 <div className="flex gap-4">
                                                     <div className="flex-1 relative">
                                                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-bold">K</span>
