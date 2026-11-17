@@ -150,7 +150,6 @@ export const AccountMenuSheet: React.FC<Props> = ({ visible, onClose }) => {
                                     onPress={() => void handleSwitch(org.id)}
                                     style={({ pressed }) => [
                                         styles.orgRow,
-                                        isCurrent && styles.orgRowActive,
                                         pressed && !isCurrent && { opacity: 0.7 },
                                     ]}
                                 >
@@ -278,9 +277,6 @@ const styles = StyleSheet.create({
         flexDirection: 'row', alignItems: 'center', gap: 14, padding: 14,
         borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
         backgroundColor: colors.surface,
-    },
-    orgRowActive: {
-        borderColor: colors.blue, backgroundColor: colors.canvasAlt,
     },
     orgIconWrap: {
         width: 36, height: 36, borderRadius: 18, backgroundColor: colors.canvasAlt,
