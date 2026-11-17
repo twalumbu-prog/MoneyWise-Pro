@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getExpenditure, getExpenditureItems } from '../controllers/report.controller';
+import { getExpenditure, getExpenditureItems, getGrowActuals } from '../controllers/report.controller';
 import { getTrialBalance, getCashFlow, getChangesInEquity, getGeneralLedger } from '../controllers/journal.controller';
 import { requireAuth, requireRole } from '../middleware/auth';
 
@@ -8,6 +8,7 @@ const router = Router();
 router.use(requireAuth);
 
 router.get('/expenditure', requireRole(['AUTHORISER', 'ACCOUNTANT', 'ADMIN', 'MANAGEMENT']), getExpenditure);
+router.get('/grow-actuals', requireRole(['AUTHORISER', 'ACCOUNTANT', 'ADMIN', 'MANAGEMENT']), getGrowActuals);
 router.get('/expenditure/:accountId/items', requireRole(['AUTHORISER', 'ACCOUNTANT', 'ADMIN', 'MANAGEMENT']), getExpenditureItems);
 
 const STATEMENT_ROLES = ['AUTHORISER', 'ACCOUNTANT', 'ADMIN', 'MANAGEMENT'];

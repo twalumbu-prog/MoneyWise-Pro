@@ -136,13 +136,24 @@ export function useGrowState(plan: GrowPlan | null) {
         networkMode: 'always',
         retry: false,
         queryFn: async () => {
-            const todayIso = iso(new Date());
-            const snaps = await withTimeout(Promise.all(elapsed.map((k) => {
-                const { start, end } = monthRange(k);
-                return reportService.getExpenditures(start, end < todayIso ? end : todayIso, 'EXPENSE') as Promise<GrowLedgerRow[]>;
-            })), 20_000);
+            // One request for every month. Falls back to one report per month if the API predates the endpoint.
+            let byKey: Record<string, GrowLedgerRow[]>;
+            try {
+                byKey = await withTimeout(growService.actuals(elapsed), 30_000);
+            } catch (e: any) {
+                if (e?.status !== 404 && e?.data?.status !== 404 && !/404|not found/i.test(String(e?.message))) throw e;
+                const todayIso = iso(new Date());
+                const snaps = await withTimeout(Promise.all(elapsed.map((k) => {
+                    const { start, end } = monthRange(k);
+                    return reportService.getExpenditures(start, end < todayIso ? end : todayIso, 'EXPENSE') as Promise<GrowLedgerRow[]>;
+                })), 30_000);
+                byKey = Object.fromEntries(elapsed.map((k, i) => [k, snaps[i]]));
+            }
             const byMonth: Record<string, GrowMonthActuals> = {};
-            elapsed.forEach((k, i) => { byMonth[k] = summariseGrowMonth(snaps[i], i > 0 ? snaps[i - 1] : null); });
+            elapsed.forEach((k, i) => {
+                if (!byKey[k]) return;
+                byMonth[k] = summariseGrowMonth(byKey[k], i > 0 ? byKey[elapsed[i - 1]] ?? null : null);
+            });
             return byMonth;
         },
     });
