@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { IntegrationLogo } from './IntegrationLogo';
+import { MasterfeesWritePanel } from './MasterfeesWritePanel';
 import { masterFeesService, MasterFeesStatus, MasterFeesCategory } from '../../../services/integration.service';
 import { accountService, Account } from '../../../services/account.service';
 import {
@@ -502,6 +503,9 @@ export const MasterfeesIntegration: React.FC<MasterfeesIntegrationProps> = ({ on
                     )}
                 </div>
             )}
+
+            {/* Changes MoneyWise makes in the school's Master Fees (record a payment, add a student, create an invoice, void) */}
+            {status?.connected && <MasterfeesWritePanel />}
 
             {/* Fee category → income account mapping */}
             {status?.connected && (
