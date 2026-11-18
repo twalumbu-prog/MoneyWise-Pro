@@ -11,6 +11,7 @@ import { emailService } from '../services/email.service';
 import { supabase } from '../lib/supabase';
 import pool from '../db';
 import { handleCollectionSuccessful } from './lenco.webhook.controller';
+import { computeDebitGross, MAX_PLAUSIBLE_FEE } from '../utils/lencoGross';
 import { cashbookService } from '../services/cashbook.service';
 import { ledgerService } from '../services/ledger.service';
 import { applyProductRevenueRouting, markPaymentLinkPaid, confirmBookingsForReference } from '../services/product_routing.service';
@@ -2750,7 +2751,6 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
             //
             // So: accept the balance delta only when it looks like "amount + a bank fee",
             // and otherwise fall back to the published fee tariff for that amount.
-            const MAX_PLAUSIBLE_FEE = 60;
             for (let i = 0; i < txns.length; i++) {
                 const prevBal = i > 0 && txns[i - 1].balance != null ? parseFloat(txns[i - 1].balance) : null;
                 const curBal = txns[i].balance != null ? parseFloat(txns[i].balance) : null;
@@ -2762,18 +2762,16 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
                     continue;
                 }
 
-                const delta = (prevBal != null && curBal != null)
-                    ? Math.round((prevBal - curBal) * 100) / 100
-                    : null;
-                const impliedFee = delta != null ? Math.round((delta - amt) * 100) / 100 : null;
-
-                if (impliedFee != null && impliedFee >= 0 && impliedFee <= MAX_PLAUSIBLE_FEE) {
-                    txns[i]._gross = delta as number;
-                } else {
-                    if (delta != null) {
-                        console.warn(`[Lenco Sync] Implausible balance delta for debit ${txns[i].id} (amount ${amt}, delta ${delta}) — settlement order differs from timestamp order. Falling back to the fee tariff.`);
-                    }
-                    txns[i]._gross = Math.round((amt + LencoService.calculatePayoutFee(amt, 'BANK')) * 100) / 100;
+                // Pure helper (utils/lencoGross.ts, unit-tested): accepts the balance drop when it is "amount + fee", treats
+                // sub-2-ngwee rounding as no fee, and never charges the bank tariff to an on-us forward / MWPAY- transfer.
+                const priorDelta = (prevBal != null && curBal != null) ? Math.round((prevBal - curBal) * 100) / 100 : null;
+                txns[i]._gross = computeDebitGross({
+                    amount: amt, prevBalance: prevBal, curBalance: curBal,
+                    narration: txns[i].narration || txns[i].description, reference: txns[i].reference || txns[i].clientReference,
+                    tariff: (a: number) => LencoService.calculatePayoutFee(a, 'BANK'),
+                });
+                if (priorDelta != null && Math.abs(priorDelta - amt) > MAX_PLAUSIBLE_FEE) {
+                    console.warn(`[Lenco Sync] Implausible balance delta for debit ${txns[i].id} (amount ${amt}, delta ${priorDelta}) — settlement order differs from timestamp order. Using the non-balance fallback.`);
                 }
             }
 
