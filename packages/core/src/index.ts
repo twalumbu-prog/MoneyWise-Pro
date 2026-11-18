@@ -56,6 +56,7 @@ export type {
     UserPreferences,
     PreferencesResponse,
     NotifyChannel,
+    PushTopic,
     SalaryDestination,
     MyProfile,
     MoneyWiseRecipient,

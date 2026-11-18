@@ -94,8 +94,11 @@ export type NotifyChannel = 'BOTH' | 'APP' | 'EMAIL';
 export type SalaryDestination = 'PERSONAL_WALLET' | 'BANK' | 'MOBILE_MONEY';
 
 /** A person's own settings (Settings → Preferences in the personal app). */
+/** Kinds of push a person can switch off one by one (also each its own Android notification channel). */
+export type PushTopic = 'insights' | 'reminders' | 'to_confirm';
+
 export interface UserPreferences {
-    notifications: { channel: NotifyChannel };
+    notifications: { channel: NotifyChannel; topics: Record<PushTopic, boolean> };
     ai: { assistant_model: string | null; categorization_model: string | null };
     /** account_id: which saved bank / mobile-money account, when the destination is one of those. */
     payroll: { destination: SalaryDestination; account_id: string | null };
@@ -131,7 +134,7 @@ export const userService = {
 
     /** Partial update: send only what changed. */
     updateMyPreferences(patch: {
-        notifications?: { channel?: NotifyChannel };
+        notifications?: { channel?: NotifyChannel; topics?: Partial<Record<PushTopic, boolean>> };
         ai?: { assistant_model?: string | null; categorization_model?: string | null };
         payroll?: { destination?: SalaryDestination; account_id?: string | null };
     }): Promise<{ preferences: UserPreferences }> {
@@ -191,6 +194,11 @@ export const userService = {
             method: 'POST',
             body: JSON.stringify({ token, platform }),
         });
+    },
+
+    /** Sends one sample push of this kind to the person's own devices. `devices` is how many it went to. */
+    sendTestPush(topic: PushTopic): Promise<{ devices: number }> {
+        return apiJson('/users/me/push-test', { method: 'POST', body: JSON.stringify({ topic }) });
     },
 
     unregisterPushToken(token: string): Promise<{ message?: string }> {

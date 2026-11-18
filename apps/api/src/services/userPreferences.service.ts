@@ -19,15 +19,27 @@ export type NotifyChannel = typeof NOTIFY_CHANNELS[number];
 export const SALARY_DESTINATIONS = ['PERSONAL_WALLET', 'BANK', 'MOBILE_MONEY'] as const;
 export type SalaryDestination = typeof SALARY_DESTINATIONS[number];
 
+/**
+ * The kinds of push a person can switch off one by one. Each is also its own Android notification channel (same id,
+ * created by the app in src/lib/notificationSetup.ts), so it can be muted from the phone's own settings too.
+ *   insights    progress on spending, saving and growth
+ *   reminders   money owed to or by the person
+ *   to_confirm  transactions waiting to be categorised
+ */
+export const PUSH_TOPICS = ['insights', 'reminders', 'to_confirm'] as const;
+export type PushTopic = typeof PUSH_TOPICS[number];
+export type PushTopicSettings = Record<PushTopic, boolean>;
+const DEFAULT_TOPICS: PushTopicSettings = { insights: true, reminders: true, to_confirm: true };
+
 export interface UserPreferences {
-    notifications: { channel: NotifyChannel };
+    notifications: { channel: NotifyChannel; topics: PushTopicSettings };
     ai: { assistant_model: string | null; categorization_model: string | null };
     /** account_id: which saved bank / mobile-money account (from the profile) when the destination is one of those. */
     payroll: { destination: SalaryDestination; account_id: string | null };
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
-    notifications: { channel: 'BOTH' },
+    notifications: { channel: 'BOTH', topics: { ...DEFAULT_TOPICS } },
     ai: { assistant_model: null, categorization_model: null },
     payroll: { destination: 'BANK', account_id: null },
 };
@@ -48,6 +60,13 @@ const CATEGORIZATION_LABELS: Record<string, string> = {
 export const CATEGORIZATION_MODELS: { id: string; label: string }[] =
     PROVIDER_CATALOG.openrouter.models.categorization.map((id: string) => ({ id, label: CATEGORIZATION_LABELS[id] ?? id }));
 
+/** Every topic is on unless the person explicitly switched it off. */
+function normalizeTopics(raw: any): PushTopicSettings {
+    const out = { ...DEFAULT_TOPICS };
+    if (raw && typeof raw === 'object') for (const t of PUSH_TOPICS) if (raw[t] === false) out[t] = false;
+    return out;
+}
+
 /** Merges stored JSON over the defaults, dropping anything that is no longer valid. */
 export function normalizePreferences(raw: any): UserPreferences {
     const src = raw && typeof raw === 'object' ? raw : {};
@@ -56,7 +75,7 @@ export function normalizePreferences(raw: any): UserPreferences {
     const cat = CATEGORIZATION_MODELS.some((m) => m.id === src.ai?.categorization_model) ? src.ai.categorization_model : null;
     const dest = SALARY_DESTINATIONS.includes(src.payroll?.destination) ? src.payroll.destination : DEFAULT_PREFERENCES.payroll.destination;
     const accountId = typeof src.payroll?.account_id === 'string' && dest !== 'PERSONAL_WALLET' ? src.payroll.account_id : null;
-    return { notifications: { channel }, ai: { assistant_model: assistant, categorization_model: cat }, payroll: { destination: dest, account_id: accountId } };
+    return { notifications: { channel, topics: normalizeTopics(src.notifications?.topics) }, ai: { assistant_model: assistant, categorization_model: cat }, payroll: { destination: dest, account_id: accountId } };
 }
 
 export async function getPreferences(userId: string): Promise<UserPreferences> {
@@ -75,6 +94,14 @@ export async function updatePreferences(userId: string, patch: any): Promise<Use
     if (patch?.notifications?.channel !== undefined) {
         if (!NOTIFY_CHANNELS.includes(patch.notifications.channel)) bad('Choose app, email or both for notifications.');
         next.notifications.channel = patch.notifications.channel;
+    }
+    if (patch?.notifications?.topics !== undefined) {
+        const t = patch.notifications.topics;
+        if (!t || typeof t !== 'object') bad('Send which notifications to turn on or off.');
+        for (const [k, v] of Object.entries(t)) {
+            if (!(PUSH_TOPICS as readonly string[]).includes(k) || typeof v !== 'boolean') bad('That kind of notification does not exist.');
+            next.notifications.topics[k as PushTopic] = v as boolean;
+        }
     }
     if (patch?.ai?.assistant_model !== undefined) {
         const v = patch.ai.assistant_model;
@@ -215,6 +242,14 @@ export async function filterUserIdsForPush(userIds: string[], orgId?: string | n
     const { data } = await supabase.from('users').select('id, preferences').in('id', userIds);
     const emailOnly = new Set((data ?? []).filter((u: any) => u.preferences?.notifications?.channel === 'EMAIL').map((u: any) => u.id));
     return userIds.filter((id) => !emailOnly.has(id));
+}
+
+/** Drops user ids who switched this kind of push off (Settings → Preferences). Applies to every workspace. */
+export async function filterUserIdsForTopic(userIds: string[], topic: PushTopic): Promise<string[]> {
+    if (userIds.length === 0) return userIds;
+    const { data } = await supabase.from('users').select('id, preferences').in('id', userIds);
+    const off = new Set((data ?? []).filter((u: any) => u.preferences?.notifications?.topics?.[topic] === false).map((u: any) => u.id));
+    return userIds.filter((id) => !off.has(id));
 }
 
 /** Drops addresses of people who asked for app-only notifications, for events in a personal workspace. */

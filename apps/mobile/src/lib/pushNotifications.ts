@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
+import { setupNotificationsAsync } from './notificationSetup';
 
 // Foreground behavior: a push that arrives while the app is open still shows
 // a banner/appears in notification list — without this, expo-notifications
@@ -42,12 +43,8 @@ export async function registerForPushNotificationsAsync(): Promise<{ token: stri
             return null;
         }
 
-        if (Platform.OS === 'android') {
-            await Notifications.setNotificationChannelAsync('default', {
-                name: 'default',
-                importance: Notifications.AndroidImportance.DEFAULT,
-            });
-        }
+        // Channels (one per kind of push) and the action buttons; see notificationSetup.ts.
+        await setupNotificationsAsync();
 
         const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
         if (!projectId) {
