@@ -7,6 +7,7 @@ import android.app.job.JobService
 import android.content.ComponentName
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Build
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
@@ -140,6 +141,29 @@ object MomoCapture {
                     .build()
             )
         }.onFailure { Log.w(TAG, "could not schedule a retry: ${it.message}") }
+    }
+
+    /**
+     * Arms a send job that runs right away (as soon as there is a connection), before a message is even queued.
+     *
+     * A BroadcastReceiver only gets a few seconds of life, and a send on a slow connection, or behind older queued
+     * messages, can take longer. If the process is killed mid-send, nothing that runs after the send (including the
+     * usual [scheduleRetry]) gets to run either. A job keeps the process alive for minutes, not seconds: its flush
+     * waits on the same single sender thread as the receiver's, so it finishes only after the receiver's own send has
+     * run, and if the process was killed, the system restarts it to run the job. With nothing left, it ends at once.
+     *
+     * Expedited (Android 12+) so app standby does not hold it back; when that quota is used up, a plain job instead.
+     */
+    fun scheduleSendSoon(ctx: Context) {
+        if (!hasToken(ctx)) return
+        val app = ctx.applicationContext
+        val js = app.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
+        val builder = { JobInfo.Builder(RETRY_JOB_ID, ComponentName(app, MomoRetryJob::class.java)).setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY) }
+        if (Build.VERSION.SDK_INT >= 31) {
+            val ok = runCatching { js.schedule(builder().setExpedited(true).build()) == JobScheduler.RESULT_SUCCESS }.getOrDefault(false)
+            if (ok) return
+        }
+        runCatching { js.schedule(builder().build()) }.onFailure { Log.w(TAG, "could not schedule a send: ${it.message}") }
     }
 
     /** What a listener last saw and did with it, so the app can show why nothing is arriving. */

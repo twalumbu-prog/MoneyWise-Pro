@@ -17,6 +17,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  * and with it the prompt, specifically when the app was closed or minimized — the one case this exists for. `goAsync`
  * tells Android to keep the process alive a little longer; the PendingResult is finished once every match this
  * broadcast matched has actually been sent (or after a safety timeout, since that grace period is short).
+ *
+ * A send can outlast that timeout (a slow connection, older messages queued ahead of it), and a process killed
+ * mid-send never gets to schedule its own retry. So a send job is armed first: it carries on after the receiver has
+ * let go, and runs again by itself once there is a connection. See [MomoCapture.scheduleSendSoon].
  */
 class MomoSmsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -30,13 +34,15 @@ class MomoSmsReceiver : BroadcastReceiver() {
             return
         }
 
+        // Armed before anything is queued, so a kill at any point after this still gets the messages sent.
+        MomoCapture.scheduleSendSoon(context)
         val pending = goAsync()
         val done = AtomicBoolean(false)
         val finish = { if (done.compareAndSet(false, true)) runCatching { pending.finish() } }
         var remaining = matches.size
         val oneDone = { synchronized(this) { remaining--; if (remaining <= 0) finish() } }
-        // goAsync's own grace period is short (a handful of seconds) and not guaranteed; never outlast what the
-        // system actually allows, whether or not every send got to run.
+        // goAsync's own grace period is short (as little as 10s) and not guaranteed; never outlast what the system
+        // allows, whether or not every send got to run. Anything unfinished is picked up by the send job above.
         Handler(Looper.getMainLooper()).postDelayed({ finish() }, 9000)
 
         matches.forEach { (sender, msgs) ->
