@@ -89,8 +89,12 @@ object MomoCapture {
     /**
      * Queues a message and sends. The SMS and its notification are the same message, so wording already seen within a
      * few minutes is dropped; the same wording later on is another transaction (same amount, same person) and is kept.
+     *
+     * [onSent] fires once the flush this capture triggered has actually run — or straight away if this turned out to
+     * be a duplicate, with nothing to send. A caller extending its own lifetime for the send (a BroadcastReceiver's
+     * `goAsync`) needs this to know when it is safe to let go.
      */
-    fun capture(ctx: Context, source: String, sender: String?, text: String, occurredAtMs: Long, silent: Boolean = false) {
+    fun capture(ctx: Context, source: String, sender: String?, text: String, occurredAtMs: Long, silent: Boolean = false, onSent: (() -> Unit)? = null) {
         val p = prefs(ctx)
         synchronized(this) {
             val key = digest(text)
@@ -99,7 +103,7 @@ object MomoCapture {
                 val parts = seen.optString(i).split("@")
                 if (parts[0] != key) continue
                 val at = parts.getOrNull(1)?.toLongOrNull()
-                if (at == null || kotlin.math.abs(at - occurredAtMs) <= SAME_MESSAGE_WINDOW_MS) return
+                if (at == null || kotlin.math.abs(at - occurredAtMs) <= SAME_MESSAGE_WINDOW_MS) { onSent?.invoke(); return }
             }
             seen.put("$key@$occurredAtMs")
             val trimmedSeen = JSONArray().also { out -> (maxOf(0, seen.length() - 200) until seen.length()).forEach { out.put(seen.getString(it)) } }
@@ -109,7 +113,7 @@ object MomoCapture {
             val trimmedQueue = JSONArray().also { out -> (maxOf(0, queue.length() - MAX_QUEUE) until queue.length()).forEach { out.put(queue.get(it)) } }
             p.edit().putString("seen", trimmedSeen.toString()).putString("queue", trimmedQueue.toString()).apply()
         }
-        flushAsync(ctx)
+        flushAsync(ctx) { onSent?.invoke() }
     }
 
     fun queued(ctx: Context): Int = runCatching { JSONArray(prefs(ctx).getString("queue", "[]")).length() }.getOrDefault(0)
