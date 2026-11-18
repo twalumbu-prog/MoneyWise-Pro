@@ -178,3 +178,57 @@ export const masterFeesWrites = {
     voidInvoice: (config: MasterFeesConfig, id: unknown, input: unknown, opts: SendOptions = {}) => sendWrite(config, 'POST', `/invoices/${cleanId(id, 'invoice id')}/void`, cleanVoid(input), opts),
     voidPayment: (config: MasterFeesConfig, id: unknown, input: unknown, opts: SendOptions = {}) => sendWrite(config, 'POST', `/payments/${cleanId(id, 'payment id')}/void`, cleanVoid(input), opts),
 };
+
+/* ───────────── Editing: void the old one, record the corrected one ───────────── */
+
+/**
+ * Master Fees has no "edit" (it refuses to change a payment, or an invoice's lines or total, once made), so an edit here is what accounting does:
+ * the old record is voided (kept, marked void, its ledger effect reversed) and the corrected one is created under a NEW reference. Nothing is
+ * deleted, and both stay on record with the reason.
+ *
+ * Safe to press twice. The corrected record is checked in full BEFORE anything is voided, so a mistake in the form changes nothing. Voiding
+ * something already void answers 200 "idempotent", and creating with the same reference returns the first result, so sending the same edit again
+ * after a failure finishes it instead of doing it twice. The one state to watch is "old voided, new not recorded yet": the error then says so
+ * (`details.old_voided`) and the same edit sent again completes it.
+ */
+export interface ReplaceResult { voided: WriteResult; created: WriteResult }
+
+const editReason = (input: any): string => `Edited: ${cleanVoid({ reason: input?.edit_reason }).reason}`.slice(0, 300);
+const stripEdit = (input: any) => { const { edit_reason: _drop, ...rest } = input ?? {}; return rest; };
+
+async function replaceWith(voidFirst: () => Promise<WriteResult>, create: () => Promise<WriteResult>, what: string): Promise<ReplaceResult> {
+    const voided = await voidFirst(); // refused (for example an invoice that has payments): nothing has changed
+    try {
+        return { voided, created: await create() };
+    } catch (e: any) {
+        if (e instanceof MasterFeesWriteError) {
+            throw new MasterFeesWriteError(
+                `The old ${what} was voided, but the corrected one was not recorded: ${e.message} Send the same edit again to finish it.`,
+                e.status, e.code, { ...(e.details as object | null), old_voided: true }, e.retryable,
+            );
+        }
+        throw e;
+    }
+}
+
+export function replacePayment(config: MasterFeesConfig, id: unknown, input: any, opts: SendOptions = {}): Promise<ReplaceResult> {
+    const oldId = cleanId(id, 'payment id');
+    const body = cleanPayment(stripEdit(input));          // checked first, in full
+    const reason = editReason(input);
+    return replaceWith(
+        () => sendWrite(config, 'POST', `/payments/${oldId}/void`, { reason }, opts),
+        () => sendWrite(config, 'POST', '/payments', body, { ...opts, idempotencyKey: opts.idempotencyKey ?? keyFor(body) }),
+        'payment',
+    );
+}
+
+export function replaceInvoice(config: MasterFeesConfig, id: unknown, input: any, opts: SendOptions = {}): Promise<ReplaceResult> {
+    const oldId = cleanId(id, 'invoice id');
+    const body = cleanInvoice(stripEdit(input));
+    const reason = editReason(input);
+    return replaceWith(
+        () => sendWrite(config, 'POST', `/invoices/${oldId}/void`, { reason }, opts),
+        () => sendWrite(config, 'POST', '/invoices', body, { ...opts, idempotencyKey: opts.idempotencyKey ?? keyFor(body) }),
+        'invoice',
+    );
+}

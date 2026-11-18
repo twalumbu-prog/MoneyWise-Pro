@@ -488,6 +488,8 @@ export class MasterFeesClient {
     async getStudents(): Promise<MFStudent[]> { return this.list(await this.get('students')); }
     async getInvoices(): Promise<MFInvoice[]> { return (await this.getPaginated<MFInvoice>('invoices', 'invoice_id')).filter((i) => !this.isOurs('invoice_number', i.invoice_number)); }
     async getTransactions(): Promise<MFTransaction[]> { return (await this.getPaginated<MFTransaction>('transactions', 'transaction_id')).filter((x) => !this.isOurs('reference', x.reference)); }
+    /** The most recent records exactly as Master Fees lists them, for the "edit" list. One request, and not filtered: a payment or invoice MoneyWise wrote can be edited too. */
+    async getRecent(resource: 'invoices' | 'transactions', limit = 50): Promise<any[]> { return this.list(await this.get(`${resource}?limit=${Math.min(Math.max(1, limit), 200)}&page=1`)); }
     async getFeeCategories(): Promise<MFFeeCategory[]> { return this.list(await this.get('fee-categories')); }
     async getBalances(): Promise<any[]> { return this.list(await this.get('summary/balances')); }
     async getPaymentsSummary(): Promise<any> { return this.get('summary/payments'); }

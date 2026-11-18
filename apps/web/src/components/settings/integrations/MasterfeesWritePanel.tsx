@@ -8,9 +8,9 @@ import { AlertCircle, CheckCircle, Loader2, Plus, Trash2, Send } from 'lucide-re
  * send is refused and this panel says so. Nothing here deletes anything: a mistake is corrected by voiding.
  */
 
-type Kind = 'payment' | 'student' | 'invoice' | 'void';
+type Kind = 'payment' | 'student' | 'invoice' | 'edit' | 'void';
 const TABS: { id: Kind; label: string }[] = [
-    { id: 'payment', label: 'Record a payment' }, { id: 'student', label: 'Add a student' }, { id: 'invoice', label: 'Create an invoice' }, { id: 'void', label: 'Void' },
+    { id: 'payment', label: 'Record a payment' }, { id: 'student', label: 'Add a student' }, { id: 'invoice', label: 'Create an invoice' }, { id: 'edit', label: 'Edit a payment or invoice' }, { id: 'void', label: 'Void' },
 ];
 
 const input = 'block w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#0B57D0] focus:ring-2 focus:ring-[#0B57D0]/20 disabled:bg-gray-50';
@@ -196,6 +196,8 @@ export const MasterfeesWritePanel: React.FC = () => {
                 </form>
             )}
 
+            {kind === 'edit' && <EditRecords />}
+
             {kind === 'void' && (
                 <form onSubmit={submitVoid} className="mt-4 grid gap-4 sm:grid-cols-2">
                     <div><label className={label}>What to void</label><select className={input} value={voidWhat} onChange={(e) => setVoidWhat(e.target.value as 'payments' | 'invoices')} disabled={busy}><option value="payments">A payment (recorded by hand)</option><option value="invoices">An invoice</option></select></div>
@@ -216,3 +218,188 @@ const Submit: React.FC<{ busy: boolean; text: string }> = ({ busy, text }) => (
         </button>
     </div>
 );
+
+
+/* ───────────── Edit: pick a recent record, correct it; the old one is voided and the corrected one recorded ───────────── */
+
+const HAND_METHODS = ['manual', 'cash', 'bank', 'cheque'];
+const PAID_OK = ['success', 'successful', 'completed'];
+const lusakaDay = (v?: string) => (v ? new Date(new Date(v).getTime() + 2 * 3600 * 1000).toISOString().slice(0, 10) : '');
+const nameOf = (r: any) => [r?.student?.first_name, r?.student?.last_name].filter(Boolean).join(' ') || r?.student?.full_name || '—';
+const kw = (n: unknown) => `K${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+
+/** Why a record can't be edited here, or null when it can. Mirrors what Master Fees allows a partner to void. */
+function lockedReason(type: 'payments' | 'invoices', r: any): string | null {
+    if (type === 'payments') {
+        if (!HAND_METHODS.includes(String(r.payment_method || '').toLowerCase())) return 'Mobile money and card payments can only be changed in Master Fees.';
+        if (!PAID_OK.includes(String(r.status || '').toLowerCase())) return `Already ${String(r.status || 'not completed').toLowerCase()}.`;
+        return null;
+    }
+    if (/void|cancel/i.test(String(r.status || ''))) return 'Already void.';
+    if (Number(r.paid_amount) > 0) return 'Has a payment on it. Void or replace the payment first.';
+    return null;
+}
+
+const EditRecords: React.FC = () => {
+    const [type, setType] = useState<'payments' | 'invoices'>('payments');
+    const [rows, setRows] = useState<any[] | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [done, setDone] = useState<string | null>(null);
+    const [picked, setPicked] = useState<any | null>(null);
+    const [reason, setReason] = useState('');
+    // the corrected record
+    const [ref, setRef] = useState('');
+    const [student, setStudent] = useState('');
+    const [amount, setAmount] = useState('');
+    const [date, setDate] = useState('');
+    const [method, setMethod] = useState('bank');
+    const [invoiceId, setInvoiceId] = useState('');
+    const [payer, setPayer] = useState('');
+    const [notes, setNotes] = useState('');
+    const [term, setTerm] = useState('1');
+    const [year, setYear] = useState('');
+    const [due, setDue] = useState('');
+    const [items, setItems] = useState([{ description: '', amount: '', category: '' }]);
+
+    const load = React.useCallback(async (which: 'payments' | 'invoices') => {
+        setLoading(true); setError(null); setRows(null); setPicked(null);
+        try { const r = await apiJson<{ rows: any[] }>(`/integrations/masterfees/write/recent?type=${which}`); setRows(r.rows || []); }
+        catch (e: any) { setError(explain(e)); }
+        finally { setLoading(false); }
+    }, []);
+    React.useEffect(() => { load(type); }, [type, load]);
+
+    const pick = (r: any) => {
+        setPicked(r); setReason(''); setError(null); setDone(null);
+        if (type === 'payments') {
+            setRef(newRef('MW')); setStudent(r.student?.admission_number || r.student?.student_id || ''); setAmount(String(r.amount ?? ''));
+            setDate(lusakaDay(r.initiated_at || r.completed_at)); setMethod(HAND_METHODS.includes(String(r.payment_method).toLowerCase()) ? String(r.payment_method).toLowerCase() : 'bank');
+            setInvoiceId(r.invoice_id || ''); setPayer(''); setNotes('');
+        } else {
+            setRef(newRef('INV')); setStudent(r.student?.student_id || ''); setTerm(String(r.term || 1)); setYear(String(r.year || new Date().getFullYear()));
+            setDue(String(r.due_date || '').slice(0, 10));
+            setItems((r.items?.length ? r.items : [{}]).map((i: any) => ({ description: i.description || '', amount: i.amount != null ? String(i.amount) : '', category: i.category && !/^(general|other)$/i.test(i.category) ? i.category : '' })));
+        }
+    };
+
+    const submit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!picked) return;
+        const what = type === 'payments' ? 'payment' : 'invoice';
+        if (!window.confirm(`Replace this ${what}? The old one is voided (kept on record, marked void) and the corrected one is recorded under a new reference.`)) return;
+        setBusy(true); setError(null); setDone(null);
+        const id = type === 'payments' ? picked.transaction_id : picked.invoice_id;
+        const looksLikeId = /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(student.trim());
+        const body = type === 'payments'
+            ? { edit_reason: reason, external_reference: ref.trim(), amount, payment_date: date || undefined, payment_method: method, ...(looksLikeId ? { student_id: student.trim() } : { admission_number: student.trim() }), invoice_id: invoiceId.trim() || undefined, payer_name: payer.trim() || undefined, notes: notes.trim() || undefined }
+            : { edit_reason: reason, external_reference: ref.trim(), student_id: student.trim(), term: Number(term), year: Number(year), due_date: due, items: items.filter((i) => i.description.trim() || i.amount).map((i) => ({ description: i.description.trim(), amount: i.amount, category: i.category.trim() || undefined })) };
+        try {
+            await apiJson(`/integrations/masterfees/write/${type}/${id}/replace`, { method: 'POST', body: JSON.stringify(body) });
+            setDone(`The ${what} was replaced: the old one is voided and the corrected one is recorded.`);
+            setPicked(null);
+            load(type);
+        } catch (err: any) {
+            setError(explain(err));
+        } finally { setBusy(false); }
+    };
+
+    const total = items.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+
+    return (
+        <div className="mt-4">
+            <p className="text-xs text-gray-500">
+                Master Fees can’t change a record once it is made, so an edit voids the old one and records the corrected one. Both stay on record with your reason.
+                Pick one of the 50 most recent below.
+            </p>
+            <div className="mt-3 flex gap-2">
+                {(['payments', 'invoices'] as const).map((w) => (
+                    <button key={w} type="button" onClick={() => { setType(w); setDone(null); }} className={`rounded-full border px-3.5 py-1.5 text-xs font-bold ${type === w ? 'border-[#0B57D0] bg-[#E8F0FE] text-[#0B57D0]' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>{w === 'payments' ? 'Payments' : 'Invoices'}</button>
+                ))}
+            </div>
+
+            {error && <div className="mt-4 flex items-start gap-2 rounded-xl bg-rose-50 p-3 text-xs font-semibold text-rose-700"><AlertCircle size={14} className="mt-0.5 flex-shrink-0" /><span>{error}</span></div>}
+            {done && <div className="mt-4 flex items-start gap-2 rounded-xl bg-emerald-50 p-3 text-xs font-semibold text-emerald-700"><CheckCircle size={14} className="mt-0.5 flex-shrink-0" /><span>{done}</span></div>}
+
+            {!picked && (
+                <div className="mt-4 overflow-x-auto rounded-xl border border-gray-200">
+                    {loading ? <div className="flex items-center gap-2 p-4 text-xs text-gray-500"><Loader2 size={14} className="animate-spin" /> Loading from Master Fees…</div>
+                        : !rows?.length ? <p className="p-4 text-xs text-gray-400">{error ? '' : 'Nothing to show.'}</p> : (
+                        <table className="w-full min-w-[560px] divide-y divide-gray-200 text-left">
+                            <thead className="bg-gray-50"><tr>
+                                {(type === 'payments' ? ['Date', 'Student', 'Amount', 'How', ''] : ['Invoice', 'Student', 'Term', 'Total', 'Paid', '']).map((h, i) => <th key={`${h}${i}`} className="px-3 py-2 text-[11px] font-black uppercase text-gray-500">{h}</th>)}
+                            </tr></thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {rows.map((r) => {
+                                    const locked = lockedReason(type, r);
+                                    const id = type === 'payments' ? r.transaction_id : r.invoice_id;
+                                    return (
+                                        <tr key={id} className="text-xs">
+                                            {type === 'payments' ? (<>
+                                                <td className="px-3 py-2">{lusakaDay(r.initiated_at || r.completed_at)}</td><td className="px-3 py-2 font-semibold">{nameOf(r)}</td>
+                                                <td className="px-3 py-2">{kw(r.amount)}</td><td className="px-3 py-2">{r.payment_method || '—'}</td>
+                                            </>) : (<>
+                                                <td className="px-3 py-2 font-semibold">{r.invoice_number || '—'}</td><td className="px-3 py-2">{nameOf(r)}</td>
+                                                <td className="px-3 py-2">T{r.term} {r.year}</td><td className="px-3 py-2">{kw(r.total_amount)}</td><td className="px-3 py-2">{kw(r.paid_amount)}</td>
+                                            </>)}
+                                            <td className="px-3 py-2 text-right">
+                                                {locked ? <span className="text-[11px] text-gray-400" title={locked}>Can’t edit</span>
+                                                    : <button type="button" onClick={() => pick(r)} className="rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] font-bold text-[#0B57D0] hover:bg-[#E8F0FE]">Edit</button>}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+            )}
+
+            {picked && (
+                <form onSubmit={submit} className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <div className="sm:col-span-2 rounded-xl bg-gray-50 p-3 text-xs text-gray-600">
+                        Replacing {type === 'payments' ? `the ${kw(picked.amount)} payment for ${nameOf(picked)}` : `invoice ${picked.invoice_number || ''} for ${nameOf(picked)}`}. Change what is wrong below.
+                    </div>
+                    <div className="sm:col-span-2"><label className={label}>Why is it being changed?</label><input className={input} value={reason} onChange={(e) => setReason(e.target.value)} required disabled={busy} placeholder="e.g. wrong amount entered" /></div>
+                    {type === 'payments' ? (<>
+                        <div><label className={label}>Student (admission number or id)</label><input className={input} value={student} onChange={(e) => setStudent(e.target.value)} required disabled={busy} /></div>
+                        <div><label className={label}>Amount (K)</label><input className={input} type="number" step="0.01" min="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required disabled={busy} /></div>
+                        <div><label className={label}>Payment date</label><input className={input} type="date" max={today()} value={date} onChange={(e) => setDate(e.target.value)} disabled={busy} /></div>
+                        <div><label className={label}>How it was paid</label><select className={input} value={method} onChange={(e) => setMethod(e.target.value)} disabled={busy}><option value="bank">Bank</option><option value="cash">Cash</option><option value="cheque">Cheque</option><option value="manual">Manual</option></select></div>
+                        <div><label className={label}>Payer name (optional)</label><input className={input} value={payer} onChange={(e) => setPayer(e.target.value)} disabled={busy} /></div>
+                        <div><label className={label}>Put on one invoice (optional id)</label><input className={input} value={invoiceId} onChange={(e) => setInvoiceId(e.target.value)} disabled={busy} /></div>
+                        <div className="sm:col-span-2"><label className={label}>Note (optional)</label><input className={input} value={notes} onChange={(e) => setNotes(e.target.value)} disabled={busy} /></div>
+                    </>) : (<>
+                        <div className="sm:col-span-2"><label className={label}>Student id</label><input className={input} value={student} onChange={(e) => setStudent(e.target.value)} required disabled={busy} /></div>
+                        <div><label className={label}>Term</label><select className={input} value={term} onChange={(e) => setTerm(e.target.value)} disabled={busy}><option value="1">Term 1</option><option value="2">Term 2</option><option value="3">Term 3</option></select></div>
+                        <div><label className={label}>Year</label><input className={input} type="number" value={year} onChange={(e) => setYear(e.target.value)} required disabled={busy} /></div>
+                        <div className="sm:col-span-2"><label className={label}>Due date</label><input className={input} type="date" value={due} onChange={(e) => setDue(e.target.value)} required disabled={busy} /></div>
+                        <div className="sm:col-span-2">
+                            <label className={label}>Items</label>
+                            <div className="space-y-2">
+                                {items.map((it, i) => (
+                                    <div key={i} className="flex gap-2">
+                                        <input className={input} placeholder="Description" value={it.description} onChange={(e) => setItems(items.map((x, j) => (j === i ? { ...x, description: e.target.value } : x)))} disabled={busy} />
+                                        <input className={`${input} max-w-[8rem]`} type="number" step="0.01" min="0.01" placeholder="Amount" value={it.amount} onChange={(e) => setItems(items.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} disabled={busy} />
+                                        <button type="button" aria-label="Remove item" disabled={busy || items.length === 1} onClick={() => setItems(items.filter((_, j) => j !== i))} className="rounded-xl border border-gray-200 px-3 text-gray-500 hover:bg-gray-50 disabled:opacity-40"><Trash2 size={14} /></button>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="mt-2 flex items-center justify-between">
+                                <button type="button" disabled={busy || items.length >= 50} onClick={() => setItems([...items, { description: '', amount: '', category: '' }])} className="inline-flex items-center gap-1 text-xs font-bold text-[#0B57D0]"><Plus size={14} /> Add item</button>
+                                <span className="text-xs font-bold text-gray-700">Total {kw(total)}</span>
+                            </div>
+                        </div>
+                    </>)}
+                    <div className="sm:col-span-2"><label className={label}>New reference</label><input className={input} value={ref} onChange={(e) => setRef(e.target.value)} required disabled={busy} />
+                        <p className="mt-1 text-[11px] text-gray-400">If a send fails part-way, press it again with this same reference: the old one is already void and the corrected one is recorded only once.</p></div>
+                    <div className="sm:col-span-2 flex gap-2">
+                        <button type="submit" disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-[#0B57D0] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#0A4DBA] disabled:opacity-60">{busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}{busy ? 'Sending…' : 'Void the old and record this'}</button>
+                        <button type="button" disabled={busy} onClick={() => setPicked(null)} className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50">Cancel</button>
+                    </div>
+                </form>
+            )}
+        </div>
+    );
+};

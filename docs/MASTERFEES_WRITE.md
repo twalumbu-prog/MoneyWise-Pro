@@ -29,6 +29,26 @@ POST   /integrations/masterfees/write/invoices                 create an invoice
 POST   /integrations/masterfees/write/invoices/:id/void        { reason }
 ```
 
+## Editing a payment or an invoice (void and replace)
+
+Master Fees has no edit: it refuses to change a payment, or an invoice's lines or total, once made. So **an edit here voids the old record and
+records the corrected one under a new reference**. Both stay on record, with your reason. In the app: Settings, Integrations, Master Fees,
+"Make changes in Master Fees", **Edit a payment or invoice**: pick one of the 50 most recent, correct it (pre-filled), give a reason.
+
+```
+GET   /integrations/masterfees/write/recent?type=payments|invoices
+POST  /integrations/masterfees/write/payments/:id/replace      { edit_reason, ...the corrected payment }
+POST  /integrations/masterfees/write/invoices/:id/replace      { edit_reason, ...the corrected invoice }
+```
+
+- The corrected record is checked in full **before** anything is voided, so a mistake in the form changes nothing.
+- Safe to send twice: voiding something already void and creating with the same reference are both repeats, so the same edit sent again
+  finishes the job instead of doing it twice. If the old one was voided but the new one failed, the error says so (`details.old_voided`).
+- Only hand-recorded payments (manual, cash, bank, cheque) can be replaced; mobile money and card payments are changed in Master Fees.
+- An invoice with a payment on it can't be replaced: void or replace the payment first. If Master Fees refuses the corrected invoice as
+  `already_invoiced` for that term and year after the old one is void, the old one stays void and the error says what happened.
+  **Unverified:** whether Master Fees frees the term and year when an invoice is voided. Try an invoice edit on a test student first.
+
 Rules that come from Master Fees and are enforced here first (`services/masterfees_write.ts`):
 - Nothing is deleted. A mistake is corrected by voiding.
 - Unknown fields are refused by Master Fees, so each request is cut down to the fields it names.

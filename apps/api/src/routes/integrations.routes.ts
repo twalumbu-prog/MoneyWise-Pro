@@ -29,7 +29,7 @@ import {
     correctMasterFeesPaymentDates,
     syncStudentsToCrmNow,
 } from '../controllers/masterfees.controller';
-import { mfRecordPayment, mfVoidPayment, mfCreateStudent, mfUpdateStudent, mfCreateInvoice, mfVoidInvoice } from '../controllers/masterfeesWrite.controller';
+import { mfRecordPayment, mfVoidPayment, mfCreateStudent, mfUpdateStudent, mfCreateInvoice, mfVoidInvoice, mfReplacePayment, mfReplaceInvoice, mfRecent } from '../controllers/masterfeesWrite.controller';
 
 import {
     getMetaStatus,
@@ -108,6 +108,10 @@ router.post('/masterfees/write/students', requireAuth, mfCreateStudent);
 router.patch('/masterfees/write/students/:id', requireAuth, mfUpdateStudent);
 router.post('/masterfees/write/invoices', requireAuth, mfCreateInvoice);
 router.post('/masterfees/write/invoices/:id/void', requireAuth, mfVoidInvoice);
+// Edit = void the old record and record the corrected one under a new reference (Master Fees has no edit).
+router.post('/masterfees/write/payments/:id/replace', requireAuth, mfReplacePayment);
+router.post('/masterfees/write/invoices/:id/replace', requireAuth, mfReplaceInvoice);
+router.get('/masterfees/write/recent', requireAuth, mfRecent);
 
 // ── Meta messaging (WhatsApp / Facebook / Instagram) ─────────────────────────
 // Webhook + callback are unauthenticated by design: the webhook is secured by X-Hub-Signature-256.
