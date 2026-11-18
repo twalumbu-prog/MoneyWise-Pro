@@ -24,7 +24,7 @@ const PROVIDER: Record<MomoCapture['provider'], string> = { MTN: 'MTN MoMo', AIR
  */
 export default function MomoCapturesScreen() {
     const qc = useQueryClient();
-    const { paste: pasteParam, reviewId } = useLocalSearchParams<{ paste?: string; reviewId?: string }>();
+    const { paste: pasteParam, reviewId, queue: queueParam } = useLocalSearchParams<{ paste?: string; reviewId?: string; queue?: string }>();
     const [tab, setTab] = useState<MomoCaptureStatus>('PENDING');
     const [pasteOpen, setPasteOpen] = useState(pasteParam === '1');
     const [pasteText, setPasteText] = useState('');
@@ -42,6 +42,34 @@ export default function MomoCapturesScreen() {
     if (reviewId && reviewId !== consumedReviewId && list.data) {
         const match = list.data.find((c) => c.id === reviewId);
         if (match) { setReviewing(match); setConsumedReviewId(reviewId); }
+    }
+
+    // Quick confirm: the waiting captures one after another — pick a category, Next. A snapshot of the list when it
+    // starts, so booking one (which refreshes the list) never shifts what comes next.
+    const [queue, setQueue] = useState<{ items: MomoCapture[]; pos: number; booked: number; skipped: number } | null>(null);
+    const startQueue = (items: MomoCapture[]) => {
+        if (items.length === 0) { Alert.alert('All caught up', 'There are no transactions waiting to be confirmed.'); return; }
+        setReviewing(null);
+        setQueue({ items, pos: 0, booked: 0, skipped: 0 });
+    };
+    const advance = (booked: boolean) => {
+        if (!queue) return;
+        const next = { ...queue, pos: queue.pos + 1, booked: queue.booked + (booked ? 1 : 0), skipped: queue.skipped + (booked ? 0 : 1) };
+        if (next.pos < next.items.length) { setQueue(next); return; }
+        setQueue(null);
+        Alert.alert(
+            next.skipped === 0 ? 'All caught up 🎉' : 'Done for now',
+            next.skipped === 0
+                ? `${next.booked} transaction${next.booked === 1 ? '' : 's'} confirmed.`
+                : `${next.booked} confirmed, ${next.skipped} skipped. Skipped ones stay in "To review".`,
+        );
+    };
+    // Opened from the daily "N transactions to confirm" push (`?queue=1`): go straight into the queue.
+    const [queueConsumed, setQueueConsumed] = useState(false);
+    // Waits for a fresh fetch: a list cached from earlier may hold ones already confirmed elsewhere (the prompt's Record button).
+    if (queueParam === '1' && !queueConsumed && tab === 'PENDING' && list.data && !list.isFetching) {
+        setQueueConsumed(true);
+        startQueue(list.data);
     }
 
     const act = useMutation({
@@ -95,6 +123,13 @@ export default function MomoCapturesScreen() {
                 ))}
             </View>
 
+            {tab === 'PENDING' && (list.data?.length ?? 0) >= 2 && (
+                <Pressable onPress={() => startQueue(list.data ?? [])} style={({ pressed }) => [styles.confirmAll, pressed && { opacity: 0.85 }]}>
+                    <Text style={styles.confirmAllText}>Confirm all {list.data!.length}</Text>
+                    <Text style={styles.confirmAllSub}>One after another: tap a category, then Next</Text>
+                </Pressable>
+            )}
+
             <FlatList
                 data={list.data ?? []}
                 keyExtractor={(c) => c.id}
@@ -119,12 +154,25 @@ export default function MomoCapturesScreen() {
                 )}
             />
 
-            <MomoReviewModal
-                capture={reviewing}
-                busy={act.isPending && act.variables?.id === reviewing?.id}
-                onClose={() => setReviewing(null)}
-                onConfirm={(choice) => { if (reviewing) act.mutate({ id: reviewing.id, action: 'post', ...choice }); setReviewing(null); }}
-            />
+            {queue ? (
+                <MomoReviewModal
+                    capture={queue.items[queue.pos] ?? null}
+                    busy={false}
+                    queue={{ position: queue.pos + 1, total: queue.items.length }}
+                    onClose={() => setQueue(null)}
+                    onSkip={() => advance(false)}
+                    // Booking runs in the background while the next one is already on screen; a failure shows an alert
+                    // and the capture stays in "To review".
+                    onConfirm={(choice) => { act.mutate({ id: queue.items[queue.pos].id, action: 'post', ...choice }); advance(true); }}
+                />
+            ) : (
+                <MomoReviewModal
+                    capture={reviewing}
+                    busy={act.isPending && act.variables?.id === reviewing?.id}
+                    onClose={() => setReviewing(null)}
+                    onConfirm={(choice) => { if (reviewing) act.mutate({ id: reviewing.id, action: 'post', ...choice }); setReviewing(null); }}
+                />
+            )}
         </KeyboardAvoidingView>
     );
 }
@@ -171,6 +219,9 @@ const styles = StyleSheet.create({
     tabText: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.textMuted },
     tabTextOn: { color: '#FFFFFF' },
     list: { padding: 20, paddingTop: 8, gap: 10, paddingBottom: 48 },
+    confirmAll: { marginHorizontal: 20, marginTop: 4, marginBottom: 4, paddingVertical: 12, paddingHorizontal: 16, borderRadius: radius.md, backgroundColor: colors.blue, gap: 2 },
+    confirmAllText: { fontFamily: fonts.bodyBold, fontSize: 15, color: '#FFFFFF' },
+    confirmAllSub: { fontFamily: fonts.body, fontSize: 12, color: 'rgba(255,255,255,0.85)' },
     empty: { fontFamily: fonts.body, fontSize: 14, color: colors.textFaint, textAlign: 'center', marginTop: 40, paddingHorizontal: 20, lineHeight: 20 },
     card: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 10 },
     cardTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },

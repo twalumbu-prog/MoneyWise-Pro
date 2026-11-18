@@ -30,6 +30,10 @@ export interface MomoCapture {
     status: MomoCaptureStatus;
     cashbook_entry_id: string | null;
     matched_entry_id: string | null;
+    /** Waiting captures only: the category last used with this contact, if any. */
+    suggested_account_id?: string | null;
+    /** Waiting captures only: the person's most-used categories for this direction, most used first. */
+    ranked_account_ids?: string[];
 }
 
 /** A wallet's balance as the operator last stated it in a message. */

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, View, Text, Pressable, ScrollView, TextInput, ActivityIndicator, StyleSheet } from 'react-native';
 import { X, Mic, Square, FileText } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
@@ -14,30 +14,57 @@ const PROVIDER_LABEL: Record<MomoCapture['provider'], string> = { MTN: 'MTN MoMo
  * "Record or dismiss" notification. Picking one of the account's own income/expense categories (or typing or
  * speaking a note instead) goes straight into the same booking the "Book it" button always made; this just asks for
  * it up front instead of leaving everything uncategorised.
+ *
+ * With `queue`, it is the quick-confirm mode for working through several waiting captures in a row (from the daily
+ * "N transactions to confirm" push): the category used last time with the same contact is already picked, the
+ * person's most-used categories come first, and Done becomes Next, with Skip to leave one for later.
  */
-export function MomoReviewModal({ capture, busy, onClose, onConfirm }: {
+export function MomoReviewModal({ capture, busy, onClose, onConfirm, queue, onSkip }: {
     capture: MomoCapture | null;
     busy: boolean;
     onClose: () => void;
     onConfirm: (choice: { accountId: string | null; description: string | null }) => void;
+    /** 1-based position and total, when working through a queue. */
+    queue?: { position: number; total: number };
+    onSkip?: () => void;
 }) {
     const isIn = capture?.direction === 'IN';
     const accounts = useQuery({ queryKey: ['accounts'], queryFn: () => accountService.getAll(), enabled: !!capture });
-    const options = useMemo(
-        () => (accounts.data ?? []).filter((a) => a.is_active && a.type === (isIn ? 'INCOME' : 'EXPENSE')),
-        [accounts.data, isIn],
-    );
+    const options = useMemo(() => {
+        const list = (accounts.data ?? []).filter((a) => a.is_active && a.type === (isIn ? 'INCOME' : 'EXPENSE'));
+        // Suggested first, then the person's most-used, then the rest in their usual order.
+        const rank = new Map<string, number>();
+        (capture?.ranked_account_ids ?? []).forEach((id, i) => rank.set(id, i + 1));
+        if (capture?.suggested_account_id) rank.set(capture.suggested_account_id, 0);
+        return list
+            .map((a, i) => ({ a, i }))
+            .sort((x, y) => (rank.get(x.a.id) ?? 1000 + x.i) - (rank.get(y.a.id) ?? 1000 + y.i))
+            .map(({ a }) => a);
+    }, [accounts.data, isIn, capture?.ranked_account_ids, capture?.suggested_account_id]);
     const [accountId, setAccountId] = useState<string | null>(null);
     const [note, setNote] = useState('');
     const dictation = useDictation(note, setNote);
+    const chipsRef = useRef<ScrollView>(null);
 
     // A fresh capture each time the modal opens; nothing carries over from the last one reviewed.
-    useEffect(() => { setAccountId(null); setNote(''); }, [capture?.id]);
+    useEffect(() => { setAccountId(null); setNote(''); chipsRef.current?.scrollTo({ x: 0, animated: false }); }, [capture?.id]);
+    // Pre-pick the suggestion once the categories are loaded (only if it is still an active category of the right kind),
+    // and only once per capture, so it never overrides a choice the person made.
+    const prefilledFor = useRef<string | null>(null);
+    useEffect(() => {
+        if (!capture || prefilledFor.current === capture.id || accounts.isLoading) return;
+        prefilledFor.current = capture.id;
+        const s = capture.suggested_account_id;
+        if (s && options.some((a) => a.id === s)) setAccountId(s);
+    }, [capture, options, accounts.isLoading]);
     useEffect(() => { if (!capture) dictation.stop(); }, [capture]); // eslint-disable-line react-hooks/exhaustive-deps
 
     if (!capture) return null;
     const close = () => { dictation.stop(); onClose(); };
     const confirm = () => { dictation.stop(); onConfirm({ accountId, description: note.trim() || null }); };
+    const skip = () => { dictation.stop(); onSkip?.(); };
+    const suggested = !!capture.suggested_account_id && accountId === capture.suggested_account_id;
+    const last = !queue || queue.position >= queue.total;
     const accountNumber = capture.sender || (capture.counterparty || '').match(/\b(\+?\d[\d ]{6,})\b/)?.[1] || null;
     const accountName = (capture.counterparty || '').replace(/\b\+?\d[\d ]{6,}\b/g, '').trim() || capture.counterparty;
 
@@ -46,9 +73,17 @@ export function MomoReviewModal({ capture, busy, onClose, onConfirm }: {
             <View style={styles.backdrop}>
                 <View style={styles.card}>
                     <View style={styles.header}>
-                        <Text style={styles.title}>You got a new transaction!</Text>
-                        <Pressable onPress={close} hitSlop={8} style={styles.closeBtn}><X size={14} color="#505050" /></Pressable>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.title}>{queue ? 'Confirm your transactions' : 'You got a new transaction!'}</Text>
+                            {!!queue && <Text style={styles.progress}>{queue.position} of {queue.total}</Text>}
+                        </View>
+                        <Pressable onPress={close} hitSlop={8} style={styles.closeBtn} accessibilityLabel="Close"><X size={14} color="#505050" /></Pressable>
                     </View>
+                    {!!queue && (
+                        <View style={styles.progressTrack}>
+                            <View style={[styles.progressFill, { width: `${Math.round(((queue.position - 1) / Math.max(queue.total, 1)) * 100)}%` }]} />
+                        </View>
+                    )}
 
                     <View style={styles.detailsOuter}>
                         <Text style={styles.detailsLabel}>
@@ -67,7 +102,8 @@ export function MomoReviewModal({ capture, busy, onClose, onConfirm }: {
                     </View>
 
                     <Text style={styles.sectionLabel}>Please choose how this should be treated</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+                    {suggested && <Text style={styles.suggestedHint}>Picked from what you chose last time with them. Tap another to change it.</Text>}
+                    <ScrollView ref={chipsRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
                         {accounts.isLoading && <ActivityIndicator color={colors.blue} />}
                         {options.map((a) => (
                             <Pressable key={a.id} onPress={() => setAccountId((v) => (v === a.id ? null : a.id))}
@@ -89,9 +125,16 @@ export function MomoReviewModal({ capture, busy, onClose, onConfirm }: {
                         </Pressable>
                     </View>
 
-                    <Pressable onPress={confirm} disabled={busy} style={({ pressed }) => [styles.done, pressed && { opacity: 0.85 }, busy && { opacity: 0.7 }]}>
-                        {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.doneText}>Done</Text>}
-                    </Pressable>
+                    <View style={styles.buttons}>
+                        {!!queue && onSkip && (
+                            <Pressable onPress={skip} disabled={busy} style={({ pressed }) => [styles.skip, pressed && { opacity: 0.7 }]}>
+                                <Text style={styles.skipText}>Skip</Text>
+                            </Pressable>
+                        )}
+                        <Pressable onPress={confirm} disabled={busy} style={({ pressed }) => [styles.done, { flex: 1 }, pressed && { opacity: 0.85 }, busy && { opacity: 0.7 }]}>
+                            {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.doneText}>{last ? 'Done' : 'Next'}</Text>}
+                        </Pressable>
+                    </View>
                 </View>
             </View>
         </Modal>
@@ -109,7 +152,7 @@ const styles = StyleSheet.create({
     backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', padding: 16 },
     card: { width: '100%', maxWidth: 394, backgroundColor: colors.surface, borderRadius: radius.lg, paddingTop: 24, paddingBottom: 20, paddingHorizontal: 16, gap: 14 },
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-    title: { flex: 1, fontFamily: fonts.bodyBold, fontSize: 16, color: '#000000' },
+    title: { fontFamily: fonts.bodyBold, fontSize: 16, color: '#000000' },
     closeBtn: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EDEDED', alignItems: 'center', justifyContent: 'center' },
     detailsOuter: { backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#EEF0F2', borderRadius: radius.md, padding: 12, gap: 8 },
     detailsLabel: { fontFamily: fonts.bodyBold, fontSize: 10, color: '#000000' },
@@ -134,5 +177,12 @@ const styles = StyleSheet.create({
     micBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F6FAFF' },
     micBtnOn: { backgroundColor: colors.blue },
     done: { height: 51, borderRadius: radius.pill, backgroundColor: colors.blue, alignItems: 'center', justifyContent: 'center' },
+    buttons: { flexDirection: 'row', gap: 10 },
+    skip: { height: 51, paddingHorizontal: 22, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
+    skipText: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.textMuted },
+    progress: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint, marginTop: 2 },
+    progressTrack: { height: 4, borderRadius: 2, backgroundColor: '#EEF0F2', overflow: 'hidden', marginTop: -4 },
+    progressFill: { height: 4, borderRadius: 2, backgroundColor: colors.blue },
+    suggestedHint: { fontFamily: fonts.body, fontSize: 11, color: colors.textFaint, marginTop: -8 },
     doneText: { fontFamily: fonts.bodyBold, fontSize: 16, color: '#FFFFFF' },
 });

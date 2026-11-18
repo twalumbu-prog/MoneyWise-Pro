@@ -188,7 +188,67 @@ export async function list(userId: string, orgId: string, status?: unknown) {
     if (typeof status === 'string' && ['PENDING', 'POSTED', 'MATCHED', 'DISMISSED'].includes(status)) q = q.eq('status', status);
     const { data, error } = await q;
     if (error) throw new MomoCaptureError(error.message, 500);
-    return data ?? [];
+    const rows = data ?? [];
+    // Waiting ones get a suggested category, so confirming them can be one tap (or none) plus Next.
+    if (status !== 'PENDING' || rows.length === 0) return rows;
+    const s = await categorySuggestions(userId, orgId).catch((e) => {
+        console.warn('[MoMo capture] suggestions failed:', e?.message);
+        return null;
+    });
+    if (!s) return rows;
+    return rows.map((r: any) => ({
+        ...r,
+        suggested_account_id: (() => { const k = contactKey(r.direction, r.counterparty); return k ? s.byContact.get(k) ?? null : null; })(),
+        ranked_account_ids: s.ranked[r.direction as 'IN' | 'OUT'] ?? [],
+    }));
+}
+
+/**
+ * Who a transaction was with, as a stable key: the phone number when the message has one (names are spelt and
+ * truncated differently from one message to the next), else the name. Null when there is nothing to go on.
+ */
+// Not the SMS sender: that is the operator ("MoMo", "Airtel"), never the other party.
+export function contactKey(direction: string, counterparty: string | null | undefined): string | null {
+    const text = counterparty || '';
+    const digits = (text.match(/\+?\d[\d ]{6,}/)?.[0] || '').replace(/\D/g, '');
+    if (digits.length >= 9) return `${direction}|tel:${digits.slice(-9)}`;
+    const name = text.toLowerCase().replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (name.length >= 3) return `${direction}|name:${name}`;
+    return null;
+}
+
+/**
+ * Learnt from the person's own booked captures: the category last used with each contact, and the categories they
+ * use most, per direction (to order the chips). Only choices that reached the ledger count.
+ */
+export async function categorySuggestions(userId: string, orgId: string) {
+    const { data: booked, error } = await supabase.from('momo_captures')
+        .select('direction, counterparty, cashbook_entry_id, occurred_at')
+        .eq('user_id', userId).eq('organization_id', orgId).eq('status', 'POSTED').not('cashbook_entry_id', 'is', null)
+        .order('occurred_at', { ascending: false }).limit(400);
+    if (error) throw new Error(error.message);
+    const ids = (booked ?? []).map((b: any) => b.cashbook_entry_id as string);
+    const accountOf = new Map<string, string>();
+    for (let i = 0; i < ids.length; i += 200) {
+        const { data: entries } = await supabase.from('cashbook_entries').select('id, account_id')
+            .eq('organization_id', orgId).in('id', ids.slice(i, i + 200)).not('account_id', 'is', null);
+        for (const e of entries ?? []) accountOf.set((e as any).id, (e as any).account_id);
+    }
+    return buildSuggestions((booked ?? []).map((b: any) => ({ ...b, account_id: accountOf.get(b.cashbook_entry_id) ?? null })));
+}
+
+/** Pure part of categorySuggestions. `history` is newest first. */
+export function buildSuggestions(history: { direction: string; counterparty: string | null; account_id: string | null }[]) {
+    const byContact = new Map<string, string>();
+    const counts: Record<'IN' | 'OUT', Map<string, number>> = { IN: new Map(), OUT: new Map() };
+    for (const h of history) {
+        if (!h.account_id || (h.direction !== 'IN' && h.direction !== 'OUT')) continue;
+        const key = contactKey(h.direction, h.counterparty);
+        if (key && !byContact.has(key)) byContact.set(key, h.account_id);   // newest wins
+        counts[h.direction].set(h.account_id, (counts[h.direction].get(h.account_id) ?? 0) + 1);
+    }
+    const top = (m: Map<string, number>) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([id]) => id);
+    return { byContact, ranked: { IN: top(counts.IN), OUT: top(counts.OUT) } };
 }
 
 /**

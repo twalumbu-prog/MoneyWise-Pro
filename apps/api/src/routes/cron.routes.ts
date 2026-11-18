@@ -12,6 +12,7 @@ import {
     dailyReconCron,
     mtnPayoutsCron,
     trackingHealthCron,
+    momoConfirmDigest,
 } from '../controllers/cron.controller';
 
 const router = Router();
@@ -29,5 +30,6 @@ router.post('/fund-feeds', fundFeeds);
 router.post('/daily-recon', dailyReconCron);
 router.post('/mtn-payouts', mtnPayoutsCron);
 router.post('/tracking-health', trackingHealthCron);
+router.post('/momo-confirm-digest', momoConfirmDigest);
 
 export default router;

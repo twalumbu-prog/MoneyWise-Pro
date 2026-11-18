@@ -7,6 +7,7 @@ import { trackingHealth, assessTrackingHealth } from '../services/posthogQuery.s
 import { autoCompleteRequisition, sendAutoCategorizationReminder } from './requisition.controller';
 import { drainCaptureJobs } from '../services/capture/capture.worker';
 import { sendCaptureDigests } from '../services/capture/capture.digest';
+import { sendMomoConfirmDigests } from '../services/momoCapture/confirmDigest';
 import { checkMetaTokens, purgeOldEvidence } from '../services/capture/capture.maintenance';
 
 /**
@@ -231,6 +232,8 @@ const cronTask = (label: string, run: () => Promise<Record<string, any>>) => asy
 
 export const metaTokenHealth = cronTask('MetaTokenHealth', checkMetaTokens);
 export const captureRetention = cronTask('CaptureRetention', () => purgeOldEvidence(45_000));
+// POST /cron/momo-confirm-digest — evening "N transactions to confirm" push for captured mobile money transactions.
+export const momoConfirmDigest = cronTask('MomoConfirmDigest', () => sendMomoConfirmDigests(45_000));
 
 // POST /cron/daily-recon — every morning: MoneyWise wallet totals vs live Lenco balance for every linked org.
 // Stores the snapshot (app_settings.daily_recon_last, with the previous run kept for trend) and emails super-admins
