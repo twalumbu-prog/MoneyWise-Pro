@@ -318,3 +318,14 @@ export type { InvestProductType, PricePoint, Timeframe } from './invest/chartDat
 
 export { buildInflowReceipt, renderReceiptHtml, channelLabel, paymentMethodLabel, isDeliverable, formatReceiptDate } from './receipt/inflowReceipt';
 export type { InflowReceipt, ReceiptItem, ReceiptJournalLine } from './receipt/inflowReceipt';
+
+export { growService } from './services/grow.service';
+export {
+    GROW_FREQUENCIES, GROW_FREQUENCY_LABEL, GROW_FREQUENCY_UNIT, GROW_TARGET_KEYS,
+    monthKeyOf, parseMonthKey, addMonths, monthsBetween, monthRange, monthName, monthLabelWithYear,
+    amountForMonth, monthlyEquivalent, planLength, projectGrowPlan, gradeMonth, summariseGrowMonth, sanitizeGrowPlan,
+} from './grow';
+export type {
+    GrowFrequency, GrowTargetKey, GrowTarget, GrowPlan, GrowMonthPlan, GrowProjection,
+    GrowMonthActuals, GrowTargetStatus, GrowMonthStatus, GrowMonthResult, GrowLedgerRow,
+} from './grow';

@@ -370,6 +370,10 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
             if (!description.trim()) { setError('Please describe the purpose.'); return; }
             if (useDepartments && !department) { setError('Please select a department.'); return; }
             if (importInvoice && !scannedInvoice) { setError('Upload your invoice first, or switch off Import invoice.'); return; }
+        } else if (stage === 2) {
+            if (lineItems.length === 0) { setError('Add at least one item to the expense list.'); return; }
+            const bad = lineItems.findIndex(i => !i.description.trim() || !(Number(i.unit_price) > 0) || !(Number(i.quantity) > 0));
+            if (bad !== -1) { setError(`Complete all details for item ${bad + 1}: description, price and quantity.`); return; }
         } else if (stage === 5) {
             if (!manualAmount || Number(manualAmount) <= 0) { setError('Please enter an amount greater than zero.'); return; }
         } else if (stage === 3) {
@@ -656,7 +660,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                         <div key={item.id} className="relative pb-6 border-b border-gray-100 last:border-0">
                                             <div className="flex items-center gap-3 mb-3">
                                                 <div className="w-8 shrink-0 flex items-center justify-center"><div className="w-8 h-8 rounded-full bg-[#E8F0FE] text-[#0B57D0] flex items-center justify-center font-bold text-sm">{idx + 1}</div></div>
-                                                <input type="text" value={item.description} onChange={e => updateLineItem(item.id, 'description', e.target.value)} readOnly={!!item.price_locked} placeholder="Item Description" className="flex-1 text-base font-bold text-[#1F1F1F] border-none p-0 focus:ring-0 bg-transparent min-w-0" />
+                                                <input type="text" value={item.description} onChange={e => updateLineItem(item.id, 'description', e.target.value)} readOnly={!!item.price_locked} placeholder="Type to Enter Description" className="flex-1 h-12 px-4 text-base font-bold text-[#1F1F1F] bg-white border border-gray-200 rounded-full placeholder:font-normal placeholder:text-gray-400 focus:ring-2 focus:ring-[#0B57D0]/10 focus:border-[#0B57D0] min-w-0" />
                                                 <span className="text-sm font-black text-[#1F1F1F] min-w-[32px] text-right">{item.estimated_amount > 0 ? `K${item.estimated_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-'}</span>
                                                 <div className="w-8 shrink-0 flex items-center justify-end"><button onClick={() => removeLineItem(item.id)} className="text-gray-300 hover:text-red-500"><Trash2 size={20} /></button></div>
                                             </div>

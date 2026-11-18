@@ -1,4 +1,5 @@
 import { CARD_ACCOUNT_TYPE, walletConnected, liveCardBalance } from '../services/lipila.service';
+import { trackFlow } from '../lib/moneyFlowTracking';
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { cashbookService } from '../services/cashbook.service';
@@ -327,6 +328,7 @@ export const logWalletDepositIntent = async (req: any, res: any): Promise<any> =
             throw error;
         }
 
+        trackFlow('started', { reference, organizationId, userId: (req as any).user?.id, flow: 'deposit' });
         res.json({ message: 'Intent logged successfully' });
     } catch (error: any) {
         console.error('Error logging wallet deposit intent:', error);

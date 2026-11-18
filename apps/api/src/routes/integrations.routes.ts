@@ -4,6 +4,7 @@ import {
     connectQuickBooks,
     quickBooksCallback,
     getIntegrationStatus,
+    getIntegrationsOverview,
     getQuickBooksAccounts,
     getQuickBooksAccountTransactions,
     getQuickBooksInvoices,
@@ -46,6 +47,7 @@ import {
     updateSageMapping,
     syncSageNow,
 } from '../controllers/sage.controller';
+import { composioConnect, composioComplete } from '../controllers/composio.controller';
 import {
     getGmailStatus,
     getGmailConnectUrl,
@@ -63,6 +65,7 @@ router.delete('/quickbooks', requireAuth, disconnectQuickBooks);
 
 // Status and Data
 router.get('/status', requireAuth, getIntegrationStatus);
+router.get('/overview', requireAuth, getIntegrationsOverview);
 router.get('/quickbooks/accounts', requireAuth, getQuickBooksAccounts);
 router.get('/quickbooks/accounts/:qbAccountId/transactions', requireAuth, getQuickBooksAccountTransactions);
 router.get('/quickbooks/invoices', requireAuth, getQuickBooksInvoices);
@@ -124,5 +127,9 @@ router.post('/gmail/sync', gmailSyncCron);
 router.get('/gmail/status', requireAuth, getGmailStatus);
 router.get('/gmail/connect', requireAuth, getGmailConnectUrl);
 router.delete('/gmail/:id', requireAuth, disconnectGmail);
+
+// ── Quick connect via Composio (Gmail, Facebook, Instagram) — the alternative to the direct connections above ──
+router.post('/composio/:toolkit/connect', requireAuth, composioConnect);
+router.post('/composio/:toolkit/complete', requireAuth, composioComplete);
 
 export default router;

@@ -186,6 +186,8 @@ export interface MasterFeesConfig {
     /** Last time the incremental invoice pass completed (throttles it to INVOICE_DELTA_MIN_INTERVAL_MS). */
     lastInvoiceSyncAt?: string;
     lastStudentSyncAt?: string;
+    /** Last time the cron TRIED the student mirror (success or not) — throttles retries so a failing org isn't hit every minute. */
+    lastStudentSyncAttemptAt?: string;
     /** Automatic QuickBooks posting (masterfees_qb.service.ts). Absent/disabled = off. */
     qbAutoPost?: {
         enabled: boolean;
@@ -1556,6 +1558,30 @@ export async function syncStudentsToCrm(organizationId: string): Promise<{ creat
     return out;
 }
 
+/** True when the automatic student mirror is due for this org (never attempted, or last attempt/success older than the throttle). */
+export function isStudentSyncDue(config: MasterFeesConfig, now = Date.now()): boolean {
+    const stamps = [config.lastStudentSyncAt, config.lastStudentSyncAttemptAt].filter(Boolean).map(t => new Date(t as string).getTime()).filter(n => !Number.isNaN(n));
+    if (stamps.length === 0) return true;
+    return now - Math.max(...stamps) > STUDENT_SYNC_MIN_INTERVAL_MS;
+}
+
+/**
+ * Cron entry for the student→CRM mirror. The routine cron runs payments-only
+ * (syncMasterfeesPayments), so without this the CRM only got students when someone
+ * clicked "Sync Now". Stamps the attempt first so a failing org retries every 6h, not
+ * every minute. Never throws — the money sync must not depend on it.
+ */
+export async function syncStudentsToCrmIfDue(organizationId: string, config: MasterFeesConfig): Promise<{ ran: boolean; created?: number; updated?: number; unchanged?: number; error?: string }> {
+    if (!isStudentSyncDue(config)) return { ran: false };
+    try {
+        await patchConfig(organizationId, { lastStudentSyncAttemptAt: new Date().toISOString() });
+        const r = await syncStudentsToCrm(organizationId);
+        return { ran: true, ...r };
+    } catch (e: any) {
+        console.error(`[MasterFees] student CRM sync failed for ${organizationId}: ${e.message}`);
+        return { ran: true, error: e.message };
+    }
+}
 
 export async function syncMasterfees(organizationId: string, deadline: number = Date.now() + 35_000): Promise<SyncSummary> {
     const integration = await getMasterFeesIntegration(organizationId);

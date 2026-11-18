@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import {
     isGmailConfigured, buildAuthUrl, readState, completeConnection, disconnectConnection, syncAllGmail,
 } from '../services/gmail.service';
+import { isComposioConfigured, disconnectComposioConnection, syncAllComposio } from '../services/composio.service';
 
 const frontend = () => process.env.FRONTEND_URL || 'https://moneywise.pro';
 const backToSettings = (params: Record<string, string>) =>
@@ -16,10 +17,10 @@ export const getGmailStatus = async (req: Request, res: Response) => {
     const organizationId = (req as any).user.organization_id;
     if (!organizationId) return res.status(400).json({ error: 'User does not belong to an organization' });
     const { data, error } = await supabase.from('email_connections')
-        .select('id, provider, email_address, status, last_error, last_synced_at, created_at')
+        .select('id, provider, email_address, status, last_error, last_synced_at, created_at, auth_mode')
         .eq('organization_id', organizationId).neq('status', 'DISCONNECTED').order('created_at');
     if (error) return res.status(500).json({ error: error.message });
-    res.json({ configured: isGmailConfigured(), connections: data || [] });
+    res.json({ configured: isGmailConfigured(), composio: isComposioConfigured(), connections: data || [] });
 };
 
 /** GET /integrations/gmail/connect — returns the Google consent URL (the web app navigates to it). */
@@ -55,6 +56,8 @@ export const gmailOAuthCallback = async (req: Request, res: Response) => {
 /** DELETE /integrations/gmail/:id — revokes at Google and stops syncing; captured emails are kept. */
 export const disconnectGmail = async (req: Request, res: Response) => {
     const organizationId = (req as any).user.organization_id;
+    // Quick-connect (Composio) mailboxes are revoked at Composio; anything else is a direct Google connection.
+    if (await disconnectComposioConnection('email', String(req.params.id), organizationId)) return res.json({ success: true });
     const ok = await disconnectConnection(String(req.params.id), organizationId);
     if (!ok) return res.status(404).json({ error: 'Connection not found' });
     res.json({ success: true });
@@ -64,14 +67,20 @@ export const disconnectGmail = async (req: Request, res: Response) => {
 export const gmailSyncCron = async (req: Request, res: Response) => {
     const secret = process.env.LENCO_SYNC_SECRET;
     if (!secret || req.headers['authorization'] !== `Bearer ${secret}`) return res.status(401).json({ error: 'Unauthorized' });
-    if (!isGmailConfigured()) return res.json({ skipped: 'not configured' });
+    const direct = isGmailConfigured(), quick = isComposioConfigured();
+    if (!direct && !quick) return res.json({ skipped: 'not configured' });
     try {
-        const r = await syncAllGmail(15_000);
+        // One tick serves both connection modes: direct Google first (cheap, own tokens), Composio gets the rest of the budget.
+        const started = Date.now();
+        const r = direct ? await syncAllGmail(quick ? 7_000 : 15_000) : { connections: [], backlogClassified: 0 };
+        const q = quick ? await syncAllComposio(Math.max(5_000, 15_000 - (Date.now() - started))) : { connections: [], backlogClassified: 0 };
+        const all = [...r.connections, ...q.connections];
         res.json({
-            connections: r.connections.length,
-            stored: r.connections.reduce((s, c) => s + c.stored, 0),
-            classified: r.connections.reduce((s, c) => s + c.classified, 0) + r.backlogClassified,
-            errors: r.connections.filter(c => c.error).map(c => ({ id: c.connectionId, error: c.error })),
+            connections: all.length,
+            composio: q.connections.length,
+            stored: all.reduce((s, c) => s + c.stored, 0),
+            classified: all.reduce((s, c) => s + c.classified, 0) + r.backlogClassified + q.backlogClassified,
+            errors: all.filter(c => c.error).map(c => ({ id: c.connectionId, error: c.error })),
         });
     } catch (e: any) {
         console.error('[Gmail] sync tick failed:', e?.message);

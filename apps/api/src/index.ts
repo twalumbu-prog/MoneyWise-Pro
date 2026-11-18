@@ -66,6 +66,7 @@ import momoCaptureRoutes from './routes/momoCapture.routes';
 import marketplaceRoutes from './routes/marketplace.routes';
 import loansRoutes from './routes/loans.routes';
 import { broadcastAfterWrite } from './lib/realtimeBroadcast';
+import { trackFeatureUsage } from './lib/usageTracking';
 
 dotenv.config();
 
@@ -1743,6 +1744,8 @@ app.post('/kyc-face-match/callback', async (req, res) => {
 // After any successful authenticated mutation, broadcast an org-scoped cache
 // invalidation so other signed-in devices refresh live (see lib/realtimeBroadcast).
 app.use(broadcastAfterWrite);
+// Daily feature-usage telemetry (PostHog `feature_used`); no-op when POSTHOG_KEY is unset.
+app.use(trackFeatureUsage);
 
 // Heartbeats for calls dispatched by the internal scheduler (X-Cron-Job + shared secret only).
 app.use(cronHeartbeat);

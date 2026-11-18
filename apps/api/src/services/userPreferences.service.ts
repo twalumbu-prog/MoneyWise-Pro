@@ -68,6 +68,8 @@ export async function getPreferences(userId: string): Promise<UserPreferences> {
 export async function updatePreferences(userId: string, patch: any): Promise<UserPreferences> {
     const current = await getPreferences(userId);
     const next: UserPreferences = JSON.parse(JSON.stringify(current));
+    // Keys stored alongside the settings but not part of them (Grow plans) must survive a settings save.
+    const extras = await readExtraPreferenceKeys(userId);
     const bad = (m: string) => { throw Object.assign(new Error(m), { httpStatus: 400 }); };
 
     if (patch?.notifications?.channel !== undefined) {
@@ -98,7 +100,7 @@ export async function updatePreferences(userId: string, patch: any): Promise<Use
             if (id === null || id === undefined) {
                 // No specific account: payroll uses the payment details its own staff record holds.
                 next.payroll = { destination: 'BANK', account_id: null };
-                const { error: e0 } = await supabase.from('users').update({ preferences: next }).eq('id', userId);
+                const { error: e0 } = await supabase.from('users').update({ preferences: { ...extras, ...next } }).eq('id', userId);
                 if (e0) throw new Error(`Could not save your preferences: ${e0.message}`);
                 return next;
             }
@@ -108,9 +110,69 @@ export async function updatePreferences(userId: string, patch: any): Promise<Use
         }
     }
 
-    const { error } = await supabase.from('users').update({ preferences: next }).eq('id', userId);
+    const { error } = await supabase.from('users').update({ preferences: { ...extras, ...next } }).eq('id', userId);
     if (error) throw new Error(`Could not save your preferences: ${error.message}`);
     return next;
+}
+
+async function readRawPreferences(userId: string): Promise<Record<string, any>> {
+    const { data, error } = await supabase.from('users').select('preferences').eq('id', userId).maybeSingle();
+    if (error) throw new Error(`Could not read your preferences: ${error.message}`);
+    const raw = (data as any)?.preferences;
+    return raw && typeof raw === 'object' ? raw : {};
+}
+
+async function readExtraPreferenceKeys(userId: string): Promise<Record<string, any>> {
+    const raw = await readRawPreferences(userId);
+    return raw.grow && typeof raw.grow === 'object' ? { grow: raw.grow } : {};
+}
+
+// ── Grow (net-worth plan) ─────────────────────────────────────────────────────
+// One plan per person per organisation, kept at users.preferences.grow[organizationId]. The app owns the
+// maths (packages/core/src/grow); the server only checks the shape so nothing arbitrary is stored.
+
+const GROW_FREQUENCIES = ['DAILY', 'WEEKLY', 'FORTNIGHTLY', 'MONTHLY', 'QUARTERLY', 'YEARLY'];
+const GROW_MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+function cleanGrowPlan(raw: any): Record<string, any> {
+    const bad = (m: string) => { throw Object.assign(new Error(m), { httpStatus: 400 }); };
+    if (!raw || typeof raw !== 'object') bad('Send a Grow plan.');
+    if (!GROW_MONTH.test(raw.startMonth) || !GROW_MONTH.test(raw.goalMonth)) bad('Choose a start month and a goal date.');
+    if (raw.goalMonth < raw.startMonth) bad('Your goal date must be after the month you start.');
+    const money = (v: any) => { const n = Number(v); return Number.isFinite(n) ? Math.min(Math.max(0, Math.round(n * 100) / 100), 1e12) : 0; };
+    const target = (t: any) => ({ amount: money(t?.amount), frequency: GROW_FREQUENCIES.includes(t?.frequency) ? t.frequency : 'MONTHLY' });
+    const goal = raw.goalAmount == null ? null : money(raw.goalAmount);
+    const start = Number(raw.startNetWorth);
+    return {
+        version: 1,
+        startMonth: raw.startMonth,
+        startNetWorth: Number.isFinite(start) ? Math.round(start * 100) / 100 : 0,
+        income: target(raw.income),
+        expense: target(raw.expense),
+        savings: target(raw.savings),
+        investment: target(raw.investment),
+        annualReturnPct: Math.min(Math.max(0, Number(raw.annualReturnPct) || 0), 100),
+        goalMonth: raw.goalMonth,
+        goalAmount: goal && goal > 0 ? goal : null,
+        createdAt: typeof raw.createdAt === 'string' ? raw.createdAt.slice(0, 40) : new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+    };
+}
+
+export async function getGrowPlan(userId: string, organizationId: string): Promise<Record<string, any> | null> {
+    const raw = await readRawPreferences(userId);
+    return raw.grow?.[organizationId] ?? null;
+}
+
+/** Saves (or, with plan = null, removes) the person's Grow plan for one organisation. */
+export async function saveGrowPlan(userId: string, organizationId: string, plan: any | null): Promise<Record<string, any> | null> {
+    const cleaned = plan === null ? null : cleanGrowPlan(plan);
+    const raw = await readRawPreferences(userId);
+    const grow = { ...(raw.grow && typeof raw.grow === 'object' ? raw.grow : {}) };
+    if (cleaned) grow[organizationId] = cleaned; else delete grow[organizationId];
+    const { error } = await supabase.from('users').update({ preferences: { ...raw, grow } }).eq('id', userId);
+    if (error) throw new Error(`Could not save your Grow plan: ${error.message}`);
+    return cleaned;
 }
 
 /** The person's own personal workspace (the one their salary can land in), or null. */

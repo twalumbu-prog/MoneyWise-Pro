@@ -16,6 +16,7 @@
         "test:sales": "tsc && node dist/scripts/test_public_sales.js"
     },
     "dependencies": {
+        "@composio/core": "0.18.0",
         "@google/generative-ai": "^0.24.1",
         "@supabase/supabase-js": "^2.86.0",
         "@vercel/functions": "^3.9.9",

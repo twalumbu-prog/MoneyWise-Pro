@@ -13,6 +13,7 @@ import { triggerAIReview } from './requisition.controller';
 import { getAccountabilityBlock } from '../services/accountability.service';
 import { ensureOrgLencoCredentials } from '../services/lencoAccountLink.service';
 import * as lipila from '../services/lipila.service';
+import { trackFlow, trackPayoutFailure, payoutMethod, type FailureType } from '../lib/moneyFlowTracking';
 
 export const disburseRequisition = async (req: any, res: any): Promise<any> => {
     try {
@@ -281,6 +282,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                     (req as any).preWrittenDisbursementId = pre.id;
 
                     let cardPayout: lipila.PayoutAnswer;
+                    const cardT0 = Date.now();
                     if (existing && existing.status !== 'failed') {
                         cardPayout = existing; // an earlier attempt for this requisition is already on its way or done
                     } else {
@@ -304,7 +306,11 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                         }
                     }
                     lencoReference = cardRef;
-                    if (cardPayout.status === 'failed') throw new Error(cardPayout.message || 'Rejected by Lipila');
+                    if (cardPayout.status === 'failed') { (req as any).payoutDeclined = true; throw new Error(cardPayout.message || 'Rejected by Lipila'); }
+                    trackFlow('started', {
+                        provider: 'lipila', flow: 'payout', reference: cardRef, organizationId: targetOrgId, userId: cashier_id,
+                        method: cardBankRail ? 'bank' : 'mobile_money', providerMs: Date.now() - cardT0,
+                    });
                     (req as any).lencoStatus = cardPayout.status;       // 'successful' | 'pending'
                     (req as any).lencoFee = undefined;
                     (req as any).resolvedRef = cardRef;
@@ -338,6 +344,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                         (req as any).lencoFee = 0;
                     } else {
                         // IDEMPOTENCY CHECK: Find a stable reference that hasn't failed yet
+                        const payoutT0 = Date.now();
                         console.log(`[Lenco] Resolving stable reference for: ${stableRef}`);
                         let statusCheck;
                         let payout;
@@ -407,10 +414,16 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                         lencoReference = payout.reference;
 
                         if (payout.status === 'failed') {
+                            (req as any).payoutDeclined = true;
                             const reason = payout.reasonForFailure || payout.message || 'Transfer rejected by Lenco';
                             throw new Error(reason);
                         }
                         
+                        // Money-flow telemetry: Lenco accepted the payout. providerMs is how long Lenco's API took to say so.
+                        trackFlow('started', {
+                            flow: 'payout', reference: String(payout.reference || resolvedRef), organizationId: targetOrgId, userId: cashier_id,
+                            method: payoutMethod(recipient_bank_code, payment_method), providerMs: Date.now() - payoutT0,
+                        });
                         (req as any).lencoStatus = payout.status || 'pending';
                         (req as any).lencoFee = payout.fee ? parseFloat(payout.fee) : undefined;
                         (req as any).resolvedRef = resolvedRef;
@@ -420,6 +433,14 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
 
             } catch (payoutError: any) {
                 console.error('[Lenco Payout Failed] Error during wallet disbursal:', payoutError);
+                // Rejected by Lenco = declined; anything else (timeout, bad config, our own error) = system error.
+                trackFlow('failed', {
+                    provider: fromCard ? 'lipila' : 'lenco',
+                    flow: 'payout', reference: `${stableRef}:${Date.now()}`, organizationId: targetOrgId, userId: cashier_id,
+                    method: payoutMethod(recipient_bank_code, payment_method), allowRepeat: true,
+                    failureType: (req as any).payoutDeclined ? 'declined' : 'system_error',
+                    errorCode: (req as any).payoutDeclined ? 'lenco_rejected' : String(payoutError?.code || payoutError?.name || 'payout_error'),
+                });
                 console.error(`[Disbursement] CRITICAL ERROR for req ${id}:`, payoutError.message);
                 
                 // A payout that was written down first but definitely did not go leaves no record behind.
@@ -1053,9 +1074,13 @@ async function revertDisbursementAndCleanup(
     requisitionId: string,
     organizationId: string,
     paymentMethod: string = 'MONEYWISE_WALLET',
-    provider: string = 'Lenco'
+    provider: string = 'Lenco',
+    failureType: FailureType = 'declined'
 ): Promise<void> {
     console.warn(`[Revert Disbursement] Starting revert and cleanup for requisition: ${requisitionId}`);
+    // Money-flow telemetry. Looked up before the disbursement row is deleted below. A transfer Lenco no longer
+    // knows about is not "declined", it is lost; everything else that reaches here failed on Lenco.
+    await trackPayoutFailure(requisitionId, failureType, failureType === 'declined' ? `transfer_failed_on_${provider.toLowerCase()}` : `transfer_not_found_on_${provider.toLowerCase()}`);
 
     // A. Revert Requisition to AUTHORISED
     await supabase
@@ -1256,7 +1281,7 @@ export async function ensureWalletTransferConfirmed(
     }
 
     if (!statusCheck) {
-        await revertDisbursementAndCleanup(requisitionId, targetOrgId, disbursement.payment_method);
+        await revertDisbursementAndCleanup(requisitionId, targetOrgId, disbursement.payment_method, 'Lenco', 'not_found_on_provider');
         return {
             confirmed: false,
             status: 'not_found',
@@ -2859,7 +2884,7 @@ export const pollProcessingDisbursements = async (req: any, res: any): Promise<a
 
                 if (!statusCheck) {
                     console.warn(`[Poll-Processing] Transfer ${ref} not found on Lenco for req ${reqId}. Reverting.`);
-                    await revertDisbursementAndCleanup(reqId, orgId, row.payment_method);
+                    await revertDisbursementAndCleanup(reqId, orgId, row.payment_method, 'Lenco', 'not_found_on_provider');
                     results.push({ requisitionId: reqId, action: 'reverted', reason: 'not_found_on_lenco' });
                     continue;
                 }

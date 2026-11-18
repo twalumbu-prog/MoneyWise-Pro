@@ -1,6 +1,6 @@
 import { employerLoanLedger } from '../services/employerLoanLedger.service';
 import { mergeRules, allowanceBases, computeStatutory, AllowanceType } from '../lib/payrollStatutory';
-import { postRunJournals } from '../services/payrollAccrual.service';
+import { postRunJournals, resolveAccountMap } from '../services/payrollAccrual.service';
 import { RECOVERABLE_STATUSES, loanTermExpired, totalOwed } from '../lib/loanMath';
 import { getPreferences, getPersonalOrgForUser } from '../services/userPreferences.service';
 import { accountsOf, getAllPaymentInfo } from '../services/paymentInfo.service';
@@ -348,7 +348,8 @@ export const createPayrollRun = async (req: Request, res: Response) => {
         const { error: itemsErr } = await supabase.from('payroll_run_items').insert(itemsWithRunId);
         if (itemsErr) throw itemsErr;
 
-        res.status(201).json(run);
+        const advance_check = await checkAdvanceRecovery(orgId, itemsWithRunId, period_month, period_year).catch(() => null);
+        res.status(201).json({ ...run, advance_check });
     } catch (err: any) {
         res.status(500).json({ error: err.message });
     }
@@ -410,11 +411,24 @@ async function loadOutstandingDebts(orgId: string, staff: { id: string; user_id:
         .select('requisition_id, amount')
         .in('requisition_id', reqs.map(r => r.id));
 
+    // An advance is recovered at the principal paid to the employee: the wallet's withdrawal / transfer fee is a company cost
+    // (it sits in bank charges), so it is not added to what the employee owes.
+    const advanceIds = reqs.filter(r => r.type === 'ADVANCE').map(r => r.id);
+    const feeByReq = new Map<string, number>();
+    if (advanceIds.length) {
+        const { data: lis } = await supabase.from('line_items').select('requisition_id, description, actual_amount, estimated_amount').in('requisition_id', advanceIds);
+        for (const li of lis ?? []) {
+            if (/withdraw(al)?\s*(fee|charge)|transaction (fee|charge)|bank charge|transfer fee/i.test(String(li.description || ''))) {
+                feeByReq.set(li.requisition_id, (feeByReq.get(li.requisition_id) || 0) + (Number(li.actual_amount) || Number(li.estimated_amount) || 0));
+            }
+        }
+    }
+
     return reqs.map(r => {
         const mine = (recoveries ?? []).filter(x => x.requisition_id === r.id);
         const manual = (manualRecoveries ?? []).filter(x => x.requisition_id === r.id);
         const recovered = mine.reduce((s, x) => s + Number(x.amount), 0) + manual.reduce((s, x) => s + Number(x.amount), 0);
-        const owed = totalOwed(r);
+        const owed = r.type === 'ADVANCE' ? Math.max(0, parseFloat((totalOwed(r) - (feeByReq.get(r.id) || 0)).toFixed(2))) : totalOwed(r);
         const staff_id = r.payroll_staff_id || (r.requestor_id ? byUserId.get(r.requestor_id) : undefined) || null;
         return {
             ...r,
@@ -443,13 +457,56 @@ function installmentFor(debt: { monthly_deduction: any; outstanding: number }): 
     return parseFloat(Math.min(target, debt.outstanding).toFixed(2));
 }
 
+
+/**
+ * Month-end salary-advance check. Every advance paid out during the month must be deducted from the payroll register in that month's run, so after
+ * the run the Staff Salary Advances account should hold nothing but advances paid AFTER month end. Two tests:
+ *   1. per person — what the run deducts (salary_advances) vs what that person still owes at period end (advances requested up to month end,
+ *      principal only, less what was already recovered). UNDER = an advance is left on the books; OVER = deducting money that isn't owed.
+ *   2. ledger — after the run's journals are posted, the account's balance at period end must be zero. This catches advances that cannot be tied
+ *      to a payroll staff member (e.g. filed as an ordinary expense, or for someone who is not on the register).
+ * Warnings only — a run is never blocked by this; the accountant decides.
+ */
+export async function checkAdvanceRecovery(orgId: string, items: any[], month: number, year: number, opts: { ledger?: boolean } = {}) {
+    const periodEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59));
+    const { data: staffData } = await supabase.from('payroll_staff').select('id, user_id, first_name, last_name').eq('organization_id', orgId).eq('is_archived', false);
+    const staff = staffData ?? [];
+    const debts = (await loadOutstandingDebts(orgId, staff)).filter((d: any) => d.type === 'ADVANCE' && new Date(d.created_at) <= periodEnd);
+    const deducted = new Map<string, number>();
+    for (const i of items) if (i.staff_id) deducted.set(i.staff_id, (deducted.get(i.staff_id) || 0) + (Number(i.salary_advances) || 0));
+    const warnings: any[] = [];
+    for (const st of staff) {
+        const owed = parseFloat(debts.filter((d: any) => d.staff_id === st.id).reduce((a: number, d: any) => a + d.outstanding, 0).toFixed(2));
+        const took = parseFloat((deducted.get(st.id) || 0).toFixed(2));
+        if (Math.abs(owed - took) < 0.5) continue;
+        warnings.push({
+            staff_id: st.id, staff_name: [st.first_name, st.last_name].filter(Boolean).join(' '),
+            outstanding: owed, deducted: took, difference: parseFloat((owed - took).toFixed(2)),
+            kind: took < owed ? 'UNDER' : 'OVER',
+            message: took < owed ? `Owes K${owed.toFixed(2)} in advances but only K${took.toFixed(2)} is deducted — the rest stays on Staff Salary Advances.`
+                : `K${took.toFixed(2)} is deducted but only K${owed.toFixed(2)} of advances is outstanding.`,
+        });
+    }
+    let ledger: any = undefined;
+    if (opts.ledger) {
+        try {
+            const acct = (await resolveAccountMap(orgId)).salary_advances;
+            const { data: lines } = await supabase.from('journal_lines').select('debit, credit, journal_entries!inner(entry_date, organization_id)').eq('account_id', acct.id).eq('journal_entries.organization_id', orgId).lte('journal_entries.entry_date', periodEnd.toISOString().slice(0, 10)).limit(5000);
+            const balance = parseFloat((lines ?? []).reduce((a: number, l: any) => a + (Number(l.debit) || 0) - (Number(l.credit) || 0), 0).toFixed(2));
+            ledger = { account: acct.name, balance_at_period_end: balance, ok: Math.abs(balance) < 0.5,
+                message: Math.abs(balance) < 0.5 ? 'Staff Salary Advances is nil at period end.' : `Staff Salary Advances holds K${balance.toFixed(2)} at period end — advances paid in the period were not all deducted (or some cannot be tied to a payroll staff member).` };
+        } catch (e: any) { ledger = { error: e.message }; }
+    }
+    return { ok: warnings.length === 0 && (!ledger || ledger.ok !== false), warnings, ledger };
+}
+
 /**
  * Post the loan/advance recoveries a payroll run collected, then settle any
  * debt whose balance has reached zero. Each staff member's total `loans`
  * deduction is allocated across their outstanding debts, oldest first.
  */
 async function recordLoanRecoveries(orgId: string, run: any, runItems: any[]) {
-    const withDeductions = runItems.filter(i => Number(i.loans) > 0 && i.staff_id);
+    const withDeductions = runItems.filter(i => (Number(i.loans) > 0 || Number(i.salary_advances) > 0) && i.staff_id);
     if (withDeductions.length === 0) return { recovered: 0, settled: 0 };
 
     const { data: staff, error: staffErr } = await supabase
@@ -471,11 +528,14 @@ async function recordLoanRecoveries(orgId: string, run: any, runItems: any[]) {
         if (!member) continue;
 
         // Oldest debt first, so the longest-standing balance clears first
-        const theirs = debts.filter(d => d.staff_id === member.id && d.outstanding > 0);
-        let remaining = Number(item.loans);
+        // The advances column settles ADVANCE debts and the loans column settles LOAN debts; each is allocated oldest first.
+        const theirs = debts.filter(d => d.staff_id === member.id && d.outstanding > 0)
+            .sort((a: any, b: any) => (a.type === b.type ? 0 : a.type === 'ADVANCE' ? -1 : 1));
+        const pool: Record<string, number> = { ADVANCE: Number(item.salary_advances) || 0, LOAN: Number(item.loans) || 0 };
 
         for (const debt of theirs) {
-            if (remaining <= 0.005) break;
+            let remaining = pool[debt.type] ?? 0;
+            if (remaining <= 0.005) continue;
             const take = parseFloat(Math.min(remaining, debt.outstanding).toFixed(2));
             if (take <= 0) continue;
 
@@ -490,7 +550,7 @@ async function recordLoanRecoveries(orgId: string, run: any, runItems: any[]) {
             });
 
             debt.outstanding = parseFloat((debt.outstanding - take).toFixed(2));
-            remaining = parseFloat((remaining - take).toFixed(2));
+            pool[debt.type] = parseFloat((remaining - take).toFixed(2));
 
             if (debt.outstanding <= 0.005) settledIds.push(debt.id);
         }
@@ -692,6 +752,9 @@ export const approvePayrollRun = async (req: Request, res: Response) => {
             createdRequisitions.push({ requisition_id: req_.id, pay_source: paySource, label: srcLabel, employee_count: groupItems.length, net_total: groupNet });
         }
 
+        // Advance check BEFORE the recoveries are recorded (so what this run deducts is still outstanding)
+        const advanceCheckPre = await checkAdvanceRecovery(orgId, runItems, run.period_month, run.period_year).catch(() => null);
+
         // 5. Post loan/advance recoveries and settle any cleared debts
         const recovery = await recordLoanRecoveries(orgId, run, runItems);
 
@@ -724,11 +787,13 @@ export const approvePayrollRun = async (req: Request, res: Response) => {
             journals = { error: e.message };
         }
 
+        const ledgerCheck = await checkAdvanceRecovery(orgId, [], run.period_month, run.period_year, { ledger: true }).then(c => c.ledger).catch(() => null);
         res.json({
             run: updatedRun,
             requisitions: createdRequisitions,
             loan_recovery: recovery,
             journals,
+            advance_check: advanceCheckPre ? { ...advanceCheckPre, ledger: ledgerCheck } : null,
         });
     } catch (err: any) {
         console.error('[approvePayrollRun]', err);

@@ -13,6 +13,7 @@ import { emailService } from '../services/email.service';
 import { pushService } from '../services/push.service';
 import { QuickBooksService } from '../services/quickbooks.service';
 import { captureEvent, withTiming } from '../utils/analytics';
+import { trackPayoutFailure } from '../lib/moneyFlowTracking';
 import { ledgerService } from '../services/ledger.service';
 import { sweepPlatformCommission } from '../services/commissionSweep.service';
 
@@ -800,6 +801,7 @@ async function handleTransferFailed(data: any) {
 
         if (result.rows.length > 0) {
             const { id: disbursementId, requisition_id: requisitionId } = result.rows[0];
+            await trackPayoutFailure(requisitionId, 'declined', 'transfer_failed_webhook');
 
             // 2. Revert the requisition back to AUTHORISED so it can be retried
             await client.query(

@@ -3,6 +3,7 @@ import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { apiFetch, setActiveOrganizationId } from '../lib/api';
 import posthog from '../lib/posthog';
+import { trackIdentified, trackSignedOut } from '../lib/usageSession';
 import { trackEvent } from '../lib/analytics';
 
 // Best-effort mapping of backend/Supabase error strings to stable categories.
@@ -204,6 +205,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     organization_id: eff.orgId,
                     organization_name: eff.name,
                 });
+                trackIdentified({ userId, organizationId: eff.orgId, organizationName: eff.name, role: eff.role });
                 refreshNotifications();
                 refreshUserOrganizations();
             }
@@ -490,6 +492,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // Find name of switched organization
             const targetOrg = userOrganizations.find(uo => uo.organization?.id === orgId);
             setOrganizationName(targetOrg?.organization?.name || 'Selected Organization');
+            trackIdentified({ userId: session.user.id, organizationId: data.user.organization_id, organizationName: targetOrg?.organization?.name || null, role: data.user.role });
             const switchedLogo = targetOrg?.organization?.logo_url || null;
             setOrganizationLogoUrl(switchedLogo);
             preloadImage(switchedLogo);
@@ -503,6 +506,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const signOut = async () => {
         posthog.capture('user_signed_out');
+        trackSignedOut();
         posthog.reset();
         await supabase.auth.signOut();
         setActiveOrganizationId(null);

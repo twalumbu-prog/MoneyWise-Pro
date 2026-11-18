@@ -2,12 +2,14 @@ import posthog from 'posthog-js';
 
 // Prefer the NEXT_PUBLIC_* vars provisioned by the PostHog/Vercel integration,
 // falling back to the VITE_* vars used for local development.
+// `||` not `??`: Vercel provisions NEXT_PUBLIC_POSTHOG_HOST as an empty string, which must fall through to the next
+// source instead of becoming a blank api_host (events would then go to the page's own origin and be lost).
 const key =
-    import.meta.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN ??
+    import.meta.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN ||
     import.meta.env.VITE_POSTHOG_KEY;
 const apiHost =
-    import.meta.env.NEXT_PUBLIC_POSTHOG_HOST ??
-    import.meta.env.VITE_POSTHOG_HOST ??
+    import.meta.env.NEXT_PUBLIC_POSTHOG_HOST ||
+    import.meta.env.VITE_POSTHOG_HOST ||
     'https://us.i.posthog.com';
 
 if (key) {

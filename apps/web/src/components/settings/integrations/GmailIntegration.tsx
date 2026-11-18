@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiJson } from 'core';
 import { ArrowLeft, AlertCircle, CheckCircle2, Trash2 } from 'lucide-react';
+import { startQuickConnect, completeQuickConnect, takeQuickConnectReturn } from './quickConnect';
 
 interface EmailConnection {
     id: string;
@@ -8,9 +9,11 @@ interface EmailConnection {
     status: 'ACTIVE' | 'EXPIRED' | 'ERROR' | string;
     last_error?: string | null;
     last_synced_at?: string | null;
+    auth_mode?: 'DIRECT' | 'COMPOSIO';
 }
 
-interface GmailStatus { configured: boolean; connections: EmailConnection[] }
+/** configured = our own Google connection is set up server-side; composio = Quick connect is. */
+interface GmailStatus { configured: boolean; composio?: boolean; connections: EmailConnection[] }
 
 /** Gmail's multicolour "M" on a white tile — same footprint as IntegrationLogo. */
 export const GmailLogo: React.FC<{ size?: number; className?: string }> = ({ size = 40, className = '' }) => (
@@ -62,8 +65,27 @@ export const GmailIntegration: React.FC<{ onBack: () => void }> = ({ onBack }) =
             const qs = params.toString();
             window.history.replaceState(null, '', `${window.location.pathname}${qs ? `?${qs}` : ''}`);
         }
-        load();
+        // Back from the Quick connect (Composio) sign-in: register the mailbox it now holds for this organisation.
+        if (takeQuickConnectReturn() === 'gmail') {
+            setBusy('finish');
+            completeQuickConnect('gmail')
+                .then(r => (r.ok ? setNotice(`Connected ${r.labels.join(', ')}. New emails are checked every few minutes.`) : setError(r.message)))
+                .catch((e: any) => setError(e?.message || 'Could not finish connecting Gmail'))
+                .finally(() => { setBusy(null); load(); });
+        } else {
+            load();
+        }
     }, []);
+
+    const quickConnect = async () => {
+        setBusy('quick'); setError(null);
+        try {
+            await startQuickConnect('gmail');
+        } catch (e: any) {
+            setError(e?.message || 'Could not start the connection');
+            setBusy(null);
+        }
+    };
 
     const connect = async () => {
         setBusy('connect'); setError(null);
@@ -90,6 +112,7 @@ export const GmailIntegration: React.FC<{ onBack: () => void }> = ({ onBack }) =
     };
 
     const configured = !!status?.configured;
+    const quick = !!status?.composio;
     const conns = status?.connections || [];
 
     return (
@@ -102,12 +125,13 @@ export const GmailIntegration: React.FC<{ onBack: () => void }> = ({ onBack }) =
                 <p className="text-sm text-gray-500">Connect your business mailbox so MoneyWise can pick out receipts, invoices and payment emails for you to approve. MoneyWise only reads your email; it never sends, deletes or changes anything.</p>
             </div>
 
-            {!loading && !configured && (
+            {!loading && !configured && !quick && (
                 <div className="flex gap-3 p-4 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-900">
                     <AlertCircle className="h-5 w-5 shrink-0" />
                     <div>Not configured yet. Gmail connections are being set up with Google and will be available soon.</div>
                 </div>
             )}
+            {busy === 'finish' && <div className="p-3 rounded-xl bg-gray-50 border border-gray-200 text-sm text-gray-600">Finishing your Gmail connection…</div>}
             {notice && (
                 <div className="flex gap-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-sm text-emerald-800">
                     <CheckCircle2 className="h-5 w-5 shrink-0" /> <div>{notice}</div>
@@ -122,25 +146,41 @@ export const GmailIntegration: React.FC<{ onBack: () => void }> = ({ onBack }) =
                         <div className="font-bold text-gray-900">Gmail or Google Workspace</div>
                         <div className="text-sm text-gray-500">Sign in with Google and tick the Gmail permission.</div>
                     </div>
-                    <button
-                        onClick={connect}
-                        disabled={!configured || busy === 'connect'}
-                        className="px-4 py-2 rounded-xl text-sm font-semibold bg-brand-navy text-white disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                        {busy === 'connect' ? 'Opening Google…' : conns.length ? 'Add another' : 'Connect with Google'}
-                    </button>
+                    <div className="flex flex-col gap-2 shrink-0">
+                        <button
+                            onClick={quickConnect}
+                            disabled={!quick || busy === 'quick' || busy === 'finish'}
+                            className="px-4 py-2 rounded-xl text-sm font-semibold bg-brand-navy text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            {busy === 'quick' ? 'Opening sign-in…' : conns.length ? 'Add another (quick)' : 'Quick connect'}
+                        </button>
+                        <button
+                            onClick={connect}
+                            disabled={!configured || busy === 'connect'}
+                            className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-300 text-gray-800 bg-white disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            {busy === 'connect' ? 'Opening Google…' : 'Connect directly'}
+                        </button>
+                    </div>
                 </div>
+                <p className="mt-3 text-xs text-gray-500">
+                    Quick connect signs you in to Google through our connection partner, Composio, and is the fastest way to get started.
+                    Connect directly signs you in with Google ourselves. Both only read your email.
+                </p>
                 {conns.map(c => (
                     <div key={c.id} className="mt-3 flex items-center justify-between gap-3 text-sm bg-gray-50 rounded-xl px-3 py-2">
                         <div className="min-w-0">
-                            <div className="text-gray-800 truncate">{c.email_address}</div>
+                            <div className="text-gray-800 truncate">
+                                {c.email_address}
+                                {c.auth_mode === 'COMPOSIO' && <span className="ml-2 px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 text-[11px] font-semibold align-middle">Quick connect</span>}
+                            </div>
                             <div className={c.status === 'ACTIVE' ? 'text-gray-500' : 'text-amber-700'}>
                                 {c.status === 'ACTIVE' ? `Last checked ${timeAgo(c.last_synced_at)}` : c.status === 'EXPIRED' ? 'Access expired. Connect again to resume.' : c.last_error || c.status.toLowerCase()}
                             </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                            {c.status === 'EXPIRED' && configured && (
-                                <button onClick={connect} className="text-xs font-semibold text-brand-navy hover:underline">Reconnect</button>
+                            {c.status === 'EXPIRED' && (c.auth_mode === 'COMPOSIO' ? quick : configured) && (
+                                <button onClick={c.auth_mode === 'COMPOSIO' ? quickConnect : connect} className="text-xs font-semibold text-brand-navy hover:underline">Reconnect</button>
                             )}
                             <button onClick={() => disconnect(c.id)} disabled={busy === c.id} className="text-gray-400 hover:text-red-600" aria-label="Disconnect">
                                 <Trash2 className="h-4 w-4" />
