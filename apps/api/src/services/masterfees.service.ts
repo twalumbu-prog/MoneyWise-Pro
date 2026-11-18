@@ -36,6 +36,14 @@ import { broadcastInvalidate } from '../lib/realtimeBroadcast';
  */
 
 const MF_ROOT = process.env.MASTERFEES_API_ROOT || 'https://dashboard.master-fees.com/api/v1';
+
+/** Master Fees said "too many requests" (HTTP 429: 120 a minute per school). The sync stops cleanly and tries again after `retryAfterSeconds`. */
+export class MasterFeesRateLimitError extends Error {
+    constructor(public retryAfterSeconds: number, message?: string) {
+        super(message || `Master Fees asked us to slow down. Trying again in ${retryAfterSeconds}s.`);
+        this.name = 'MasterFeesRateLimitError';
+    }
+}
 const SOURCE_TYPE = 'MASTERFEES';
 const TOLERANCE = 0.005;
 
@@ -209,6 +217,8 @@ export interface MasterFeesConfig {
         depositAccounts?: Record<string, string>;
     };
     lastSyncError?: string | null;
+    /** Set when Master Fees answered 429: the routine sync stays quiet until this time (ISO). */
+    rateLimitedUntil?: string | null;
     /** True when the most recent sync hit Master Fees' undocumented 1000-row
      *  API cap — see MF_ROW_CAP. Persisted so the "connected" status banner can
      *  keep showing the warning even outside the moment of the sync itself. */
@@ -403,6 +413,10 @@ export class MasterFeesClient {
         } catch (err: any) {
             const status = err.response?.status;
             const body = err.response?.data;
+            if (status === 429) {
+                const wait = Number(err.response?.headers?.['retry-after']);
+                throw new MasterFeesRateLimitError(Number.isFinite(wait) && wait > 0 ? Math.ceil(wait) : 60, body?.message);
+            }
             if (status === 401) throw new Error('Master Fees rejected the public key (401). Check the key in the school API settings.');
             if (status === 403) throw new Error(body?.message || 'Master Fees API access is disabled. Enable the Endpoint Master Switch (and this resource) in the school API settings.');
             if (status === 404) throw new Error('Master Fees school not found (404). Check the School ID.');
@@ -430,10 +444,15 @@ export class MasterFeesClient {
      */
     private async getPaginated<T extends Record<string, any> = any>(path: string, idKey: string | null = null): Promise<T[]> {
         // Retry-before-believing, de-duplication and overlap warnings live in masterfees_paging.ts (see its header for what Master Fees does).
+        // Master Fees now answers each list with a `pagination` block (has_more, total): it says when a page is the last, so the read ends without
+        // a request past the end, and a read that came up short of `total` is reported.
+        let lastPagination: any = null;
         const result = await collectPages<T>(
-            async (page) => this.list<T>(await this.get(`${path}?page=${page}`)),
+            async (page) => { const resp = await this.get(`${path}?page=${page}`); lastPagination = resp?.pagination ?? null; return this.list<T>(resp); },
             idKey,
             {
+                fatal: (e) => e instanceof MasterFeesRateLimitError,
+                isLast: () => (typeof lastPagination?.has_more === 'boolean' ? lastPagination.has_more === false : undefined),
                 onWarn: (m) => {
                     // The overlap is a standing quirk of their API (every call): say it once per half hour, not on every sync tick. Failures always log.
                     if (/repeated across overlapping pages/.test(m)) {
@@ -445,7 +464,21 @@ export class MasterFeesClient {
                 },
             },
         );
+        const total = Number(lastPagination?.total);
+        if (Number.isFinite(total) && !result.endedByError && result.rows.length < total) {
+            console.warn(`[MasterFees] ${path}: received ${result.rows.length} distinct rows but Master Fees reports ${total}. The list may be incomplete this sync.`);
+        }
         return result.rows;
+    }
+
+    /**
+     * What MoneyWise itself wrote into Master Fees (the write API, docs/MASTERFEES_WRITE.md) comes back through the read feed: a payment's
+     * reference is `MW<first 8 characters of the school id>-<our reference>` and an invoice is numbered `MW-<our reference>`. They are already
+     * in MoneyWise's books, so the sync skips them instead of importing them a second time.
+     */
+    private isOurs(kind: 'reference' | 'invoice_number', value: unknown): boolean {
+        const v = String(value ?? '');
+        return kind === 'reference' ? v.toUpperCase().startsWith(`MW${this.config.schoolId.slice(0, 8)}-`.toUpperCase()) : v.startsWith('MW-');
     }
 
     async getSchoolMeta(): Promise<{ school_name?: string }> {
@@ -453,8 +486,8 @@ export class MasterFeesClient {
         return { school_name: resp?.school_name };
     }
     async getStudents(): Promise<MFStudent[]> { return this.list(await this.get('students')); }
-    async getInvoices(): Promise<MFInvoice[]> { return this.getPaginated<MFInvoice>('invoices', 'invoice_id'); }
-    async getTransactions(): Promise<MFTransaction[]> { return this.getPaginated<MFTransaction>('transactions', 'transaction_id'); }
+    async getInvoices(): Promise<MFInvoice[]> { return (await this.getPaginated<MFInvoice>('invoices', 'invoice_id')).filter((i) => !this.isOurs('invoice_number', i.invoice_number)); }
+    async getTransactions(): Promise<MFTransaction[]> { return (await this.getPaginated<MFTransaction>('transactions', 'transaction_id')).filter((x) => !this.isOurs('reference', x.reference)); }
     async getFeeCategories(): Promise<MFFeeCategory[]> { return this.list(await this.get('fee-categories')); }
     async getBalances(): Promise<any[]> { return this.list(await this.get('summary/balances')); }
     async getPaymentsSummary(): Promise<any> { return this.get('summary/payments'); }
@@ -516,6 +549,8 @@ function getSyncIntervalMinutes(config: MasterFeesConfig): number {
 
 /** Whether this org is due for another routine sync attempt, per the backoff above. */
 export function isMasterFeesSyncDue(config: MasterFeesConfig): boolean {
+    // Master Fees told us to slow down: stay quiet until the time it gave.
+    if (config.rateLimitedUntil && Date.now() < new Date(config.rateLimitedUntil).getTime()) return false;
     if (!config.lastSyncAttemptAt) return true;
     const sinceAttemptMin = (Date.now() - new Date(config.lastSyncAttemptAt).getTime()) / 60_000;
     return sinceAttemptMin >= getSyncIntervalMinutes(config);
@@ -1950,6 +1985,8 @@ async function runMasterfeesSync(
         errors: [],
         truncated: false,
     };
+    // Set when Master Fees answers 429: the rest of this pass is skipped and the next one waits out Retry-After.
+    let rateLimited: MasterFeesRateLimitError | null = null;
 
     // Ensure the receivable account is provisioned + cached in config.
     if (!config.receivableAccountId) {
@@ -1966,6 +2003,7 @@ async function runMasterfeesSync(
             await getIncomeAccountForCategory(organizationId, config, c); // ensure account exists
         }
     } catch (err: any) {
+        if (err instanceof MasterFeesRateLimitError) rateLimited = err;
         summary.errors.push(`fee-categories: ${err.message}`);
     }
 
@@ -1973,6 +2011,7 @@ async function runMasterfeesSync(
 
     // Invoices FIRST (they create the receivable that payments clear).
     try {
+        if (rateLimited) throw rateLimited;
         const invoices = await client.getInvoices();
         if (invoices.length >= MF_ROW_CAP) {
             summary.truncated = true;
@@ -2021,11 +2060,12 @@ async function runMasterfeesSync(
             }
         }
     } catch (err: any) {
+        if (err instanceof MasterFeesRateLimitError) rateLimited = err;
         summary.errors.push(`invoices: ${err.message}`);
     }
 
     // Payments SECOND.
-    if (Date.now() <= deadline) {
+    if (Date.now() <= deadline && !rateLimited) {
         try {
             const transactions = await client.getTransactions();
             if (transactions.length >= MF_ROW_CAP) {
@@ -2043,9 +2083,10 @@ async function runMasterfeesSync(
                 }
             }
         } catch (err: any) {
+            if (err instanceof MasterFeesRateLimitError) rateLimited = err;
             summary.errors.push(`transactions: ${err.message}`);
         }
-    } else {
+    } else if (!rateLimited) {
         deferredByBudget = true;
     }
 
@@ -2060,6 +2101,7 @@ async function runMasterfeesSync(
         lastSyncedAt: deferredByBudget ? config.lastSyncedAt : new Date().toISOString(),
         lastSyncError: summary.errors.length ? summary.errors.slice(0, 3).join('; ') : null,
         lastSyncTruncated: summary.truncated,
+        rateLimitedUntil: rateLimited ? new Date(Date.now() + (rateLimited as MasterFeesRateLimitError).retryAfterSeconds * 1000).toISOString() : null,
     });
 
     void broadcastInvalidate(organizationId, [

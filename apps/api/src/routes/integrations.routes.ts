@@ -29,6 +29,7 @@ import {
     correctMasterFeesPaymentDates,
     syncStudentsToCrmNow,
 } from '../controllers/masterfees.controller';
+import { mfRecordPayment, mfVoidPayment, mfCreateStudent, mfUpdateStudent, mfCreateInvoice, mfVoidInvoice } from '../controllers/masterfeesWrite.controller';
 
 import {
     getMetaStatus,
@@ -100,6 +101,13 @@ router.put('/masterfees/lenco-mode', requireAuth, updateMasterFeesLencoMode);
 router.post('/masterfees/sync', requireAuth, syncMasterFeesNow);
 router.post('/masterfees/sync-students', requireAuth, syncStudentsToCrmNow);
 router.get('/masterfees/reconcile', requireAuth, getMasterFeesReconciliation);
+// Changes MoneyWise makes in the school's Master Fees (administrators only; the school must have switched writing on there).
+router.post('/masterfees/write/payments', requireAuth, mfRecordPayment);
+router.post('/masterfees/write/payments/:id/void', requireAuth, mfVoidPayment);
+router.post('/masterfees/write/students', requireAuth, mfCreateStudent);
+router.patch('/masterfees/write/students/:id', requireAuth, mfUpdateStudent);
+router.post('/masterfees/write/invoices', requireAuth, mfCreateInvoice);
+router.post('/masterfees/write/invoices/:id/void', requireAuth, mfVoidInvoice);
 
 // ── Meta messaging (WhatsApp / Facebook / Instagram) ─────────────────────────
 // Webhook + callback are unauthenticated by design: the webhook is secured by X-Hub-Signature-256.

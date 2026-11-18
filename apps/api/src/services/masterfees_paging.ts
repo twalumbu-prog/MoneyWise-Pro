@@ -19,6 +19,11 @@ export interface PagingOptions {
     backoffMs?: number[];       // wait before retry 1, 2, ... (last value is reused)
     sleep?: (ms: number) => Promise<void>;
     onWarn?: (message: string) => void;
+    /** An error that must stop the read at once, with no retry (for example "slow down": retrying straight away only makes it worse). */
+    fatal?: (err: unknown) => boolean;
+    /** Master Fees now says whether a page was the last (`pagination.has_more`). When this returns true the read ends after this page without
+     *  asking for another, so the "page past the end answers 500" case never arises; undefined means "not known, use the page size". */
+    isLast?: (page: number, batch: unknown[]) => boolean | undefined;
 }
 
 export interface PagingResult<T> {
@@ -54,6 +59,7 @@ export async function collectPages<T extends Record<string, any>>(
             try {
                 batch = await fetchPage(page);
             } catch (err) {
+                if (opts.fatal?.(err)) throw err;
                 lastErr = err;
                 if (attempt < attempts) await sleep(backoff[Math.min(attempt - 1, backoff.length - 1)] ?? 500);
             }
@@ -75,7 +81,9 @@ export async function collectPages<T extends Record<string, any>>(
             seen.add(key);
             rows.push(row);
         }
-        if (batch.length < pageSize) break;                // short page = last page (avoids one wasted round trip)
+        const known = opts.isLast?.(page, batch);
+        if (known === true) break;                         // the feed itself said this was the last page
+        if (known === undefined && batch.length < pageSize) break;   // short page = last page (avoids one wasted round trip)
     }
     if (duplicates > 0) warn(`${duplicates} row(s) repeated across overlapping pages and were de-duplicated (${rawRows} received, ${rows.length} distinct).`);
     return { rows, pages, rawRows, duplicates, endedByError };
