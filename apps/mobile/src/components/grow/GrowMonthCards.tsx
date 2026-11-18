@@ -14,7 +14,7 @@ interface Props {
     onSelect: (index: number) => void;
 }
 
-const PAD = 16;
+const PAD = 14;
 
 /**
  * One white card for the selected month: its name (with the status dot), progress and the four
@@ -80,7 +80,7 @@ function StatusDot({ status }: { status: GrowMonthResult['status'] }) {
 function MonthBody({ result: r, width }: { result: GrowMonthResult; width: number }) {
     const barColor = GROW_COLORS.blue;
     return (
-        <View style={{ width, gap: 10 }}>
+        <View style={{ width, gap: 8 }}>
             <View style={{ gap: 4 }}>
                 <View style={styles.cardHead}>
                     <StatusDot status={r.status} />
@@ -131,14 +131,14 @@ const styles = StyleSheet.create({
     dot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2 },
 
     card: {
-        backgroundColor: '#FFFFFF', borderRadius: 20, padding: PAD, gap: 12,
+        backgroundColor: '#FFFFFF', borderRadius: 24, padding: PAD, gap: 8,
         borderWidth: 1, borderColor: '#E5E7EB',
         shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 2,
     },
-    cardHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+    cardHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
     cardTitle: { flex: 1, fontFamily: fonts.bodyBold, fontSize: 15, color: '#000' },
-    headline: { flex: 1, fontFamily: fonts.bodyBold, fontSize: 16, color: '#000' },
-    dots: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingTop: 2 },
+    headline: { flex: 1, fontFamily: fonts.bodyBold, fontSize: 15, color: '#000' },
+    dots: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingTop: 0 },
     pageDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#D4D4D8' },
     pageDotActive: { width: 18, backgroundColor: '#52525B' },
     barLabels: { flexDirection: 'row', justifyContent: 'space-between' },
@@ -146,15 +146,15 @@ const styles = StyleSheet.create({
     barTrack: { height: 4, borderRadius: 4, backgroundColor: '#E5E5E5', overflow: 'hidden' },
     barFill: { height: 4, borderRadius: 4 },
 
-    targets: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 16, paddingHorizontal: 12, paddingVertical: 2 },
-    row: { flexDirection: 'row', alignItems: 'center', gap: 10, height: 42 },
-    emoji: { fontSize: 22, width: 28, textAlign: 'center' },
-    rowLabel: { flex: 1, fontFamily: fonts.body, fontSize: 13, color: colors.text },
-    amountPill: { flexShrink: 0, width: 136, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 24, borderWidth: 1, borderColor: '#E5E7EB', alignItems: 'center' },
-    amountPillMissed: { borderColor: '#FECACA', backgroundColor: '#FEF2F2' },
+    targets: { marginTop: 8, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 0 },
+    row: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 34 },
+    emoji: { fontSize: 18, width: 24, textAlign: 'center' },
+    rowLabel: { flex: 1, fontFamily: fonts.body, fontSize: 12.5, color: colors.text },
+    amountPill: { flexShrink: 0, width: 122, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 20, alignItems: 'center' },
+    amountPillMissed: { backgroundColor: '#FEF2F2' },
     amountText: { textAlign: 'center' },
-    amountActual: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.text },
-    amountSep: { fontFamily: fonts.body, fontSize: 12, color: colors.textMuted },
-    amountTarget: { fontFamily: fonts.body, fontSize: 11, color: colors.textMuted },
+    amountActual: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.text },
+    amountSep: { fontFamily: fonts.body, fontSize: 11, color: colors.textMuted },
+    amountTarget: { fontFamily: fonts.body, fontSize: 10, color: colors.textMuted },
     footer: { fontFamily: fonts.body, fontSize: 12, color: colors.textMuted, textAlign: 'center' },
 });
