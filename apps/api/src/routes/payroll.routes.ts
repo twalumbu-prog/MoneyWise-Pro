@@ -14,7 +14,8 @@ import {
     approvePayrollRun,
     getPayrollConfig,
     upsertPayrollConfig,
-    getSuggestedDeductions
+    getSuggestedDeductions,
+    importPayrollRun
 } from '../controllers/payroll.controller';
 
 const router = Router();
@@ -35,6 +36,7 @@ router.get('/runs', listPayrollRuns);
 router.get('/runs/suggested-deductions', getSuggestedDeductions);
 router.get('/runs/:id', getPayrollRun);
 router.post('/runs', createPayrollRun);
+router.post('/runs/import', importPayrollRun);
 router.post('/runs/:id/approve', approvePayrollRun);
 
 // Config

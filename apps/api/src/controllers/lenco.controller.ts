@@ -1,23 +1,29 @@
 import { normalizeZambiaPhone } from '../utils/zambiaPhone';
 import { resolveShortLink } from '../services/invoiceShortLink.service';
 import { matchesRecordedInternalTransfer } from '../services/internalTransferMatch.service';
-import { isPlatformSweepDebit } from '../services/ledgerGuardian/core';
+import { isPlatformSweepDebit, findUnclaimedMerchantRow } from '../services/ledgerGuardian/core';
 import { recordSyncFailure, claimDebitBooking, releaseDebitClaim, runGuardianCycle, guardianMode, runOrgGuardian } from '../services/ledgerGuardian/guardian.service';
 import { Request, Response } from 'express';
 import { LencoService, classifyLencoFailureReason } from '../services/lenco.service';
+import { trackFlow, failureTypeFromCode } from '../lib/moneyFlowTracking';
 import { isLencoAccountId, ensureValidLencoAccountId } from '../services/lencoAccountLink.service';
 import { emailService } from '../services/email.service';
 import { supabase } from '../lib/supabase';
 import pool from '../db';
 import { handleCollectionSuccessful } from './lenco.webhook.controller';
+import { computeDebitGross, MAX_PLAUSIBLE_FEE } from '../utils/lencoGross';
 import { cashbookService } from '../services/cashbook.service';
 import { ledgerService } from '../services/ledger.service';
 import { applyProductRevenueRouting, markPaymentLinkPaid, confirmBookingsForReference } from '../services/product_routing.service';
+import { resolveConfig, computeSlots, fetchConfirmedForDate, isSlotAvailable, nowInTz } from '../services/appointment.service';
 import { calculatePlatformFee } from '../utils/platformFee';
 import { QuickBooksService } from '../services/quickbooks.service';
 import { captureEvent, withTiming } from '../utils/analytics';
 import { ensureWalletTransferConfirmed } from './disbursement.controller';
 import { getCachedOrgSecretKey } from '../lib/orgSecretKeyCache';
+import { CARD_REF_PREFIX, cardsEnabledFor, finalizeCard, dollarRate, usdToZmw, productPrices } from '../services/lipila.service';
+import { SalonError, staffForService, serviceDuration, publicSlots, assignStaff, sanitizeDepositOptions, checkDeposit } from '../services/salon.service';
+import { status as lipilaCardStatus } from './lipila.controller';
 import { sanitizeCheckoutFields } from './product.controller';
 
 // MoneyWise's own Lenco settlement merchant (receives the commission-sweep
@@ -93,7 +99,7 @@ export const provisionOrganizationLencoAccount = async (req: Request, res: Respo
         res.json({ success: true, lenco_subaccount_id: lencoAccount.id });
     } catch (error: any) {
         console.error('Provisioning error in controller:', error);
-        res.status(500).json({ error: 'Internal server error during provisioning' });
+        res.status(500).json({ error: `Internal server error during provisioning${error?.message ? `: ${String(error.message).slice(0, 200)}` : ''}` });
     }
 };
 
@@ -188,6 +194,7 @@ export const linkOrganizationLencoAccount = async (req: Request, res: Response) 
 
 export const verifyCollectionStatus = async (req: Request, res: Response) => {
     const { reference } = req.params;
+    if (String(reference).startsWith(CARD_REF_PREFIX)) return lipilaCardStatus(req, res);
     const { transactionId, organizationId: queryOrgId } = req.query;
     const organizationId = typeof queryOrgId === 'string' ? queryOrgId : null;
 
@@ -320,6 +327,7 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
                 // customer and our own diagnostics can tell an insufficient-funds
                 // decline apart from an expired prompt, wrong PIN, etc.
                 const { code, message } = classifyLencoFailureReason(lencoStatus.reasonForFailure);
+                trackFlow('failed', { reference: String(reference), organizationId, failureType: failureTypeFromCode(code), errorCode: code });
                 console.log(`[Lenco Verify] Collection failed for ref ${reference}: reason="${lencoStatus.reasonForFailure || 'N/A'}" code=${code}`);
                 return res.json({
                     verified: false,
@@ -360,11 +368,16 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
                 if (!intents || intents.length === 0 || stale.length === intents.length) {
                     console.log(`[Lenco Verify] Reference ${reference} not found on Lenco and intents are stale. Cleaning up pending entries.`);
                     for (const i of stale) {
+                        trackFlow('failed', {
+                            reference: String(reference), organizationId, failureType: 'not_found_on_provider', errorCode: 'not_found',
+                            durationSeconds: Math.round((Date.now() - new Date(i.created_at).getTime()) / 1000),
+                        });
                         await supabase.from('cashbook_entries').delete().eq('id', i.id).eq('status', 'PENDING');
                     }
                     await supabase.from('product_sales').delete().eq('reference', reference).eq('status', 'PENDING');
                     // Release any held booking reservation (PENDING never blocked dates).
                     await supabase.from('product_bookings').delete().eq('reference', reference).eq('status', 'PENDING');
+                    await supabase.from('product_appointments').delete().eq('reference', reference).eq('status', 'PENDING');
                     return res.json({
                         verified: false,
                         status: 'DELETED',
@@ -404,6 +417,16 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
 // ─────────────────────────────────────────────────────────────────────────────
 export const longPollCollectionStatus = async (req: Request, res: Response) => {
     const { reference } = req.params;
+    if (String(reference).startsWith(CARD_REF_PREFIX)) {
+        // Card payments are checked with Lipila a few times a second apart, then the browser is told to ask again.
+        for (let i = 0; i < 6; i++) {
+            const o = await finalizeCard(reference).catch(() => null);
+            if (o?.state === 'successful') return res.json({ verified: true, source: 'lipila', status: 'COMPLETED' });
+            if (o?.state === 'failed') return res.json({ verified: false, status: 'failed', reasonCode: 'CARD_DECLINED', message: o.message });
+            await new Promise((r) => setTimeout(r, 3000));
+        }
+        return res.json({ verified: false, status: 'still-pending' });
+    }
     const { organizationId: queryOrgId } = req.query;
     const organizationId = typeof queryOrgId === 'string' ? queryOrgId : null;
 
@@ -463,6 +486,7 @@ export const longPollCollectionStatus = async (req: Request, res: Response) => {
 
             if (lencoStatus.status === 'failed') {
                 const { code, message } = classifyLencoFailureReason(lencoStatus.reasonForFailure);
+                trackFlow('failed', { reference: String(reference), organizationId, failureType: failureTypeFromCode(code), errorCode: code });
                 console.log(`[LongPoll] ${reference} failed: ${lencoStatus.reasonForFailure || 'unknown'}`);
                 return res.json({
                     verified: false,
@@ -507,6 +531,11 @@ export const longPollCollectionStatus = async (req: Request, res: Response) => {
 // ─────────────────────────────────────────────────────────────────────────────
 export const finalizeCollection = async (req: Request, res: Response) => {
     const { reference } = req.params;
+    if (String(reference).startsWith(CARD_REF_PREFIX)) {
+        const o = await finalizeCard(reference).catch(() => null);
+        if (o?.state === 'successful') return res.json({ success: true, source: 'lipila', referenceNumber: o.referenceNumber ?? null });
+        return res.status(422).json({ error: 'Card payment not yet confirmed', status: o?.state ?? 'pending' });
+    }
     const { organizationId: queryOrgId } = req.query;
     const organizationId = typeof queryOrgId === 'string' ? queryOrgId : null;
 
@@ -711,11 +740,25 @@ export const getReconciliationSummary = async (req: Request, res: Response) => {
 /**
  * Fetch list of banks for a specific country (Zambia default)
  */
+// The list of banks is the same for everyone, so it is kept for six hours instead of asking Lenco on every screen open.
+let banksCache: { at: number; list: any[] } | null = null;
 export const getBanks = async (req: Request, res: Response) => {
+    if (banksCache && Date.now() - banksCache.at < 6 * 3_600_000) return res.json(banksCache.list);
     try {
-        const banks = await LencoService.getBanks();
+        let banks: any[];
+        try {
+            banks = await LencoService.getBanks();
+        } catch (platformErr: any) {
+            // The platform key was refused (or isn't set on this server): ask with the business's own connected Lenco key instead.
+            const orgId = (req as any).user?.organization_id;
+            const { data: org } = orgId ? await supabase.from('organizations').select('lenco_secret_key').eq('id', orgId).maybeSingle() : { data: null as any };
+            if (!org?.lenco_secret_key) throw platformErr;
+            banks = await LencoService.getBanks(org.lenco_secret_key);
+        }
+        banksCache = { at: Date.now(), list: banks };
         res.json(banks);
     } catch (error: any) {
+        if (banksCache) return res.json(banksCache.list); // Lenco is down or refusing: an older list is better than none
         res.status(500).json({ error: error.message });
     }
 };
@@ -866,7 +909,8 @@ export const getPublicWalletContext = async (req: Request, res: Response) => {
                 ]);
 
                 const { data: org, error: orgError } = orgResult;
-                console.log('[Lenco Public Context] Org query result:', { org, orgError });
+                // Never log the organization row: it carries the business's Lenco secret key.
+                console.log('[Lenco Public Context] Org query result:', { found: !!org, orgError: orgError?.message ?? null });
 
                 if (orgError || !org) {
                     throw Object.assign(new Error('Organization not found'), { code: 'ORG_NOT_FOUND' });
@@ -888,10 +932,19 @@ export const getPublicWalletContext = async (req: Request, res: Response) => {
                         salesCounts[r.product_id] = (salesCounts[r.product_id] || 0) + 1;
                     });
                 }
-                const productsWithCounts = (products || []).map((p: any) => ({
-                    ...p,
-                    sales_count: salesCounts[p.id] || 0,
-                }));
+                // The store works in kwacha. A product priced in dollars goes out at today's kwacha equivalent, with its dollar price alongside
+                // so the page can show it; one that can't be converted (no dollar rate) is left out rather than sold at its dollar number.
+                const kw = await productPrices(productIds as string[], wallet.organization_id);
+                const productsWithCounts = (products || []).flatMap((p: any) => {
+                    const k = kw.get(p.id);
+                    if (!k) return [];
+                    return [{
+                        ...p,
+                        price: k.zmw,
+                        ...(k.currency === 'USD' ? { currency: 'USD', usd_price: k.usd, usd_rate: k.rate } : {}),
+                        sales_count: salesCounts[p.id] || 0,
+                    }];
+                });
 
                 return { org, products: productsWithCounts };
             }
@@ -912,7 +965,9 @@ export const getPublicWalletContext = async (req: Request, res: Response) => {
             },
             products: products || [],
             // Kill-switch for the own-UX mobile money checkout — see getPaymentLinkContext.
-            collections_api_enabled: collectionsApiEnabledFor(org)
+            collections_api_enabled: collectionsApiEnabledFor(org),
+            // Card payments through the business's own Lipila wallet (on for businesses that have saved a key and switched cards on).
+            card_enabled: await cardsEnabledFor(wallet.organization_id)
         });
     } catch (error: any) {
         console.error('[Lenco Public Context] Error:', error);
@@ -1039,11 +1094,16 @@ export const getPaymentLinkContext = async (req: Request, res: Response) => {
             items,
             customer_name: link.customer_name,
             customer_phone: link.customer_phone,
-            amount: Number(link.amount),
+            // A dollar link is charged in kwacha at today's rate (the dollar price is shown beside it).
+            amount: await (async () => { try { return link.currency === 'USD' && Number(link.foreign_amount) > 0 ? usdToZmw(Number(link.foreign_amount), await dollarRate()) : Number(link.amount); } catch { return Number(link.amount); } })(),
+            usd_price: link.currency === 'USD' && Number(link.foreign_amount) > 0 ? Number(link.foreign_amount) : null,
+            usd_rate: link.currency === 'USD' ? await dollarRate().catch(() => null) : null,
             // Kill-switch for the own-UX mobile money checkout. When false/unset the
             // frontend uses the existing LencoPay widget. Flip LENCO_COLLECTIONS_API_ENABLED
             // on the API to switch every client instantly (no frontend redeploy).
-            collections_api_enabled: collectionsApiEnabledFor(org)
+            collections_api_enabled: collectionsApiEnabledFor(org),
+            // Card payments through the business's own Lipila wallet (on for businesses that have saved a key and switched cards on).
+            card_enabled: await cardsEnabledFor(link.organization_id)
         });
     } catch (error: any) {
         console.error('[Lenco Payment Link Context] Error:', error);
@@ -1084,6 +1144,70 @@ export const getProductAvailability = async (req: Request, res: Response) => {
     } catch (error: any) {
         console.error('[Lenco Public Availability] Error:', error);
         res.status(500).json({ error: 'Failed to fetch availability', details: error.message });
+    }
+};
+
+/**
+ * Public: calendar-level info for a SERVICE_APPOINTMENT product — which weekdays
+ * are open, the bookable date window, closed dates and the service duration — so
+ * the portal calendar can grey out days. Slots for a chosen day come from
+ * `getProductSlots`.
+ */
+export const getAppointmentInfo = async (req: Request, res: Response) => {
+    try {
+        const { productId } = req.params;
+        const { data: p } = await supabase.from('products')
+            .select('id, product_type, is_active, appointment_config').eq('id', productId).maybeSingle();
+        if (!p || p.product_type !== 'SERVICE_APPOINTMENT' || !p.is_active) {
+            return res.status(404).json({ error: 'Appointment service not found' });
+        }
+        const cfg = resolveConfig(p.appointment_config);
+        const today = nowInTz(cfg.timezone).date;
+        const last = new Date(Date.parse(`${today}T00:00:00Z`) + cfg.max_advance_days * 86400000).toISOString().slice(0, 10);
+        // A service with hairdressers: show who can do it, and use the duration the salon set for the service.
+        const { data: pFull } = await supabase.from('products').select('organization_id, duration_minutes, price, deposit_options').eq('id', productId).maybeSingle();
+        const staffRows = pFull ? await staffForService(pFull.organization_id, productId) : [];
+        res.json({
+            staff: staffRows.map((s) => ({ id: s.id, name: s.display_name })),
+            price: Number(pFull?.price) || 0,
+            deposit_options: (sanitizeDepositOptions(pFull?.deposit_options) ?? []).filter((o) => o < (Number(pFull?.price) || 0)),
+            duration_minutes: staffRows.length ? serviceDuration(pFull as any, cfg) : cfg.duration_minutes,
+            open_weekdays: Object.keys(cfg.hours).map(Number),
+            closed_dates: cfg.closed_dates,
+            min_date: today,
+            max_date: last,
+            timezone: cfg.timezone,
+        });
+    } catch (error: any) {
+        console.error('[Lenco Public Appointment Info] Error:', error);
+        res.status(500).json({ error: 'Failed to fetch appointment info', details: error.message });
+    }
+};
+
+/** Public: bookable time slots for one day (`?date=YYYY-MM-DD`) of an appointment product. */
+export const getProductSlots = async (req: Request, res: Response) => {
+    try {
+        const { productId } = req.params;
+        const date = String(req.query.date || '');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'date (YYYY-MM-DD) is required' });
+        const { data: p } = await supabase.from('products')
+            .select('id, product_type, is_active, appointment_config').eq('id', productId).maybeSingle();
+        if (!p || p.product_type !== 'SERVICE_APPOINTMENT' || !p.is_active) {
+            return res.status(404).json({ error: 'Appointment service not found' });
+        }
+        const cfg = resolveConfig(p.appointment_config);
+        try {
+            const st = await publicSlots(productId, date, typeof req.query.staff === 'string' ? req.query.staff : undefined);
+            if (st.staffed) return res.json({ date, staffed: true, staff: st.staff, duration_minutes: st.duration, slots: st.slots.map(s => ({ start: s.start, end: s.end })) });
+        } catch (e: any) {
+            if (e instanceof SalonError) return res.status(e.httpStatus).json({ error: e.message });
+            throw e;
+        }
+        const slots = computeSlots(cfg, date, await fetchConfirmedForDate(productId, date));
+        res.json({ date, slots: slots.map(s => ({ start: s.start, end: s.end })) });
+    } catch (error: any) {
+        console.error('[Lenco Public Slots] Error:', error);
+        res.status(500).json({ error: 'Failed to fetch slots', details: error.message });
     }
 };
 
@@ -1148,8 +1272,13 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
             Math.round((Date.parse(`${co}T00:00:00Z`) - Date.parse(`${ci}T00:00:00Z`)) / 86400000);
         if (bookingItems.length > 0) {
             const ids = [...new Set(bookingItems.map((b: any) => b.id))];
-            const { data: prods } = await supabase.from('products').select('id, price').in('id', ids);
-            for (const p of (prods || []) as any[]) bookingPrices[p.id] = Number(p.price) || 0;
+            // In kwacha (a dollar product at today's rate). A dollar product with no rate to convert it is refused, never priced at its dollar number.
+            const kwPrices = await productPrices(ids as string[]);
+            for (const id of ids as string[]) {
+                const k = kwPrices.get(id);
+                if (k) bookingPrices[id] = k.zmw;
+                else if (kwPrices.size < ids.length) return res.status(503).json({ error: 'Dollar prices can’t be charged right now (no dollar rate is set). Please try again later.' });
+            }
 
             const todayStr = new Date().toISOString().split('T')[0];
             for (const b of bookingItems) {
@@ -1172,6 +1301,42 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
                 if (clashes && clashes.length > 0) {
                     return res.status(409).json({ error: 'Sorry, those dates have just been booked. Please choose different dates.' });
                 }
+            }
+        }
+
+        // --- Appointment pre-validation -----------------------------------------
+        // Appointment lines carry appointment_date + appointment_time. The slot must
+        // still be offered (open hours, notice, capacity); price is server-side.
+        const apptItems: any[] = Array.isArray(items) ? items.filter((it: any) => it?.appointment_date && it?.appointment_time) : [];
+        const apptInfo: Record<string, { price: number; duration: number; cfg: any }> = {};
+        // For a service with hairdressers: who will do each booked slot (chosen by the client, or the free one for "any").
+        const apptStaff: Record<string, { staffId: string; any: boolean; duration: number } | null> = {};
+        // A deposit the client chose to pay now instead of the full price (checked against what the service offers), by booked slot.
+        const apptDeposit: Record<string, number | null> = {};
+        const apptDepositOptions: Record<string, unknown> = {};
+        if (apptItems.length > 0) {
+            const ids = [...new Set(apptItems.map((a: any) => a.id))];
+            const { data: prods } = await supabase.from('products')
+                .select('id, price, product_type, is_active, appointment_config, deposit_options').in('id', ids).eq('organization_id', wallet.organization_id);
+            const apptKw = await productPrices(ids as string[], wallet.organization_id);
+            for (const p of (prods || []) as any[]) {
+                if (p.product_type !== 'SERVICE_APPOINTMENT' || !p.is_active) continue;
+                const k = apptKw.get(p.id);
+                if (!k) return res.status(503).json({ error: 'Dollar prices can’t be charged right now (no dollar rate is set). Please try again later.' });
+                apptInfo[p.id] = { price: k.zmw, duration: resolveConfig(p.appointment_config).duration_minutes, cfg: p.appointment_config };
+                apptDepositOptions[p.id] = p.deposit_options;
+            }
+            for (const a of apptItems) {
+                if (!apptInfo[a.id]) return res.status(400).json({ error: 'This service is not available for appointments.' });
+                let assigned: Awaited<ReturnType<typeof assignStaff>> = null;
+                try { assigned = await assignStaff(wallet.organization_id, a.id, String(a.appointment_date), String(a.appointment_time), typeof a.staff_profile_id === 'string' ? a.staff_profile_id : null); }
+                catch (e: any) { if (e instanceof SalonError) return res.status(e.httpStatus).json({ error: e.message }); throw e; }
+                apptStaff[`${a.id}|${a.appointment_date}|${a.appointment_time}`] = assigned;
+                try { apptDeposit[`${a.id}|${a.appointment_date}|${a.appointment_time}`] = checkDeposit({ price: apptInfo[a.id].price, deposit_options: apptDepositOptions[a.id] }, a.deposit_amount); }
+                catch (e: any) { if (e instanceof SalonError) return res.status(e.httpStatus).json({ error: e.message }); throw e; }
+                if (assigned) continue; // a staffed service is checked against the hairdresser's own time
+                const slot = await isSlotAvailable(a.id, apptInfo[a.id].cfg, String(a.appointment_date), String(a.appointment_time));
+                if (!slot) return res.status(409).json({ error: 'Sorry, that time slot is no longer available. Please choose another.' });
             }
         }
 
@@ -1240,9 +1405,12 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
             // Booking lines store nights as quantity and a server-recomputed amount.
             const salesData = items.map((item: any) => {
                 const isBooking = !!(item.check_in && item.check_out);
-                const qty = isBooking ? nightsOf(String(item.check_in), String(item.check_out)) : Number(item.quantity);
-                const unit = isBooking ? (bookingPrices[item.id] ?? (Number(item.price) || 0)) : Number(item.price);
+                const isAppt = !isBooking && !!apptInfo[item.id] && !!(item.appointment_date && item.appointment_time);
+                const qty = isBooking ? nightsOf(String(item.check_in), String(item.check_out)) : isAppt ? 1 : Number(item.quantity);
+                const deposit = isAppt ? apptDeposit[`${item.id}|${item.appointment_date}|${item.appointment_time}`] ?? null : null;
+                const unit = isBooking ? (bookingPrices[item.id] ?? (Number(item.price) || 0)) : isAppt ? (deposit ?? apptInfo[item.id].price) : Number(item.price);
                 return {
+                    is_deposit: deposit != null,
                     organization_id: wallet.organization_id,
                     product_id: item.id,
                     customer_name: customerName || 'Anonymous',
@@ -1293,6 +1461,35 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
                     console.error('[Lenco Public Intent] Error logging product bookings:', bookingErr);
                 }
             }
+
+            // Hold appointment slots as PENDING (nothing is blocked until paid).
+            if (apptItems.length > 0) {
+                const minToTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+                const apptData = apptItems.map((a: any) => {
+                    const [h, m] = String(a.appointment_time).split(':').map(Number);
+                    const startMin = h * 60 + m;
+                    const assigned = apptStaff[`${a.id}|${a.appointment_date}|${a.appointment_time}`];
+                    return {
+                        organization_id: wallet.organization_id,
+                        product_id: a.id,
+                        reference,
+                        customer_name: customerName || 'Anonymous',
+                        customer_phone: customerPhone || 'N/A',
+                        appointment_date: a.appointment_date,
+                        start_time: minToTime(startMin),
+                        end_time: minToTime(startMin + (assigned?.duration ?? apptInfo[a.id].duration)),
+                        staff_profile_id: assigned?.staffId ?? null,
+                        staff_any: assigned?.any ?? false,
+                        // What is paid now (the deposit or the whole price) and the deposit chosen; the amount stays the full price.
+                        paid_amount: apptDeposit[`${a.id}|${a.appointment_date}|${a.appointment_time}`] ?? apptInfo[a.id].price,
+                        deposit_amount: apptDeposit[`${a.id}|${a.appointment_date}|${a.appointment_time}`] ?? null,
+                        amount: apptInfo[a.id].price,
+                        status: 'PENDING',
+                    };
+                });
+                const { error: apptErr } = await supabase.from('product_appointments').insert(apptData);
+                if (apptErr) console.error('[Lenco Public Intent] Error logging product appointments:', apptErr);
+            }
         }
 
         // One-time payment link: tie this checkout's reference to the link so the
@@ -1309,6 +1506,10 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
         }
 
         captureEvent(`${feature}_intent_logged`, { ...analyticsBase, status: 'succeeded' });
+        trackFlow('started', {
+            reference, organizationId: wallet.organization_id, userId: (req as any).user?.id,
+            flow: paymentLinkToken ? 'payment_link' : allowPastBooking ? 'pos_sale' : undefined,
+        });
         res.json({ message: 'Intent logged successfully' });
     } catch (error: any) {
         console.error('[Lenco Public Intent] Error:', error);
@@ -1411,16 +1612,53 @@ export const initiatePublicMobileMoneyCollection = async (req: Request, res: Res
         if (!resolved) return res.status(404).json({ error: 'Wallet not found' });
         // Never charge a customer through the master key: the money would settle
         // into the master's default account, not this merchant's (see collectionsApiEnabledFor).
+        // This includes Blue Opus: the master key's default settlement account is the Lenco "BLUE OPUS- MONEYWISE
+        // BLUE OPUS DEMO" account (till 3760162), NOT Blue Opus's own account (till 9838830) — exempting it
+        // misrouted K404 on 2026-11-09/10. Blue Opus needs its own secret key (organizations.lenco_secret_key)
+        // for the merchant behind c567f569 before it can use direct checkout.
         if (!resolved.hasOwnKey) {
             return res.status(409).json({ error: 'Direct mobile money checkout is not available for this business. Please pay with the standard checkout.' });
         }
 
-        const collection = await LencoService.initiateMobileMoneyCollection({
-            amount: Number(amount),
-            reference,
-            phone,
-            operator
-        }, resolved.secretKey);
+        let collection: any;
+        try {
+            collection = await LencoService.initiateMobileMoneyCollection({
+                amount: Number(amount),
+                reference,
+                phone,
+                operator
+            }, resolved.secretKey);
+        } catch (initError: any) {
+            if (!initError?.outcomeUnknown) throw initError;
+            // Lenco didn't answer in time (or 5xx) — the charge may exist and the prompt may
+            // already be on the customer's phone. Re-check by reference; only treat it as a
+            // failure when Lenco confirms it. Otherwise hand the client a pending collection so
+            // it polls verify-status like any other prompt.
+            let rechecked: any = null;
+            try {
+                // Capped: the initiate call already spent up to 25s of the 45s function budget.
+                rechecked = await Promise.race([
+                    LencoService.getCollectionStatus(reference, resolved.secretKey),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('re-check timed out after 8s')), 8000)),
+                ]);
+            } catch (checkError: any) {
+                console.error('[Lenco Public Collection] Re-check after timeout failed:', checkError.message);
+            }
+            if (rechecked?.status === 'failed') {
+                throw new Error(rechecked.reasonForFailure || 'Mobile money payment could not be started');
+            }
+            console.warn(`[Lenco Public Collection] Initiate outcome unknown for ${reference}; re-check status=${rechecked?.status || 'not found yet'} — returning pending`);
+            captureEvent('payment_link_collection_initiated', {
+                feature: 'payment_link_checkout', workflow_id: reference, organization_id: resolved.organizationId,
+                user_id: 'anonymous', status: 'started', amount: Number(amount), payment_method: 'mobile-money',
+                outcome_unknown: true,
+            });
+            return res.status(202).json({
+                success: true,
+                outcomeUnknown: true,
+                data: rechecked && rechecked.status ? rechecked : { status: 'pending', reference },
+            });
+        }
 
         captureEvent('payment_link_collection_initiated', {
             feature: 'payment_link_checkout', workflow_id: reference, organization_id: resolved.organizationId,
@@ -1430,6 +1668,12 @@ export const initiatePublicMobileMoneyCollection = async (req: Request, res: Res
         return res.json({ success: true, data: collection });
     } catch (error: any) {
         console.error('[Lenco Public Collection] Initiate error:', error.message);
+        const upstream = Number(error?.upstreamStatus);
+        trackFlow('failed', {
+            reference: String(req.body?.reference || ''),
+            failureType: upstream >= 400 && upstream < 500 ? 'declined' : 'system_error',
+            errorCode: upstream ? `lenco_${upstream}` : 'initiate_failed',
+        });
         return res.status(500).json({ error: error.message || 'Failed to initiate mobile money collection' });
     }
 };
@@ -1493,6 +1737,7 @@ export const cancelPublicCollectionIntent = async (req: Request, res: Response) 
             return res.status(400).json({ error: 'reference is required' });
         }
 
+        trackFlow('failed', { reference: String(reference), failureType: 'customer_cancelled', errorCode: 'cancelled_by_customer' });
         captureEvent('payment_collection_cancelled_by_customer', {
             feature: 'payment_collection', workflow_id: reference, organization_id: 'unknown', user_id: 'anonymous',
         });
@@ -1556,7 +1801,9 @@ export const getQuickLinkContext = async (req: Request, res: Response) => {
                 lenco_public_key: org.lenco_public_key || null,
                 payment_test_mode: org.payment_test_mode || false
             },
-            collections_api_enabled: collectionsApiEnabledFor(org)
+            collections_api_enabled: collectionsApiEnabledFor(org),
+            // Card payments through the business's own Lipila wallet (on for businesses that have saved a key and switched cards on).
+            card_enabled: await cardsEnabledFor(org.id)
         });
     } catch (error: any) {
         console.error('[Lenco Quick Link] Context error:', error);
@@ -1696,6 +1943,7 @@ export const initiateQuickLinkIntent = async (req: Request, res: Response) => {
             console.error('[Lenco Quick Link] Failed to log purpose tracking row:', trackingError);
         }
 
+        trackFlow('started', { reference, organizationId: wallet.organization_id, flow: 'quick_pay' });
         captureEvent('quick_link_intent_logged', {
             feature: 'quick_link_checkout', workflow_id: reference, organization_id: wallet.organization_id,
             user_id: 'anonymous', status: 'succeeded', amount: Number(amount),
@@ -2503,7 +2751,6 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
             //
             // So: accept the balance delta only when it looks like "amount + a bank fee",
             // and otherwise fall back to the published fee tariff for that amount.
-            const MAX_PLAUSIBLE_FEE = 60;
             for (let i = 0; i < txns.length; i++) {
                 const prevBal = i > 0 && txns[i - 1].balance != null ? parseFloat(txns[i - 1].balance) : null;
                 const curBal = txns[i].balance != null ? parseFloat(txns[i].balance) : null;
@@ -2515,18 +2762,16 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
                     continue;
                 }
 
-                const delta = (prevBal != null && curBal != null)
-                    ? Math.round((prevBal - curBal) * 100) / 100
-                    : null;
-                const impliedFee = delta != null ? Math.round((delta - amt) * 100) / 100 : null;
-
-                if (impliedFee != null && impliedFee >= 0 && impliedFee <= MAX_PLAUSIBLE_FEE) {
-                    txns[i]._gross = delta as number;
-                } else {
-                    if (delta != null) {
-                        console.warn(`[Lenco Sync] Implausible balance delta for debit ${txns[i].id} (amount ${amt}, delta ${delta}) — settlement order differs from timestamp order. Falling back to the fee tariff.`);
-                    }
-                    txns[i]._gross = Math.round((amt + LencoService.calculatePayoutFee(amt, 'BANK')) * 100) / 100;
+                // Pure helper (utils/lencoGross.ts, unit-tested): accepts the balance drop when it is "amount + fee", treats
+                // sub-2-ngwee rounding as no fee, and never charges the bank tariff to an on-us forward / MWPAY- transfer.
+                const priorDelta = (prevBal != null && curBal != null) ? Math.round((prevBal - curBal) * 100) / 100 : null;
+                txns[i]._gross = computeDebitGross({
+                    amount: amt, prevBalance: prevBal, curBalance: curBal,
+                    narration: txns[i].narration || txns[i].description, reference: txns[i].reference || txns[i].clientReference,
+                    tariff: (a: number) => LencoService.calculatePayoutFee(a, 'BANK'),
+                });
+                if (priorDelta != null && Math.abs(priorDelta - amt) > MAX_PLAUSIBLE_FEE) {
+                    console.warn(`[Lenco Sync] Implausible balance delta for debit ${txns[i].id} (amount ${amt}, delta ${priorDelta}) — settlement order differs from timestamp order. Using the non-balance fallback.`);
                 }
             }
 
@@ -2615,7 +2860,17 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
                 // on 2026-06-12). Page until no new references appear, hard-capped.
                 let colPage = 1;
                 while (colPage <= 40) {
-                    const collectionsResp = await LencoService.getCollections({ page: colPage }, secretKey);
+                    // A page that fails or comes back short leaves a hole in the map, and every credit in the hole is then
+                    // booked a second time (22 on 3 Nov 2026). Retry a page before giving up on it.
+                    let collectionsResp: any;
+                    for (let attempt = 1; ; attempt++) {
+                        try { collectionsResp = await LencoService.getCollections({ page: colPage }, secretKey); break; }
+                        catch (pageErr: any) {
+                            if (attempt >= 3) throw pageErr;
+                            console.warn(`[Lenco Sync] collections page ${colPage} failed (attempt ${attempt}/3) for org ${org.name}: ${pageErr.message}. Retrying.`);
+                            await new Promise((r) => setTimeout(r, 400 * attempt));
+                        }
+                    }
                     const collections: any[] = collectionsResp?.data || [];
                     if (collections.length === 0) break;
                     let newRefs = 0;
@@ -2647,6 +2902,10 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
 
             let newEntriesCount = 0;
             let finalizedCount = 0;
+            // Merchant references some resolvable transaction already points at, and the rows paired by amount this run
+            // (see findUnclaimedMerchantRow — the safety net for a settlement map that is missing entries).
+            const linkedMerchantRefs = new Set<string>([...settlementToRef.values()].map((r) => r.toLowerCase()));
+            const pairedMerchantRows = new Set<string>();
 
             for (const txn of windowTxns) {
                 const txnId = txn.id || txn.transactionId;
@@ -2899,6 +3158,38 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
                 // brand-new entries is not.
                 if (isPreCutoff) {
                     continue;
+                }
+
+                // Last line of defence against booking money twice. A credit we could not link to any reference (the settlement
+                // map had no entry for it) is only "new" if no sale we already booked accounts for it. If an unclaimed
+                // DEP-… row of the same amount and day exists, that row IS this credit: pair it instead of booking again.
+                if (txnType === 'credit' && !resolvedRef && !isSplitPaymentSweep && !isSubscriptionPayment) {
+                    const dayMs = Date.parse(txnDate);
+                    if (Number.isFinite(dayMs)) {
+                        const from = new Date(dayMs - 86400000).toISOString().slice(0, 10);
+                        const to = new Date(dayMs + 86400000).toISOString().slice(0, 10);
+                        const { data: nearRows, error: nearErr } = await supabase
+                            .from('cashbook_entries')
+                            .select('id, date, debit, external_reference')
+                            .eq('organization_id', orgId)
+                            .eq('account_type', 'MONEYWISE_WALLET')
+                            .eq('entry_type', 'INFLOW')
+                            .neq('status', 'PENDING')
+                            .like('external_reference', 'DEP-%')
+                            .gte('date', from).lte('date', to)
+                            .limit(500);
+                        if (nearErr) {
+                            // Cannot rule out an existing row → do not book (same stance as the duplicate checks above).
+                            await recordSyncFailure(orgId, txnId, `merchant-row check failed: ${nearErr.message}`);
+                            continue;
+                        }
+                        const twin = findUnclaimedMerchantRow(nearRows || [], { amount: txnAmount, day: txnDate }, linkedMerchantRefs, pairedMerchantRows);
+                        if (twin) {
+                            pairedMerchantRows.add(twin.id);
+                            console.warn(`[Lenco Sync] Credit ${txnId} (K${txnAmount}, ${txnDate}) had no reference in the settlement map but row ${twin.id.slice(0, 8)} (${twin.external_reference}) already accounts for it — not booking it again.`);
+                            continue;
+                        }
+                    }
                 }
 
                 // If not found, log it as a new transaction!
@@ -3200,6 +3491,14 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
                         (definitiveNotFound || colStatus === 'failed' || colStatus === 'expired' || colStatus === 'cancelled') &&
                         (Date.now() - new Date(intent.created_at).getTime()) > JANITOR_DELETE_AGE_MS
                     ) {
+                        // Authoritative dropped/declined attempt: Lenco says it never completed and it is long past
+                        // its window. Emitted here (not from the client) so it counts even if the payer just left.
+                        trackFlow('failed', {
+                            reference: intentRef, organizationId: orgId,
+                            failureType: definitiveNotFound ? 'not_found_on_provider' : colStatus === 'expired' ? 'expired' : colStatus === 'cancelled' ? 'customer_cancelled' : 'declined',
+                            errorCode: definitiveNotFound ? 'not_found' : String(colStatus),
+                            durationSeconds: Math.round((Date.now() - new Date(intent.created_at).getTime()) / 1000),
+                        });
                         await supabase.from('cashbook_entries').delete().eq('id', intent.id).eq('status', 'PENDING');
                         await supabase
                             .from('product_sales')

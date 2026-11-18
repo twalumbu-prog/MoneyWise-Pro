@@ -39,8 +39,8 @@ const STATUS_CONFIG = {
 const ACCT_STATUS_CONFIG = {
     ACTIVE: {
         label: 'AR Raised',
-        icon: <BookOpen size={12} className="text-[#0058DB]" />,
-        textClass: 'text-[#0058DB]',
+        icon: <BookOpen size={12} className="text-[#0B57D0]" />,
+        textClass: 'text-[#0B57D0]',
     },
     PAID: {
         label: 'Settled',
@@ -115,7 +115,7 @@ const KebabMenu: React.FC<{
                 <div
                     ref={menuRef}
                     style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 500 }}
-                    className="w-44 bg-white rounded-xl shadow-lg border border-[#E8EEF8] py-1 text-sm"
+                    className="w-44 bg-white rounded-xl shadow-lg border border-[rgba(116,119,117,0.22)] py-1 text-sm"
                 >
                     {/* Edit — not available on paid/cancelled invoices */}
                     <button
@@ -137,7 +137,7 @@ const KebabMenu: React.FC<{
                     </button>
 
                     {/* Divider */}
-                    <div className="my-1 border-t border-[#E8EEF8]" />
+                    <div className="my-1 border-t border-[rgba(116,119,117,0.22)]" />
 
                     {/* Delete */}
                     <button
@@ -168,7 +168,7 @@ export const InvoiceInbox: React.FC<InvoiceInboxProps> = ({ invoices, onRowClick
 
     return (
         <div className="bg-white rounded-2xl p-3 flex flex-col gap-2">
-            <div className="flex flex-col divide-y divide-[#E8EEF8]">
+            <div className="flex flex-col divide-y divide-[rgba(116,119,117,0.22)]">
                 {invoices.map((inv) => {
                     const cfg = STATUS_CONFIG[inv.status] ?? STATUS_CONFIG.ACTIVE;
                     const acct = ACCT_STATUS_CONFIG[inv.status] ?? ACCT_STATUS_CONFIG.ACTIVE;
@@ -179,7 +179,7 @@ export const InvoiceInbox: React.FC<InvoiceInboxProps> = ({ invoices, onRowClick
                             key={inv.id}
                             onClick={() => onRowClick?.(inv)}
                             className={`group px-3 py-3.5 flex items-center gap-3 cursor-pointer transition-colors ${
-                                selected.has(inv.id) ? 'bg-[#F0F7FF]' : 'hover:bg-gray-50/70'
+                                selected.has(inv.id) ? 'bg-[#E8F0FE]' : 'hover:bg-gray-50/70'
                             }`}
                         >
                             {/* Checkbox */}
@@ -191,7 +191,7 @@ export const InvoiceInbox: React.FC<InvoiceInboxProps> = ({ invoices, onRowClick
                                     type="checkbox"
                                     checked={selected.has(inv.id)}
                                     onChange={() => toggleSelected(inv.id)}
-                                    className="w-3.5 h-3.5 appearance-none bg-white rounded shadow-[inset_0px_2px_4px_0px_rgba(0,0,0,0.05)] border-[0.50px] border-indigo-300 checked:bg-[#0058DB] checked:border-[#0058DB] cursor-pointer"
+                                    className="w-3.5 h-3.5 appearance-none bg-white rounded shadow-[inset_0px_2px_4px_0px_rgba(0,0,0,0.05)] border-[0.50px] border-indigo-300 checked:bg-[#0B57D0] checked:border-[#0B57D0] cursor-pointer"
                                 />
                             </div>
 
@@ -202,13 +202,13 @@ export const InvoiceInbox: React.FC<InvoiceInboxProps> = ({ invoices, onRowClick
                                         {inv.customer_name}
                                     </span>
                                     <span className={`text-sm whitespace-nowrap font-semibold ${
-                                        inv.status === 'PAID' ? 'text-emerald-600' : 'text-[#111827]'
+                                        inv.status === 'PAID' ? 'text-emerald-600' : 'text-[#1F1F1F]'
                                     }`}>
                                         {inv.status === 'PAID' ? '+' : ''}K{(inv.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </span>
                                 </div>
                                 <div className="flex items-center justify-between mt-px">
-                                    <span className="text-[10px] font-normal text-[#6B7280]">
+                                    <span className="text-[10px] font-normal text-[#5F6368]">
                                         {invoiceNumber(inv.token)} · {itemCount} {itemCount === 1 ? 'item' : 'items'}
                                     </span>
                                     <span className="text-[10px] font-normal text-neutral-500">
@@ -252,10 +252,10 @@ export const InvoiceInbox: React.FC<InvoiceInboxProps> = ({ invoices, onRowClick
 
             {invoices.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-24 text-center">
-                    <div className="h-20 w-20 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-6 border border-[#E8EEF8]">
+                    <div className="h-20 w-20 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-6 border border-[rgba(116,119,117,0.22)]">
                         <FileText size={32} />
                     </div>
-                    <h3 className="text-xl font-bold text-brand-navy">No invoices yet</h3>
+                    <h3 className="text-xl font-bold text-[#1F1F1F]">No invoices yet</h3>
                     <p className="text-gray-400 max-w-xs mx-auto text-sm font-medium mt-2">
                         Create an invoice from the New Sale flow to send a payment link to a customer.
                     </p>

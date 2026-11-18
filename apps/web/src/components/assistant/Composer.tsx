@@ -18,7 +18,7 @@ const ACCEPTED_ATTACHMENT_TYPES = '.csv,.xlsx,.xls';
 
 const TIER_STYLE: Record<string, string> = {
     fast: 'bg-emerald-50 text-emerald-600',
-    balanced: 'bg-blue-50 text-[#006AFF]',
+    balanced: 'bg-blue-50 text-[#0B57D0]',
     deep: 'bg-purple-50 text-purple-600',
 };
 
@@ -224,10 +224,10 @@ export const Composer: React.FC<Props> = ({
     };
 
     return (
-        <div className="rounded-[24px] border border-gray-200/70 bg-white shadow-[0_4px_28px_rgba(0,0,0,0.06)] transition-shadow focus-within:border-blue-200 focus-within:shadow-[0_4px_32px_rgba(0,106,255,0.10)]">
+        <div className="rounded-[24px] border border-gray-200/70 bg-white shadow-[0_4px_28px_rgba(0,0,0,0.06)] transition-shadow focus-within:border-blue-200 focus-within:shadow-[0_4px_32px_rgba(11,87,208,0.10)]">
             {(attachmentName || attaching) && (
                 <div className="flex items-center gap-2 px-4 pt-3">
-                    <span className="flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-[#006AFF]">
+                    <span className="flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-[#0B57D0]">
                         {attaching ? <Loader2 size={12} className="animate-spin" /> : <Paperclip size={12} />}
                         <span className="max-w-[220px] truncate">{attaching ? 'Uploading…' : attachmentName}</span>
                         {!attaching && (
@@ -294,7 +294,7 @@ export const Composer: React.FC<Props> = ({
                                         {/* Middle: name + blurb */}
                                         <span className="min-w-0 flex-1">
                                             <span className="flex items-center gap-1.5">
-                                                <span className="truncate text-[13px] font-black text-brand-navy">{m.label}</span>
+                                                <span className="truncate text-[13px] font-black text-[#1F1F1F]">{m.label}</span>
                                                 <span className={`rounded px-1.5 py-px text-[9px] font-black uppercase tracking-wide ${TIER_STYLE[m.tier]}`}>
                                                     {m.tier}
                                                 </span>
@@ -306,7 +306,7 @@ export const Composer: React.FC<Props> = ({
 
                                         {/* Right: active checkmark */}
                                         <span className="mt-0.5 w-4 flex-shrink-0 flex items-start">
-                                            {m.id === selectedModel && <Check size={13} className="text-[#006AFF]" />}
+                                            {m.id === selectedModel && <Check size={13} className="text-[#0B57D0]" />}
                                         </span>
                                     </button>
                                 ))}
@@ -376,7 +376,7 @@ export const Composer: React.FC<Props> = ({
                             title="Send"
                             className={`flex h-9 w-9 items-center justify-center rounded-full transition-all ${
                                 canSend
-                                    ? 'bg-[#006AFF] text-white shadow-lg shadow-blue-500/25 hover:bg-[#0057d4]'
+                                    ? 'bg-[#0B57D0] text-white shadow-lg shadow-blue-500/25 hover:bg-[#0057d4]'
                                     : 'bg-gray-100 text-gray-300'
                             }`}
                         >

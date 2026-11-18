@@ -28,6 +28,50 @@
   }
 }
 
+/* Blue Opus (Google Material 3) design tokens. Components read these through Tailwind (gm-*) or var(--...). */
+:root {
+  --color-primary: #0B57D0;
+  --color-structural: #0B57D0;
+  --color-cta: #0B57D0;
+  --color-cta-hover: #0842A0;
+  --color-tint: #D3E3FD;
+  --color-ink: #1F1F1F;
+  --color-ground: #F8FAFD;
+  --color-surface: #FFFFFF;
+  --gm-bar: #F0F4F9;
+  --gm-sheet: #F8FAFD;
+  --gm-container: #E9EEF6;
+  --gm-outline: #C4C7C5;
+  --gm-outline-soft: rgba(116, 119, 117, 0.22);
+  --gm-select: #D3E3FD;
+  --gm-on-select: #041E49;
+  --gm-scrim: rgba(32, 33, 36, 0.4);
+  --gm-danger: #B3261D;
+  --gm-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+html, body { background-color: #F8FAFD; color: #1F1F1F; }
+::selection { background: #D3E3FD; color: #041E49; }
+
+/* Material press feedback and easing on every control. */
+button:not(:disabled):active { opacity: 0.86; }
+a, button, input, select, textarea {
+  transition-timing-function: var(--gm-ease);
+}
+
+/* Numbers (money, counts) line up in columns. */
+.tabular, [data-money] { font-variant-numeric: tabular-nums; }
+
+/* Card entrance used by the dashboards. */
+@keyframes gm-rise {
+  from { opacity: 0; transform: translateY(16px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
 /* Font utilities — the global DM Sans rules (here and the `*` rule in index.html)
    are !important, so these must be !important too; the class selector
    out-specifies both, letting elements opt into the display/accent fonts. */

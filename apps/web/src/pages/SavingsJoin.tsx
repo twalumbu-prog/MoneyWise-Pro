@@ -98,7 +98,7 @@ export const SavingsJoin: React.FC = () => {
                 </div>
 
                 {!preview && !loadError && (
-                    <div className="flex justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-blue-600" /></div>
+                    <div className="flex justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-[#0B57D0]" /></div>
                 )}
 
                 {loadError && (
@@ -138,7 +138,7 @@ export const SavingsJoin: React.FC = () => {
                                     </a>
                                 </div>
                             ) : authLoading ? (
-                                <div className="flex justify-center py-6"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
+                                <div className="flex justify-center py-6"><Loader2 className="w-6 h-6 animate-spin text-[#0B57D0]" /></div>
                             ) : session ? (
                                 <div className="space-y-3">
                                     <p className="text-sm text-gray-600 text-center">You're signed in. Confirm to join this group.</p>
@@ -168,7 +168,7 @@ export const SavingsJoin: React.FC = () => {
                                     <input className={input} placeholder="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
                                         autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required />
                                     {error && <p className="flex items-center gap-1.5 text-sm text-red-600"><AlertCircle size={15} /> {error}</p>}
-                                    <button type="submit" disabled={busy} className="w-full h-12 rounded-full bg-black text-white font-bold text-sm hover:bg-gray-800 disabled:opacity-60 flex items-center justify-center gap-2">
+                                    <button type="submit" disabled={busy} className="w-full h-12 rounded-full bg-[#0B57D0] text-white font-bold text-sm hover:bg-[#0842A0] disabled:opacity-60 flex items-center justify-center gap-2">
                                         {busy && <Loader2 className="w-4 h-4 animate-spin" />} {mode === 'login' ? 'Log in to join' : 'Create account & continue'}
                                     </button>
                                 </form>

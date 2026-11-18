@@ -201,9 +201,9 @@ export const ApplyPaymentModal: React.FC<ApplyPaymentModalProps> = ({ isOpen, en
             <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
             <div className="relative w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] flex flex-col">
                 <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100">
-                    <div className="h-10 w-10 rounded-xl bg-[#F0F7FF] text-[#0058DB] flex items-center justify-center"><Receipt size={20} /></div>
+                    <div className="h-10 w-10 rounded-xl bg-[#E8F0FE] text-[#0B57D0] flex items-center justify-center"><Receipt size={20} /></div>
                     <div className="flex-1 min-w-0">
-                        <h3 className="text-base font-bold text-[#111827]">Apply payment to invoice</h3>
+                        <h3 className="text-base font-bold text-[#1F1F1F]">Apply payment to invoice</h3>
                         <p className="text-xs text-gray-400 font-medium truncate">{entry.reference_number ? `${entry.reference_number} · ` : ''}{money(received)} received</p>
                     </div>
                     <button onClick={onClose} className="p-2 rounded-full text-gray-400 hover:bg-gray-100" aria-label="Close"><X size={18} /></button>
@@ -211,10 +211,10 @@ export const ApplyPaymentModal: React.FC<ApplyPaymentModalProps> = ({ isOpen, en
 
                 <div className="overflow-y-auto px-6 py-5 space-y-5">
                     {loading ? (
-                        <div className="py-12 flex justify-center"><Loader2 className="animate-spin text-gray-300" size={26} /></div>
+                        <div className="py-12 flex justify-center"><Loader2 className="animate-spin text-[#0B57D0]" size={26} /></div>
                     ) : customers.length === 0 ? (
                         <div className="text-center py-8">
-                            <p className="text-sm font-bold text-[#111827]">No customers owe you anything yet</p>
+                            <p className="text-sm font-bold text-[#1F1F1F]">No customers owe you anything yet</p>
                             <p className="text-xs text-gray-400 font-medium mt-1.5 max-w-xs mx-auto leading-relaxed">Record a credit sale from Inbox → Inflows → New Sale → Credit Sale, then apply payments to it here.</p>
                         </div>
                     ) : (
@@ -226,7 +226,7 @@ export const ApplyPaymentModal: React.FC<ApplyPaymentModalProps> = ({ isOpen, en
                                     <select
                                         value={customerKey}
                                         onChange={e => pickCustomer(e.target.value)}
-                                        className="w-full pl-9 pr-9 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-[#111827] outline-none focus:border-[#0058DB] appearance-none"
+                                        className="w-full pl-9 pr-9 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-[#1F1F1F] outline-none focus:border-[#0B57D0] appearance-none"
                                     >
                                         <option value="">Select customer…</option>
                                         {customers.map(c => <option key={c.key} value={c.key}>{c.name} — owes {money(c.owed)} ({c.count} invoice{c.count === 1 ? '' : 's'})</option>)}
@@ -239,7 +239,7 @@ export const ApplyPaymentModal: React.FC<ApplyPaymentModalProps> = ({ isOpen, en
                                 <div>
                                     <div className="flex items-center justify-between mb-1.5">
                                         <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Invoices</label>
-                                        <button type="button" onClick={() => setAmounts(suggest(customerRows))} className="text-[11px] font-bold text-[#0058DB]">Auto-apply oldest first</button>
+                                        <button type="button" onClick={() => setAmounts(suggest(customerRows))} className="text-[11px] font-bold text-[#0B57D0]">Auto-apply oldest first</button>
                                     </div>
                                     <div className="rounded-2xl border border-gray-100 divide-y divide-gray-100">
                                         {customerRows.map(r => {
@@ -250,10 +250,10 @@ export const ApplyPaymentModal: React.FC<ApplyPaymentModalProps> = ({ isOpen, en
                                                         type="checkbox"
                                                         checked={checked}
                                                         onChange={e => toggleRow(r, e.target.checked)}
-                                                        className="w-4 h-4 rounded border-gray-300 accent-[#0058DB] cursor-pointer"
+                                                        className="w-4 h-4 rounded border-gray-300 accent-[#0B57D0] cursor-pointer"
                                                     />
                                                     <div className="flex-1 min-w-0">
-                                                        <p className="text-sm font-bold text-[#111827]">{r.invoice.invoice_number}</p>
+                                                        <p className="text-sm font-bold text-[#1F1F1F]">{r.invoice.invoice_number}</p>
                                                         <p className="text-[11px] text-gray-400 font-medium">
                                                             {r.invoice.issue_date ? `Issued ${formatInvoiceDate(r.invoice.issue_date)} · ` : ''}
                                                             <span className={r.invoice.is_overdue ? 'text-red-500 font-bold' : ''}>{r.invoice.follow_up_date ? `${r.invoice.is_overdue ? 'overdue since' : 'due'} ${formatInvoiceDate(r.invoice.follow_up_date)}` : ''}</span>
@@ -269,7 +269,7 @@ export const ApplyPaymentModal: React.FC<ApplyPaymentModalProps> = ({ isOpen, en
                                                             disabled={!checked}
                                                             value={amounts[r.invoice.id] ?? ''}
                                                             onChange={e => setAmounts(prev => ({ ...prev, [r.invoice.id]: e.target.value }))}
-                                                            className="w-full pl-6 pr-2 py-2 bg-white border border-gray-200 rounded-lg text-sm font-bold text-right outline-none focus:border-[#0058DB] disabled:bg-gray-50 disabled:text-gray-300"
+                                                            className="w-full pl-6 pr-2 py-2 bg-white border border-gray-200 rounded-lg text-sm font-bold text-right outline-none focus:border-[#0B57D0] disabled:bg-gray-50 disabled:text-gray-300"
                                                         />
                                                     </div>
                                                 </div>
@@ -299,7 +299,7 @@ export const ApplyPaymentModal: React.FC<ApplyPaymentModalProps> = ({ isOpen, en
                     <button
                         onClick={apply}
                         disabled={saving || loading || !customerKey}
-                        className="w-full py-3.5 rounded-xl bg-[#0058DB] text-white text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40"
+                        className="w-full py-3.5 rounded-xl bg-[#0B57D0] text-white text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40"
                     >
                         {saving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Apply payment
                     </button>
@@ -328,10 +328,10 @@ export const ReceivableAllocationPanel: React.FC<{ entry: EntryLike; onEdit: () 
     const applied = allocs.reduce((s, a) => s + Number(a.amount), 0);
     const received = Number(entry.debit || 0);
     return (
-        <div className="mt-2.5 rounded-xl bg-[#F7FAFF] border border-[#0058DB]/15 p-3">
+        <div className="mt-2.5 rounded-xl bg-[#F7FAFF] border border-[#0B57D0]/15 p-3">
             <div className="flex items-center justify-between mb-1.5">
-                <p className="text-[10px] font-black uppercase tracking-widest text-[#0058DB]">Applied to invoices</p>
-                <button type="button" onClick={onEdit} className="text-[11px] font-bold text-[#0058DB] hover:underline">{allocs.length ? 'Change' : 'Apply to invoice'}</button>
+                <p className="text-[10px] font-black uppercase tracking-widest text-[#0B57D0]">Applied to invoices</p>
+                <button type="button" onClick={onEdit} className="text-[11px] font-bold text-[#0B57D0] hover:underline">{allocs.length ? 'Change' : 'Apply to invoice'}</button>
             </div>
             {allocs.length === 0 ? (
                 <p className="text-[11px] text-gray-500 font-medium leading-relaxed">Not tied to a customer invoice yet — it sits on Accounts Receivable as unapplied credit.</p>
@@ -343,7 +343,7 @@ export const ReceivableAllocationPanel: React.FC<{ entry: EntryLike; onEdit: () 
                             <span className="flex-shrink-0 text-emerald-600">{money(Number(a.amount))}</span>
                         </div>
                     ))}
-                    {received - applied > 0.004 && <div className="flex justify-between text-[11px] font-semibold text-amber-600 pt-1 border-t border-[#0058DB]/10"><span>Unapplied credit</span><span>{money(received - applied)}</span></div>}
+                    {received - applied > 0.004 && <div className="flex justify-between text-[11px] font-semibold text-amber-600 pt-1 border-t border-[#0B57D0]/10"><span>Unapplied credit</span><span>{money(received - applied)}</span></div>}
                 </div>
             )}
         </div>

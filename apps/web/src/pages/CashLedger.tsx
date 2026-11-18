@@ -55,8 +55,10 @@ import ExportLedgerModal from '../components/ExportLedgerModal';
 import { ApplyPaymentModal, ReceivableAllocationPanel, isReceivableAccount } from '../components/accounting/ApplyPaymentModal';
 import { exportToCSV, exportToExcel, exportToPDF } from '../utils/export.utils';
 import { SegmentedControl, AnimatedTabContent, TabPillGroup } from '../components/AnimatedTabs';
+import { VirtualCardTab } from '../components/wallets/VirtualCard';
 import { useNewnessTracker, isNewSinceStored } from '../hooks/useNewnessTracker';
-import { formatKwacha } from 'core';
+import { formatKwacha, apiJson } from 'core';
+import { LipilaWalletPanel, LIPILA_WALLET_KEY, type LipilaWalletSummary } from '../components/wallets/LipilaWalletPanel';
 
 
 const SearchableAccountSelect: React.FC<{
@@ -91,36 +93,36 @@ const SearchableAccountSelect: React.FC<{
         <div className="relative w-full" ref={dropdownRef}>
             <div
                 onClick={(e) => { e.stopPropagation(); if (!isSaving) setIsOpen(!isOpen); }}
-                className={`flex items-center justify-between px-3 py-2 bg-gray-50/50 border rounded-xl transition-all text-xs font-medium
+                className={`flex items-center justify-between px-3 py-2 bg-[#F8FAFD]/50 border rounded-xl transition-all text-xs font-medium
                     ${isSaving ? 'opacity-60 cursor-wait' : 'cursor-pointer'}
-                    ${isOpen ? 'border-blue-400 ring-4 ring-blue-50 bg-white' : 'border-gray-100 hover:border-blue-200'}`}
+                    ${isOpen ? 'border-blue-400 ring-4 ring-[#E8F0FE] bg-white' : 'border-[rgba(116,119,117,0.14)] hover:border-[#AECBFA]'}`}
             >
-                <span className={`truncate mr-2 ${selectedOption ? 'text-gray-900 font-bold' : 'text-gray-400'}`}>
+                <span className={`truncate mr-2 ${selectedOption ? 'text-[#1F1F1F] font-bold' : 'text-[#80868B]'}`}>
                     {selectedOption ? `${selectedOption.code} · ${selectedOption.name}` : placeholder}
                 </span>
                 {isSaving ? (
-                    <Loader2 size={14} className="text-blue-400 flex-shrink-0 animate-spin" />
+                    <Loader2 size={14} className="text-[#0B57D0] flex-shrink-0 animate-spin" />
                 ) : (
-                    <ChevronDown size={14} className={`text-gray-400 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDown size={14} className={`text-[#80868B] flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                 )}
             </div>
 
             {isOpen && !isSaving && (
                 <div 
-                    className="absolute z-[100] w-full mt-2 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in-95 duration-100"
+                    className="absolute z-[100] w-full mt-2 bg-white rounded-2xl shadow-xl border border-[rgba(116,119,117,0.14)] overflow-hidden animate-in fade-in zoom-in-95 duration-100"
                     onClick={(e) => e.stopPropagation()}
                     style={{ minWidth: '300px' }}
                 >
-                    <div className="p-2 border-b border-gray-50">
+                    <div className="p-2 border-b border-[rgba(116,119,117,0.10)]">
                         <div className="relative">
-                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#80868B]" />
                             <input
                                 autoFocus
                                 type="text"
                                 placeholder="Search accounts..."
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
-                                className="w-full pl-9 pr-3 py-2 bg-gray-50 border-none rounded-xl text-xs focus:ring-0 placeholder:text-gray-400 font-medium"
+                                className="w-full pl-9 pr-3 py-2 bg-[#F8FAFD] border-none rounded-xl text-xs focus:ring-0 placeholder:text-[#80868B] font-medium"
                             />
                         </div>
                     </div>
@@ -135,14 +137,14 @@ const SearchableAccountSelect: React.FC<{
                                         setSearch("");
                                     }}
                                     className={`w-full text-left px-3 py-2.5 rounded-xl text-xs transition-colors flex flex-col gap-0.5
-                                        ${value === opt.id ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50 text-gray-700'}`}
+                                        ${value === opt.id ? 'bg-[#E8F0FE] text-[#0842A0]' : 'hover:bg-[#F8FAFD] text-[#3C4043]'}`}
                                 >
                                     <span className="font-bold">{opt.name}</span>
                                     <span className="text-[10px] opacity-60 tracking-wider uppercase font-black">{opt.code}</span>
                                 </button>
                             ))
                         ) : (
-                            <div className="p-4 text-center text-gray-400 text-xs">No accounts found</div>
+                            <div className="p-4 text-center text-[#80868B] text-xs">No accounts found</div>
                         )}
                     </div>
                 </div>
@@ -179,24 +181,24 @@ const DesktopWalletCard: React.FC<{
         onClick={onClick}
         className={`w-64 h-28 flex-shrink-0 text-left p-4 rounded-xl flex flex-col justify-between transition-all ${
             isActive
-                ? 'bg-gradient-to-l from-blue-950 to-slate-900 shadow-[0px_2px_4px_2px_rgba(0,0,0,0.25)]'
-                : 'bg-[#F7F7F8] hover:bg-gray-100'
+                ? 'bg-gradient-to-l from-[#0842A0] to-[#0B57D0] '
+                : 'bg-[#F7F7F8] hover:bg-[#E9EEF6]'
         }`}
     >
         <div className="flex items-center justify-between gap-2">
-            <span className={`text-[10px] font-normal uppercase tracking-wide truncate ${isActive ? 'text-white' : 'text-gray-400'}`}>
+            <span className={`text-[10px] font-normal uppercase tracking-wide truncate ${isActive ? 'text-white' : 'text-[#80868B]'}`}>
                 {label}
             </span>
-            <MoneywiseMark className={`w-6 h-4 flex-shrink-0 ${isActive ? 'text-white' : 'text-gray-300'}`} />
+            <MoneywiseMark className={`w-6 h-4 flex-shrink-0 ${isActive ? 'text-white' : 'text-[#9AA0A6]'}`} />
         </div>
-        <div className={`text-2xl font-bold tracking-tight whitespace-nowrap truncate ${isActive ? 'text-white' : 'text-gray-400'}`}>
+        <div className={`text-2xl font-bold tracking-tight whitespace-nowrap truncate ${isActive ? 'text-white' : 'text-[#80868B]'}`}>
             {amount}
         </div>
         <div className="flex items-end justify-between gap-2">
-            <span className={`text-[8px] font-extrabold uppercase tracking-wide truncate ${isActive ? 'text-gray-400' : 'text-gray-300'}`}>
+            <span className={`text-[8px] font-extrabold uppercase tracking-wide truncate ${isActive ? 'text-white/70' : 'text-[#9AA0A6]'}`}>
                 {orgName}
             </span>
-            <span className={`font-advercase text-xs font-bold flex-shrink-0 ${isActive ? 'text-gray-400' : 'text-gray-300'}`}>
+            <span className={`font-advercase text-xs font-bold flex-shrink-0 ${isActive ? 'text-white/70' : 'text-[#9AA0A6]'}`}>
                 Moneywise
             </span>
         </div>
@@ -213,20 +215,20 @@ const ToolbarAction: React.FC<{
     <button
         onClick={onClick}
         disabled={disabled}
-        className={`flex items-center gap-2 px-3.5 h-full text-xs font-normal whitespace-nowrap transition-opacity ${disabled ? 'opacity-35 cursor-not-allowed' : 'text-[#111827] hover:opacity-70'}`}
+        className={`flex items-center gap-2 px-3.5 h-full text-xs font-normal whitespace-nowrap transition-opacity ${disabled ? 'opacity-35 cursor-not-allowed' : 'text-[#1F1F1F] hover:opacity-70'}`}
     >
-        <Icon size={13} className="text-[#111827]" strokeWidth={1.75} />
+        <Icon size={13} className="text-[#1F1F1F]" strokeWidth={1.75} />
         {label}
     </button>
 );
 
 const renderMobileStatusIcon = (status: string) => {
     const config = getStatusConfig(status);
-    const colorClass = config.color === 'blue' ? 'text-[#006AFF]' : 
-                       config.color === 'emerald' ? 'text-emerald-500' :
-                       config.color === 'amber' ? 'text-amber-500' :
-                       config.color === 'red' ? 'text-red-500' :
-                       config.color === 'purple' ? 'text-purple-500' : 'text-gray-400';
+    const colorClass = config.color === 'blue' ? 'text-[#0B57D0]' : 
+                       config.color === 'emerald' ? 'text-[#34A853]' :
+                       config.color === 'amber' ? 'text-[#FBBC04]' :
+                       config.color === 'red' ? 'text-[#EA4335]' :
+                       config.color === 'purple' ? 'text-purple-500' : 'text-[#80868B]';
 
     switch (config.iconType) {
         case 'clock': return <Clock size={12} className={colorClass} />;
@@ -289,7 +291,7 @@ const CashLedger: React.FC = () => {
 
     // Wallets & Subwallets State
     const [selectedWalletId, setSelectedWalletId] = useState<string | undefined>(undefined);
-    const [categoryGroup, setCategoryGroup] = useState<'MONEYWISE' | 'EXTERNAL'>('MONEYWISE');
+    const [categoryGroup, setCategoryGroup] = useState<'MONEYWISE' | 'EXTERNAL' | 'VIRTUAL'>('MONEYWISE');
     const [isCreateWalletModalOpen, setIsCreateWalletModalOpen] = useState(false);
     const [isCreateExtWalletOpen, setIsCreateExtWalletOpen] = useState(false);
     const [isImportStatementOpen, setIsImportStatementOpen] = useState(false);
@@ -354,8 +356,8 @@ const CashLedger: React.FC = () => {
     const walletSeen = useNewnessTracker(
         organizationId
             ? (categoryGroup === 'MONEYWISE'
-                ? (selectedAccountType === 'MASTERFEES'
-                    ? newnessKey('a_MASTERFEES')
+                ? (selectedAccountType === 'MASTERFEES' || selectedAccountType === 'LIPILA_WALLET'
+                    ? newnessKey(`a_${selectedAccountType}`)
                     : (selectedWalletId ? newnessKey(`w_${selectedWalletId}`) : null))
                 : newnessKey(`a_${selectedAccountType}`))
             : null
@@ -413,6 +415,10 @@ const CashLedger: React.FC = () => {
     const entries: CashbookEntry[] = overview?.entries ?? [];
     const balance = overview?.balance ?? 0;
     const externalBalances: Record<string, number> = overview?.externalBalances ?? { CASH: 0, AIRTEL_MONEY: 0, BANK: 0 };
+    // Lipila's own balance for the Lipila wallet tile, asked live (the tile itself only exists for businesses that connected Lipila).
+    const lipilaTile = (overview?.additionalExternalAccounts ?? []).find((a: any) => a.id === 'LIPILA_WALLET');
+    const lipilaLive = useQuery({ queryKey: LIPILA_WALLET_KEY(organizationId), queryFn: () => apiJson<LipilaWalletSummary>('/lipila/wallet'), enabled: !!organizationId && !!lipilaTile, staleTime: 30_000, retry: false });
+    const lipilaBalance = lipilaLive.data?.balance ?? (externalBalances['LIPILA_WALLET'] || 0);
     const wallets: any[] = overview?.wallets ?? [];
     const recentMoneywiseEntries: CashbookEntry[] = overview?.recent?.moneywise ?? [];
     const recentExternalEntries: CashbookEntry[] = overview?.recent?.external ?? [];
@@ -801,9 +807,9 @@ const CashLedger: React.FC = () => {
         const isRejected = entry.requisitions?.status === 'REJECTED';
         
         if (isUnclassified || isLowAudit || isRejected) {
-            return 'text-red-500 fill-red-500/10';
+            return 'text-[#EA4335] fill-[#EA4335]/10';
         }
-        return 'text-[#006AFF] fill-[#006AFF]/10';
+        return 'text-[#0B57D0] fill-[#0B57D0]/10';
     };
 
     const getResolvedStatus = (entry: CashbookEntry): string => {
@@ -827,11 +833,11 @@ const CashLedger: React.FC = () => {
         const config = getStatusConfig(status);
 
         const getStatusIcon = (iconType: string, color: string) => {
-            const colorClass = color === 'blue' ? 'text-[#006AFF]' : 
-                               color === 'emerald' ? 'text-emerald-500' :
-                               color === 'amber' ? 'text-amber-500' :
-                               color === 'red' ? 'text-red-500' :
-                               color === 'purple' ? 'text-purple-500' : 'text-gray-400';
+            const colorClass = color === 'blue' ? 'text-[#0B57D0]' : 
+                               color === 'emerald' ? 'text-[#34A853]' :
+                               color === 'amber' ? 'text-[#FBBC04]' :
+                               color === 'red' ? 'text-[#EA4335]' :
+                               color === 'purple' ? 'text-purple-500' : 'text-[#80868B]';
 
             switch (iconType) {
                 case 'clock': return <Clock size={12} className={colorClass} />;
@@ -846,7 +852,7 @@ const CashLedger: React.FC = () => {
         return (
             <div className="flex items-center w-fit">
                 {getStatusIcon(config.iconType, config.color)}
-                <span className="text-[10px] font-normal uppercase tracking-[0.15em] ml-1.5 text-gray-900">
+                <span className="text-[10px] font-normal uppercase tracking-[0.15em] ml-1.5 text-[#1F1F1F]">
                     {config.label}
                 </span>
             </div>
@@ -992,8 +998,8 @@ const CashLedger: React.FC = () => {
             });
 
             // Color Palette
-            const primaryColor = '#0f172a'; // slate-900
-            const accentColor = '#2563eb'; // blue-600
+            const primaryColor = '#1F1F1F'; // slate-900
+            const accentColor = '#0B57D0'; // blue-600
 
             // 1. Draw branding header
             doc.setFont('Helvetica', 'bold');
@@ -1003,7 +1009,7 @@ const CashLedger: React.FC = () => {
 
             doc.setFontSize(9);
             doc.setFont('Helvetica', 'normal');
-            doc.setTextColor('#64748b'); // slate-500
+            doc.setTextColor('#5F6368'); // slate-500
             doc.text('Official Payment Receipt', 20, 31);
 
             // Right-aligned title
@@ -1013,14 +1019,14 @@ const CashLedger: React.FC = () => {
             doc.text('RECEIPT', 190, 25, { align: 'right' });
 
             // Divider
-            doc.setDrawColor('#e2e8f0'); // slate-200
+            doc.setDrawColor('#E8EAED'); // slate-200
             doc.setLineWidth(0.5);
             doc.line(20, 36, 190, 36);
 
             // 2. Receipt metadata
             doc.setFont('Helvetica', 'normal');
             doc.setFontSize(9);
-            doc.setTextColor('#334155'); // slate-700
+            doc.setTextColor('#3C4043'); // slate-700
             doc.text(`Receipt No: #${details.receiptNumber}`, 20, 46);
             doc.text(`Date: ${new Date(details.date).toLocaleString()}`, 20, 52);
             doc.text(`Payment Method: Lenco (Card/Mobile Money)`, 20, 58);
@@ -1035,11 +1041,11 @@ const CashLedger: React.FC = () => {
             doc.line(20, 65, 190, 65);
 
             // 3. Products Table Header
-            doc.setFillColor('#f8fafc'); // slate-50
+            doc.setFillColor('#F8FAFD'); // slate-50
             doc.rect(20, 72, 170, 8, 'F');
             doc.setFont('Helvetica', 'bold');
             doc.setFontSize(9);
-            doc.setTextColor('#475569'); // slate-600
+            doc.setTextColor('#5F6368'); // slate-600
             doc.text('Item Description', 24, 77);
             doc.text('Qty', 110, 77, { align: 'center' });
             doc.text('Unit Price (K)', 145, 77, { align: 'right' });
@@ -1047,7 +1053,7 @@ const CashLedger: React.FC = () => {
 
             let y = 86;
             doc.setFont('Helvetica', 'normal');
-            doc.setTextColor('#334155');
+            doc.setTextColor('#3C4043');
 
             details.items.forEach((item: any) => {
                 doc.text(item.name, 24, y);
@@ -1056,7 +1062,7 @@ const CashLedger: React.FC = () => {
                 doc.text(Number(item.total).toFixed(2), 186, y, { align: 'right' });
 
                 // Underline for items
-                doc.setDrawColor('#f1f5f9');
+                doc.setDrawColor('#F1F3F4');
                 doc.line(20, y + 3, 190, y + 3);
                 y += 10;
             });
@@ -1116,7 +1122,7 @@ Status: VERIFIED`;
                 // Add small helper label
                 doc.setFont('Helvetica', 'normal');
                 doc.setFontSize(6.5);
-                doc.setTextColor('#94a3b8'); // slate-400
+                doc.setTextColor('#9AA0A6'); // slate-400
                 doc.text('SCAN TO VERIFY RECEIPT', 34, calculationsStartY + 29, { align: 'center' });
             } catch (qrErr) {
                 console.error('Failed to add QR code to PDF:', qrErr);
@@ -1124,14 +1130,14 @@ Status: VERIFIED`;
 
             // Divider
             y += 10;
-            doc.setDrawColor('#e2e8f0');
+            doc.setDrawColor('#E8EAED');
             doc.line(20, y, 190, y);
 
             // 5. Footer
             y += 12;
             doc.setFont('Helvetica', 'italic');
             doc.setFontSize(9);
-            doc.setTextColor('#94a3b8'); // slate-400
+            doc.setTextColor('#9AA0A6'); // slate-400
             doc.text('Thank you for your payment!', 105, y, { align: 'center' });
 
             y += 5;
@@ -1151,13 +1157,13 @@ Status: VERIFIED`;
 
     if (loading && entries.length === 0) {
         return (
-            <Layout noPadding={true} backgroundColor="bg-gray-50 md:bg-white">
+            <Layout noPadding={true} backgroundColor="bg-[#F8FAFD] md:bg-white">
                 <div className="flex flex-col items-center justify-center min-h-[60vh]">
                     <div className="relative">
-                        <div className="w-16 h-16 border-4 border-[#006AFF]/10 border-t-[#006AFF] rounded-full animate-spin" />
-                        <Loader2 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[#006AFF] animate-pulse" size={24} strokeWidth={2.5} />
+                        <div className="w-16 h-16 border-4 border-[#0B57D0]/10 border-t-[#0B57D0] rounded-full animate-spin" />
+                        <Loader2 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[#0B57D0] animate-pulse" size={24} strokeWidth={2.5} />
                     </div>
-                    <p className="mt-6 text-sm font-black uppercase tracking-[0.2em] text-gray-400 animate-pulse">
+                    <p className="mt-6 text-sm font-black uppercase tracking-[0.2em] text-[#80868B] animate-pulse">
                         Synchronizing Ledger
                     </p>
                 </div>
@@ -1166,8 +1172,9 @@ Status: VERIFIED`;
     }
 
     // MoneyWise <-> External toggle, styled & animated like the Reports tabs.
-    const handleCategoryChange = (group: 'MONEYWISE' | 'EXTERNAL') => {
+    const handleCategoryChange = (group: 'MONEYWISE' | 'EXTERNAL' | 'VIRTUAL') => {
         setCategoryGroup(group);
+        if (group === 'VIRTUAL') return; // the virtual card tab has no wallet or account of its own
         if (group === 'MONEYWISE') {
             setSelectedAccountType('MONEYWISE_WALLET');
             if (wallets.length > 0) {
@@ -1191,15 +1198,17 @@ Status: VERIFIED`;
     // same footing as Cash/Bank/Airtel Money.
     const masterFeesLencoTile = (overview?.additionalExternalAccounts ?? []).find(a => a.id === 'MASTERFEES');
     type MoneywiseCard =
-        | { kind: 'wallet'; id: string; name: string; balance: number; is_main?: boolean }
-        | { kind: 'masterfees'; name: string; balance: number };
+        | { kind: 'wallet'; id: string; name: string; balance: number; is_main?: boolean; live?: boolean; liveUnavailable?: string }
+        | { kind: 'masterfees'; name: string; balance: number }
+        | { kind: 'lipila'; name: string; balance: number };
     const moneywiseCards: MoneywiseCard[] = [
-        ...wallets.map((w: any): MoneywiseCard => ({ kind: 'wallet', id: w.id, name: w.name, balance: w.balance || 0, is_main: w.is_main })),
+        ...wallets.map((w: any): MoneywiseCard => ({ kind: 'wallet', id: w.id, name: w.name, balance: w.balance || 0, is_main: w.is_main, live: w.balance_source === 'LENCO_LIVE', liveUnavailable: w.live_unavailable })),
         ...(masterFeesLencoTile ? [{ kind: 'masterfees' as const, name: masterFeesLencoTile.name, balance: externalBalances['MASTERFEES'] || 0 }] : []),
+        ...(lipilaTile ? [{ kind: 'lipila' as const, name: lipilaTile.name, balance: lipilaBalance }] : []),
     ];
     const externalAccounts: { id: string; name: string }[] = [
         { id: 'CASH', name: 'Cash Account' },
-        ...(overview?.additionalExternalAccounts ?? []).filter(a => a.id !== 'MASTERFEES'),
+        ...(overview?.additionalExternalAccounts ?? []).filter(a => a.id !== 'MASTERFEES' && a.id !== 'LIPILA_WALLET'),
     ];
     const slideCount = categoryGroup === 'MONEYWISE'
         ? Math.max(moneywiseCards.length, 1) + (!isRequestor && moneywiseCards.length > 0 ? 1 : 0)
@@ -1229,6 +1238,8 @@ Status: VERIFIED`;
                         setSelectedAccountType('MONEYWISE_WALLET');
                         setSelectedWalletId(card.id);
                     }
+                } else if (card.kind === 'lipila') {
+                    if (selectedAccountType !== 'LIPILA_WALLET') setSelectedAccountType('LIPILA_WALLET');
                 } else if (selectedAccountType !== 'MASTERFEES') {
                     setSelectedAccountType('MASTERFEES');
                 }
@@ -1246,28 +1257,72 @@ Status: VERIFIED`;
         el.scrollTo({ left: idx * stride, behavior: 'smooth' });
     };
 
+    if (categoryGroup === 'VIRTUAL') {
+        const virtualTab = (value: 'MONEYWISE' | 'EXTERNAL' | 'VIRTUAL', body: React.ReactNode, active: boolean, dot?: boolean) => ({
+            value,
+            buttonClassName: 'px-3.5 h-6 text-[10px] font-bold',
+            activeButtonClassName: 'text-[#1F1F1F]',
+            label: (<>{dot && <span className="w-1.5 h-1.5 rounded-full bg-[#0B57D0] md:bg-[#0842A0] flex-shrink-0" />}<span className={active ? 'text-[#1F1F1F]' : 'text-[#5F6368]'}>{body}</span></>),
+        });
+        return (
+            <Layout noPadding={true} backgroundColor="bg-[#F8FAFD] md:bg-white">
+                {/* Same frame as Main Wallets and External Accounts: on desktop the tab sits in the same card with the same small tab row. */}
+                <div className="flex min-h-screen flex-col bg-[#F8FAFD] pb-24 pt-2 md:min-h-[calc(100vh-56px)] md:bg-white md:px-4 md:pb-4 md:pt-0">
+                    <div className="mx-auto mb-1 mt-3 w-full max-w-3xl px-4 md:hidden">
+                        <SegmentedControl
+                            variant="capsule"
+                            value={categoryGroup}
+                            onChange={(v) => handleCategoryChange(v as 'MONEYWISE' | 'EXTERNAL' | 'VIRTUAL')}
+                            options={[
+                                { value: 'MONEYWISE', label: <span className="inline-flex items-center gap-1.5">Main Wallets</span> },
+                                { value: 'EXTERNAL', label: <span className="inline-flex items-center gap-1.5">External Accounts</span> },
+                                { value: 'VIRTUAL', label: <span className="inline-flex items-center gap-1.5">Virtual Card</span> },
+                            ]}
+                        />
+                    </div>
+                    <div className="md:flex md:flex-1 md:flex-col md:gap-4 md:rounded-[20px] md:border md:border-[rgba(116,119,117,0.22)] md:bg-white md:p-3.5">
+                        <div className="hidden items-center justify-between md:flex">
+                            <TabPillGroup
+                                value={categoryGroup}
+                                onChange={(v) => handleCategoryChange(v as 'MONEYWISE' | 'EXTERNAL' | 'VIRTUAL')}
+                                trackClassName="h-8 p-1 bg-[#F8FAFD] md:bg-[#F8FAFD] rounded-[10px] flex items-center gap-1"
+                                indicatorClassName="bg-white rounded-lg shadow-sm"
+                                tabs={[
+                                    virtualTab('MONEYWISE', 'Main Wallets', false, hasNewMoneywise),
+                                    virtualTab('EXTERNAL', 'External Accounts', false, hasNewExternal),
+                                    virtualTab('VIRTUAL', 'Virtual Card', true),
+                                ]}
+                            />
+                        </div>
+                        <VirtualCardTab wallets={wallets.map((w: any) => ({ id: String(w.id), name: String(w.name), balance: Number(w.balance) || 0, is_main: !!w.is_main }))} />
+                    </div>
+                </div>
+            </Layout>
+        );
+    }
+
     const mobileCanTransfer = categoryGroup === 'MONEYWISE'
         ? wallets.length > 1
         : selectedAccountType === 'CASH' && wallets.length > 0;
     const mobileCanPayLink = categoryGroup === 'MONEYWISE' && !!selectedWalletId;
 
     return (
-        <Layout noPadding={true} backgroundColor="bg-gray-50 md:bg-white">
+        <Layout noPadding={true} backgroundColor="bg-[#F8FAFD] md:bg-white">
             {/* ============ MOBILE LAYOUT ============ */}
-            <div className="md:hidden flex flex-col min-h-screen bg-gray-50 pb-24 pt-2 overflow-x-hidden">
+            <div className="md:hidden flex flex-col min-h-screen bg-[#F8FAFD] pb-24 pt-2 overflow-x-hidden">
 
                 {/* Mobile Category Toggle */}
                 <div className="px-4 mb-5">
                     <SegmentedControl
                         variant="capsule"
                         value={categoryGroup}
-                        onChange={(v) => handleCategoryChange(v as 'MONEYWISE' | 'EXTERNAL')}
+                        onChange={(v) => handleCategoryChange(v as 'MONEYWISE' | 'EXTERNAL' | 'VIRTUAL')}
                         options={[
                             {
                                 value: 'MONEYWISE',
                                 label: (
                                     <span className="inline-flex items-center gap-1.5">
-                                        {hasNewMoneywise && <span className="w-1.5 h-1.5 rounded-full bg-blue-600 flex-shrink-0" />}
+                                        {hasNewMoneywise && <span className="w-1.5 h-1.5 rounded-full bg-[#0B57D0] flex-shrink-0" />}
                                         Main Wallets
                                     </span>
                                 ),
@@ -1276,11 +1331,12 @@ Status: VERIFIED`;
                                 value: 'EXTERNAL',
                                 label: (
                                     <span className="inline-flex items-center gap-1.5">
-                                        {hasNewExternal && <span className="w-1.5 h-1.5 rounded-full bg-blue-600 flex-shrink-0" />}
+                                        {hasNewExternal && <span className="w-1.5 h-1.5 rounded-full bg-[#0B57D0] flex-shrink-0" />}
                                         External Accounts
                                     </span>
                                 ),
                             },
+                            { value: 'VIRTUAL', label: <span className="inline-flex items-center gap-1.5">Virtual Card</span> },
                         ]}
                     />
                 </div>
@@ -1293,7 +1349,7 @@ Status: VERIFIED`;
                     const renderWalletCard = (key: string, name: string, balance: number) => (
                         <div
                             key={key}
-                            className="snap-center shrink-0 w-[calc(100vw-2.5rem)] h-44 px-4 py-5 bg-gradient-to-l from-blue-950 to-slate-900 rounded-2xl shadow-[0px_2px_4px_2px_rgba(0,0,0,0.15)] flex flex-col justify-between overflow-hidden text-white"
+                            className="snap-center shrink-0 w-[calc(100vw-2.5rem)] h-44 px-4 py-5 bg-gradient-to-l from-[#0842A0] to-[#0B57D0] rounded-2xl  flex flex-col justify-between overflow-hidden text-white"
                         >
                             <div className="flex items-center gap-2">
                                 <span className="flex-1 font-figtree text-xs font-normal uppercase tracking-wide leading-4 text-white truncate">
@@ -1303,12 +1359,18 @@ Status: VERIFIED`;
                             </div>
                             <div className="text-[34px] font-bold leading-8 tracking-tight whitespace-nowrap">
                                 K {formatCurrency(balance).replace('K', '')}
+                                {wallets.find((w: any) => w.id === key)?.balance_source === 'LENCO_LIVE' && (
+                                    <span className="ml-2 align-middle text-[10px] font-bold uppercase tracking-wider text-white/70">Live from Lenco</span>
+                                )}
+                                {wallets.find((w: any) => w.id === key)?.live_unavailable && (
+                                    <span className="ml-2 align-middle text-[10px] font-bold uppercase tracking-wider text-amber-200" title={wallets.find((w: any) => w.id === key)?.live_unavailable}>Books only</span>
+                                )}
                             </div>
                             <div className="flex items-end gap-2">
-                                <span className="flex-1 font-figtree text-xs font-extrabold uppercase tracking-wide text-slate-400 truncate">
+                                <span className="flex-1 font-figtree text-xs font-extrabold uppercase tracking-wide text-white/70 truncate">
                                     {organizationName || 'MoneyWise'}
                                 </span>
-                                <span className="font-advercase text-sm font-bold text-slate-400">Moneywise</span>
+                                <span className="font-advercase text-sm font-bold text-white/70">Moneywise</span>
                             </div>
                             {slideCount > 1 && (
                                 <div className="flex justify-center items-center gap-2.5 pt-1">
@@ -1339,13 +1401,15 @@ Status: VERIFIED`;
                                     {moneywiseCards.map((card) =>
                                         card.kind === 'wallet'
                                             ? renderWalletCard(card.id, card.name, card.balance)
-                                            : renderWalletCard('MASTERFEES', card.name, card.balance)
+                                            : card.kind === 'lipila'
+                                                ? renderWalletCard('LIPILA_WALLET', card.name, card.balance)
+                                                : renderWalletCard('MASTERFEES', card.name, card.balance)
                                     )}
                                     {moneywiseCards.length === 0 && isRequestor && renderWalletCard('empty', 'Main Wallet', 0)}
                                     {!isRequestor && (
                                         <div
                                             onClick={() => setIsCreateWalletModalOpen(true)}
-                                            className="snap-center shrink-0 w-[calc(100vw-2.5rem)] h-44 flex flex-col justify-center items-center rounded-2xl text-center border-2 border-dashed border-gray-200 bg-white hover:border-gray-300 text-gray-400 hover:text-gray-600 transition-all duration-300 cursor-pointer p-5"
+                                            className="snap-center shrink-0 w-[calc(100vw-2.5rem)] h-44 flex flex-col justify-center items-center rounded-2xl text-center border-2 border-dashed border-[rgba(116,119,117,0.22)] bg-white hover:border-[#C4C7C5] text-[#80868B] hover:text-[#5F6368] transition-all duration-300 cursor-pointer p-5"
                                         >
                                             <PlusCircle size={28} strokeWidth={2.5} />
                                             <span className="text-xs font-bold uppercase tracking-widest block mt-2">
@@ -1360,6 +1424,10 @@ Status: VERIFIED`;
                         </div>
                     );
                 })()}
+
+                {selectedAccountType === 'LIPILA_WALLET' && categoryGroup === 'MONEYWISE' && (
+                    <div className="px-5"><LipilaWalletPanel organizationId={organizationId} /></div>
+                )}
 
                 {/* Deposit / Transfer / Pay Link action bar */}
                 {!isRequestor && (
@@ -1408,19 +1476,19 @@ Status: VERIFIED`;
                                     setIsSearchExpanded(false);
                                     setSearchQuery('');
                                 }}
-                                className="p-2 -ml-2 text-gray-500 hover:text-gray-900 transition-colors"
+                                className="p-2 -ml-2 text-[#5F6368] hover:text-[#1F1F1F] transition-colors"
                             >
                                 <ChevronRight className="rotate-180" size={20} strokeWidth={2.5} />
                             </button>
                             <div className="relative flex-1">
-                                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" strokeWidth={2.5} />
+                                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#80868B]" strokeWidth={2.5} />
                                 <input
                                     autoFocus
                                     type="text"
                                     placeholder="Search transactions..."
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full pl-10 pr-4 py-2 bg-gray-100/70 border-none rounded-2xl text-[14px] font-medium text-slate-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/10 focus:bg-white transition-all"
+                                    className="w-full pl-10 pr-4 py-2 bg-[#E9EEF6]/70 border-none rounded-2xl text-[14px] font-medium text-[#1F1F1F] placeholder:text-[#80868B] focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/10 focus:bg-white transition-all"
                                 />
                             </div>
                         </div>
@@ -1430,15 +1498,15 @@ Status: VERIFIED`;
                             <div className="flex items-center">
                                 <button
                                     onClick={() => setIsSearchExpanded(true)}
-                                    className="w-10 h-10 flex items-center justify-center text-neutral-700 hover:text-slate-900 active:scale-90 transition-all rounded-full"
+                                    className="w-10 h-10 flex items-center justify-center text-neutral-700 hover:text-[#1F1F1F] active:scale-90 transition-all rounded-full"
                                     aria-label="Search"
                                 >
                                     <Search size={19} strokeWidth={2} />
                                 </button>
                                 <button
                                     onClick={() => setSortBy(sortBy === 'DATE_DESC' ? 'DATE_ASC' : 'DATE_DESC')}
-                                    className={`w-10 h-10 flex items-center justify-center hover:text-slate-900 active:scale-90 transition-all rounded-full ${
-                                        sortBy === 'DATE_ASC' ? 'rotate-180 text-[#006AFF]' : 'text-neutral-700'
+                                    className={`w-10 h-10 flex items-center justify-center hover:text-[#1F1F1F] active:scale-90 transition-all rounded-full ${
+                                        sortBy === 'DATE_ASC' ? 'rotate-180 text-[#0B57D0]' : 'text-neutral-700'
                                     }`}
                                     aria-label="Sort"
                                 >
@@ -1446,9 +1514,9 @@ Status: VERIFIED`;
                                 </button>
                                 <button
                                     onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
-                                    className={`w-10 h-10 flex items-center justify-center hover:text-slate-900 active:scale-90 transition-all rounded-full ${
+                                    className={`w-10 h-10 flex items-center justify-center hover:text-[#1F1F1F] active:scale-90 transition-all rounded-full ${
                                         isFilterMenuOpen || (useDepartments && filterDepartment !== 'ALL') || filterStatus !== 'ALL'
-                                            ? 'text-[#006AFF]'
+                                            ? 'text-[#0B57D0]'
                                             : 'text-neutral-700'
                                     }`}
                                     aria-label="Filter"
@@ -1462,14 +1530,14 @@ Status: VERIFIED`;
 
                 {/* Mobile Filter Menu */}
                 {isFilterMenuOpen && (
-                    <div className="mx-6 mb-5 p-4 bg-white rounded-3xl border border-gray-100 shadow-md flex flex-col gap-3.5 animate-in slide-in-from-top-2 duration-200">
+                    <div className="mx-6 mb-5 p-4 bg-white rounded-3xl border border-[rgba(116,119,117,0.14)] shadow-md flex flex-col gap-3.5 animate-in slide-in-from-top-2 duration-200">
                         {useDepartments && uniqueDepartments.length > 0 && (
                         <div className="flex flex-col">
-                            <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5 ml-0.5">Department</span>
+                            <span className="text-[9px] font-black uppercase text-[#80868B] tracking-widest mb-1.5 ml-0.5">Department</span>
                             <select
                                 value={filterDepartment}
                                 onChange={(e) => setFilterDepartment(e.target.value)}
-                                className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 focus:outline-none"
+                                className="bg-[#F8FAFD] border border-[rgba(116,119,117,0.14)] rounded-xl px-3 py-2.5 text-xs font-bold text-[#3C4043] focus:outline-none"
                             >
                                 <option value="ALL">All Departments</option>
                                 {uniqueDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
@@ -1477,11 +1545,11 @@ Status: VERIFIED`;
                         </div>
                         )}
                         <div className="flex flex-col">
-                            <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5 ml-0.5">Status</span>
+                            <span className="text-[9px] font-black uppercase text-[#80868B] tracking-widest mb-1.5 ml-0.5">Status</span>
                             <select
                                 value={filterStatus}
                                 onChange={(e) => setFilterStatus(e.target.value)}
-                                className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 focus:outline-none"
+                                className="bg-[#F8FAFD] border border-[rgba(116,119,117,0.14)] rounded-xl px-3 py-2.5 text-xs font-bold text-[#3C4043] focus:outline-none"
                             >
                                 <option value="ALL">All Statuses</option>
                                 {uniqueStatuses.map(stat => <option key={stat} value={stat}>{stat}</option>)}
@@ -1493,34 +1561,34 @@ Status: VERIFIED`;
                                     type="checkbox"
                                     checked={showPendingIntents}
                                     onChange={(e) => setShowPendingIntents(e.target.checked)}
-                                    className="rounded border-gray-300 text-[#006AFF] focus:ring-[#006AFF] w-4 h-4 cursor-pointer"
+                                    className="rounded border-[#C4C7C5] text-[#0B57D0] focus:ring-[#0B57D0] w-4 h-4 cursor-pointer"
                                 />
-                                <span className="text-xs font-bold text-gray-600">Show Pending Checkout Intents</span>
+                                <span className="text-xs font-bold text-[#5F6368]">Show Pending Checkout Intents</span>
                             </label>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                             <div className="flex flex-col">
-                                <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5 ml-0.5">Start Date</span>
+                                <span className="text-[9px] font-black uppercase text-[#80868B] tracking-widest mb-1.5 ml-0.5">Start Date</span>
                                 <input
                                     type="date"
                                     value={startDate}
                                     onChange={(e) => setStartDate(e.target.value)}
-                                    className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 focus:outline-none"
+                                    className="bg-[#F8FAFD] border border-[rgba(116,119,117,0.14)] rounded-xl px-3 py-2.5 text-xs font-bold text-[#3C4043] focus:outline-none"
                                 />
                             </div>
                             <div className="flex flex-col">
-                                <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5 ml-0.5">End Date</span>
+                                <span className="text-[9px] font-black uppercase text-[#80868B] tracking-widest mb-1.5 ml-0.5">End Date</span>
                                 <input
                                     type="date"
                                     value={endDate}
                                     onChange={(e) => setEndDate(e.target.value)}
-                                    className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 focus:outline-none"
+                                    className="bg-[#F8FAFD] border border-[rgba(116,119,117,0.14)] rounded-xl px-3 py-2.5 text-xs font-bold text-[#3C4043] focus:outline-none"
                                 />
                             </div>
                         </div>
                         <button
                             onClick={() => { setFilterDepartment('ALL'); setFilterAccount('ALL'); setFilterStatus('ALL'); setSearchQuery(''); }}
-                            className="text-[10px] font-black uppercase tracking-widest text-[#006AFF] text-left mt-1 ml-0.5"
+                            className="text-[10px] font-black uppercase tracking-widest text-[#0B57D0] text-left mt-1 ml-0.5"
                         >
                             Reset Filters
                         </button>
@@ -1531,20 +1599,20 @@ Status: VERIFIED`;
                 <div className="flex-1 bg-transparent">
                     {loading && (
                         <div className="flex flex-col items-center justify-center py-24">
-                            <div className="w-10 h-10 border-4 border-[#006AFF]/10 border-t-[#006AFF] rounded-full animate-spin" />
-                            <p className="mt-4 text-[11px] font-black uppercase tracking-[0.2em] text-gray-400 animate-pulse">Syncing Ledger</p>
+                            <div className="w-10 h-10 border-4 border-[#0B57D0]/10 border-t-[#0B57D0] rounded-full animate-spin" />
+                            <p className="mt-4 text-[11px] font-black uppercase tracking-[0.2em] text-[#80868B] animate-pulse">Syncing Ledger</p>
                         </div>
                     )}
 
                     {!loading && groupedEntries.length === 0 && (
                         isInactiveWallet ? (
-                            <div className="mx-4 my-10 p-6 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/80 rounded-2xl flex flex-col items-center text-center gap-3 shadow-sm">
-                                <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center flex-shrink-0">
+                            <div className="mx-4 my-10 p-6 bg-gradient-to-r from-[#FEF7E0] to-orange-50 border border-[#FEEFC3]/80 rounded-2xl flex flex-col items-center text-center gap-3 shadow-sm">
+                                <div className="w-12 h-12 rounded-2xl bg-[#FBBC04]/10 text-[#E37400] flex items-center justify-center flex-shrink-0">
                                     <AlertCircle className="w-6 h-6" />
                                 </div>
                                 <div>
-                                    <h4 className="text-base font-bold text-gray-900">Your Wallet is Inactive</h4>
-                                    <p className="text-xs text-gray-600 mt-1 max-w-sm">
+                                    <h4 className="text-base font-bold text-[#1F1F1F]">Your Wallet is Inactive</h4>
+                                    <p className="text-xs text-[#5F6368] mt-1 max-w-sm">
                                         {hasAvailablePool
                                             ? 'You skipped wallet activation during setup. Activate your wallet now to complete account setup and start receiving payments.'
                                             : 'An account has not been provisioned for your organization yet. Contact our team to have your wallet provisioned.'}
@@ -1553,7 +1621,7 @@ Status: VERIFIED`;
                                 {hasAvailablePool ? (
                                     <button
                                         onClick={() => navigate('/onboarding')}
-                                        className="w-full max-w-xs py-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95 mt-1"
+                                        className="w-full max-w-xs py-3 bg-[#0B57D0] hover:bg-[#0842A0] text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95 mt-1"
                                     >
                                         <ArrowRight className="w-4 h-4" />
                                         Activate Now
@@ -1561,7 +1629,7 @@ Status: VERIFIED`;
                                 ) : (
                                     <a
                                         href={`mailto:masterfees101@gmail.com?subject=Wallet%20Activation%20Request%20-%20${encodeURIComponent(organizationName || 'My Business')}&body=Hello%20MoneyWise%20Team%2C%0A%0APlease%20activate%20and%20provision%20a%20wallet%20for%20our%20organization%3A%20${encodeURIComponent(organizationName || 'My Business')}.%0A%0AThank%20you!`}
-                                        className="w-full max-w-xs py-3 bg-gray-900 hover:bg-black text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95 mt-1"
+                                        className="w-full max-w-xs py-3 bg-[#0B57D0] hover:bg-[#0842A0] text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95 mt-1"
                                     >
                                         <Mail className="w-4 h-4" />
                                         Contact Team
@@ -1570,11 +1638,11 @@ Status: VERIFIED`;
                             </div>
                         ) : (
                             <div className="flex flex-col items-center justify-center py-24">
-                                <div className="p-5 bg-white rounded-full mb-4 shadow-sm border border-gray-100">
-                                    <Receipt className="h-10 w-10 text-gray-300" strokeWidth={1.5} />
+                                <div className="p-5 bg-white rounded-full mb-4 shadow-sm border border-[rgba(116,119,117,0.14)]">
+                                    <Receipt className="h-10 w-10 text-[#9AA0A6]" strokeWidth={1.5} />
                                 </div>
-                                <p className="text-gray-900 font-bold">No transactions found</p>
-                                <p className="text-sm text-gray-400 mt-1">Try adjusting your date range or filters.</p>
+                                <p className="text-[#1F1F1F] font-bold">No transactions found</p>
+                                <p className="text-sm text-[#80868B] mt-1">Try adjusting your date range or filters.</p>
                             </div>
                         )
                     )}
@@ -1603,8 +1671,8 @@ Status: VERIFIED`;
                                     return (
                                         <React.Fragment key={entry.id}>
                                             <div
-                                                className={`px-5 py-[22px] flex items-start justify-between active:bg-gray-50 transition-colors ${
-                                                    selectedEntry?.id === entry.id ? 'bg-slate-50/50' : ''
+                                                className={`px-5 py-[22px] flex items-start justify-between active:bg-[#F8FAFD] transition-colors ${
+                                                    selectedEntry?.id === entry.id ? 'bg-[#F8FAFD]/50' : ''
                                                 }`}
                                                 onClick={() => {
                                                     if (entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') {
@@ -1620,7 +1688,7 @@ Status: VERIFIED`;
                                                             {description}
                                                         </span>
                                                         {isNew && (
-                                                            <span className="px-1.5 py-0.5 bg-blue-600 rounded-full text-[9px] font-bold text-white leading-none tracking-wide">
+                                                            <span className="px-1.5 py-0.5 bg-[#0B57D0] rounded-full text-[9px] font-bold text-white leading-none tracking-wide">
                                                                 NEW
                                                             </span>
                                                         )}
@@ -1650,7 +1718,7 @@ Status: VERIFIED`;
                                                                     );
                                                                 })()}
                                                                 {showStatus && refNum && (
-                                                                    <span className="text-[10px] text-gray-300 font-bold">•</span>
+                                                                    <span className="text-[10px] text-[#9AA0A6] font-bold">•</span>
                                                                 )}
                                                                 {refNum && (
                                                                     <span className="font-grotesk text-xs font-normal text-neutral-700">
@@ -1691,49 +1759,55 @@ Status: VERIFIED`;
                     <DesktopRequisitionWorkspace onClose={() => setIsSendMoneyOpen(false)} onSuccess={() => { loadData(); }} />
                 </div>
             ) : (
-            <div className="animate-in fade-in duration-200 flex-1 flex flex-col"><div className="bg-white rounded-[20px] p-3.5 flex flex-col gap-4 md:border md:border-gray-200 md:flex-1">
+            <div className="animate-in fade-in duration-200 flex-1 flex flex-col"><div className="bg-white rounded-[20px] p-3.5 flex flex-col gap-4 md:border md:border-[rgba(116,119,117,0.22)] md:flex-1">
 
                 {/* Row 1: Main Wallets / External Accounts toggle + action bar */}
                 <div className="flex items-center justify-between">
                     <TabPillGroup
                         value={categoryGroup}
-                        onChange={(v) => handleCategoryChange(v as 'MONEYWISE' | 'EXTERNAL')}
-                        trackClassName="h-8 p-1 bg-[#F3F5FC] md:bg-[#F8FAFD] rounded-[10px] flex items-center gap-1"
+                        onChange={(v) => handleCategoryChange(v as 'MONEYWISE' | 'EXTERNAL' | 'VIRTUAL')}
+                        trackClassName="h-8 p-1 bg-[#F8FAFD] md:bg-[#F8FAFD] rounded-[10px] flex items-center gap-1"
                         indicatorClassName="bg-white rounded-lg shadow-sm"
                         tabs={[
                             {
                                 value: 'MONEYWISE',
                                 buttonClassName: 'px-3.5 h-6 text-[10px] font-bold',
-                                activeButtonClassName: 'text-[#111827]',
+                                activeButtonClassName: 'text-[#1F1F1F]',
                                 label: (
                                     <>
-                                        {hasNewMoneywise && <span className="w-1.5 h-1.5 rounded-full bg-[#0058DB] md:bg-[#0059D8] flex-shrink-0" />}
-                                        <span className={categoryGroup === 'MONEYWISE' ? 'text-[#111827]' : 'text-gray-500'}>Main Wallets</span>
+                                        {hasNewMoneywise && <span className="w-1.5 h-1.5 rounded-full bg-[#0B57D0] md:bg-[#0842A0] flex-shrink-0" />}
+                                        <span className={categoryGroup === 'MONEYWISE' ? 'text-[#1F1F1F]' : 'text-[#5F6368]'}>Main Wallets</span>
                                     </>
                                 ),
                             },
                             {
                                 value: 'EXTERNAL',
                                 buttonClassName: 'px-3.5 h-6 text-[10px] font-bold',
-                                activeButtonClassName: 'text-[#111827]',
+                                activeButtonClassName: 'text-[#1F1F1F]',
                                 label: (
                                     <>
-                                        {hasNewExternal && <span className="w-1.5 h-1.5 rounded-full bg-[#0058DB] md:bg-[#0059D8] flex-shrink-0" />}
-                                        <span className={categoryGroup === 'EXTERNAL' ? 'text-[#111827]' : 'text-gray-500'}>External Accounts</span>
+                                        {hasNewExternal && <span className="w-1.5 h-1.5 rounded-full bg-[#0B57D0] md:bg-[#0842A0] flex-shrink-0" />}
+                                        <span className={categoryGroup === 'EXTERNAL' ? 'text-[#1F1F1F]' : 'text-[#5F6368]'}>External Accounts</span>
                                     </>
                                 ),
+                            },
+                            {
+                                value: 'VIRTUAL',
+                                buttonClassName: 'px-3.5 h-6 text-[10px] font-bold',
+                                activeButtonClassName: 'text-[#1F1F1F]',
+                                label: <span className="text-[#5F6368]">Virtual Card</span>,
                             },
                         ]}
                     />
 
                     {!isRequestor && (
-                        <div className="h-8 px-1 bg-white rounded-lg shadow-[0px_2px_8px_0px_rgba(17,24,39,0.08)] outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E8EEF8] flex items-center font-bold">
+                        <div className="h-8 px-1 bg-white rounded-lg shadow-[0px_2px_8px_0px_rgba(17,24,39,0.08)] outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E9EEF6] flex items-center font-bold">
                             {categoryGroup === 'MONEYWISE' ? (
                                 <>
                                     <ToolbarAction icon={ArrowDownToLine} label="Deposit" onClick={() => setIsInflowModalOpen(true)} />
-                                    <div className="w-[1px] h-4 bg-[#E8EEF8]" />
+                                    <div className="w-[1px] h-4 bg-[#E9EEF6]" />
                                     <ToolbarAction icon={Send} label="Send Money" onClick={() => setIsSendMoneyOpen(true)} />
-                                    <div className="w-[1px] h-4 bg-[#E8EEF8]" />
+                                    <div className="w-[1px] h-4 bg-[#E9EEF6]" />
                                     <ToolbarAction
                                         icon={ArrowLeftRight}
                                         label="Transfer"
@@ -1743,7 +1817,7 @@ Status: VERIFIED`;
                                             setIsTransferModalOpen(true);
                                         }}
                                     />
-                                    <div className="w-[1px] h-4 bg-[#E8EEF8]" />
+                                    <div className="w-[1px] h-4 bg-[#E9EEF6]" />
                                     <ToolbarAction
                                         icon={Link2}
                                         label="Pay Link"
@@ -1758,10 +1832,10 @@ Status: VERIFIED`;
                             ) : (
                                 <>
                                     <ToolbarAction icon={PlusCircle} label="Add Wallet" onClick={() => setIsCreateExtWalletOpen(true)} />
-                                    <div className="w-[1px] h-4 bg-[#E8EEF8]" />
+                                    <div className="w-[1px] h-4 bg-[#E9EEF6]" />
                                     <ToolbarAction
                                         icon={Upload}
-                                        label="Import Statement"
+                                        label="Start Bank Reconciliation"
                                         disabled={!selectedWalletId || selectedWalletId === 'CASH'}
                                         onClick={() => setIsImportStatementOpen(true)}
                                     />
@@ -1778,11 +1852,20 @@ Status: VERIFIED`;
                             {moneywiseCards.map((card) => card.kind === 'wallet' ? (
                                 <DesktopWalletCard
                                     key={card.id}
-                                    label={`${card.name}${card.is_main ? ' (Main)' : ''}`}
+                                    label={`${card.name}${card.is_main ? ' (Main)' : ''}${card.live ? ' · Live' : card.liveUnavailable ? ' · Books only' : ''}`}
                                     amount={`K ${formatCurrency(card.balance).replace('K', '')}`}
                                     orgName={organizationName || 'MoneyWise'}
                                     isActive={selectedAccountType === 'MONEYWISE_WALLET' && selectedWalletId === card.id}
                                     onClick={() => { setSelectedAccountType('MONEYWISE_WALLET'); setSelectedWalletId(card.id); }}
+                                />
+                            ) : card.kind === 'lipila' ? (
+                                <DesktopWalletCard
+                                    key="LIPILA_WALLET"
+                                    label={card.name}
+                                    amount={`K ${formatCurrency(card.balance).replace('K', '')}`}
+                                    orgName={organizationName || 'MoneyWise'}
+                                    isActive={selectedAccountType === 'LIPILA_WALLET'}
+                                    onClick={() => setSelectedAccountType('LIPILA_WALLET')}
                                 />
                             ) : (
                                 <DesktopWalletCard
@@ -1809,13 +1892,15 @@ Status: VERIFIED`;
                     )}
                 </div>
 
+                {selectedAccountType === 'LIPILA_WALLET' && categoryGroup === 'MONEYWISE' && <LipilaWalletPanel organizationId={organizationId} />}
+
                 {/* Transactions header */}
                 <div className="flex items-center justify-between pt-2 flex-wrap gap-3">
-                    <span className="text-xl font-semibold text-[#111827]">Transactions</span>
+                    <span className="text-xl font-semibold text-[#1F1F1F]">Transactions</span>
                     <div className="flex items-center gap-3 flex-wrap">
                         {isDesktopSearchOpen ? (
                             <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" size={14} />
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9AA0A6]" size={14} />
                                 <input
                                     autoFocus
                                     type="text"
@@ -1823,13 +1908,13 @@ Status: VERIFIED`;
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     onBlur={() => { if (!searchQuery) setIsDesktopSearchOpen(false); }}
-                                    className="w-48 pl-8 pr-3 py-2 bg-white border border-[#E8EEF8] rounded-lg text-xs font-medium text-brand-navy placeholder:text-gray-300 focus:ring-2 focus:ring-[#0058DB]/10 transition-all"
+                                    className="w-48 pl-8 pr-3 py-2 bg-white border border-[rgba(116,119,117,0.22)] rounded-lg text-xs font-medium text-[#1F1F1F] placeholder:text-[#9AA0A6] focus:ring-2 focus:ring-[#0B57D0]/10 transition-all"
                                 />
                             </div>
                         ) : (
                             <button
                                 onClick={() => setIsDesktopSearchOpen(true)}
-                                className={`p-2 rounded-lg border border-[#E8EEF8] transition-all ${searchQuery ? 'text-[#0058DB] bg-[#E8EEF8] border-[#0058DB]/20' : 'text-gray-400 hover:text-gray-600 hover:bg-[#F3F5FC]'}`}
+                                className={`p-2 rounded-lg border border-[rgba(116,119,117,0.22)] transition-all ${searchQuery ? 'text-[#0B57D0] bg-[#E9EEF6] border-[#0B57D0]/20' : 'text-[#80868B] hover:text-[#5F6368] hover:bg-[#F8FAFD]'}`}
                                 title="Search"
                             >
                                 <Search size={14} />
@@ -1837,21 +1922,21 @@ Status: VERIFIED`;
                         )}
                         <button
                             onClick={() => setSortBy(sortBy === 'DATE_DESC' ? 'DATE_ASC' : 'DATE_DESC')}
-                            className={`p-2 rounded-lg border border-[#E8EEF8] transition-all ${sortBy === 'DATE_ASC' ? 'text-[#0058DB] bg-[#E8EEF8] border-[#0058DB]/20' : 'text-gray-400 hover:text-gray-600 hover:bg-[#F3F5FC]'}`}
+                            className={`p-2 rounded-lg border border-[rgba(116,119,117,0.22)] transition-all ${sortBy === 'DATE_ASC' ? 'text-[#0B57D0] bg-[#E9EEF6] border-[#0B57D0]/20' : 'text-[#80868B] hover:text-[#5F6368] hover:bg-[#F8FAFD]'}`}
                             title="Sort by date"
                         >
                             <ArrowDownUp size={14} />
                         </button>
                         <button
                             onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
-                            className={`p-2 rounded-lg border border-[#E8EEF8] transition-all ${isFilterMenuOpen || (useDepartments && filterDepartment !== 'ALL') || filterAccount !== 'ALL' || filterStatus !== 'ALL' || startDate || endDate ? 'text-[#0058DB] bg-[#E8EEF8] border-[#0058DB]/20' : 'text-gray-400 hover:text-gray-600 hover:bg-[#F3F5FC]'}`}
+                            className={`p-2 rounded-lg border border-[rgba(116,119,117,0.22)] transition-all ${isFilterMenuOpen || (useDepartments && filterDepartment !== 'ALL') || filterAccount !== 'ALL' || filterStatus !== 'ALL' || startDate || endDate ? 'text-[#0B57D0] bg-[#E9EEF6] border-[#0B57D0]/20' : 'text-[#80868B] hover:text-[#5F6368] hover:bg-[#F8FAFD]'}`}
                             title="Filters"
                         >
                             <ListFilter size={14} />
                         </button>
                         <button
                             onClick={() => setIsExportModalOpen(true)}
-                            className="p-2 rounded-lg border border-[#E8EEF8] text-gray-400 hover:text-[#0058DB] hover:bg-[#F3F5FC] transition-all"
+                            className="p-2 rounded-lg border border-[rgba(116,119,117,0.22)] text-[#80868B] hover:text-[#0B57D0] hover:bg-[#F8FAFD] transition-all"
                             title="Export ledger"
                         >
                             <Download size={14} />
@@ -1861,20 +1946,20 @@ Status: VERIFIED`;
                                 <button
                                     onClick={handleCycle}
                                     disabled={isCycling}
-                                    className="p-2 rounded-lg border border-[#E8EEF8] text-gray-400 hover:text-[#0058DB] hover:bg-[#F3F5FC] transition-all disabled:opacity-60"
+                                    className="p-2 rounded-lg border border-[rgba(116,119,117,0.22)] text-[#80868B] hover:text-[#0B57D0] hover:bg-[#F8FAFD] transition-all disabled:opacity-60"
                                     title="Cycle — sync with Lenco now"
                                 >
-                                    <RefreshCw size={14} className={isCycling ? 'animate-spin text-[#0058DB]' : ''} />
+                                    <RefreshCw size={14} className={isCycling ? 'animate-spin text-[#0B57D0]' : ''} />
                                 </button>
                                 {cycleMessage && (
-                                    <span className="text-[10px] font-semibold text-gray-500 whitespace-nowrap">{cycleMessage}</span>
+                                    <span className="text-[10px] font-semibold text-[#5F6368] whitespace-nowrap">{cycleMessage}</span>
                                 )}
                             </>
                         )}
-                        {selectedAccountType !== 'MONEYWISE_WALLET' && (
+                        {selectedAccountType !== 'MONEYWISE_WALLET' && selectedAccountType !== 'LIPILA_WALLET' && (
                             <button
                                 onClick={() => setIsCloseModalOpen(true)}
-                                className="p-2 rounded-lg border border-[#E8EEF8] text-gray-400 hover:text-[#0058DB] hover:bg-[#F3F5FC] transition-all"
+                                className="p-2 rounded-lg border border-[rgba(116,119,117,0.22)] text-[#80868B] hover:text-[#0B57D0] hover:bg-[#F8FAFD] transition-all"
                                 title="Close balance"
                             >
                                 <Lock size={14} />
@@ -1893,7 +1978,7 @@ Status: VERIFIED`;
                         {categoryGroup === 'MONEYWISE' && !isRequestor && (
                             <button
                                 onClick={() => setIsCreateWalletModalOpen(true)}
-                                className="h-8 px-4 bg-[#0058DB] md:bg-[#0059D8] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity"
+                                className="h-8 px-4 bg-[#0B57D0] md:bg-[#0842A0] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity"
                             >
                                 <span className="text-white text-xs font-bold">New Wallet</span>
                             </button>
@@ -1903,14 +1988,14 @@ Status: VERIFIED`;
 
                 {/* Filter panel */}
                 {isFilterMenuOpen && (
-                    <div className="flex flex-wrap items-end gap-4 p-4 bg-[#F3F5FC] rounded-2xl animate-in slide-in-from-top-2 duration-200">
+                    <div className="flex flex-wrap items-end gap-4 p-4 bg-[#F8FAFD] rounded-2xl animate-in slide-in-from-top-2 duration-200">
                         {useDepartments && uniqueDepartments.length > 0 && (
                         <div className="flex flex-col">
-                            <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5 ml-1">Department</span>
+                            <span className="text-[9px] font-black uppercase text-[#80868B] tracking-widest mb-1.5 ml-1">Department</span>
                             <select
                                 value={filterDepartment}
                                 onChange={(e) => setFilterDepartment(e.target.value)}
-                                className="bg-white border border-[#E8EEF8] rounded-xl px-3 py-2 text-xs font-bold text-gray-700 focus:outline-none min-w-[150px]"
+                                className="bg-white border border-[rgba(116,119,117,0.22)] rounded-xl px-3 py-2 text-xs font-bold text-[#3C4043] focus:outline-none min-w-[150px]"
                             >
                                 <option value="ALL">All Departments</option>
                                 {uniqueDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
@@ -1918,43 +2003,43 @@ Status: VERIFIED`;
                         </div>
                         )}
                         <div className="flex flex-col">
-                            <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5 ml-1">Category Account</span>
+                            <span className="text-[9px] font-black uppercase text-[#80868B] tracking-widest mb-1.5 ml-1">Category Account</span>
                             <select
                                 value={filterAccount}
                                 onChange={(e) => setFilterAccount(e.target.value)}
-                                className="bg-white border border-[#E8EEF8] rounded-xl px-3 py-2 text-xs font-bold text-gray-700 focus:outline-none min-w-[150px]"
+                                className="bg-white border border-[rgba(116,119,117,0.22)] rounded-xl px-3 py-2 text-xs font-bold text-[#3C4043] focus:outline-none min-w-[150px]"
                             >
                                 <option value="ALL">All Accounts</option>
                                 {uniqueAccounts.map(acc => <option key={acc} value={acc}>{acc}</option>)}
                             </select>
                         </div>
                         <div className="flex flex-col">
-                            <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5 ml-1">Status</span>
+                            <span className="text-[9px] font-black uppercase text-[#80868B] tracking-widest mb-1.5 ml-1">Status</span>
                             <select
                                 value={filterStatus}
                                 onChange={(e) => setFilterStatus(e.target.value)}
-                                className="bg-white border border-[#E8EEF8] rounded-xl px-3 py-2 text-xs font-bold text-gray-700 focus:outline-none min-w-[150px]"
+                                className="bg-white border border-[rgba(116,119,117,0.22)] rounded-xl px-3 py-2 text-xs font-bold text-[#3C4043] focus:outline-none min-w-[150px]"
                             >
                                 <option value="ALL">All Statuses</option>
                                 {uniqueStatuses.map(stat => <option key={stat} value={stat}>{stat}</option>)}
                             </select>
                         </div>
                         <div className="flex flex-col">
-                            <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5 ml-1">From</span>
+                            <span className="text-[9px] font-black uppercase text-[#80868B] tracking-widest mb-1.5 ml-1">From</span>
                             <input
                                 type="date"
                                 value={startDate}
                                 onChange={(e) => setStartDate(e.target.value)}
-                                className="bg-white border border-[#E8EEF8] rounded-xl px-3 py-2 text-xs font-bold text-gray-700 focus:outline-none"
+                                className="bg-white border border-[rgba(116,119,117,0.22)] rounded-xl px-3 py-2 text-xs font-bold text-[#3C4043] focus:outline-none"
                             />
                         </div>
                         <div className="flex flex-col">
-                            <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5 ml-1">To</span>
+                            <span className="text-[9px] font-black uppercase text-[#80868B] tracking-widest mb-1.5 ml-1">To</span>
                             <input
                                 type="date"
                                 value={endDate}
                                 onChange={(e) => setEndDate(e.target.value)}
-                                className="bg-white border border-[#E8EEF8] rounded-xl px-3 py-2 text-xs font-bold text-gray-700 focus:outline-none"
+                                className="bg-white border border-[rgba(116,119,117,0.22)] rounded-xl px-3 py-2 text-xs font-bold text-[#3C4043] focus:outline-none"
                             />
                         </div>
                         <label className="flex items-center gap-2 cursor-pointer select-none pb-2.5">
@@ -1962,13 +2047,13 @@ Status: VERIFIED`;
                                 type="checkbox"
                                 checked={showPendingIntents}
                                 onChange={(e) => setShowPendingIntents(e.target.checked)}
-                                className="rounded border-gray-300 text-[#0058DB] focus:ring-[#0058DB] w-4 h-4 cursor-pointer"
+                                className="rounded border-[#C4C7C5] text-[#0B57D0] focus:ring-[#0B57D0] w-4 h-4 cursor-pointer"
                             />
-                            <span className="text-xs font-bold text-gray-600">Show Pending Checkout Intents</span>
+                            <span className="text-xs font-bold text-[#5F6368]">Show Pending Checkout Intents</span>
                         </label>
                         <button
                             onClick={() => { setFilterDepartment('ALL'); setFilterAccount('ALL'); setFilterStatus('ALL'); setSearchQuery(''); setStartDate(''); setEndDate(''); }}
-                            className="pb-2.5 px-2 text-[10px] font-black uppercase tracking-widest text-[#0058DB] hover:opacity-70 transition-opacity"
+                            className="pb-2.5 px-2 text-[10px] font-black uppercase tracking-widest text-[#0B57D0] hover:opacity-70 transition-opacity"
                         >
                             Reset
                         </button>
@@ -1976,16 +2061,16 @@ Status: VERIFIED`;
                 )}
 
                 {/* Transactions table */}
-                <div className="rounded-xl outline outline-1 outline-offset-[-1px] outline-[#E8EEF8] overflow-hidden overflow-x-auto">
+                <div className="rounded-xl outline outline-1 outline-offset-[-1px] outline-[#E9EEF6] overflow-hidden overflow-x-auto">
                     <table className="w-full text-left">
                         <thead>
-                            <tr className="border-b border-[#E8EEF8]">
+                            <tr className="border-b border-[rgba(116,119,117,0.22)]">
                                 <th className="py-2.5 px-3 w-9"></th>
-                                <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Date</th>
-                                <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Description</th>
-                                <th className="py-2.5 px-3 text-xs font-semibold text-[#111827] text-center">Inflows (K)</th>
-                                <th className="py-2.5 px-3 text-xs font-semibold text-[#111827] text-center">Outflows (K)</th>
-                                <th className="py-2.5 px-3 text-xs font-semibold text-[#111827] text-center">Balance</th>
+                                <th className="py-2.5 px-3 text-xs font-semibold text-[#1F1F1F]">Date</th>
+                                <th className="py-2.5 px-3 text-xs font-semibold text-[#1F1F1F]">Description</th>
+                                <th className="py-2.5 px-3 text-xs font-semibold text-[#1F1F1F] text-center">Inflows (K)</th>
+                                <th className="py-2.5 px-3 text-xs font-semibold text-[#1F1F1F] text-center">Outflows (K)</th>
+                                <th className="py-2.5 px-3 text-xs font-semibold text-[#1F1F1F] text-center">Balance</th>
                                 <th className="py-2.5 px-3 w-8"></th>
                             </tr>
                         </thead>
@@ -1994,12 +2079,12 @@ Status: VERIFIED`;
                                 <tr>
                                     <td colSpan={7} className="py-20 text-center">
                                         {isInactiveWallet ? (
-                                            <div className="flex flex-col items-center justify-center max-w-md mx-auto p-6 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/80 rounded-2xl shadow-sm">
-                                                <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center mb-3">
+                                            <div className="flex flex-col items-center justify-center max-w-md mx-auto p-6 bg-gradient-to-r from-[#FEF7E0] to-orange-50 border border-[#FEEFC3]/80 rounded-2xl shadow-sm">
+                                                <div className="w-12 h-12 rounded-2xl bg-[#FBBC04]/10 text-[#E37400] flex items-center justify-center mb-3">
                                                     <AlertCircle className="w-6 h-6" />
                                                 </div>
-                                                <h4 className="text-base font-bold text-gray-900">Your Wallet is Inactive</h4>
-                                                <p className="text-xs text-gray-600 mt-1 mb-4">
+                                                <h4 className="text-base font-bold text-[#1F1F1F]">Your Wallet is Inactive</h4>
+                                                <p className="text-xs text-[#5F6368] mt-1 mb-4">
                                                     {hasAvailablePool
                                                         ? 'You skipped wallet activation during setup. Activate your wallet now to complete account setup and start receiving payments.'
                                                         : 'An account has not been provisioned for your organization yet. Contact our team to have your wallet provisioned and activated.'}
@@ -2007,7 +2092,7 @@ Status: VERIFIED`;
                                                 {hasAvailablePool ? (
                                                     <button
                                                         onClick={() => navigate('/onboarding')}
-                                                        className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95"
+                                                        className="px-5 py-2.5 bg-[#0B57D0] hover:bg-[#0842A0] text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95"
                                                     >
                                                         <ArrowRight className="w-4 h-4" />
                                                         Activate Now
@@ -2015,7 +2100,7 @@ Status: VERIFIED`;
                                                 ) : (
                                                     <a
                                                         href={`mailto:masterfees101@gmail.com?subject=Wallet%20Activation%20Request%20-%20${encodeURIComponent(organizationName || 'My Business')}&body=Hello%20MoneyWise%20Team%2C%0A%0APlease%20activate%20and%20provision%20a%20wallet%20for%20our%20organization%3A%20${encodeURIComponent(organizationName || 'My Business')}.%0A%0AThank%20you!`}
-                                                        className="px-5 py-2.5 bg-gray-900 hover:bg-black text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95"
+                                                        className="px-5 py-2.5 bg-[#0B57D0] hover:bg-[#0842A0] text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95"
                                                     >
                                                         <Mail className="w-4 h-4" />
                                                         Contact Team
@@ -2024,11 +2109,11 @@ Status: VERIFIED`;
                                             </div>
                                         ) : (
                                             <div className="flex flex-col items-center justify-center">
-                                                <div className="h-20 w-20 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-6 border border-[#E8EEF8]">
+                                                <div className="h-20 w-20 bg-[#F8FAFD] rounded-full flex items-center justify-center text-[#9AA0A6] mb-6 border border-[rgba(116,119,117,0.22)]">
                                                     <Receipt size={32} strokeWidth={1.5} />
                                                 </div>
-                                                <p className="text-[#111827] font-bold">No transactions found</p>
-                                                <p className="text-sm text-gray-400 mt-1">Try adjusting your filters or search query.</p>
+                                                <p className="text-[#1F1F1F] font-bold">No transactions found</p>
+                                                <p className="text-sm text-[#80868B] mt-1">Try adjusting your filters or search query.</p>
                                             </div>
                                         )}
                                     </td>
@@ -2039,7 +2124,7 @@ Status: VERIFIED`;
                                         {group.entries.map((entry) => (
                                             <React.Fragment key={entry.id}>
                                                 <tr
-                                                    className={`group cursor-pointer transition-colors border-b border-[#E8EEF8]/40 ${selectedEntry?.id === entry.id ? 'bg-[#F3F5FC]' : 'hover:bg-gray-50/70'}`}
+                                                    className={`group cursor-pointer transition-colors border-b border-[rgba(116,119,117,0.22)]/40 ${selectedEntry?.id === entry.id ? 'bg-[#F8FAFD]' : 'hover:bg-[#F8FAFD]/70'}`}
                                                     onClick={() => { setSelectedEntry(entry); setPanelSections({ transactionInfo: false, financialSummary: true, lineItems: true, accounting: true }); }}
                                                 >
                                                     <td className="py-3.5 px-3" onClick={(e) => e.stopPropagation()}>
@@ -2051,22 +2136,22 @@ Status: VERIFIED`;
                                                                 if (next.has(entry.id)) next.delete(entry.id); else next.add(entry.id);
                                                                 return next;
                                                             })}
-                                                            className="w-3.5 h-3.5 appearance-none bg-white rounded shadow-[inset_0px_2px_4px_0px_rgba(0,0,0,0.05)] border-[0.50px] border-indigo-300 checked:bg-[#0058DB] checked:border-[#0058DB] cursor-pointer"
+                                                            className="w-3.5 h-3.5 appearance-none bg-white rounded shadow-[inset_0px_2px_4px_0px_rgba(0,0,0,0.05)] border-[0.50px] border-indigo-300 checked:bg-[#0B57D0] checked:border-[#0B57D0] cursor-pointer"
                                                         />
                                                     </td>
                                                     <td className="py-3.5 px-3">
-                                                        <span className="text-xs font-normal text-[#6B7280] whitespace-nowrap">
+                                                        <span className="text-xs font-normal text-[#5F6368] whitespace-nowrap">
                                                             {new Date(entry.date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' })}
                                                         </span>
                                                     </td>
                                                     <td className="py-3.5 px-3 max-w-[320px]">
-                                                        <div className="text-xs font-medium text-[#111827] truncate">
+                                                        <div className="text-xs font-medium text-[#1F1F1F] truncate">
                                                             {entry.requisitions?.description || entry.description}
                                                         </div>
                                                         <div className="flex items-center gap-3 mt-1">
                                                             {getEntryStatus(entry)}
                                                             {(entry.reference_number || entry.requisitions?.reference_number || entry.requisition_id) && (
-                                                                <span className="text-[10px] font-normal text-[#6B7280]">
+                                                                <span className="text-[10px] font-normal text-[#5F6368]">
                                                                     #{entry.reference_number || entry.requisitions?.reference_number || entry.requisition_id?.slice(0, 8)}
                                                                 </span>
                                                             )}
@@ -2074,20 +2159,20 @@ Status: VERIFIED`;
                                                     </td>
                                                     <td className="py-3.5 px-3 text-center">
                                                         {entry.debit > 0 ? (
-                                                            <span className="text-xs font-normal text-[#111827]">{formatCurrency(entry.debit).replace('K', '')}</span>
+                                                            <span className="text-xs font-normal text-[#1F1F1F]">{formatCurrency(entry.debit).replace('K', '')}</span>
                                                         ) : <span className="text-gray-200">-</span>}
                                                     </td>
                                                     <td className="py-3.5 px-3 text-center">
                                                         {entry.credit > 0 ? (
-                                                            <span className="text-xs font-normal text-[#111827]">{formatCurrency(entry.credit).replace('K', '')}</span>
+                                                            <span className="text-xs font-normal text-[#1F1F1F]">{formatCurrency(entry.credit).replace('K', '')}</span>
                                                         ) : <span className="text-gray-200">-</span>}
                                                     </td>
                                                     <td className="py-3.5 px-3 text-center">
-                                                        <span className="text-xs font-normal text-[#6B7280]">{formatCurrency(entry.balance_after).replace('K', '')}</span>
+                                                        <span className="text-xs font-normal text-[#5F6368]">{formatCurrency(entry.balance_after).replace('K', '')}</span>
                                                     </td>
                                                     <td className="py-3.5 px-3 text-center">
                                                         {(entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && (
-                                                            <ChevronRight size={14} className={`text-gray-300 group-hover:text-gray-400 transition-transform ${selectedEntry?.id === entry.id ? 'text-[#006AFF]' : ''}`} strokeWidth={2.5} />
+                                                            <ChevronRight size={14} className={`text-[#9AA0A6] group-hover:text-[#80868B] transition-transform ${selectedEntry?.id === entry.id ? 'text-[#0B57D0]' : ''}`} strokeWidth={2.5} />
                                                         )}
                                                     </td>
                                                 </tr>
@@ -2108,29 +2193,29 @@ Status: VERIFIED`;
             {/* Classification Results Modal */}
             {isResultsModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden border border-gray-100">
-                        <div className="p-8 border-b border-gray-50 flex justify-between items-center bg-white">
+                    <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden border border-[rgba(116,119,117,0.14)]">
+                        <div className="p-8 border-b border-[rgba(116,119,117,0.10)] flex justify-between items-center bg-white">
                             <div>
-                                <h3 className="text-xl font-black text-gray-900 flex items-center tracking-tight">
-                                    <div className="p-2 bg-amber-50 rounded-xl mr-3" />
+                                <h3 className="text-xl font-black text-[#1F1F1F] flex items-center tracking-tight">
+                                    <div className="p-2 bg-[#FEF7E0] rounded-xl mr-3" />
                                     Classification Results
                                 </h3>
                             </div>
                             <button
                                 onClick={() => setIsResultsModalOpen(false)}
-                                className="p-3 hover:bg-gray-50 rounded-2xl text-gray-400 hover:text-gray-900 transition-all border border-transparent hover:border-gray-100"
+                                className="p-3 hover:bg-[#F8FAFD] rounded-2xl text-[#80868B] hover:text-[#1F1F1F] transition-all border border-transparent hover:border-[rgba(116,119,117,0.14)]"
                             >
                                 <X size={20} strokeWidth={2.5} />
                             </button>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-gray-50/30">
+                        <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-[#F8FAFD]/30">
                             {classificationResults.map((result: any, index: number) => (
-                                <div key={index} className="bg-white rounded-[24px] p-6 border border-gray-100 shadow-sm transition-all hover:shadow-md hover:border-gray-200">
+                                <div key={index} className="bg-white rounded-[24px] p-6 border border-[rgba(116,119,117,0.14)] shadow-sm transition-all hover:shadow-md hover:border-[rgba(116,119,117,0.22)]">
                                     <div className="flex justify-between items-start mb-4">
-                                        <div className="font-bold text-gray-900 text-[15px]">{result.description}</div>
+                                        <div className="font-bold text-[#1F1F1F] text-[15px]">{result.description}</div>
                                         <div className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                                            result.method === 'RULE' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'
+                                            result.method === 'RULE' ? 'bg-[#E8F0FE] text-[#0B57D0]' : 'bg-purple-50 text-purple-600'
                                         }`}>
                                             {result.method === 'RULE' ? 'Rule Match' : 'AI Analysis'}
                                         </div>
@@ -2139,10 +2224,10 @@ Status: VERIFIED`;
                             ))}
                         </div>
 
-                        <div className="p-8 border-t border-gray-50 bg-white flex justify-end">
+                        <div className="p-8 border-t border-[rgba(116,119,117,0.10)] bg-white flex justify-end">
                             <button
                                 onClick={() => setIsResultsModalOpen(false)}
-                                className="bg-gray-900 hover:bg-gray-800 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all shadow-lg shadow-gray-200"
+                                className="bg-[#0B57D0] hover:bg-[#0842A0] text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all shadow-lg shadow-none"
                             >
                                 Done
                             </button>
@@ -2153,31 +2238,31 @@ Status: VERIFIED`;
 
             {/* Review Posting Modal */}
             {postingReview && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-200">
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-[rgba(32,33,36,0.4)] backdrop-blur-md animate-in fade-in duration-200">
                     <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-2xl overflow-hidden border border-white/20 animate-in zoom-in-95 duration-300">
-                        <div className="p-10 border-b border-gray-50">
+                        <div className="p-10 border-b border-[rgba(116,119,117,0.10)]">
                             <div className="flex justify-between items-start">
                                 <div>
-                                    <h3 className="text-2xl font-black text-slate-900 tracking-tight mb-2">Review QuickBooks Posting</h3>
-                                    <p className="text-slate-500 text-sm font-medium">Verify the double-entry accounting treatment before syncing.</p>
+                                    <h3 className="text-2xl font-black text-[#1F1F1F] tracking-tight mb-2">Review QuickBooks Posting</h3>
+                                    <p className="text-[#5F6368] text-sm font-medium">Verify the double-entry accounting treatment before syncing.</p>
                                 </div>
                                 <button
                                     onClick={() => setPostingReview(null)}
-                                    className="p-3 hover:bg-slate-50 rounded-2xl text-slate-400 hover:text-slate-900 transition-all"
+                                    className="p-3 hover:bg-[#F8FAFD] rounded-2xl text-[#80868B] hover:text-[#1F1F1F] transition-all"
                                 >
                                     <X size={24} strokeWidth={2.5} />
                                 </button>
                             </div>
                         </div>
 
-                        <div className="p-10 bg-slate-50/30 overflow-y-auto max-h-[50vh]">
+                        <div className="p-10 bg-[#F8FAFD]/30 overflow-y-auto max-h-[50vh]">
                             <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden">
                                 <table className="w-full border-collapse">
-                                    <thead className="sticky top-0 z-10 bg-slate-50">
-                                        <tr className="bg-slate-50/50">
-                                            <th className="text-left py-5 px-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Account & Description</th>
-                                            <th className="text-right py-5 px-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] w-32">Debit</th>
-                                            <th className="text-right py-5 px-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] w-32">Credit</th>
+                                    <thead className="sticky top-0 z-10 bg-[#F8FAFD]">
+                                        <tr className="bg-[#F8FAFD]/50">
+                                            <th className="text-left py-5 px-6 text-[10px] font-black text-[#80868B] uppercase tracking-[0.2em]">Account & Description</th>
+                                            <th className="text-right py-5 px-6 text-[10px] font-black text-[#80868B] uppercase tracking-[0.2em] w-32">Debit</th>
+                                            <th className="text-right py-5 px-6 text-[10px] font-black text-[#80868B] uppercase tracking-[0.2em] w-32">Credit</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50">
@@ -2187,20 +2272,20 @@ Status: VERIFIED`;
                                                 {(postingReview.data.line_items || []).map((item: any, i: number) => (
                                                     <tr key={i}>
                                                         <td className="py-5 px-6">
-                                                            <div className="font-bold text-slate-900 text-sm">{accounts.find(a => a.id === item.account_id)?.name || 'Uncategorized'}</div>
-                                                            <div className="text-[11px] text-slate-400 font-medium">{item.description}</div>
+                                                            <div className="font-bold text-[#1F1F1F] text-sm">{accounts.find(a => a.id === item.account_id)?.name || 'Uncategorized'}</div>
+                                                            <div className="text-[11px] text-[#80868B] font-medium">{item.description}</div>
                                                         </td>
-                                                        <td className="py-5 px-6 text-right font-bold text-slate-900">{formatCurrency(item.actual_amount ?? item.estimated_amount ?? 0).replace('K', '')}</td>
-                                                        <td className="py-5 px-6 text-right text-slate-200">-</td>
+                                                        <td className="py-5 px-6 text-right font-bold text-[#1F1F1F]">{formatCurrency(item.actual_amount ?? item.estimated_amount ?? 0).replace('K', '')}</td>
+                                                        <td className="py-5 px-6 text-right text-[#DADCE0]">-</td>
                                                     </tr>
                                                 ))}
                                                 {/* Payment Side */}
                                                 <tr>
                                                     <td className="py-5 px-6 pl-10">
-                                                        <div className="font-bold text-slate-900 text-sm">MoneyWise Wallet / Cash</div>
-                                                        <div className="text-[11px] text-slate-400 font-medium">Payment for {postingReview.data.reference_number}</div>
+                                                        <div className="font-bold text-[#1F1F1F] text-sm">MoneyWise Wallet / Cash</div>
+                                                        <div className="text-[11px] text-[#80868B] font-medium">Payment for {postingReview.data.reference_number}</div>
                                                     </td>
-                                                    <td className="py-5 px-6 text-right text-slate-200">-</td>
+                                                    <td className="py-5 px-6 text-right text-[#DADCE0]">-</td>
                                                     <td className="py-5 px-6 text-right font-bold text-rose-600">{formatCurrency(postingReview.entry?.credit || 0).replace('K', '')}</td>
                                                 </tr>
                                             </>
@@ -2213,19 +2298,19 @@ Status: VERIFIED`;
                                                         {/* Regular Inflow: Debit Wallet, Credit Income Account */}
                                                         <tr>
                                                             <td className="py-5 px-6">
-                                                                <div className="font-bold text-slate-900 text-sm">MoneyWise Wallet</div>
-                                                                <div className="text-[11px] text-slate-400 font-medium">Inflow receipt</div>
+                                                                <div className="font-bold text-[#1F1F1F] text-sm">MoneyWise Wallet</div>
+                                                                <div className="text-[11px] text-[#80868B] font-medium">Inflow receipt</div>
                                                             </td>
-                                                            <td className="py-5 px-6 text-right font-bold text-emerald-600">{formatCurrency(postingReview.entry?.debit || 0).replace('K', '')}</td>
-                                                            <td className="py-5 px-6 text-right text-slate-200">-</td>
+                                                            <td className="py-5 px-6 text-right font-bold text-[#1E8E3E]">{formatCurrency(postingReview.entry?.debit || 0).replace('K', '')}</td>
+                                                            <td className="py-5 px-6 text-right text-[#DADCE0]">-</td>
                                                         </tr>
                                                         <tr>
                                                             <td className="py-5 px-6 pl-10">
-                                                                <div className="font-bold text-slate-900 text-sm">{accounts.find(a => a.id === postingReview.entry?.account_id)?.name || 'Uncategorized'}</div>
-                                                                <div className="text-[11px] text-slate-400 font-medium">{postingReview.entry?.description}</div>
+                                                                <div className="font-bold text-[#1F1F1F] text-sm">{accounts.find(a => a.id === postingReview.entry?.account_id)?.name || 'Uncategorized'}</div>
+                                                                <div className="text-[11px] text-[#80868B] font-medium">{postingReview.entry?.description}</div>
                                                             </td>
-                                                            <td className="py-5 px-6 text-right text-slate-200">-</td>
-                                                            <td className="py-5 px-6 text-right font-bold text-slate-900">{formatCurrency(postingReview.entry?.debit || 0).replace('K', '')}</td>
+                                                            <td className="py-5 px-6 text-right text-[#DADCE0]">-</td>
+                                                            <td className="py-5 px-6 text-right font-bold text-[#1F1F1F]">{formatCurrency(postingReview.entry?.debit || 0).replace('K', '')}</td>
                                                         </tr>
                                                     </>
                                                 ) : (
@@ -2233,18 +2318,18 @@ Status: VERIFIED`;
                                                         {/* Transaction Charge: Debit Expense Account, Credit Wallet */}
                                                         <tr>
                                                             <td className="py-5 px-6">
-                                                                <div className="font-bold text-slate-900 text-sm">{accounts.find(a => a.id === postingReview.entry?.account_id)?.name || 'Uncategorized'}</div>
-                                                                <div className="text-[11px] text-slate-400 font-medium">{postingReview.entry?.description}</div>
+                                                                <div className="font-bold text-[#1F1F1F] text-sm">{accounts.find(a => a.id === postingReview.entry?.account_id)?.name || 'Uncategorized'}</div>
+                                                                <div className="text-[11px] text-[#80868B] font-medium">{postingReview.entry?.description}</div>
                                                             </td>
-                                                            <td className="py-5 px-6 text-right font-bold text-slate-900">{formatCurrency(postingReview.entry?.credit || 0).replace('K', '')}</td>
-                                                            <td className="py-5 px-6 text-right text-slate-200">-</td>
+                                                            <td className="py-5 px-6 text-right font-bold text-[#1F1F1F]">{formatCurrency(postingReview.entry?.credit || 0).replace('K', '')}</td>
+                                                            <td className="py-5 px-6 text-right text-[#DADCE0]">-</td>
                                                         </tr>
                                                         <tr>
                                                             <td className="py-5 px-6 pl-10">
-                                                                <div className="font-bold text-slate-900 text-sm">MoneyWise Wallet</div>
-                                                                <div className="text-[11px] text-slate-400 font-medium">Service / Transaction Fee</div>
+                                                                <div className="font-bold text-[#1F1F1F] text-sm">MoneyWise Wallet</div>
+                                                                <div className="text-[11px] text-[#80868B] font-medium">Service / Transaction Fee</div>
                                                             </td>
-                                                            <td className="py-5 px-6 text-right text-slate-200">-</td>
+                                                            <td className="py-5 px-6 text-right text-[#DADCE0]">-</td>
                                                             <td className="py-5 px-6 text-right font-bold text-rose-600">{formatCurrency(postingReview.entry?.credit || 0).replace('K', '')}</td>
                                                         </tr>
                                                     </>
@@ -2274,14 +2359,14 @@ Status: VERIFIED`;
                         <div className="p-10 flex justify-end gap-4 bg-white">
                             <button
                                 onClick={() => setPostingReview(null)}
-                                className="px-8 py-4 rounded-2xl font-bold text-slate-500 hover:bg-slate-50 transition-all text-xs uppercase tracking-widest"
+                                className="px-8 py-4 rounded-2xl font-bold text-[#5F6368] hover:bg-[#F8FAFD] transition-all text-xs uppercase tracking-widest"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={() => postingReview.type === 'REQUISITION' ? confirmPostRequisition(postingReview.data) : confirmPostLedger(postingReview.entry!)}
                                 disabled={isPosting}
-                                className="bg-[#006AFF] md:bg-[#0059D8] hover:bg-[#0052CC] text-white px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all shadow-xl shadow-blue-200 flex items-center disabled:opacity-50 disabled:shadow-none"
+                                className="bg-[#0B57D0] md:bg-[#0842A0] hover:bg-[#0842A0] text-white px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all shadow-xl shadow-blue-200 flex items-center disabled:opacity-50 disabled:shadow-none"
                             >
                                 {isPosting ? (
                                     <>
@@ -2303,26 +2388,26 @@ Status: VERIFIED`;
             {/* Post Success Overlay */}
             {postSuccess && (
                 <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-emerald-950/40 backdrop-blur-sm animate-in fade-in duration-500">
-                    <div className="bg-white rounded-[48px] shadow-2xl p-12 text-center max-w-md border border-emerald-100 animate-in zoom-in-95 duration-500">
-                        <div className="w-24 h-24 bg-emerald-500 rounded-[32px] flex items-center justify-center mx-auto mb-8 shadow-lg shadow-emerald-200">
+                    <div className="bg-white rounded-[48px] shadow-2xl p-12 text-center max-w-md border border-[#CEEAD6] animate-in zoom-in-95 duration-500">
+                        <div className="w-24 h-24 bg-[#34A853] rounded-[32px] flex items-center justify-center mx-auto mb-8 shadow-lg shadow-emerald-200">
                             <Check size={48} className="text-white" strokeWidth={3} />
                         </div>
-                        <h3 className="text-3xl font-black text-slate-900 mb-4 tracking-tight">Successfully Posted!</h3>
-                        <p className="text-slate-500 font-medium mb-10">
+                        <h3 className="text-3xl font-black text-[#1F1F1F] mb-4 tracking-tight">Successfully Posted!</h3>
+                        <p className="text-[#5F6368] font-medium mb-10">
                             The {postSuccess.type} has been successfully synchronized with QuickBooks Online.
                         </p>
-                        <div className="bg-slate-50 rounded-3xl p-6 mb-10 flex items-center justify-between border border-slate-100">
+                        <div className="bg-[#F8FAFD] rounded-3xl p-6 mb-10 flex items-center justify-between border border-slate-100">
                             <div className="text-left">
-                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">QuickBooks ID</div>
-                                <div className="text-sm font-bold text-slate-900">{postSuccess.qbId}</div>
+                                <div className="text-[10px] font-black text-[#80868B] uppercase tracking-widest mb-1">QuickBooks ID</div>
+                                <div className="text-sm font-bold text-[#1F1F1F]">{postSuccess.qbId}</div>
                             </div>
-                            <div className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-[10px] font-black uppercase tracking-widest">
+                            <div className="px-3 py-1 bg-[#CEEAD6] text-[#137333] rounded-lg text-[10px] font-black uppercase tracking-widest">
                                 Validated
                             </div>
                         </div>
                         <button
                             onClick={() => setPostSuccess(null)}
-                            className="w-full bg-slate-900 hover:bg-slate-800 text-white py-5 rounded-[24px] font-black text-xs uppercase tracking-[0.2em] transition-all shadow-xl shadow-slate-200"
+                            className="w-full bg-[#0B57D0] hover:bg-[#0842A0] text-white py-5 rounded-[24px] font-black text-xs uppercase tracking-[0.2em] transition-all shadow-xl shadow-none"
                         >
                             Back to Ledger
                         </button>
@@ -2474,16 +2559,16 @@ Status: VERIFIED`;
 
                 const statusBadge = (s: string) => {
                     const map: Record<string, string> = {
-                        ACCOUNTED:   'bg-emerald-50 text-emerald-600 border border-emerald-100',
-                        COMPLETED:   'bg-blue-50 text-[#006AFF] border border-blue-100',
-                        CATEGORIZED: 'bg-blue-50 text-[#006AFF] border border-blue-100',
-                        EXPENSED:    'bg-amber-50 text-amber-600 border border-amber-100',
-                        DISBURSED:   'bg-amber-50 text-amber-600 border border-amber-100',
-                        PENDING:     'bg-amber-50 text-amber-600 border border-amber-100',
+                        ACCOUNTED:   'bg-[#E6F4EA] text-[#1E8E3E] border border-[#CEEAD6]',
+                        COMPLETED:   'bg-[#E8F0FE] text-[#0B57D0] border border-[#D2E3FC]',
+                        CATEGORIZED: 'bg-[#E8F0FE] text-[#0B57D0] border border-[#D2E3FC]',
+                        EXPENSED:    'bg-[#FEF7E0] text-[#E37400] border border-[#FEEFC3]',
+                        DISBURSED:   'bg-[#FEF7E0] text-[#E37400] border border-[#FEEFC3]',
+                        PENDING:     'bg-[#FEF7E0] text-[#E37400] border border-[#FEEFC3]',
                         UNACCOUNTED: 'bg-rose-50 text-rose-600 border border-rose-100',
-                        RECEIVED:    'bg-amber-50 text-amber-600 border border-amber-100',
+                        RECEIVED:    'bg-[#FEF7E0] text-[#E37400] border border-[#FEEFC3]',
                     };
-                    return map[s] || 'bg-gray-100 text-gray-600';
+                    return map[s] || 'bg-[#E9EEF6] text-[#5F6368]';
                 };
 
                 const entryTypeLabel: Record<string, string> = {
@@ -2507,10 +2592,10 @@ Status: VERIFIED`;
                             onClick={e => e.stopPropagation()}
                         >
                             {/* ── Header ───────────────────────────────────────────── */}
-                            <div className="px-5 pt-5 pb-4 border-b border-gray-100 flex-shrink-0">
+                            <div className="px-5 pt-5 pb-4 border-b border-[rgba(116,119,117,0.14)] flex-shrink-0">
                                 <div className="flex items-start justify-between mb-3">
                                     <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 uppercase tracking-wide">
+                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#E9EEF6] text-[#5F6368] uppercase tracking-wide">
                                             {entryTypeLabel[entry.entry_type] || entry.entry_type}
                                         </span>
                                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusBadge(resolvedStatus)} uppercase tracking-wide`}>
@@ -2523,7 +2608,7 @@ Status: VERIFIED`;
                                                 type="button"
                                                 onClick={() => setDepositProofEntry(entry)}
                                                 title="Download Proof of Deposit"
-                                                className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-[#006AFF] transition flex-shrink-0"
+                                                className="p-1.5 rounded-lg text-[#80868B] hover:bg-[#E9EEF6] hover:text-[#0B57D0] transition flex-shrink-0"
                                             >
                                                 <Download size={16} />
                                             </button>
@@ -2531,61 +2616,61 @@ Status: VERIFIED`;
                                         <button
                                             type="button"
                                             onClick={() => setSelectedEntry(null)}
-                                            className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition flex-shrink-0"
+                                            className="p-1.5 rounded-lg text-[#80868B] hover:bg-[#E9EEF6] transition flex-shrink-0"
                                         >
                                             <X size={16} />
                                         </button>
                                     </div>
                                 </div>
-                                <h2 className="text-sm font-bold text-gray-900 leading-snug pr-2">{displayDescription}</h2>
-                                <p className={`text-2xl font-black mt-1 ${isOutflow ? 'text-rose-600' : 'text-gray-900'}`}>
+                                <h2 className="text-sm font-bold text-[#1F1F1F] leading-snug pr-2">{displayDescription}</h2>
+                                <p className={`text-2xl font-black mt-1 ${isOutflow ? 'text-rose-600' : 'text-[#1F1F1F]'}`}>
                                     {isOutflow ? '-' : '+'}{formatCurrency(amount)}
                                 </p>
-                                <p className="text-[11px] text-gray-400 font-medium mt-0.5">{formatDateSlash(entry.date)}</p>
+                                <p className="text-[11px] text-[#80868B] font-medium mt-0.5">{formatDateSlash(entry.date)}</p>
                             </div>
 
                             {/* ── Scrollable body ───────────────────────────────────── */}
                             <div className="flex-1 overflow-y-auto">
 
                                 {/* Section: Transaction Info */}
-                                <div className="px-5 border-b border-gray-50">
+                                <div className="px-5 border-b border-[rgba(116,119,117,0.10)]">
                                     <button
                                         type="button"
                                         onClick={() => togglePanelSection('transactionInfo')}
                                         className="w-full flex items-center justify-between py-4"
                                     >
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Transaction Info</p>
-                                        <ChevronDown size={13} className={`text-gray-400 transition-transform duration-200 ${panelSections.transactionInfo ? 'rotate-180' : ''}`} />
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-[#80868B]">Transaction Info</p>
+                                        <ChevronDown size={13} className={`text-[#80868B] transition-transform duration-200 ${panelSections.transactionInfo ? 'rotate-180' : ''}`} />
                                     </button>
                                     {panelSections.transactionInfo && (
                                     <div className="pb-4">
-                                    <div className="bg-gray-50 rounded-2xl divide-y divide-gray-100 overflow-hidden">
+                                    <div className="bg-[#F8FAFD] rounded-2xl divide-y divide-gray-100 overflow-hidden">
                                         {refNum && (
                                             <div className="flex items-center justify-between px-3.5 py-2.5">
-                                                <span className="text-[11px] font-semibold text-gray-500">Reference</span>
-                                                <span className="text-[11px] font-bold text-gray-900 font-mono">{refNum}</span>
+                                                <span className="text-[11px] font-semibold text-[#5F6368]">Reference</span>
+                                                <span className="text-[11px] font-bold text-[#1F1F1F] font-mono">{refNum}</span>
                                             </div>
                                         )}
                                         {(req.requestor?.name || entry.users?.name) && (
                                             <div className="flex items-center justify-between px-3.5 py-2.5">
-                                                <span className="text-[11px] font-semibold text-gray-500">
+                                                <span className="text-[11px] font-semibold text-[#5F6368]">
                                                     {entry.requisition_id ? 'Requestor' : 'Created By'}
                                                 </span>
-                                                <span className="text-[11px] font-bold text-gray-900">
+                                                <span className="text-[11px] font-bold text-[#1F1F1F]">
                                                     {req.requestor?.name || entry.users?.name}
                                                 </span>
                                             </div>
                                         )}
                                         {req.department && (
                                             <div className="flex items-center justify-between px-3.5 py-2.5">
-                                                <span className="text-[11px] font-semibold text-gray-500">Department</span>
-                                                <span className="text-[11px] font-bold text-gray-900">{req.department}</span>
+                                                <span className="text-[11px] font-semibold text-[#5F6368]">Department</span>
+                                                <span className="text-[11px] font-bold text-[#1F1F1F]">{req.department}</span>
                                             </div>
                                         )}
                                         {entry.external_reference && (
                                             <div className="flex items-center justify-between px-3.5 py-2.5">
-                                                <span className="text-[11px] font-semibold text-gray-500">External Ref</span>
-                                                <span className="text-[11px] font-bold text-gray-900 font-mono truncate max-w-[180px]">{entry.external_reference}</span>
+                                                <span className="text-[11px] font-semibold text-[#5F6368]">External Ref</span>
+                                                <span className="text-[11px] font-bold text-[#1F1F1F] font-mono truncate max-w-[180px]">{entry.external_reference}</span>
                                             </div>
                                         )}
                                         <CaptureEvidenceLink entryId={entry.id} />
@@ -2616,20 +2701,20 @@ Status: VERIFIED`;
                                                 <>
                                                     {payerName && (
                                                         <div className="flex items-center justify-between px-3.5 py-2.5">
-                                                            <span className="text-[11px] font-semibold text-gray-500">Depositor Name</span>
-                                                            <span className="text-[11px] font-bold text-gray-900">{payerName}</span>
+                                                            <span className="text-[11px] font-semibold text-[#5F6368]">Depositor Name</span>
+                                                            <span className="text-[11px] font-bold text-[#1F1F1F]">{payerName}</span>
                                                         </div>
                                                     )}
                                                     {payerPhone && (
                                                         <div className="flex items-center justify-between px-3.5 py-2.5">
-                                                            <span className="text-[11px] font-semibold text-gray-500">Phone / Account</span>
-                                                            <span className="text-[11px] font-bold text-gray-900 font-mono">{payerPhone}</span>
+                                                            <span className="text-[11px] font-semibold text-[#5F6368]">Phone / Account</span>
+                                                            <span className="text-[11px] font-bold text-[#1F1F1F] font-mono">{payerPhone}</span>
                                                         </div>
                                                     )}
                                                     {methodLabel && (
                                                         <div className="flex items-center justify-between px-3.5 py-2.5">
-                                                            <span className="text-[11px] font-semibold text-gray-500">Payment Method</span>
-                                                            <span className="text-[11px] font-bold text-gray-900">{methodLabel}</span>
+                                                            <span className="text-[11px] font-semibold text-[#5F6368]">Payment Method</span>
+                                                            <span className="text-[11px] font-bold text-[#1F1F1F]">{methodLabel}</span>
                                                         </div>
                                                     )}
                                                 </>
@@ -2663,50 +2748,50 @@ Status: VERIFIED`;
                                                 <>
                                                     {methodLabel && (
                                                         <div className="flex items-center justify-between px-3.5 py-2.5">
-                                                            <span className="text-[11px] font-semibold text-gray-500">Payment Method</span>
-                                                            <span className="text-[11px] font-bold text-gray-900">{methodLabel}</span>
+                                                            <span className="text-[11px] font-semibold text-[#5F6368]">Payment Method</span>
+                                                            <span className="text-[11px] font-bold text-[#1F1F1F]">{methodLabel}</span>
                                                         </div>
                                                     )}
                                                     {recipientName && (
                                                         <div className="flex items-center justify-between px-3.5 py-2.5">
-                                                            <span className="text-[11px] font-semibold text-gray-500">Recipient Name</span>
-                                                            <span className="text-[11px] font-bold text-gray-900">{recipientName}</span>
+                                                            <span className="text-[11px] font-semibold text-[#5F6368]">Recipient Name</span>
+                                                            <span className="text-[11px] font-bold text-[#1F1F1F]">{recipientName}</span>
                                                         </div>
                                                     )}
                                                     {recipientAccount && (
                                                         <div className="flex items-center justify-between px-3.5 py-2.5">
-                                                            <span className="text-[11px] font-semibold text-gray-500">
+                                                            <span className="text-[11px] font-semibold text-[#5F6368]">
                                                                 {isMobile ? 'Phone Number' : 'Account Number'}
                                                             </span>
-                                                            <span className="text-[11px] font-bold text-gray-900 font-mono">{recipientAccount}</span>
+                                                            <span className="text-[11px] font-bold text-[#1F1F1F] font-mono">{recipientAccount}</span>
                                                         </div>
                                                     )}
                                                     {bankCode && !isMobile && (
                                                         <div className="flex items-center justify-between px-3.5 py-2.5">
-                                                            <span className="text-[11px] font-semibold text-gray-500">Bank Code</span>
-                                                            <span className="text-[11px] font-bold text-gray-900">{bankCode}</span>
+                                                            <span className="text-[11px] font-semibold text-[#5F6368]">Bank Code</span>
+                                                            <span className="text-[11px] font-bold text-[#1F1F1F]">{bankCode}</span>
                                                         </div>
                                                     )}
                                                 </>
                                             );
                                         })()}
                                         <div className="flex items-center justify-between px-3.5 py-2.5">
-                                            <span className="text-[11px] font-semibold text-gray-500">Account Type</span>
-                                            <span className="text-[11px] font-bold text-gray-900">{entry.account_type?.replace(/_/g, ' ')}</span>
+                                            <span className="text-[11px] font-semibold text-[#5F6368]">Account Type</span>
+                                            <span className="text-[11px] font-bold text-[#1F1F1F]">{entry.account_type?.replace(/_/g, ' ')}</span>
                                         </div>
                                         {entry.accounts && (
                                             <div className="flex items-center justify-between px-3.5 py-2.5">
-                                                <span className="text-[11px] font-semibold text-gray-500">Accounting Account</span>
-                                                <span className="text-[11px] font-bold text-gray-900">{entry.accounts.code} · {entry.accounts.name}</span>
+                                                <span className="text-[11px] font-semibold text-[#5F6368]">Accounting Account</span>
+                                                <span className="text-[11px] font-bold text-[#1F1F1F]">{entry.accounts.code} · {entry.accounts.name}</span>
                                             </div>
                                         )}
                                         {entry.qb_sync_status && (
                                             <div className="flex items-center justify-between px-3.5 py-2.5">
-                                                <span className="text-[11px] font-semibold text-gray-500">QuickBooks</span>
+                                                <span className="text-[11px] font-semibold text-[#5F6368]">QuickBooks</span>
                                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                                    entry.qb_sync_status === 'SUCCESS' ? 'bg-emerald-100 text-emerald-700' :
+                                                    entry.qb_sync_status === 'SUCCESS' ? 'bg-[#CEEAD6] text-[#137333]' :
                                                     entry.qb_sync_status === 'FAILED'  ? 'bg-rose-100 text-rose-700' :
-                                                    'bg-gray-100 text-gray-600'
+                                                    'bg-[#E9EEF6] text-[#5F6368]'
                                                 }`}>
                                                     {entry.qb_sync_status}
                                                 </span>
@@ -2714,8 +2799,8 @@ Status: VERIFIED`;
                                         )}
                                         {req.audit_score !== undefined && (
                                             <div className="flex items-center justify-between px-3.5 py-2.5">
-                                                <span className="text-[11px] font-semibold text-gray-500">Audit Score</span>
-                                                <span className={`text-[11px] font-bold ${req.audit_score < 70 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                                <span className="text-[11px] font-semibold text-[#5F6368]">Audit Score</span>
+                                                <span className={`text-[11px] font-bold ${req.audit_score < 70 ? 'text-rose-600' : 'text-[#1E8E3E]'}`}>
                                                     {req.audit_score}%
                                                 </span>
                                             </div>
@@ -2727,37 +2812,37 @@ Status: VERIFIED`;
 
                                 {/* Section: Amounts summary (requisition only) */}
                                 {entry.requisition_id && (
-                                    <div className="px-5 border-b border-gray-50">
+                                    <div className="px-5 border-b border-[rgba(116,119,117,0.10)]">
                                         <button
                                             type="button"
                                             onClick={() => togglePanelSection('financialSummary')}
                                             className="w-full flex items-center justify-between py-4"
                                         >
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Financial Summary</p>
-                                            <ChevronDown size={13} className={`text-gray-400 transition-transform duration-200 ${panelSections.financialSummary ? 'rotate-180' : ''}`} />
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-[#80868B]">Financial Summary</p>
+                                            <ChevronDown size={13} className={`text-[#80868B] transition-transform duration-200 ${panelSections.financialSummary ? 'rotate-180' : ''}`} />
                                         </button>
                                     {panelSections.financialSummary && (
                                     <div className="pb-4">
                                         <div className="grid grid-cols-3 gap-2">
-                                            <div className="bg-gray-50 rounded-xl p-2.5">
-                                                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block leading-tight">Disbursed</span>
-                                                <span className="text-[13px] font-extrabold text-slate-800 block mt-1 leading-none">{formatCurrency(totalPrepared)}</span>
+                                            <div className="bg-[#F8FAFD] rounded-xl p-2.5">
+                                                <span className="text-[9px] font-bold text-[#80868B] uppercase tracking-wider block leading-tight">Disbursed</span>
+                                                <span className="text-[13px] font-extrabold text-[#1F1F1F] block mt-1 leading-none">{formatCurrency(totalPrepared)}</span>
                                             </div>
-                                            <div className="bg-gray-50 rounded-xl p-2.5">
-                                                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block leading-tight">Expenditure</span>
-                                                <span className="text-[13px] font-extrabold text-slate-800 block mt-1 leading-none">{formatCurrency(actualExpenditure)}</span>
+                                            <div className="bg-[#F8FAFD] rounded-xl p-2.5">
+                                                <span className="text-[9px] font-bold text-[#80868B] uppercase tracking-wider block leading-tight">Expenditure</span>
+                                                <span className="text-[13px] font-extrabold text-[#1F1F1F] block mt-1 leading-none">{formatCurrency(actualExpenditure)}</span>
                                             </div>
-                                            <div className={`rounded-xl p-2.5 ${Math.abs(discrepancy) > 0.01 ? 'bg-rose-50' : 'bg-gray-50'}`}>
-                                                <span className={`text-[9px] font-bold uppercase tracking-wider block leading-tight ${Math.abs(discrepancy) > 0.01 ? 'text-rose-500' : 'text-gray-400'}`}>Discrepancy</span>
-                                                <span className={`text-[13px] font-extrabold block mt-1 leading-none ${Math.abs(discrepancy) > 0.01 ? 'text-rose-600' : 'text-slate-800'}`}>
+                                            <div className={`rounded-xl p-2.5 ${Math.abs(discrepancy) > 0.01 ? 'bg-rose-50' : 'bg-[#F8FAFD]'}`}>
+                                                <span className={`text-[9px] font-bold uppercase tracking-wider block leading-tight ${Math.abs(discrepancy) > 0.01 ? 'text-rose-500' : 'text-[#80868B]'}`}>Discrepancy</span>
+                                                <span className={`text-[13px] font-extrabold block mt-1 leading-none ${Math.abs(discrepancy) > 0.01 ? 'text-rose-600' : 'text-[#1F1F1F]'}`}>
                                                     {formatCurrency(discrepancy)}
                                                 </span>
                                             </div>
                                         </div>
                                         {confirmedChange > 0 && (
-                                            <div className="mt-2 flex items-center justify-between bg-emerald-50 rounded-xl px-3 py-2">
-                                                <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Change Returned</span>
-                                                <span className="text-[13px] font-extrabold text-emerald-600">{formatCurrency(confirmedChange)}</span>
+                                            <div className="mt-2 flex items-center justify-between bg-[#E6F4EA] rounded-xl px-3 py-2">
+                                                <span className="text-[9px] font-bold text-[#1E8E3E] uppercase tracking-wider">Change Returned</span>
+                                                <span className="text-[13px] font-extrabold text-[#1E8E3E]">{formatCurrency(confirmedChange)}</span>
                                             </div>
                                         )}
                                     </div>
@@ -2767,29 +2852,29 @@ Status: VERIFIED`;
 
                                 {/* Section: Line Items / Categorization */}
                                 {entry.requisition_id && items.length > 0 && (
-                                    <div className="px-5 border-b border-gray-50">
+                                    <div className="px-5 border-b border-[rgba(116,119,117,0.10)]">
                                         <button
                                             type="button"
                                             onClick={() => togglePanelSection('lineItems')}
                                             className="w-full flex items-center justify-between py-4"
                                         >
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Line Items & Categorization</p>
-                                            <ChevronDown size={13} className={`text-gray-400 transition-transform duration-200 ${panelSections.lineItems ? 'rotate-180' : ''}`} />
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-[#80868B]">Line Items & Categorization</p>
+                                            <ChevronDown size={13} className={`text-[#80868B] transition-transform duration-200 ${panelSections.lineItems ? 'rotate-180' : ''}`} />
                                         </button>
                                     {panelSections.lineItems && (
                                     <div className="pb-4">
                                     <div className="flex flex-col gap-2">
                                             {items.map((item: any, idx: number) => (
-                                                <div key={item.id || idx} className="bg-white border border-gray-100 shadow-[0px_2px_6px_0px_rgba(0,0,0,0.06)] rounded-2xl p-3.5 flex flex-col gap-2">
+                                                <div key={item.id || idx} className="bg-white border border-[rgba(116,119,117,0.14)] shadow-[0px_2px_6px_0px_rgba(0,0,0,0.06)] rounded-2xl p-3.5 flex flex-col gap-2">
                                                     <div className="flex justify-between items-start">
                                                         <div className="flex-1 min-w-0 pr-2">
-                                                            <p className="text-[11px] font-semibold text-slate-800 leading-tight">{item.description}</p>
-                                                            <p className="text-[10px] text-gray-400 mt-0.5">Line Item #{idx + 1} · Qty {item.quantity || 1}</p>
+                                                            <p className="text-[11px] font-semibold text-[#1F1F1F] leading-tight">{item.description}</p>
+                                                            <p className="text-[10px] text-[#80868B] mt-0.5">Line Item #{idx + 1} · Qty {item.quantity || 1}</p>
                                                         </div>
                                                         <div className="text-right flex-shrink-0">
-                                                            <p className="text-[11px] font-black text-slate-800">{formatCurrency(item.actual_amount ?? item.estimated_amount)}</p>
+                                                            <p className="text-[11px] font-black text-[#1F1F1F]">{formatCurrency(item.actual_amount ?? item.estimated_amount)}</p>
                                                             {item.actual_amount !== undefined && item.actual_amount !== item.estimated_amount && (
-                                                                <p className="text-[10px] text-gray-400 line-through">{formatCurrency(item.estimated_amount)}</p>
+                                                                <p className="text-[10px] text-[#80868B] line-through">{formatCurrency(item.estimated_amount)}</p>
                                                             )}
                                                         </div>
                                                     </div>
@@ -2811,18 +2896,18 @@ Status: VERIFIED`;
                                 {/* Section: Accounting (inflow / standalone disbursement) */}
                                 {(entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT' ||
                                   ((entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE') && !entry.requisition_id)) && (
-                                    <div className="px-5 border-b border-gray-50">
+                                    <div className="px-5 border-b border-[rgba(116,119,117,0.10)]">
                                         <button
                                             type="button"
                                             onClick={() => togglePanelSection('accounting')}
                                             className="w-full flex items-center justify-between py-4"
                                         >
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Accounting Treatment</p>
-                                            <ChevronDown size={13} className={`text-gray-400 transition-transform duration-200 ${panelSections.accounting ? 'rotate-180' : ''}`} />
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-[#80868B]">Accounting Treatment</p>
+                                            <ChevronDown size={13} className={`text-[#80868B] transition-transform duration-200 ${panelSections.accounting ? 'rotate-180' : ''}`} />
                                         </button>
                                     {panelSections.accounting && (
                                     <div className="pb-4">
-                                        <div className="bg-white border border-gray-100 shadow-[0px_2px_6px_0px_rgba(0,0,0,0.06)] rounded-2xl p-3.5 flex flex-col gap-2.5">
+                                        <div className="bg-white border border-[rgba(116,119,117,0.14)] shadow-[0px_2px_6px_0px_rgba(0,0,0,0.06)] rounded-2xl p-3.5 flex flex-col gap-2.5">
                                             {/* Description + Amount row */}
                                             <div className="flex justify-between items-start">
                                                 <div className="flex-1 min-w-0 pr-2">
@@ -2833,7 +2918,7 @@ Status: VERIFIED`;
                                                                 value={editingNarration[entry.id] !== undefined ? editingNarration[entry.id] : entry.description.split(' | Ref:')[0]}
                                                                 onChange={(e) => setEditingNarration({ ...editingNarration, [entry.id]: e.target.value })}
                                                                 placeholder="Enter narration / purpose…"
-                                                                className="flex-1 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-xl focus:border-[#006AFF] outline-none text-[11px] font-semibold text-gray-800"
+                                                                className="flex-1 px-3 py-1.5 bg-[#F8FAFD] border border-[rgba(116,119,117,0.22)] rounded-xl focus:border-[#0B57D0] outline-none text-[11px] font-semibold text-gray-800"
                                                                 onClick={e => e.stopPropagation()}
                                                             />
                                                             <button
@@ -2855,17 +2940,17 @@ Status: VERIFIED`;
                                                         </div>
                                                     ) : (
                                                         <>
-                                                            <p className="text-[11px] font-semibold text-slate-800 leading-tight truncate">
+                                                            <p className="text-[11px] font-semibold text-[#1F1F1F] leading-tight truncate">
                                                                 {entry.description.split(' | Ref:')[0]}
                                                             </p>
-                                                            <p className="text-[10px] text-gray-400 mt-0.5">
+                                                            <p className="text-[10px] text-[#80868B] mt-0.5">
                                                                 {entry.entry_type === 'INFLOW' ? 'Credit entry' : 'Debit entry'}
                                                             </p>
                                                         </>
                                                     )}
                                                 </div>
                                                 <div className="text-right flex-shrink-0">
-                                                    <p className="text-[11px] font-black text-slate-800">{formatCurrency(entry.debit || entry.credit)}</p>
+                                                    <p className="text-[11px] font-black text-[#1F1F1F]">{formatCurrency(entry.debit || entry.credit)}</p>
                                                 </div>
                                             </div>
                                             {/* Account select */}
@@ -2906,7 +2991,7 @@ Status: VERIFIED`;
                             </div>
 
                             {/* ── Sticky Action Footer ──────────────────────────────── */}
-                            <div className="flex-shrink-0 border-t border-gray-100 px-5 py-4 bg-white flex flex-col gap-2.5">
+                            <div className="flex-shrink-0 border-t border-[rgba(116,119,117,0.14)] px-5 py-4 bg-white flex flex-col gap-2.5">
 
                                 {/* ── Primary actions row: View Details (left) + Post to QB (right) ── */}
                                 {(entry.requisition_id ||
@@ -2937,7 +3022,7 @@ Status: VERIFIED`;
                                                         } as any);
                                                     }
                                                 }}
-                                                className="flex-1 h-10 px-3 flex items-center justify-center gap-2 bg-white hover:bg-gray-50 border border-stone-900 rounded-lg text-xs font-normal text-black transition-colors"
+                                                className="flex-1 h-10 px-3 flex items-center justify-center gap-2 bg-white hover:bg-[#F8FAFD] border border-stone-900 rounded-lg text-xs font-normal text-black transition-colors"
                                             >
                                                 View Full Details
                                             </button>
@@ -2948,7 +3033,7 @@ Status: VERIFIED`;
                                             <button
                                                 type="button"
                                                 onClick={() => handlePostToQB(req, entry)}
-                                                className="flex-1 h-10 px-3 flex items-center justify-center gap-2 bg-black hover:bg-zinc-800 rounded-lg text-xs font-bold text-white transition-colors"
+                                                className="flex-1 h-10 px-3 flex items-center justify-center gap-2 bg-[#0B57D0] hover:bg-zinc-800 rounded-lg text-xs font-bold text-white transition-colors"
                                             >
                                                 <RefreshCw size={12} className="text-white" />
                                                 Post to QuickBooks
@@ -2968,18 +3053,18 @@ Status: VERIFIED`;
                                                 }}
                                                 className={`flex-1 h-10 px-3 flex items-center justify-center gap-2 rounded-lg text-xs font-bold transition-colors ${
                                                     entry.account_id
-                                                        ? 'bg-black hover:bg-zinc-800 text-white'
-                                                        : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                                        ? 'bg-[#0B57D0] hover:bg-zinc-800 text-white'
+                                                        : 'bg-[#E9EEF6] text-[#80868B] cursor-not-allowed'
                                                 }`}
                                             >
-                                                <RefreshCw size={12} className={entry.account_id ? 'text-white' : 'text-gray-400'} />
+                                                <RefreshCw size={12} className={entry.account_id ? 'text-white' : 'text-[#80868B]'} />
                                                 Post to QuickBooks
                                             </button>
                                         )}
 
                                         {/* Already synced badge — occupies the right slot */}
                                         {(req.qb_sync_status === 'SUCCESS' || (!entry.requisition_id && entry.qb_sync_status === 'SUCCESS')) && (
-                                            <div className="flex-1 h-10 flex items-center justify-center gap-2 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-lg text-xs font-bold">
+                                            <div className="flex-1 h-10 flex items-center justify-center gap-2 bg-[#E6F4EA] text-[#1E8E3E] border border-[#CEEAD6] rounded-lg text-xs font-bold">
                                                 <CheckCircle2 size={13} />
                                                 Posted to QuickBooks
                                             </div>
@@ -2993,7 +3078,7 @@ Status: VERIFIED`;
                                         type="button"
                                         disabled={verifyingEntryId === entry.id}
                                         onClick={() => handleVerifyPendingInflow(entry)}
-                                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all disabled:opacity-50"
+                                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#0B57D0] hover:bg-[#0842A0] text-white rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all disabled:opacity-50"
                                     >
                                         {verifyingEntryId === entry.id
                                             ? <><Loader2 size={13} className="animate-spin" />Checking Gateway…</>
@@ -3010,7 +3095,7 @@ Status: VERIFIED`;
                                             if (!allHaveAccount) { alert('Please categorize all line items before approving'); return; }
                                             handleApproveCategorization(req.id);
                                         }}
-                                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all"
+                                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#0B57D0] hover:bg-[#0842A0] text-white rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all"
                                     >
                                         <CheckCircle2 size={13} />
                                         Approve Categorization
@@ -3025,7 +3110,7 @@ Status: VERIFIED`;
                                         type="button"
                                         disabled={generatingReceiptId === entry.id}
                                         onClick={() => handleDownloadReceipt(entry.id)}
-                                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all disabled:opacity-50"
+                                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#0B57D0] hover:bg-[#0842A0] text-white rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all disabled:opacity-50"
                                     >
                                         {generatingReceiptId === entry.id
                                             ? <><Loader2 size={13} className="animate-spin" />Generating PDF…</>

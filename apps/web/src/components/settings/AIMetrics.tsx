@@ -62,7 +62,7 @@ export const AIMetrics: React.FC = () => {
             {/* Daily Chart (Simplified as Bars for now) */}
             <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
                 <div className="flex justify-between items-center mb-6">
-                    <h4 className="text-sm font-bold text-brand-navy flex items-center">
+                    <h4 className="text-sm font-bold text-[#1F1F1F] flex items-center">
                         <BarChart3 className="h-4 w-4 mr-2 text-brand-green" />
                         Daily Efficiency (Last 7 Days)
                     </h4>
@@ -96,7 +96,7 @@ export const AIMetrics: React.FC = () => {
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                 <div className="px-6 py-4 border-b border-gray-50 flex items-center">
                     <TrendingUp className="h-4 w-4 mr-2 text-brand-green" />
-                    <h4 className="text-sm font-bold text-brand-navy">Performance by Method</h4>
+                    <h4 className="text-sm font-bold text-[#1F1F1F]">Performance by Method</h4>
                 </div>
                 <table className="min-w-full divide-y divide-gray-100">
                     <thead className="bg-gray-50/50">
@@ -141,7 +141,7 @@ const MetricCard: React.FC<{ title: string, value: string | number, icon: React.
         <div className="flex justify-between items-start mb-4">
             <div className="p-2 bg-white rounded-xl shadow-sm border border-gray-50">{icon}</div>
         </div>
-        <h4 className="text-2xl font-black text-brand-navy mb-1">{value}</h4>
+        <h4 className="text-2xl font-black text-[#1F1F1F] mb-1">{value}</h4>
         <p className="text-xs font-bold text-gray-600 uppercase tracking-tight">{title}</p>
         <p className="text-[10px] text-gray-400 mt-2">{sub}</p>
     </div>

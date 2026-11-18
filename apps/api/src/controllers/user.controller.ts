@@ -1,6 +1,7 @@
 import { mergePaymentInfo, presentPaymentInfo, accountsOf, getOrgPaymentInfo, saveOrgPaymentInfo, getAllPaymentInfo } from '../services/paymentInfo.service';
 import {
     getPreferences, updatePreferences, isStaffWithPayroll, getPersonalOrgForUser, getEmployersForUser, CATEGORIZATION_MODELS,
+    getGrowPlan, saveGrowPlan,
 } from '../services/userPreferences.service';
 import { ASSISTANT_MODELS } from '../services/agent/models';
 import { pinRecoveryService, PinRecoveryError } from '../services/pinRecovery.service';
@@ -1184,6 +1185,39 @@ export const updateMyPreferences = async (req: AuthRequest, res: any): Promise<a
         res.json({ preferences: await updatePreferences((req as any).user.id, req.body ?? {}) });
     } catch (error: any) {
         res.status(error.httpStatus ?? 500).json({ error: error.message || 'Failed to save your preferences' });
+    }
+};
+
+// ── Grow (net-worth plan) ─────────────────────────────────────────────────────
+
+export const getMyGrowPlan = async (req: AuthRequest, res: any): Promise<any> => {
+    try {
+        const user = (req as any).user;
+        if (!user.organization_id) return res.status(400).json({ error: 'Organization context missing' });
+        res.json({ plan: await getGrowPlan(user.id, user.organization_id) });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to load your Grow plan' });
+    }
+};
+
+export const saveMyGrowPlan = async (req: AuthRequest, res: any): Promise<any> => {
+    try {
+        const user = (req as any).user;
+        if (!user.organization_id) return res.status(400).json({ error: 'Organization context missing' });
+        res.json({ plan: await saveGrowPlan(user.id, user.organization_id, req.body?.plan ?? undefined) });
+    } catch (error: any) {
+        res.status(error.httpStatus ?? 500).json({ error: error.message || 'Failed to save your Grow plan' });
+    }
+};
+
+export const deleteMyGrowPlan = async (req: AuthRequest, res: any): Promise<any> => {
+    try {
+        const user = (req as any).user;
+        if (!user.organization_id) return res.status(400).json({ error: 'Organization context missing' });
+        await saveGrowPlan(user.id, user.organization_id, null);
+        res.json({ ok: true });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to remove your Grow plan' });
     }
 };
 

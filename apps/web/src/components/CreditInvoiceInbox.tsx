@@ -48,7 +48,7 @@ export const CreditInvoiceInbox: React.FC<CreditInvoiceInboxProps> = ({ invoices
     if (invoices.length === 0) return null;
     return (
         <div className="bg-white rounded-2xl p-3 flex flex-col gap-2">
-            <div className="flex flex-col divide-y divide-[#E8EEF8]">
+            <div className="flex flex-col divide-y divide-[rgba(116,119,117,0.22)]">
                 {invoices.map(inv => (
                     <div
                         key={inv.id}
@@ -58,19 +58,19 @@ export const CreditInvoiceInbox: React.FC<CreditInvoiceInboxProps> = ({ invoices
                         <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-4">
                                 <div className="min-w-0">
-                                    <p className="text-[13px] font-semibold text-[#111827] truncate">{inv.customer_name}</p>
+                                    <p className="text-[13px] font-semibold text-[#1F1F1F] truncate">{inv.customer_name}</p>
                                     <p className="text-[11px] text-gray-400 font-medium truncate">
                                         {inv.invoice_number} · {inv.items?.length ?? 0} item{(inv.items?.length ?? 0) === 1 ? '' : 's'} · due {formatInvoiceDate(inv.follow_up_date)}
                                     </p>
                                 </div>
                                 <div className="text-right flex-shrink-0">
-                                    <p className="text-[13px] font-bold text-[#111827]">{money(inv.status === 'PAID' ? inv.total : inv.balance)}</p>
+                                    <p className="text-[13px] font-bold text-[#1F1F1F]">{money(inv.status === 'PAID' ? inv.total : inv.balance)}</p>
                                     {inv.status === 'PARTIAL' && <p className="text-[10px] text-gray-400 font-medium">of {money(inv.total)}</p>}
                                 </div>
                             </div>
                             <div className="mt-1.5 flex items-center justify-between gap-4">
                                 <InvoiceStatusPill invoice={inv} />
-                                <span className="text-[10px] font-bold uppercase tracking-wide text-[#0058DB] bg-[#F0F7FF] rounded px-1.5 py-0.5">Credit sale</span>
+                                <span className="text-[10px] font-bold uppercase tracking-wide text-[#0B57D0] bg-[#E8F0FE] rounded px-1.5 py-0.5">Credit sale</span>
                             </div>
                         </div>
                     </div>

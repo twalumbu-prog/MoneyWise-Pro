@@ -61,7 +61,7 @@ function ProviderLogo({ provider, size = 18 }: { provider: string; size?: number
         );
     }
 
-    return <div style={{ width: size, height: size, borderRadius: 5, background: '#94A3B8' }} />;
+    return <div style={{ width: size, height: size, borderRadius: 5, background: '#9AA0A6' }} />;
 }
 
 // ── Provider dropdown ───────────────────────────────────────────────────────
@@ -109,13 +109,13 @@ function ProviderDropdown({ value, providers, catalog, disabled, onChange }: Pro
                             onClick={() => { onChange(p); setOpen(false); }}
                             className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-sm transition-colors ${
                                 value === p
-                                    ? 'bg-blue-50 text-[#006AFF]'
+                                    ? 'bg-blue-50 text-[#0B57D0]'
                                     : 'text-gray-700 hover:bg-gray-50'
                             }`}
                         >
                             <ProviderLogo provider={p} size={16} />
                             <span className="flex-1 text-left font-medium">{catalog[p]?.label ?? p}</span>
-                            {value === p && <Check className="w-3.5 h-3.5 text-[#006AFF] flex-shrink-0" />}
+                            {value === p && <Check className="w-3.5 h-3.5 text-[#0B57D0] flex-shrink-0" />}
                         </button>
                     ))}
                 </div>
@@ -172,12 +172,12 @@ function ModelDropdown({ value, options, disabled, onChange }: ModelDropdownProp
                                 onClick={() => { onChange(m); setOpen(false); }}
                                 className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 text-xs font-mono transition-colors ${
                                     value === m
-                                        ? 'bg-blue-50 text-[#006AFF]'
+                                        ? 'bg-blue-50 text-[#0B57D0]'
                                         : 'text-gray-700 hover:bg-gray-50'
                                 }`}
                             >
                                 <span className="text-left truncate">{m}</span>
-                                {value === m && <Check className="w-3 h-3 text-[#006AFF] flex-shrink-0" />}
+                                {value === m && <Check className="w-3 h-3 text-[#0B57D0] flex-shrink-0" />}
                             </button>
                         ))
                     )}
@@ -320,8 +320,8 @@ export const AIModelSettings: React.FC = () => {
         <div className="bg-gray-50/50 rounded-2xl p-6 border border-gray-100">
             {/* Header */}
             <div className="flex items-start justify-between gap-4 mb-1">
-                <label className="text-sm font-bold text-brand-navy flex items-center">
-                    <BrainCircuit className="h-4 w-4 mr-2 text-[#006AFF]" />
+                <label className="text-sm font-bold text-[#1F1F1F] flex items-center">
+                    <BrainCircuit className="h-4 w-4 mr-2 text-[#0B57D0]" />
                     AI Model Configuration
                 </label>
                 {savedAt && !dirty && (
@@ -398,7 +398,7 @@ export const AIModelSettings: React.FC = () => {
                                 type="button"
                                 onClick={save}
                                 disabled={!dirty || saving}
-                                className="inline-flex items-center px-5 py-2 border border-transparent shadow-sm text-sm font-semibold rounded-lg text-white bg-[#10A34A] hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 transition-colors"
+                                className="inline-flex items-center px-5 py-2 border border-transparent shadow-sm text-sm font-semibold rounded-lg text-white bg-[#0B57D0] hover:bg-[#0842A0] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#0B57D0] disabled:opacity-50 transition-colors"
                             >
                                 {saving ? (
                                     <>

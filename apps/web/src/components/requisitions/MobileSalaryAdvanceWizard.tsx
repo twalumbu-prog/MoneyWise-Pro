@@ -79,17 +79,17 @@ export const MobileSalaryAdvanceWizard: React.FC<MobileSalaryAdvanceWizardProps>
             {/* App Top Bar - Logo and User */}
             <div className="h-16 bg-white border-b border-gray-100 px-6 flex items-center justify-between shrink-0">
                 <div className="flex items-center">
-                    <span className="text-xl font-medium text-brand-navy tracking-tight">MoneyWise</span>
-                    <span className="text-xl font-bold text-[#006AFF] ml-1 tracking-tight">Pro</span>
+                    <span className="text-xl font-medium text-[#1F1F1F] tracking-tight">MoneyWise</span>
+                    <span className="text-xl font-bold text-[#0B57D0] ml-1 tracking-tight">Pro</span>
                 </div>
             </div>
 
             {/* Header with Title and Cancel Button */}
             <div className="px-6 py-4 flex items-center justify-between shrink-0">
-                <h1 className="text-[18px] font-bold text-brand-navy">New Salary Advance</h1>
+                <h1 className="text-[18px] font-bold text-[#1F1F1F]">New Salary Advance</h1>
                 <button
                     onClick={handleClose}
-                    className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-brand-navy shadow-[0_4px_12px_rgba(0,106,255,0.4)] active:scale-95 transition-all"
+                    className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-[#1F1F1F] shadow-[0_4px_12px_rgba(11,87,208,0.4)] active:scale-95 transition-all"
                 >
                     <X size={16} strokeWidth={3} />
                 </button>
@@ -119,7 +119,7 @@ export const MobileSalaryAdvanceWizard: React.FC<MobileSalaryAdvanceWizardProps>
                 {stage === 1 && (
                     <>
                         <div>
-                            <h2 className="text-[20px] font-bold text-brand-navy">Advance Details</h2>
+                            <h2 className="text-[20px] font-bold text-[#1F1F1F]">Advance Details</h2>
                             <p className="text-[13px] text-gray-400 mt-1">Fill in the details for the salary advance</p>
                         </div>
 
@@ -195,7 +195,7 @@ export const MobileSalaryAdvanceWizard: React.FC<MobileSalaryAdvanceWizardProps>
                 {stage === 2 && (
                     <>
                         <div>
-                            <h2 className="text-[20px] font-bold text-brand-navy">Advance Summary</h2>
+                            <h2 className="text-[20px] font-bold text-[#1F1F1F]">Advance Summary</h2>
                             <p className="text-[13px] text-gray-400 mt-1">Review and confirm the advance request</p>
                         </div>
 
@@ -225,7 +225,7 @@ export const MobileSalaryAdvanceWizard: React.FC<MobileSalaryAdvanceWizardProps>
                         <button
                             onClick={handleSubmit}
                             disabled={submitting}
-                            className="w-full h-14 bg-emerald-500 rounded-2xl text-white font-black text-base active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+                            className="w-full h-14 bg-[#0B57D0] rounded-2xl text-white font-black text-base active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-2"
                         >
                             {submitting ? <><Loader2 size={18} className="animate-spin" />Submitting...</> : 'Submit Advance Request'}
                         </button>
@@ -235,7 +235,7 @@ export const MobileSalaryAdvanceWizard: React.FC<MobileSalaryAdvanceWizardProps>
 
             {stage === 1 && (
                 <div className="shrink-0 p-6 pb-8 flex justify-end">
-                    <button onClick={handleProceed} className="w-14 h-14 bg-emerald-500 rounded-full flex items-center justify-center text-white active:scale-90 transition-all">
+                    <button onClick={handleProceed} className="w-14 h-14 bg-[#0B57D0] rounded-full flex items-center justify-center text-white active:scale-90 transition-all">
                         <ArrowRight size={24} />
                     </button>
                 </div>

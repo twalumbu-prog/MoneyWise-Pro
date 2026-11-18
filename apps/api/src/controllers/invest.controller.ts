@@ -3,6 +3,9 @@ import { cashbookService } from '../services/cashbook.service';
 import { investmentService, WalletInvestError } from '../services/investment.service';
 import { investorAccountService, InvestorAccountError } from '../services/investorAccount.service';
 import { investmentPortfolioService, PortfolioError } from '../services/investmentPortfolio.service';
+import { fundPriceService, FundError } from '../services/fundPrices.service';
+import { checkDocument } from '../services/kycDocumentCheck.service';
+import { faceMatchStatus, startFaceMatch } from '../services/faceMatch.service';
 
 /**
  * Real (non-demo) investment targets shown at the top of the Invest feature.
@@ -356,6 +359,46 @@ export const getMyPortfolio = async (req: any, res: any): Promise<any> => {
         console.error('[Invest] portfolio failed:', error);
         res.status(500).json({ error: 'Could not load your investments. Please try again.' });
     }
+};
+
+/** POST /investments/kyc-profile/check-document  { slot, path, clientScore }  Scores an uploaded ID, photo or proof of residence. */
+export const faceMatchStatusHandler = async (req: any, res: any): Promise<any> => {
+    try { res.json(await faceMatchStatus(req.user.id)); } catch (e: any) { res.status(500).json({ error: 'Could not load the face check.' }); }
+};
+export const startFaceMatchHandler = async (req: any, res: any): Promise<any> => {
+    try { res.json(await startFaceMatch(req.user.id, req.user.email ?? null)); } catch (e: any) { res.status(400).json({ error: e?.message || 'Could not start the face check.' }); }
+};
+
+export const checkKycDocument = async (req: any, res: any): Promise<any> => {
+    try {
+        const { slot, path, clientScore } = req.body ?? {};
+        res.json(await checkDocument(req.user.id, String(slot ?? ''), String(path ?? ''), clientScore));
+    } catch (e: any) {
+        console.error('[Invest] document check failed:', e?.message ?? e);
+        res.status(400).json({ error: e?.message || 'Could not check that document.' });
+    }
+};
+
+/** GET /invest/funds  Every fund with its latest real price and how it has moved. */
+export const listFunds = async (_req: any, res: any): Promise<any> => {
+    try { res.json({ funds: await fundPriceService.listFunds() }); } catch (e: any) { console.error('[Invest] funds failed:', e); res.status(500).json({ error: 'Could not load the funds. Please try again.' }); }
+};
+/** GET /invest/funds/:id/series */
+export const fundSeries = async (req: any, res: any): Promise<any> => {
+    try { res.json(await fundPriceService.getSeries(req.params.id)); } catch (e: any) { if (e instanceof FundError) return res.status(e.httpStatus).json({ error: e.message }); console.error('[Invest] series failed:', e); res.status(500).json({ error: 'Could not load the prices.' }); }
+};
+/** GET /invest/funds/mine  The funds of the investment company this account belongs to. */
+export const myFunds = async (req: any, res: any): Promise<any> => {
+    try { res.json(await fundPriceService.myFunds(req.user.organization_id)); } catch (e: any) { console.error('[Invest] my funds failed:', e); res.status(500).json({ error: 'Could not load your funds.' }); }
+};
+export const saveFund = async (req: any, res: any): Promise<any> => {
+    try { res.json(await fundPriceService.saveFund(req.user.organization_id, req.body ?? {})); } catch (e: any) { if (e instanceof FundError) return res.status(e.httpStatus).json({ error: e.message }); console.error('[Invest] save fund failed:', e); res.status(500).json({ error: 'Could not save the fund.' }); }
+};
+export const addFundPrices = async (req: any, res: any): Promise<any> => {
+    try { res.json(await fundPriceService.addPrices(req.user.organization_id, req.user.id, req.params.id, req.body?.prices ?? req.body?.text, 'MANAGER')); } catch (e: any) { if (e instanceof FundError) return res.status(e.httpStatus).json({ error: e.message }); console.error('[Invest] add prices failed:', e); res.status(500).json({ error: 'Could not save the prices.' }); }
+};
+export const deleteFundPrice = async (req: any, res: any): Promise<any> => {
+    try { res.json(await fundPriceService.deletePrice(req.user.organization_id, req.params.id, req.params.date)); } catch (e: any) { if (e instanceof FundError) return res.status(e.httpStatus).json({ error: e.message }); res.status(500).json({ error: 'Could not remove the price.' }); }
 };
 
 /** Record what one holding is worth now (there is no live price feed from the companies). */

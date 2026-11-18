@@ -62,14 +62,14 @@ export const DesktopSalaryAdvanceWorkspace: React.FC<DesktopSalaryAdvanceWorkspa
             <div className="flex items-center justify-between shrink-0">
                 <button
                     onClick={onClose}
-                    className="h-8 pl-2.5 pr-3.5 bg-white rounded-lg outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E8EEF8] flex items-center gap-1.5 hover:bg-[#F3F5FC] transition-colors"
+                    className="h-8 pl-2.5 pr-3.5 bg-white rounded-lg outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E9EEF6] flex items-center gap-1.5 hover:bg-[#F8FAFD] transition-colors"
                 >
-                    <ArrowLeft size={15} className="text-[#111827]" />
-                    <span className="text-sm font-bold text-[#111827]">New Salary Advance</span>
+                    <ArrowLeft size={15} className="text-[#1F1F1F]" />
+                    <span className="text-sm font-bold text-[#1F1F1F]">New Salary Advance</span>
                 </button>
             </div>
 
-            <div className="flex-1 min-h-0 rounded-2xl outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E8EEF8] bg-white overflow-y-auto">
+            <div className="flex-1 min-h-0 rounded-2xl outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E9EEF6] bg-white overflow-y-auto">
                 <div className="max-w-2xl mx-auto p-8 animate-in fade-in zoom-in-95 duration-200 pb-20">
                     {error && (
                         <div className="mb-6 bg-red-50 border border-red-100 rounded-xl p-4 flex items-start gap-3">
@@ -206,7 +206,7 @@ export const DesktopSalaryAdvanceWorkspace: React.FC<DesktopSalaryAdvanceWorkspa
                 {stage === 1 ? (
                     <button
                         onClick={handleProceed}
-                        className="h-10 px-6 rounded-xl bg-emerald-500 text-xs font-bold text-white flex items-center gap-1.5 hover:bg-emerald-600 transition-colors"
+                        className="h-10 px-6 rounded-xl bg-[#0B57D0] text-xs font-bold text-white flex items-center gap-1.5 hover:bg-[#0842A0] transition-colors"
                     >
                         Next
                         <ArrowRight size={16} />
@@ -215,7 +215,7 @@ export const DesktopSalaryAdvanceWorkspace: React.FC<DesktopSalaryAdvanceWorkspa
                     <button
                         onClick={handleSubmit}
                         disabled={submitting}
-                        className="h-10 px-8 rounded-xl bg-emerald-500 text-xs font-bold text-white flex items-center justify-center gap-2 hover:bg-emerald-600 disabled:opacity-50 transition-colors"
+                        className="h-10 px-8 rounded-xl bg-[#0B57D0] text-xs font-bold text-white flex items-center justify-center gap-2 hover:bg-[#0842A0] disabled:opacity-50 transition-colors"
                     >
                         {submitting ? (
                             <>

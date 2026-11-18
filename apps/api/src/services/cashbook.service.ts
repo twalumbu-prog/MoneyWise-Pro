@@ -7,6 +7,8 @@ import { alignReferenceCounter, isReferenceCollision } from './referenceCounters
 import { withTiming } from '../utils/analytics';
 import { emailService } from './email.service';
 import { pushService } from './push.service';
+import { recordUsage } from './usage.service';
+import { trackFlow, trackPayoutCompleted } from '../lib/moneyFlowTracking';
 
 // Fire-and-forget: never let a notification failure affect the ledger write.
 const notifyInflowAsync = (organizationId: string, entry: any) => {
@@ -470,6 +472,17 @@ export const cashbookService = {
             return current || intent;
         }
 
+        // Money-flow telemetry: this is the one place every confirmed customer/user collection passes through
+        // (webhook, verify-status and the sync janitor), so the time from the attempt starting (the pending
+        // intent's creation) to now is recorded exactly once. Internal pre-classified credits (sweeps) are not attempts.
+        if (!opts.account_id) {
+            trackFlow('completed', {
+                reference: opts.externalReference,
+                organizationId,
+                durationSeconds: Math.max(0, Math.round((Date.now() - new Date(intent.created_at).getTime()) / 100) / 10),
+            });
+        }
+
         // Recalculate from the earlier of the old/new ledger position.
         const recalcDate = newDate < intent.date ? newDate : intent.date;
         await this.recalculateBalancesFrom(
@@ -588,6 +601,9 @@ export const cashbookService = {
             return;
         }
 
+        // Money-flow telemetry: every confirmed Lenco payout (webhook, verify, deferred poll, immediate) lands here.
+        trackPayoutCompleted(disbursement);
+
         // Determine fee: Use actualFee if provided, else calculate estimate based on the NET amount.
         // We use the requisition's estimated_total because it represents the amount the user 
         // intended to transfer (the net amount) before fees were added.
@@ -601,6 +617,7 @@ export const cashbookService = {
         const feeToUse = isOnUsTransfer ? 0 :
                         actualFee !== undefined ? actualFee :
                         LencoService.calculatePayoutFee(netAmount, disbursement.payment_method || 'BANK');
+        if (feeToUse > 0) recordUsage({ category: 'payments', kind: 'payout', provider: 'lenco', organizationId: disbursement.organization_id, cost: Number(feeToUse), currency: 'ZMW', units: netAmount, unit: 'ZMW paid out', reference: requisitionId, meta: { method: disbursement.payment_method } });
 
         const walletId = disbursement.requisitions?.wallet_id;
 
@@ -689,6 +706,56 @@ export const cashbookService = {
         await RequisitionMessageService.repairLifecycleMessages(requisitionId).catch(err => 
             console.error(`[Ledger Finalization] Failed to repair messages for ${requisitionId}:`, err)
         );
+    },
+
+    /**
+     * Books a payout sent from the business's Lipila Card Wallet once Lipila has confirmed it: one DISBURSEMENT outflow on the Card Wallet
+     * account (not a MoneyWise wallet), then the same journal posting and message repair as a wallet payout. Safe to call any number of
+     * times: an existing disbursement entry stops it. Lipila charges its fee on top of the amount and takes it from the wallet, so the
+     * outflow is the amount plus that fee, and the fee is also booked as a transaction-charge line on the requisition.
+     */
+    async finalizeCardDisbursementLedger(requisitionId: string, transactionAt?: string): Promise<void> {
+        const { data: disbursement } = await supabase
+            .from('disbursements')
+            .select('organization_id, cashier_id, payment_method, total_prepared, external_reference, recipient_bank_code, created_at, requisitions(estimated_total, actual_total)')
+            .eq('requisition_id', requisitionId)
+            .maybeSingle();
+        if (!disbursement) { console.error(`[Card Ledger] Disbursement record not found for requisition ${requisitionId}`); return; }
+
+        const { data: existing } = await supabase
+            .from('cashbook_entries').select('id')
+            .eq('requisition_id', requisitionId).eq('entry_type', 'DISBURSEMENT').neq('status', 'PENDING').limit(1);
+        if (existing && existing.length > 0) return;
+        trackPayoutCompleted(disbursement); // Card Wallet payout confirmed by Lipila (provider derived from its LPLPAY- reference)
+
+        // The disbursement record holds what left the wallet: the amount plus Lipila's charge. The charge is the difference.
+        const net = Number((disbursement as any).requisitions?.estimated_total || 0);
+        const deduction = Number(disbursement.total_prepared || 0) || net;
+        const fee = Math.max(0, Math.round((deduction - net) * 100) / 100);
+        if (fee > 0) recordUsage({ category: 'payments', kind: 'payout', provider: 'lipila', organizationId: disbursement.organization_id, cost: fee, currency: 'ZMW', units: net, unit: 'ZMW paid out', reference: requisitionId, meta: { method: disbursement.payment_method } });
+        await this.logDisbursement(
+            disbursement.organization_id, requisitionId, deduction, disbursement.cashier_id,
+            `Card Wallet payout (${disbursement.payment_method || 'MOBILE_MONEY'}) for Requisition #${requisitionId.slice(0, 8)}`,
+            'LIPILA_WALLET', undefined, transactionAt,
+        );
+
+        // Lipila's charge is booked once as a transaction-charge line, the same as a Lenco withdrawal fee.
+        if (fee > 0) {
+            const { data: existingFee } = await supabase.from('line_items').select('id').eq('requisition_id', requisitionId).ilike('description', '%Withdrawal Fee%').maybeSingle();
+            if (!existingFee) {
+                const chargesAccountId = await this.getOrCreateTransactionChargesAccount(disbursement.organization_id);
+                await supabase.from('line_items').insert({
+                    requisition_id: requisitionId, description: 'Withdrawal Fee (Card Wallet)', quantity: 1, unit_price: fee,
+                    estimated_amount: fee, actual_amount: fee, account_id: chargesAccountId,
+                });
+                const est = Number((disbursement as any).requisitions?.estimated_total || 0);
+                const act = (disbursement as any).requisitions?.actual_total ? Number((disbursement as any).requisitions.actual_total) : null;
+                await supabase.from('requisitions').update({ estimated_total: est + fee, actual_total: act ? act + fee : null }).eq('id', requisitionId);
+            }
+        }
+        await postJournalForRequisitionAsync(requisitionId, disbursement.organization_id);
+        await RequisitionMessageService.repairLifecycleMessages(requisitionId).catch(err =>
+            console.error(`[Card Ledger] Failed to repair messages for ${requisitionId}:`, err));
     },
 
     /**

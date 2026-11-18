@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Check, Copy, Link2, ExternalLink, User, Smartphone, DollarSign, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { paymentLinkService, Product } from '../services/product.service';
+import { apiJson } from 'core';
 
 interface ShareProductLinkModalProps {
     isOpen: boolean;
@@ -16,20 +17,53 @@ const ShareProductLinkModal: React.FC<ShareProductLinkModalProps> = ({ isOpen, o
     const [error, setError] = useState<string | null>(null);
     const [shareUrl, setShareUrl] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
-
-    // Reset internal state whenever the modal is (re)opened for a product.
+    // This link's own currency. Dollars are offered only when the business has turned them on (and a dollar rate is set).
+    const [usd, setUsd] = useState(false);
+    const [usdOn, setUsdOn] = useState(false);
+    const [rate, setRate] = useState<number | null>(null);
+    const [settingsLoaded, setSettingsLoaded] = useState(false);
     React.useEffect(() => {
-        if (isOpen && product) {
+        if (!isOpen) return;
+        setSettingsLoaded(false);
+        apiJson<{ cardCurrency?: string; dollarRate?: number | null }>('/lipila/settings')
+            .then((v) => { setUsdOn(v?.cardCurrency === 'USD' && !!v?.dollarRate); setRate(v?.dollarRate ?? null); })
+            .catch(() => { setUsdOn(false); setRate(null); })
+            .finally(() => setSettingsLoaded(true));
+    }, [isOpen]);
+
+    /** The product's price in the chosen currency (its own price when the currency matches, else converted at today's rate; '' when it can't be). */
+    const priceIn = (toUsd: boolean): string => {
+        const price = Number(product?.price ?? 0);
+        const productUsd = product?.currency === 'USD';
+        if (!(price > 0)) return '';
+        if (toUsd === productUsd) return String(price);
+        if (!rate) return '';
+        return String(Math.round((toUsd ? price / rate : price * rate) * 100) / 100);
+    };
+
+    // Reset internal state whenever the modal is (re)opened for a product, and once more when the business's dollar settings arrive.
+    React.useEffect(() => {
+        if (isOpen && product && settingsLoaded) {
             setCustomerName('');
             setCustomerPhone('');
+            // A dollar product goes out in dollars by default (when dollars are on); anything else in kwacha.
+            const startUsd = usdOn && product.currency === 'USD';
+            setUsd(startUsd);
             // DONATION / SERVICE_VARIABLE leave the amount for the admin to set.
             const isOpenPriced = product.product_type === 'DONATION' || product.product_type === 'SERVICE_VARIABLE';
-            setAmount(isOpenPriced ? '' : String(product.price ?? ''));
+            setAmount(isOpenPriced ? '' : priceIn(startUsd));
             setError(null);
             setShareUrl(null);
             setCopied(false);
         }
-    }, [isOpen, product]);
+    }, [isOpen, product, settingsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const chooseCurrency = (toUsd: boolean) => {
+        if (toUsd === usd) return;
+        setUsd(toUsd);
+        const isOpenPriced = product?.product_type === 'DONATION' || product?.product_type === 'SERVICE_VARIABLE';
+        if (!isOpenPriced) setAmount(priceIn(toUsd));
+    };
 
     if (!isOpen || !product) return null;
 
@@ -48,7 +82,8 @@ const ShareProductLinkModal: React.FC<ShareProductLinkModalProps> = ({ isOpen, o
                 product_id: product.id,
                 customer_name: customerName.trim(),
                 customer_phone: customerPhone.trim(),
-                amount: amountNum
+                amount: amountNum,
+                currency: usd ? 'USD' : 'ZMW'
             });
             const path = link.path || `/pl/${link.token}`;
             setShareUrl(`${window.location.origin}${path}`);
@@ -126,8 +161,31 @@ const ShareProductLinkModal: React.FC<ShareProductLinkModalProps> = ({ isOpen, o
                             </div>
                         </div>
 
+                        {(usdOn || product.currency === 'USD') && (
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Currency</label>
+                                <div className="flex gap-2" role="radiogroup" aria-label="Currency for this link">
+                                    {([['ZMW', 'Kwacha (K)'], ['USD', 'US dollars ($)']] as const).map(([code, label]) => {
+                                        const active = (code === 'USD') === usd;
+                                        const blocked = code === 'USD' && !usdOn;
+                                        return (
+                                            <button key={code} type="button" role="radio" aria-checked={active} disabled={submitting || blocked} onClick={() => chooseCurrency(code === 'USD')}
+                                                className={`flex-1 rounded-2xl border px-3 py-2.5 text-xs font-bold transition-all disabled:opacity-40 ${active ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-100 bg-slate-50/70 text-slate-600 hover:bg-white'}`}>
+                                                {label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                <p className="mt-1.5 text-[11px] leading-snug text-slate-500">
+                                    {!usdOn ? 'US dollars are off. Turn them on in the Lipila settings to send this link in dollars.'
+                                        : usd ? `The customer's card is charged in dollars${rate ? ` (about K${rate.toFixed(2)} to $1; mobile money pays the kwacha equivalent)` : ''}.`
+                                        : 'The customer pays in kwacha.'}
+                                </p>
+                            </div>
+                        )}
+
                         <div>
-                            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Amount (K)</label>
+                            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Amount ({usd ? '$' : 'K'})</label>
                             <div className="relative">
                                 <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                                 <input
@@ -162,7 +220,7 @@ const ShareProductLinkModal: React.FC<ShareProductLinkModalProps> = ({ isOpen, o
                 ) : (
                     <div className="p-6 space-y-4">
                         <p className="text-xs font-semibold text-slate-500 leading-relaxed">
-                            Share this single-use link with <span className="font-bold text-slate-700">{customerName}</span>. It will deactivate automatically once they complete payment of <span className="font-bold text-slate-700">K{Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>.
+                            Share this single-use link with <span className="font-bold text-slate-700">{customerName}</span>. It will deactivate automatically once they complete payment of <span className="font-bold text-slate-700">{usd ? '$' : 'K'}{Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>.
                         </p>
 
                         <div className="relative flex items-center">
@@ -178,7 +236,7 @@ const ShareProductLinkModal: React.FC<ShareProductLinkModalProps> = ({ isOpen, o
                                     className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center space-x-1.5 ${
                                         copied
                                             ? 'bg-emerald-500 text-white shadow-md shadow-emerald-100'
-                                            : 'bg-slate-950 text-white hover:bg-slate-900 shadow-md shadow-slate-950/10'
+                                            : 'bg-slate-950 text-white hover:bg-[#0B57D0] shadow-md shadow-slate-950/10'
                                     }`}
                                 >
                                     {copied ? <><Check size={14} strokeWidth={3} /><span>Copied</span></> : <><Copy size={14} /><span>Copy</span></>}

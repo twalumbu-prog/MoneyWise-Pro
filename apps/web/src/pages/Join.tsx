@@ -93,7 +93,7 @@ export const Join: React.FC = () => {
                     <div className="mx-auto w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6">
                         <CheckCircle2 className="w-10 h-10 text-green-600" />
                     </div>
-                    <h1 className="text-3xl font-bold text-brand-navy mb-4">Welcome to the Team!</h1>
+                    <h1 className="text-3xl font-bold text-[#1F1F1F] mb-4">Welcome to the Team!</h1>
                     <p className="text-gray-600 mb-8">
                         Your account has been successfully verified. You now have access to your organization's workspace.
                     </p>
@@ -124,7 +124,7 @@ export const Join: React.FC = () => {
                     {status === 'ERROR' ? (
                         <button
                             onClick={() => navigate('/login')}
-                            className="w-full py-4 bg-gray-100 text-brand-navy font-bold rounded-2xl hover:bg-gray-200 transition-all shadow-sm"
+                            className="w-full py-4 bg-gray-100 text-[#1F1F1F] font-bold rounded-2xl hover:bg-gray-200 transition-all shadow-sm"
                         >
                             Return to Login
                         </button>
@@ -139,7 +139,7 @@ export const Join: React.FC = () => {
                                     <input
                                         type="password"
                                         required
-                                        className="block w-full pl-12 pr-4 py-4 bg-gray-50 border-2 border-transparent focus:border-brand-green focus:bg-white rounded-2xl text-brand-navy font-medium transition-all outline-none"
+                                        className="block w-full pl-12 pr-4 py-4 bg-gray-50 border-2 border-transparent focus:border-brand-green focus:bg-white rounded-2xl text-[#1F1F1F] font-medium transition-all outline-none"
                                         placeholder="Min. 6 characters"
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
@@ -156,7 +156,7 @@ export const Join: React.FC = () => {
                                     <input
                                         type="password"
                                         required
-                                        className="block w-full pl-12 pr-4 py-4 bg-gray-50 border-2 border-transparent focus:border-brand-green focus:bg-white rounded-2xl text-brand-navy font-medium transition-all outline-none"
+                                        className="block w-full pl-12 pr-4 py-4 bg-gray-50 border-2 border-transparent focus:border-brand-green focus:bg-white rounded-2xl text-[#1F1F1F] font-medium transition-all outline-none"
                                         placeholder="Confirm your password"
                                         value={confirmPassword}
                                         onChange={(e) => setConfirmPassword(e.target.value)}
@@ -167,7 +167,7 @@ export const Join: React.FC = () => {
                             <button
                                 type="submit"
                                 disabled={loading}
-                                className="w-full py-4 bg-brand-green text-white font-bold rounded-2xl hover:bg-green-600 transition-all shadow-lg shadow-brand-green/30 active:scale-[0.98] disabled:opacity-70 disabled:active:scale-100 flex items-center justify-center gap-2"
+                                className="w-full py-4 bg-brand-green text-white font-bold rounded-2xl hover:bg-[#0842A0] transition-all shadow-lg shadow-brand-green/30 active:scale-[0.98] disabled:opacity-70 disabled:active:scale-100 flex items-center justify-center gap-2"
                             >
                                 {loading && <Loader2 className="w-5 h-5 animate-spin" />}
                                 {loading ? 'Joining...' : 'Finalize & Join Organization'}

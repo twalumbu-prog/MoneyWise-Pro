@@ -419,7 +419,7 @@ export const AssistantChat: React.FC<Props> = ({ onChatStateChange, seedPrompt, 
                                         }`}
                                     >
                                         <span className="min-w-0 flex-1">
-                                            <span className="block truncate text-[13px] font-bold text-brand-navy">{t.title}</span>
+                                            <span className="block truncate text-[13px] font-bold text-[#1F1F1F]">{t.title}</span>
                                             <span className="block text-[11px] font-medium text-gray-400">
                                                 {new Date(t.updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                                             </span>
@@ -474,7 +474,7 @@ export const AssistantChat: React.FC<Props> = ({ onChatStateChange, seedPrompt, 
 
                     <span
                         key={title}
-                        className="title-fade-in min-w-0 truncate text-[14px] font-black text-brand-navy md:text-[15px]"
+                        className="title-fade-in min-w-0 truncate text-[14px] font-black text-[#1F1F1F] md:text-[15px]"
                     >
                         {title}
                     </span>
@@ -492,10 +492,10 @@ export const AssistantChat: React.FC<Props> = ({ onChatStateChange, seedPrompt, 
                 <div className="flex flex-1 flex-col items-center justify-start px-5 pb-10 pt-10">
                     <div className="w-full max-w-2xl">
                         <div className="mb-8 text-center">
-                            <span className="mb-4 inline-block rounded-full border border-[#006AFF]/20 bg-[#006AFF]/10 px-3 py-1 text-[10px] font-black tracking-widest text-[#006AFF]">
+                            <span className="mb-4 inline-block rounded-full border border-[#0B57D0]/20 bg-[#0B57D0]/10 px-3 py-1 text-[10px] font-black tracking-widest text-[#0B57D0]">
                                 BETA
                             </span>
-                            <h1 className="text-[28px] font-black leading-tight tracking-tight text-brand-navy md:text-[40px]">
+                            <h1 className="text-[28px] font-black leading-tight tracking-tight text-[#1F1F1F] md:text-[40px]">
                                 How can I help you today?
                             </h1>
                             <p className="mt-2 text-[13px] font-medium text-gray-400 md:text-[14px]">
@@ -524,7 +524,7 @@ export const AssistantChat: React.FC<Props> = ({ onChatStateChange, seedPrompt, 
                                 <button
                                     key={s.label}
                                     onClick={() => send(s.prompt)}
-                                    className="rounded-full border border-gray-100 bg-white px-3.5 py-2 text-[12px] font-bold text-gray-500 shadow-sm transition-all hover:border-blue-200 hover:text-[#006AFF]"
+                                    className="rounded-full border border-gray-100 bg-white px-3.5 py-2 text-[12px] font-bold text-gray-500 shadow-sm transition-all hover:border-blue-200 hover:text-[#0B57D0]"
                                 >
                                     {s.label}
                                 </button>

@@ -10,6 +10,7 @@ import { randomBytes } from 'crypto';
 import { supabase } from '../lib/supabase';
 import { calculatePlatformFee } from '../lib/platformFee';
 import { PayLinkError } from './payLink.service';
+import { productPrices } from './lipila.service';
 import { sanitizeCheckoutFields } from '../controllers/product.controller';
 import { SETTLEMENT_ORG_ID } from './commissionSweep.service';
 
@@ -41,6 +42,8 @@ export async function createStoreLink(input: StoreLinkInput) {
         .select('id, name, price, product_type, is_active, requires_delivery, allow_external_delivery, own_delivery_charge, checkout_fields')
         .eq('organization_id', orgId).in('id', ids);
     const byId = new Map((products ?? []).map((p: any) => [p.id, p]));
+    // In kwacha: a product priced in dollars is billed at today's kwacha equivalent (and refused if there is no dollar rate).
+    const kwPrices = await productPrices(ids, orgId);
 
     const snapshot: any[] = [];
     let amount = 0;
@@ -50,7 +53,9 @@ export async function createStoreLink(input: StoreLinkInput) {
         if (!p || p.is_active === false) throw new PayLinkError('One of the items isn’t available any more.', 409, 'ITEMS');
         if (/BOOKING/i.test(String(p.product_type))) throw new PayLinkError('Bookings are paid with Mobile Money, where you choose your dates.', 400, 'BOOKING');
         const donation = p.product_type === 'DONATION';
-        const unit = round2(donation ? Number(it.price) : Number(p.price));
+        const kw = kwPrices.get(p.id);
+        if (!donation && !kw) throw new PayLinkError(`${p.name} can’t be paid for right now. Please try again later.`, 503, 'RATE');
+        const unit = round2(donation ? Number(it.price) : (kw?.zmw ?? 0));
         const qty = Math.max(1, Math.min(1000, Math.round(Number(it.quantity) || 1)));
         if (!(unit > 0)) throw new PayLinkError(`Enter an amount for ${p.name}.`, 400, 'AMOUNT');
 

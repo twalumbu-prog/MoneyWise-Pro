@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-    Search, ArrowUpDown, X, ArrowDownToLine, ArrowLeftRight, Link2, FileSpreadsheet, AlertCircle, Mail,
+    Search, ArrowUpDown, X, ArrowDownToLine, ArrowLeftRight, Link2, FileSpreadsheet, AlertCircle, Mail, CreditCard,
 } from 'lucide-react-native';
 import { cashbookService, lencoService, groupByDate, isRequestorRole, isPersonalOrgName, onboardingService } from 'core';
 import type { CashbookEntry } from 'core';
@@ -21,8 +21,10 @@ import { OfflineNotice } from '../../src/components/OfflineNotice';
 import { AnimatedSegmented, AnimatedTabContent } from '../../src/components/AnimatedTabs';
 import { PiggyBankIcon } from '../../src/components/icons/PiggyBankIcon';
 import { colors, fonts, radius } from '../../src/theme/tokens';
+import { CardWalletPanel } from '../../src/components/wallet/CardWalletPanel';
+import { VirtualCardTab } from '../../src/components/wallet/VirtualCardTab';
 
-type Group = 'MONEYWISE' | 'EXTERNAL';
+type Group = 'MONEYWISE' | 'EXTERNAL' | 'VIRTUAL';
 
 export default function WalletScreen() {
     const insets = useSafeAreaInsets();
@@ -90,7 +92,8 @@ export default function WalletScreen() {
             }
             return wallets.map((w: any) => ({
                 id: String(w.id),
-                name: w.name ?? 'Wallet',
+                // The Main Wallet shows Lenco's live figure when it can be had; say so, and say when it falls back to the books.
+                name: `${w.name ?? 'Wallet'}${w.balance_source === 'LENCO_LIVE' ? ' · Live' : w.live_unavailable ? ' · Books only' : ''}`,
                 balance: Number(w.balance ?? 0),
             }));
         }
@@ -141,7 +144,7 @@ export default function WalletScreen() {
     return (
         <View style={[styles.root, { paddingTop: insets.top + 12 }]}>
             <FlatList
-                data={sections}
+                data={group === 'VIRTUAL' ? [] : sections}
                 keyExtractor={(s) => s.dateKey}
                 contentContainerStyle={styles.list}
                 refreshControl={
@@ -169,16 +172,19 @@ export default function WalletScreen() {
                             trackStyle={styles.segment}
                             indicatorStyle={styles.segmentIndicator}
                             itemStyle={styles.segmentBtn}
-                            items={(['MONEYWISE', 'EXTERNAL'] as Group[]).map((g) => ({
+                            items={(['MONEYWISE', 'EXTERNAL', 'VIRTUAL'] as Group[]).map((g) => ({
                                 value: g,
                                 content: (
-                                    <Text style={[styles.segmentText, group === g && styles.segmentTextActive]}>
-                                        {g === 'MONEYWISE' ? 'Main Wallets' : 'External Accounts'}
+                                    <Text style={[styles.segmentText, group === g && styles.segmentTextActive]} numberOfLines={1}>
+                                        {g === 'MONEYWISE' ? 'Wallets' : g === 'EXTERNAL' ? 'External' : 'Virtual Card'}
                                     </Text>
                                 ),
                             }))}
                         />
 
+                        {group === 'VIRTUAL' ? (
+                            <View style={{ marginTop: 6 }}><VirtualCardTab /></View>
+                        ) : (<>
                         <AnimatedTabContent tabKey={group} index={group === 'EXTERNAL' ? 1 : 0}>
                                 {isLoading ? (
                                     <View style={[styles.cardSkeleton, { width: cardWidth }]}>
@@ -236,7 +242,16 @@ export default function WalletScreen() {
                                     </View>
                                 )}
 
-                                {!isRequestor && group === 'EXTERNAL' && cards.length > 0 && (
+                                {!isRequestor && group === 'EXTERNAL' && cards[Math.min(slide, Math.max(cards.length - 1, 0))]?.id === 'LIPILA_WALLET' && (
+                                    <>
+                                        <View style={styles.actionBar}>
+                                            <Action icon={CreditCard} label="Deposit by card" onPress={() => router.push('/wallet/deposit?method=card')} />
+                                        </View>
+                                        <CardWalletPanel organizationId={organizationId} />
+                                    </>
+                                )}
+
+                                {!isRequestor && group === 'EXTERNAL' && cards.length > 0 && cards[Math.min(slide, Math.max(cards.length - 1, 0))]?.id !== 'LIPILA_WALLET' && (
                                     <View style={styles.actionBar}>
                                         <Action
                                             icon={ArrowLeftRight}
@@ -246,7 +261,7 @@ export default function WalletScreen() {
                                         <View style={styles.actionDivider} />
                                         <Action
                                             icon={FileSpreadsheet}
-                                            label="Import statement"
+                                            label="Start bank reconciliation"
                                             onPress={() => {
                                                 const card = cards[Math.min(slide, cards.length - 1)];
                                                 router.push({
@@ -300,6 +315,7 @@ export default function WalletScreen() {
                                 <Text style={styles.errorBody}>{(error as Error)?.message}</Text>
                             </View>
                         )}
+                        </>)}
                     </View>
                 }
                 renderItem={({ item }) => (
@@ -316,7 +332,7 @@ export default function WalletScreen() {
                     </View>
                 )}
                 ListEmptyComponent={
-                    !isLoading && (!isError || !!data) ? (
+                    group !== 'VIRTUAL' && !isLoading && (!isError || !!data) ? (
                         isInactiveWallet ? (
                             <View style={styles.inactiveCard}>
                                 <View style={styles.inactiveIconBox}>

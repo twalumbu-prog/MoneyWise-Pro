@@ -83,13 +83,13 @@ const RequisitionDocumentPreview: React.FC<RequisitionDocumentPreviewProps> = ({
             />
 
             {/* Preview Container — full-screen sheet on mobile, floating card on sm+ */}
-            <div className="relative bg-[#F5F5F7] w-full sm:max-w-5xl h-[96vh] sm:h-full sm:max-h-[95vh] rounded-t-3xl sm:rounded-[32px] md:rounded-[40px] shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-400 border border-white/20 print:h-auto print:max-h-none print:overflow-visible print:border-none print:shadow-none print:bg-white print:rounded-none print:block">
+            <div className="relative bg-[#F1F3F4] w-full sm:max-w-5xl h-[96vh] sm:h-full sm:max-h-[95vh] rounded-t-3xl sm:rounded-[32px] md:rounded-[40px] shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-400 border border-white/20 print:h-auto print:max-h-none print:overflow-visible print:border-none print:shadow-none print:bg-white print:rounded-none print:block">
 
                 {/* ── Floating Header ──────────────────────────────────── */}
                 <div className="absolute top-3 sm:top-6 left-3 right-3 sm:left-6 sm:right-6 z-20 flex items-center justify-between gap-2 px-3 sm:px-5 py-2.5 sm:py-3 bg-white/85 backdrop-blur-md rounded-xl sm:rounded-2xl border border-white shadow-lg shadow-black/5">
                     {/* Left: icon + title */}
                     <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-                        <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-[#006AFF] flex items-center justify-center text-white shadow-lg shadow-blue-200 flex-shrink-0">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-[#0B57D0] flex items-center justify-center text-white shadow-lg shadow-blue-200 flex-shrink-0">
                            <Printer size={16} className="sm:hidden" />
                            <Printer size={20} className="hidden sm:block" />
                         </div>
@@ -103,7 +103,7 @@ const RequisitionDocumentPreview: React.FC<RequisitionDocumentPreviewProps> = ({
                     <div className="flex items-center gap-2 flex-shrink-0">
                         <button
                             onClick={handlePrint}
-                            className="h-8 sm:h-10 px-3 sm:px-5 bg-[#006AFF] text-white rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-black uppercase tracking-widest hover:bg-blue-600 transition-all flex items-center gap-1.5 sm:gap-2"
+                            className="h-8 sm:h-10 px-3 sm:px-5 bg-[#0B57D0] text-white rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-black uppercase tracking-widest hover:bg-blue-600 transition-all flex items-center gap-1.5 sm:gap-2"
                         >
                             <Printer size={13} className="sm:hidden" />
                             <Printer size={15} className="hidden sm:block" />

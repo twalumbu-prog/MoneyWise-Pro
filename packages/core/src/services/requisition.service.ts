@@ -3,7 +3,7 @@ import { getCore } from '../platform';
 
 
 
-interface LineItem {
+export interface LineItem {
     id?: string;
     description: string;
     quantity: number;
@@ -14,9 +14,10 @@ interface LineItem {
     receipt_url?: string;
     receipt_ocr_data?: any;
     receipt_ocr_status?: 'NONE' | 'PENDING' | 'DONE' | 'FAILED';
+    price_locked?: boolean;
 }
 
-interface CreateRequisitionData {
+export interface CreateRequisitionData {
     description: string;
     estimated_total: number;
     items?: LineItem[];
@@ -32,6 +33,34 @@ interface CreateRequisitionData {
     recipient_account?: string;
     recipient_bank_code?: string;
     recipient_name?: string;
+    invoice_path?: string;
+    invoice_lines_keep?: number[];
+}
+
+export interface ScannedInvoiceLine {
+    description: string;
+    quantity: number;
+    unit_price: number;
+    amount: number;
+    original_total?: number;
+}
+
+export interface ScannedInvoice {
+    path: string;
+    file_name: string | null;
+    supplier: string | null;
+    invoice_number: string | null;
+    invoice_date: string | null;
+    due_date: string | null;
+    currency: string;
+    exchange_rate: number;
+    invoice_total: number | null;
+    total_zmw: number;
+    lines: ScannedInvoiceLine[];
+    warnings: string[];
+    confidence: number | null;
+    scanned_by: string;
+    organization_id: string;
 }
 
 /** What a personal payment did to the books: the account it was filed under, this month's spend there, and the budget left. */
@@ -78,6 +107,14 @@ export interface Requisition {
         accuracy: number;
     };
     accounted_at?: string;
+
+    invoice_url?: string;
+    invoice_number?: string;
+    invoice_supplier?: string;
+    invoice_date?: string;
+    invoice_total?: number;
+    invoice_currency?: string;
+    invoice_ocr_data?: any;
 
     organization?: {
         id: string;
@@ -133,6 +170,9 @@ export const requisitionService = {
         recipient_account?: string;
         recipient_bank_code?: string;
         recipient_account_name?: string;
+        /** Card Wallet bank transfers only: the bank's SWIFT code and the account holder's phone number (Lipila needs both). */
+        recipient_swift_code?: string;
+        recipient_phone?: string;
         wallet_id?: string;
     }) {
         const response = await apiFetch(`/requisitions/${id}/auto-disburse`, {
@@ -149,12 +189,22 @@ export const requisitionService = {
         return data;
     },
 
+    /** Admin only: delete several requests at once. Requests that can't be deleted are skipped and reported. */
+    async deleteMany(ids: string[]): Promise<{ deleted: number; skipped: { id: string; description?: string; reason: string }[] }> {
+        const response = await apiFetch('/requisitions/batch/delete', { method: 'POST', body: JSON.stringify({ ids }) });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || data.message || 'Failed to delete the requests');
+        return data;
+    },
+
     async disburse(id: string, payload: {
         payment_method: string;
         total_prepared: number;
         recipient_account?: string;
         recipient_bank_code?: string;
         recipient_account_name?: string;
+        recipient_swift_code?: string;
+        recipient_phone?: string;
         wallet_id?: string;
         walletId?: string;
     }) {
@@ -382,6 +432,17 @@ export const requisitionService = {
         }
 
         return response.json();
+    },
+
+    /** Clears the "new" flag on everything in the inbox. Resolves with how many were flagged. */
+    markAllRead: async (): Promise<number> => {
+        const response = await apiFetch('/requisitions/mark-all-read', { method: 'POST' });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || 'Could not mark everything as read');
+        }
+        const data = await response.json().catch(() => ({}));
+        return Number(data.updated ?? 0);
     },
 
     markRead: async (id: string) => {
@@ -639,6 +700,32 @@ export const requisitionService = {
             throw new Error(data.error || data.message || 'Failed to delete requisition');
         }
         return data;
+    },
+
+    async scanInvoice(payload: { fileBase64: string; fileName?: string }): Promise<ScannedInvoice> {
+        const response = await apiFetch('/requisitions/scan-invoice', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            const errorMessage = err.details ? `${err.error}\nDetails: ${err.details}` : (err.error || 'Failed to scan invoice');
+            throw new Error(errorMessage);
+        }
+
+        return response.json();
+    },
+
+    async getInvoiceUrl(requisitionId: string): Promise<string | null> {
+        try {
+            const response = await apiFetch(`/requisitions/${requisitionId}/invoice-url`);
+            if (!response.ok) return null;
+            const data = await response.json();
+            return data.url || null;
+        } catch {
+            return null;
+        }
     }
 };
 

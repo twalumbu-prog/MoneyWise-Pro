@@ -304,7 +304,7 @@ export const AccountingModal: React.FC<AccountingModalProps> = ({
 
                 {loading ? (
                     <div className="flex flex-col items-center justify-center py-12 space-y-4">
-                        <Loader2 className="animate-spin h-10 w-10 text-brand-green" />
+                        <Loader2 className="animate-spin h-10 w-10 text-[#0B57D0]" />
                         <p className="text-gray-500 text-sm animate-pulse">Fetching QuickBooks accounts...</p>
                     </div>
                 ) : (
@@ -371,7 +371,7 @@ export const AccountingModal: React.FC<AccountingModalProps> = ({
                                                         {Math.round(item.ai_similarity_score * 100)}% Confidence
                                                     </span>
                                                 </div>
-                                                <p className="text-xs text-brand-navy/70 mt-1 line-clamp-1 italic">
+                                                <p className="text-xs text-[#1F1F1F]/70 mt-1 line-clamp-1 italic">
                                                     "{item.ai_reasoning}"
                                                 </p>
                                             </div>
@@ -429,7 +429,7 @@ export const AccountingModal: React.FC<AccountingModalProps> = ({
                             <button
                                 type="submit"
                                 disabled={submitting || classifying}
-                                className="flex-[2] inline-flex justify-center items-center px-4 py-3.5 border border-transparent shadow-xl text-sm font-bold rounded-2xl text-white bg-brand-green hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green transition-all transform active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="flex-[2] inline-flex justify-center items-center px-4 py-3.5 border border-transparent shadow-xl text-sm font-bold rounded-2xl text-white bg-brand-green hover:bg-[#0842A0] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green transition-all transform active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {submitting ? (
                                     <>

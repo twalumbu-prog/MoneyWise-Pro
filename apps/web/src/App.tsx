@@ -2,9 +2,42 @@ import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { usePersonalAccount } from './hooks/usePersonalAccount';
 import { onboardingService } from './services/onboarding.service';
 const Login = React.lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
 const Onboarding = React.lazy(() => import('./pages/Onboarding').then(m => ({ default: m.Onboarding })));
+const Dashboard = React.lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const MarketplaceListing = React.lazy(() => import('./pages/MarketplaceListing').then(m => ({ default: m.MarketplaceListing })));
+const MarketplaceOrders = React.lazy(() => import('./pages/MarketplaceOrders').then(m => ({ default: m.MarketplaceOrders })));
+const MarketplaceCategory = React.lazy(() => import('./pages/MarketplaceCategory').then(m => ({ default: m.MarketplaceCategory })));
+const MarketplaceFood = React.lazy(() => import('./pages/MarketplaceFood').then(m => ({ default: m.MarketplaceFood })));
+const MarketplaceStores = React.lazy(() => import('./pages/MarketplaceStores').then(m => ({ default: m.MarketplaceStores })));
+const MarketplaceServices = React.lazy(() => import('./pages/MarketplaceServices').then(m => ({ default: m.MarketplaceServices })));
+const MarketplaceImported = React.lazy(() => import('./pages/MarketplaceImported').then(m => ({ default: m.MarketplaceImported })));
+const MarketplaceImportedItem = React.lazy(() => import('./pages/MarketplaceImportedItem').then(m => ({ default: m.MarketplaceImportedItem })));
+const MarketplaceImportOrders = React.lazy(() => import('./pages/MarketplaceImportOrders').then(m => ({ default: m.MarketplaceImportOrders })));
+const MarketplaceCompare = React.lazy(() => import('./pages/MarketplaceCompare').then(m => ({ default: m.MarketplaceCompare })));
+const MarketplacePlan = React.lazy(() => import('./pages/MarketplacePlan').then(m => ({ default: m.MarketplacePlan })));
+const MarketplaceRequests = React.lazy(() => import('./pages/MarketplaceRequests').then(m => ({ default: m.MarketplaceRequests })));
+const MarketplacePriceDesk = React.lazy(() => import('./pages/MarketplacePriceDesk').then(m => ({ default: m.MarketplacePriceDesk })));
+const ImportsDesk = React.lazy(() => import('./pages/ImportsDesk').then(m => ({ default: m.ImportsDesk })));
+const Loans = React.lazy(() => import('./pages/Loans').then(m => ({ default: m.Loans })));
+const LoansDemo = React.lazy(() => import('./pages/LoansDemo').then(m => ({ default: m.LoansDemo })));
+const FundPrices = React.lazy(() => import('./pages/invest/FundPrices').then(m => ({ default: m.FundPrices })));
+const MarketplaceAds = React.lazy(() => import('./pages/MarketplaceAds').then(m => ({ default: m.MarketplaceAds })));
+const MarketplacePayLater = React.lazy(() => import('./pages/MarketplacePayLater').then(m => ({ default: m.MarketplacePayLater })));
+const MarketplaceStore = React.lazy(() => import('./pages/MarketplaceStore').then(m => ({ default: m.MarketplaceStore })));
+const MarketplaceCheckout = React.lazy(() => import('./pages/MarketplaceCheckout').then(m => ({ default: m.MarketplaceCheckout })));
+const Marketplace = React.lazy(() => import('./pages/Marketplace').then(m => ({ default: m.Marketplace })));
+const KycProfile = React.lazy(() => import('./pages/KycProfile').then(m => ({ default: m.KycProfile })));
+const InvestAccounts = React.lazy(() => import('./pages/InvestAccounts').then(m => ({ default: m.InvestAccounts })));
+const RewardsManage = React.lazy(() => import('./pages/RewardsManage').then(m => ({ default: m.RewardsManage })));
+const ManualEntry = React.lazy(() => import('./pages/ManualEntry').then(m => ({ default: m.ManualEntry })));
+const Budgets = React.lazy(() => import('./pages/Budgets').then(m => ({ default: m.Budgets })));
+const Savings = React.lazy(() => import('./pages/Savings').then(m => ({ default: m.Savings })));
+const SavingsDetail = React.lazy(() => import('./pages/SavingsDetail').then(m => ({ default: m.SavingsDetail })));
+const PersonalSend = React.lazy(() => import('./pages/PersonalSend').then(m => ({ default: m.PersonalSend })));
+const PersonalHome = React.lazy(() => import('./pages/PersonalHome').then(m => ({ default: m.PersonalHome })));
 const RequisitionList = React.lazy(() => import('./pages/RequisitionList').then(m => ({ default: m.RequisitionList })));
 const RequisitionCreate = React.lazy(() => import('./pages/RequisitionCreate').then(m => ({ default: m.RequisitionCreate })));
 const NewSale = React.lazy(() => import('./pages/NewSale').then(m => ({ default: m.NewSale })));
@@ -13,6 +46,7 @@ const CashierDashboard = React.lazy(() => import('./pages/CashierDashboard').the
 const Vouchers = React.lazy(() => import('./pages/Vouchers').then(m => ({ default: m.Vouchers })));
 const VoucherDetail = React.lazy(() => import('./pages/VoucherDetail').then(m => ({ default: m.VoucherDetail })));
 const CashLedger = React.lazy(() => import('./pages/CashLedger'));
+const Suppliers = React.lazy(() => import('./pages/Suppliers').then(m => ({ default: m.Suppliers })));
 const Reporting = React.lazy(() => import('./pages/Reporting').then(m => ({ default: m.Reporting })));
 const Settings = React.lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
 const ProductsServices = React.lazy(() => import('./pages/ProductsServices').then(m => ({ default: m.ProductsServices })));
@@ -41,6 +75,9 @@ const InvestHome = React.lazy(() => import('./pages/invest/InvestHome').then(m =
 const InvestCompany = React.lazy(() => import('./pages/invest/InvestCompany').then(m => ({ default: m.InvestCompany })));
 const InvestProductDetail = React.lazy(() => import('./pages/invest/InvestProductDetail').then(m => ({ default: m.InvestProductDetail })));
 const Rewards = React.lazy(() => import('./pages/Rewards').then(m => ({ default: m.Rewards })));
+const PayRequest = React.lazy(() => import('./pages/PayRequest').then(m => ({ default: m.PayRequest })));
+/** A tap-to-pay link opened while signed out: remembered so the person lands on it after signing in. */
+const TAP_RETURN_KEY = 'mw_tap_return';
 const ApiDocs = React.lazy(() => import('./pages/ApiDocs').then(m => ({ default: m.ApiDocs })));
 import { CompleteProfile } from './pages/CompleteProfile';
 import { OAuthAuthorize, OAUTH_RETURN_KEY } from './pages/OAuthAuthorize';
@@ -58,7 +95,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     if (loading) {
         return (
             <div className="min-h-screen flex items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+                <Loader2 className="h-8 w-8 animate-spin text-[#0B57D0]" />
             </div>
         );
     }
@@ -67,6 +104,9 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
         // A connecting app sent the user here: resume the consent screen after login.
         if (location.pathname === '/oauth/authorize') {
             try { sessionStorage.setItem(OAUTH_RETURN_KEY, location.pathname + location.search); } catch { /* storage unavailable */ }
+        }
+        if (location.pathname.startsWith('/r/')) {
+            try { sessionStorage.setItem(TAP_RETURN_KEY, location.pathname); } catch { /* storage unavailable */ }
         }
         return <Navigate to="/login" />;
     }
@@ -78,13 +118,13 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
                     <div className="mx-auto w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mb-6">
                         <Loader2 className="w-10 h-10 text-yellow-600 animate-spin" />
                     </div>
-                    <h1 className="text-3xl font-bold text-brand-navy mb-4">Pending Approval</h1>
+                    <h1 className="text-3xl font-bold text-[#1F1F1F] mb-4">Pending Approval</h1>
                     <p className="text-gray-600 mb-8">
                         Your request to join the organization has been submitted. Please wait for an administrator to approve your account.
                     </p>
                     <button
                         onClick={() => signOut()}
-                        className="w-full py-4 bg-gray-100 text-brand-navy font-bold rounded-2xl hover:bg-gray-200 transition-all shadow-sm"
+                        className="w-full py-4 bg-gray-100 text-[#1F1F1F] font-bold rounded-2xl hover:bg-gray-200 transition-all shadow-sm"
                     >
                         Sign Out
                     </button>
@@ -110,6 +150,7 @@ const onboardingDoneCache = new Set<string>();
 const HomeRedirect = () => {
     const { userRole, userStatus, organizationId, userOrganizations, organizationsLoaded } = useAuth();
     const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null);
+    const { isPersonal } = usePersonalAccount();
 
     useEffect(() => {
         if (userStatus === 'PENDING_APPROVAL') return;
@@ -151,6 +192,14 @@ const HomeRedirect = () => {
     } catch { /* storage unavailable */ }
 
     try {
+        const pendingTap = sessionStorage.getItem(TAP_RETURN_KEY);
+        if (pendingTap && /^\/r\/[A-Za-z0-9]{10}$/.test(pendingTap)) {
+            sessionStorage.removeItem(TAP_RETURN_KEY);
+            return <Navigate to={pendingTap} replace />;
+        }
+    } catch { /* storage unavailable */ }
+
+    try {
         const pendingOAuth = sessionStorage.getItem(OAUTH_RETURN_KEY);
         if (pendingOAuth && pendingOAuth.startsWith('/oauth/authorize')) {
             return <Navigate to={pendingOAuth} replace />;
@@ -165,7 +214,7 @@ const HomeRedirect = () => {
     if (needsOnboarding === null) {
         return (
             <div className="min-h-screen flex items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+                <Loader2 className="h-8 w-8 animate-spin text-[#0B57D0]" />
             </div>
         );
     }
@@ -174,11 +223,15 @@ const HomeRedirect = () => {
         return <Navigate to="/onboarding" replace />;
     }
 
+    // Requestors work from their inbox; everyone else lands on the Home dashboard (the inbox is one click away).
     if (userRole === 'REQUESTOR') {
         return <Navigate to="/requisitions" replace />;
     }
 
-    return <RequisitionList />;
+    // A personal account's first screen is Home; businesses land on the business dashboard.
+    if (isPersonal) return <PersonalHome />;
+
+    return <Dashboard />;
 };
 
 // MoneyWise Pro is a client-side-routed SPA (react-router, no full page
@@ -205,7 +258,7 @@ function App() {
             <Router>
                 <AchievementsProvider>
                     <SpeedInsightsRouteTracker />
-                    <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-indigo-[#006AFF]" /></div>}>
+                    <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-[#0B57D0]" /></div>}>
                     <Routes>
                         <Route path="/login" element={<Login />} />
                         <Route path="/complete-profile" element={<ProtectedRoute><CompleteProfile /></ProtectedRoute>} />
@@ -218,6 +271,7 @@ function App() {
                         <Route path="/disconnect" element={<Disconnect />} />
                         <Route path="/paid" element={<PaidReturn />} />
                         <Route path="/pay/:wallet_id" element={<PayEntry />} />
+                        <Route path="/r/:code" element={<ProtectedRoute><PayRequest /></ProtectedRoute>} />
                         {/* Friendly store link: /<business-username>/store → that org's Main wallet catalogue */}
                         <Route path="/:username/store" element={<PublicStore />} />
                         <Route path="/:username/store/:walletSlug" element={<PublicStore />} />
@@ -249,6 +303,109 @@ function App() {
                             element={
                                 <ProtectedRoute>
                                     <RequisitionList />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route path="/marketplace/c/:main" element={<ProtectedRoute><MarketplaceCategory /></ProtectedRoute>} />
+                        <Route path="/marketplace/c/:main/:sub" element={<ProtectedRoute><MarketplaceCategory /></ProtectedRoute>} />
+                        <Route path="/marketplace/food" element={<ProtectedRoute><MarketplaceFood /></ProtectedRoute>} />
+                        <Route path="/marketplace/stores" element={<ProtectedRoute><MarketplaceStores /></ProtectedRoute>} />
+                        <Route path="/marketplace/services" element={<ProtectedRoute><MarketplaceServices /></ProtectedRoute>} />
+                        <Route path="/marketplace/compare" element={<ProtectedRoute><MarketplaceCompare /></ProtectedRoute>} />
+                        <Route path="/marketplace/compare/:slug" element={<ProtectedRoute><MarketplaceCompare /></ProtectedRoute>} />
+                        <Route path="/marketplace/plan" element={<ProtectedRoute><MarketplacePlan /></ProtectedRoute>} />
+                        <Route path="/marketplace/requests" element={<ProtectedRoute><MarketplaceRequests /></ProtectedRoute>} />
+                        <Route path="/marketplace/requests/:id" element={<ProtectedRoute><MarketplaceRequests /></ProtectedRoute>} />
+                        <Route path="/marketplace/price-desk" element={<ProtectedRoute><MarketplacePriceDesk /></ProtectedRoute>} />
+                        <Route path="/marketplace/import-desk" element={<ProtectedRoute><ImportsDesk /></ProtectedRoute>} />
+                        <Route path="/invest/prices" element={<ProtectedRoute><FundPrices /></ProtectedRoute>} />
+                        <Route path="/loans" element={<ProtectedRoute><Loans /></ProtectedRoute>} />
+                        <Route path="/loans/demo" element={<ProtectedRoute><LoansDemo /></ProtectedRoute>} />
+                        <Route path="/marketplace/imported" element={<ProtectedRoute><MarketplaceImported /></ProtectedRoute>} />
+                        <Route path="/marketplace/imported/orders" element={<ProtectedRoute><MarketplaceImportOrders /></ProtectedRoute>} />
+                        <Route path="/marketplace/imported/:id" element={<ProtectedRoute><MarketplaceImportedItem /></ProtectedRoute>} />
+                        <Route path="/marketplace/ads" element={<ProtectedRoute><MarketplaceAds /></ProtectedRoute>} />
+                        <Route path="/marketplace/pay-later"element={<ProtectedRoute><MarketplacePayLater /></ProtectedRoute>} />
+                        <Route path="/marketplace/orders"element={<ProtectedRoute><MarketplaceOrders /></ProtectedRoute>} />
+                        <Route path="/marketplace/store/:orgId" element={<ProtectedRoute><MarketplaceStore /></ProtectedRoute>} />
+                        <Route path="/marketplace/checkout/:productId" element={<ProtectedRoute><MarketplaceCheckout /></ProtectedRoute>} />
+                        <Route
+                            path="/marketplace/:id"
+                            element={
+                                <ProtectedRoute>
+                                    <MarketplaceListing />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/marketplace"
+                            element={
+                                <ProtectedRoute>
+                                    <Marketplace />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/invest/kyc"
+                            element={
+                                <ProtectedRoute>
+                                    <KycProfile />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/invest/accounts"
+                            element={
+                                <ProtectedRoute>
+                                    <InvestAccounts />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/rewards/manage"
+                            element={
+                                <ProtectedRoute>
+                                    <RewardsManage />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/manual-entry"
+                            element={
+                                <ProtectedRoute>
+                                    <ManualEntry />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/budgets"
+                            element={
+                                <ProtectedRoute>
+                                    <Budgets />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/savings"
+                            element={
+                                <ProtectedRoute>
+                                    <Savings />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/savings/:id"
+                            element={
+                                <ProtectedRoute>
+                                    <SavingsDetail />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/send"
+                            element={
+                                <ProtectedRoute>
+                                    <PersonalSend />
                                 </ProtectedRoute>
                             }
                         />
@@ -377,6 +534,14 @@ function App() {
                             element={
                                 <ProtectedRoute>
                                     <CRM />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/apps/suppliers"
+                            element={
+                                <ProtectedRoute>
+                                    <Suppliers />
                                 </ProtectedRoute>
                             }
                         />

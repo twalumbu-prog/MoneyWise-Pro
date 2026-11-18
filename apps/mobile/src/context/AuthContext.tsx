@@ -5,6 +5,7 @@ import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { clearCache, cacheStore, secureStore } from '../platform/storage';
 import { queryClient } from '../lib/queryClient';
+import { trackIdentified, trackSignedOut } from '../lib/analytics';
 import { registerForPushNotificationsAsync } from '../lib/pushNotifications';
 import { userService, setActiveOrganizationId } from 'core';
 
@@ -117,6 +118,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const snap: AuthSnapshot = { userId: user.id, userName, userRole, userStatus, organizationId, organizationName, userOrganizations };
         cacheStore.set(SNAPSHOT_KEY, JSON.stringify(snap)).catch(() => undefined);
     }, [user?.id, userName, userRole, userStatus, organizationId, organizationName, userOrganizations]);
+
+    // Usage analytics: who is using the app, as which kind of account (re-runs when the active organisation changes).
+    useEffect(() => {
+        if (!user?.id || !userRole) return;
+        trackIdentified({ userId: user.id, organizationId, organizationName, role: userRole });
+    }, [user?.id, userRole, organizationId, organizationName]);
 
     useEffect(() => {
         const sub = AppState.addEventListener('change', (state) => {
@@ -424,6 +431,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const signOut = async () => {
+        trackSignedOut();
         clearCaptureDevice();
         Promise.race([
             (async () => {

@@ -50,7 +50,12 @@ import { savePendingPayment, loadPendingPayment, clearPendingPayment } from '../
 import BookingCalendar from '../components/BookingCalendar';
 import { StoreMoneyWisePay } from '../components/StoreMoneyWisePay';
 import { StoreRewardsSection } from '../components/rewards/StoreRewardsSection';
-import { BookingRange, isBookingProductType, getBookingTerminology } from '../services/product.service';
+import { BookingRange, isBookingProductType, isAppointmentProductType, formatSlotTime, getBookingTerminology } from '../services/product.service';
+import AppointmentPicker from '../components/AppointmentPicker';
+
+/** Date-range stays AND time-slot appointments both open a picker instead of a qty stepper. */
+const isReservable = (t?: string | null) => isBookingProductType(t) || isAppointmentProductType(t);
+const reservableUnit = (t?: string | null) => (isAppointmentProductType(t) ? 'appointment' : getBookingTerminology(t).unit);
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
@@ -119,7 +124,7 @@ interface Product {
     price: number;
     is_active: boolean;
     image_url?: string | null;
-    product_type?: 'PRODUCT' | 'SERVICE_FIXED' | 'SERVICE_VARIABLE' | 'DONATION' | 'SERVICE_BOOKING' | 'SERVICE_BOOKING_DAILY' | 'DIGITAL';
+    product_type?: 'PRODUCT' | 'SERVICE_FIXED' | 'SERVICE_VARIABLE' | 'DONATION' | 'SERVICE_BOOKING' | 'SERVICE_BOOKING_DAILY' | 'DIGITAL' | 'SERVICE_APPOINTMENT';
     category?: string | null;
     requires_delivery?: boolean;
     allow_external_delivery?: boolean;
@@ -172,6 +177,7 @@ interface PublicContextResponse {
     wallet: WalletContext;
     products: Product[];
     collections_api_enabled?: boolean;
+    card_enabled?: boolean;
 }
 
 // Detect the Zambian mobile money operator from a phone prefix.
@@ -236,6 +242,7 @@ export const PublicPay: React.FC = () => {
     const [products, setProducts] = useState<Product[]>([]);
     // Own-UX checkout (Collections API) kill-switch — see loadContext.
     const [collectionsApiEnabled, setCollectionsApiEnabled] = useState(false);
+    const [cardEnabled, setCardEnabled] = useState(false);
     const [checkoutMethod, setCheckoutMethod] = useState<'mobile-money' | 'card' | 'moneywise'>('mobile-money');
     const [checkoutPhone, setCheckoutPhone] = useState('');
     const [resolvedAccountName, setResolvedAccountName] = useState('');
@@ -275,11 +282,13 @@ export const PublicPay: React.FC = () => {
     const [donationAmounts, setDonationAmounts] = useState<Record<string, number>>({});
     // Chosen stay for SERVICE_BOOKING products (keyed by product id). `nights` doubles
     // as the cart quantity for that line, so total = nights × nightly price.
-    const [bookingDates, setBookingDates] = useState<Record<string, { checkIn: string; checkOut: string; nights: number }>>({});
+    const [bookingDates, setBookingDates] = useState<Record<string, { checkIn: string; checkOut: string; nights: number; time?: string; endTime?: string; staffId?: string | null; staffName?: string | null; deposit?: number | null }>>({});
     // Booking calendar overlay state.
     const [calendarProduct, setCalendarProduct] = useState<Product | null>(null);
     const [calendarAvailability, setCalendarAvailability] = useState<BookingRange[]>([]);
     const [calendarLoading, setCalendarLoading] = useState(false);
+    // Appointment (day + time-slot) picker overlay.
+    const [appointmentProduct, setAppointmentProduct] = useState<Product | null>(null);
 
     // Delivery details captured on the DELIVERY step.
     const [deliveryMode, setDeliveryMode] = useState<'deliver' | 'pickup'>('deliver');
@@ -424,6 +433,7 @@ export const PublicPay: React.FC = () => {
             setWallet(response.data.wallet);
             setProducts(response.data.products);
             setCollectionsApiEnabled(response.data.collections_api_enabled === true);
+            setCardEnabled(response.data.card_enabled === true);
 
             // Reached the server, but the business hasn't connected a payment provider.
             if (!response.data.wallet.lenco_subaccount_id) {
@@ -586,6 +596,10 @@ export const PublicPay: React.FC = () => {
 
     // Open the booking calendar for a product, loading its confirmed (blocked) dates.
     const openBookingCalendar = async (product: Product) => {
+        if (isAppointmentProductType(product.product_type)) {
+            setAppointmentProduct(product);
+            return;
+        }
         setCalendarProduct(product);
         setCalendarAvailability([]);
         setCalendarLoading(true);
@@ -607,6 +621,23 @@ export const PublicPay: React.FC = () => {
         setCalendarProduct(null);
     };
 
+    // Confirm a chosen appointment slot → one unit in the cart, date/time kept alongside.
+    const handleConfirmAppointment = (productId: string, date: string, time: string, endTime: string, staff?: { id: string; name: string } | null, deposit?: number | null) => {
+        setBookingDates(prev => ({ ...prev, [productId]: { checkIn: date, checkOut: date, nights: 1, time, endTime, staffId: staff?.id ?? null, staffName: staff?.name ?? null, deposit: deposit ?? null } }));
+        setSelectedQuantities(prev => ({ ...prev, [productId]: 1 }));
+        setAppointmentProduct(null);
+    };
+
+    // "Fri 14 Nov · 2:30 PM" for appointments, "12 Jul – 15 Jul · 3 nights" for stays.
+    const stayLabel = (product: Product, stay: { checkIn: string; checkOut: string; nights: number; time?: string; staffName?: string | null; deposit?: number | null }) => {
+        if (isAppointmentProductType(product.product_type) && stay.time) {
+            const [y, m, d] = stay.checkIn.split('-').map(Number);
+            const day = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+            return `${day} · ${formatSlotTime(stay.time)}${stay.staffName ? ` · with ${stay.staffName}` : ''}${stay.deposit ? ` · K${stay.deposit.toLocaleString()} deposit` : ''}`;
+        }
+        return `${formatStayRange(stay.checkIn, stay.checkOut)} · ${stay.nights} ${reservableUnit(product.product_type)}${stay.nights === 1 ? '' : 's'}`;
+    };
+
     // Remove a booking from the cart (clear its dates + quantity).
     const removeBooking = (productId: string) => {
         setSelectedQuantities(prev => ({ ...prev, [productId]: 0 }));
@@ -625,10 +656,12 @@ export const PublicPay: React.FC = () => {
     const lineItems = catalogProducts
         .map(p => {
             const isDonation = p.product_type === 'DONATION';
-            const isBooking = isBookingProductType(p.product_type);
+            const isBooking = isReservable(p.product_type);
             // For bookings, the stored quantity is the number of nights/days.
             const quantity = selectedQuantities[p.id] || 0;
-            const unitPrice = isDonation ? (donationAmounts[p.id] || 0) : p.price;
+            // A booked appointment with a deposit is paid for with the deposit now; the rest is paid at the salon.
+            const deposit = isAppointmentProductType(p.product_type) ? bookingDates[p.id]?.deposit : null;
+            const unitPrice = isDonation ? (donationAmounts[p.id] || 0) : (deposit ?? p.price);
             const booking = isBooking ? bookingDates[p.id] : undefined;
             return { product: p, quantity, unitPrice, total: quantity * unitPrice, isDonation, isBooking, booking };
         })
@@ -737,7 +770,8 @@ export const PublicPay: React.FC = () => {
     // Begin payment: the dedicated payment page (own-UX) or the Lenco widget.
     const startPayment = () => {
         if (!canPay) return;
-        if (collectionsApiEnabled) {
+        // With the card option on, the customer first lands on the Mobile Money / Card choice instead of straight in the Lenco window.
+        if (collectionsApiEnabled || cardEnabled) {
             setError(null);
             setCheckoutPhone(customerPhone);
             setResolvedAccountName('');
@@ -853,7 +887,9 @@ export const PublicPay: React.FC = () => {
                     price: li.unitPrice,
                     // Booking lines carry their stay so the server can hold/confirm the dates.
                     ...(li.isBooking && li.booking
-                        ? { check_in: li.booking.checkIn, check_out: li.booking.checkOut }
+                        ? (isAppointmentProductType(li.product.product_type)
+                            ? { appointment_date: li.booking.checkIn, appointment_time: li.booking.time, staff_profile_id: li.booking.staffId || undefined, deposit_amount: li.booking.deposit ?? undefined }
+                            : { check_in: li.booking.checkIn, check_out: li.booking.checkOut })
                         : {}),
                     ...responsesFor(li.product.id),
                 })),
@@ -1161,7 +1197,9 @@ export const PublicPay: React.FC = () => {
                     quantity: li.quantity,
                     price: li.unitPrice,
                     ...(li.isBooking && li.booking
-                        ? { check_in: li.booking.checkIn, check_out: li.booking.checkOut }
+                        ? (isAppointmentProductType(li.product.product_type)
+                            ? { appointment_date: li.booking.checkIn, appointment_time: li.booking.time, staff_profile_id: li.booking.staffId || undefined, deposit_amount: li.booking.deposit ?? undefined }
+                            : { check_in: li.booking.checkIn, check_out: li.booking.checkOut })
                         : {}),
                     ...responsesFor(li.product.id),
                 })),
@@ -1222,6 +1260,84 @@ export const PublicPay: React.FC = () => {
                 payment_method: 'mobile-money',
                 duration_ms: Date.now() - checkoutStartedAt,
             });
+        }
+    };
+
+    // ── Card (Lipila): the customer types their card on Lipila's own page, and the money goes to this business's own Lipila wallet. The sale is
+    // recorded first, then the card payment starts, then we wait for the result exactly as for mobile money. Desktop gets a popup; phones go to
+    // the card page in this tab. Orders with a delivery charge stay on mobile money for now.
+    const CARD_RATE = 0.04;
+    const cardCharged = subtotal > 0 ? Math.round((subtotal / (1 - CARD_RATE)) * 100) / 100 : 0;
+    const cardFee = Math.round((cardCharged - subtotal) * 100) / 100;
+    const cardBlockedByDelivery = effectiveDeliveryCharge > 0;
+    const cardDetailsReady = customerName.trim().length > 1 && customerPhone.replace(/\D/g, '').length >= 9 && (!cartHasDigital || emailIsValid);
+    const onPhoneBrowser = typeof navigator !== 'undefined' && /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
+
+    const handlePayCard = async () => {
+        if (lineItems.length === 0 || subtotal <= 0) { setError('Please select at least one product or service to purchase.'); return; }
+        if (pendingDonations.length > 0) { setError(`Please enter an amount for: ${pendingDonations.map(li => li.product.name).join(', ')}`); return; }
+        if (cardBlockedByDelivery) { setError('Card isn’t available for orders with a delivery charge yet. Choose Mobile Money, or pick the order up.'); return; }
+        if (!cardDetailsReady) { setError('Enter your name and phone number first.'); return; }
+        if (!wallet || !org) return;
+        // Opened inside the click, before anything is awaited, or the browser blocks the popup.
+        const popup = !onPhoneBrowser ? window.open('about:blank', 'lipila_card', 'width=440,height=760') : null;
+        const payerName = customerName.trim();
+        const payerPhone = customerPhone.trim();
+        const productNarration = lineItems.map(li => `${li.product.name} (x${li.quantity})`).join(', ');
+        const ref = `LPL-DEP-${Date.now()}-${org.id.substring(0, 8)}-PUB`;
+        setCurrentReference(ref);
+        setError(null);
+        setSubmitting(true);
+        setPaymentMethod('Card');
+        pollCancelledRef.current = false;
+        setElapsedSeconds(0);
+        setAwaitingApproval(false);
+        setPaymentPhase('initiating');
+        setStep('VERIFYING');
+        const checkoutStartedAt = Date.now();
+        trackEvent('public_catalogue_checkout', 'payment', 'started', { workflow_id: ref, organization_id: org.id, wallet_id: wallet.id, subtotal, total_payable: cardCharged, item_count: lineItems.length, payment_method: 'card' });
+        try {
+            await axios.post(`${API_URL}/lenco/public-wallet-deposit-intent`, {
+                reference: ref,
+                purpose: `Sale: Products: ${productNarration} | Cust: ${payerPhone}`,
+                amount: subtotal,
+                walletId: wallet.id,
+                customerName: payerName,
+                customerPhone: payerPhone,
+                customerEmail: cartHasDigital ? customerEmail.trim() : undefined,
+                items: lineItems.map(li => ({
+                    id: li.product.id,
+                    quantity: li.quantity,
+                    price: li.unitPrice,
+                    ...(li.isBooking && li.booking ? { check_in: li.booking.checkIn, check_out: li.booking.checkOut } : {}),
+                    ...responsesFor(li.product.id),
+                })),
+                orderDetails: deliveryDetails,
+            });
+            const [firstName, ...rest] = payerName.split(/\s+/);
+            const init = await axios.post(`${API_URL}/lipila/public/card`, { organizationId: org.id, reference: ref, firstName, lastName: rest.join(' ') || undefined, phone: payerPhone, email: cartHasDigital ? customerEmail.trim() : undefined, kind: 'store', token: wallet.id, returnUrl: window.location.href });
+            const url: string | undefined = init.data?.redirectUrl;
+            if (!url) throw new Error('The card payment could not be started. Please try again.');
+            savePendingPayment({ reference: ref, contextId: wallet.id, orgId: org.id, phone: payerPhone, amount: cardCharged, businessName: org.name, startedAt: checkoutStartedAt });
+            setResumedPayment(null);
+            setRecheckNote(null);
+            setVerificationStep('POLLING');
+            setPaymentPhase('confirm');
+            setAwaitingApproval(true);
+            setElapsedSeconds(0);
+            setSubmitting(false);
+            startCompletionPoll(ref, org.id, checkoutStartedAt, { wallet_id: wallet.id, subtotal, total_payable: cardCharged });
+            if (onPhoneBrowser || !popup || popup.closed) window.location.href = url;
+            else popup.location.href = url;
+        } catch (err: any) {
+            try { popup?.close(); } catch { /* already closed */ }
+            clearPendingPayment();
+            setSubmitting(false);
+            setAwaitingApproval(false);
+            setPaymentPhase(null);
+            setStep('CHECKOUT');
+            setError(err.response?.data?.error || err.message || 'Failed to start the card payment. Please try again.');
+            trackEvent('public_catalogue_checkout', 'payment', 'failed', { workflow_id: ref, organization_id: org.id, error_code: err?.response?.status || 'NETWORK_ERROR', error_message: err?.response?.data?.error || err.message, payment_method: 'card', duration_ms: Date.now() - checkoutStartedAt });
         }
     };
 
@@ -1391,7 +1507,7 @@ export const PublicPay: React.FC = () => {
         setVerificationStep('POLLING');
         setError(null);
         // The widget flow has no payment-method page: it starts again from the summary.
-        setStep(collectionsApiEnabled ? 'CHECKOUT' : 'SUMMARY');
+        setStep(collectionsApiEnabled || cardEnabled ? 'CHECKOUT' : 'SUMMARY');
     };
 
     // Failed "Cancel" / cancelled "Back to cart" → leave the flow back to the cart.
@@ -1582,8 +1698,8 @@ export const PublicPay: React.FC = () => {
                 format: 'a4'
             });
 
-            const primaryColor = '#1e293b'; // slate-800
-            const accentColor = '#2563eb'; // blue-600
+            const primaryColor = '#3C4043'; // slate-800
+            const accentColor = '#0B57D0'; // blue-600
 
             // 1. Draw branding header
             doc.setFont('Helvetica', 'bold');
@@ -1593,7 +1709,7 @@ export const PublicPay: React.FC = () => {
 
             doc.setFontSize(9);
             doc.setFont('Helvetica', 'normal');
-            doc.setTextColor('#64748b'); // slate-500
+            doc.setTextColor('#5F6368'); // slate-500
             doc.text('Official Payment Receipt', 20, 31);
 
             // Right-aligned title
@@ -1603,14 +1719,14 @@ export const PublicPay: React.FC = () => {
             doc.text('RECEIPT', 190, 25, { align: 'right' });
 
             // Divider
-            doc.setDrawColor('#e2e8f0'); // slate-200
+            doc.setDrawColor('#E8EAED'); // slate-200
             doc.setLineWidth(0.5);
             doc.line(20, 36, 190, 36);
 
             // 2. Receipt metadata
             doc.setFont('Helvetica', 'normal');
             doc.setFontSize(9);
-            doc.setTextColor('#334155'); // slate-700
+            doc.setTextColor('#3C4043'); // slate-700
             doc.text(`Receipt No: #${receiptNumber || currentReference.replace('-PUB', '')}`, 20, 46);
             doc.text(`Date: ${new Date().toLocaleString()}`, 20, 52);
             doc.text(`Payment Method: Lenco (Card/Mobile Money)`, 20, 58);
@@ -1625,11 +1741,11 @@ export const PublicPay: React.FC = () => {
             doc.line(20, 65, 190, 65);
 
             // 3. Products Table Header
-            doc.setFillColor('#f8fafc'); // slate-50
+            doc.setFillColor('#F8FAFD'); // slate-50
             doc.rect(20, 72, 170, 8, 'F');
             doc.setFont('Helvetica', 'bold');
             doc.setFontSize(9);
-            doc.setTextColor('#475569'); // slate-600
+            doc.setTextColor('#5F6368'); // slate-600
             doc.text('Item Description', 24, 77);
             doc.text('Qty', 110, 77, { align: 'center' });
             doc.text('Unit Price (K)', 145, 77, { align: 'right' });
@@ -1637,7 +1753,7 @@ export const PublicPay: React.FC = () => {
 
             let y = 86;
             doc.setFont('Helvetica', 'normal');
-            doc.setTextColor('#334155');
+            doc.setTextColor('#3C4043');
 
             lineItems.forEach((li) => {
                 const qty = li.quantity;
@@ -1650,7 +1766,7 @@ export const PublicPay: React.FC = () => {
                 doc.text(total.toFixed(2), 186, y, { align: 'right' });
 
                 // Underline for items
-                doc.setDrawColor('#f1f5f9');
+                doc.setDrawColor('#F1F3F4');
                 doc.line(20, y + 3, 190, y + 3);
                 y += 10;
             });
@@ -1691,7 +1807,7 @@ Status: VERIFIED`;
                 // Add small helper label
                 doc.setFont('Helvetica', 'normal');
                 doc.setFontSize(6.5);
-                doc.setTextColor('#94a3b8'); // slate-400
+                doc.setTextColor('#9AA0A6'); // slate-400
                 doc.text('SCAN TO VERIFY RECEIPT', 34, calculationsStartY + 29, { align: 'center' });
             } catch (qrErr) {
                 console.error('Failed to add QR code to PDF:', qrErr);
@@ -1699,14 +1815,14 @@ Status: VERIFIED`;
 
             // Divider
             y += 10;
-            doc.setDrawColor('#e2e8f0');
+            doc.setDrawColor('#E8EAED');
             doc.line(20, y, 190, y);
 
             // 5. Footer
             y += 12;
             doc.setFont('Helvetica', 'italic');
             doc.setFontSize(9);
-            doc.setTextColor('#94a3b8'); // slate-400
+            doc.setTextColor('#9AA0A6'); // slate-400
             doc.text('Thank you for your payment!', 105, y, { align: 'center' });
 
             y += 5;
@@ -1755,8 +1871,8 @@ Status: VERIFIED`;
                 format: 'a4'
             });
 
-            const primaryColor = '#1e293b'; // slate-800
-            const accentColor = '#2563eb'; // blue-600
+            const primaryColor = '#3C4043'; // slate-800
+            const accentColor = '#0B57D0'; // blue-600
 
             // 1. Draw branding header
             doc.setFont('Helvetica', 'bold');
@@ -1766,7 +1882,7 @@ Status: VERIFIED`;
 
             doc.setFontSize(9);
             doc.setFont('Helvetica', 'normal');
-            doc.setTextColor('#64748b'); // slate-500
+            doc.setTextColor('#5F6368'); // slate-500
             doc.text('Official Payment Receipt', 20, 31);
 
             // Right-aligned title
@@ -1776,14 +1892,14 @@ Status: VERIFIED`;
             doc.text('RECEIPT', 190, 25, { align: 'right' });
 
             // Divider
-            doc.setDrawColor('#e2e8f0'); // slate-200
+            doc.setDrawColor('#E8EAED'); // slate-200
             doc.setLineWidth(0.5);
             doc.line(20, 36, 190, 36);
 
             // 2. Receipt metadata
             doc.setFont('Helvetica', 'normal');
             doc.setFontSize(9);
-            doc.setTextColor('#334155'); // slate-700
+            doc.setTextColor('#3C4043'); // slate-700
             doc.text(`Receipt No: #${details.receiptNumber}`, 20, 46);
             doc.text(`Date: ${new Date(details.date).toLocaleString()}`, 20, 52);
             doc.text(`Payment Method: Lenco (Card/Mobile Money)`, 20, 58);
@@ -1798,11 +1914,11 @@ Status: VERIFIED`;
             doc.line(20, 65, 190, 65);
 
             // 3. Products Table Header
-            doc.setFillColor('#f8fafc'); // slate-50
+            doc.setFillColor('#F8FAFD'); // slate-50
             doc.rect(20, 72, 170, 8, 'F');
             doc.setFont('Helvetica', 'bold');
             doc.setFontSize(9);
-            doc.setTextColor('#475569'); // slate-600
+            doc.setTextColor('#5F6368'); // slate-600
             doc.text('Item Description', 24, 77);
             doc.text('Qty', 110, 77, { align: 'center' });
             doc.text('Unit Price (K)', 145, 77, { align: 'right' });
@@ -1810,7 +1926,7 @@ Status: VERIFIED`;
 
             let y = 86;
             doc.setFont('Helvetica', 'normal');
-            doc.setTextColor('#334155');
+            doc.setTextColor('#3C4043');
 
             details.items.forEach((item: any) => {
                 doc.text(item.name, 24, y);
@@ -1819,7 +1935,7 @@ Status: VERIFIED`;
                 doc.text(Number(item.total).toFixed(2), 186, y, { align: 'right' });
 
                 // Underline for items
-                doc.setDrawColor('#f1f5f9');
+                doc.setDrawColor('#F1F3F4');
                 doc.line(20, y + 3, 190, y + 3);
                 y += 10;
             });
@@ -1860,7 +1976,7 @@ Status: VERIFIED`;
                 // Add small helper label
                 doc.setFont('Helvetica', 'normal');
                 doc.setFontSize(6.5);
-                doc.setTextColor('#94a3b8');
+                doc.setTextColor('#9AA0A6');
                 doc.text('SCAN TO VERIFY RECEIPT', 34, calculationsStartY + 29, { align: 'center' });
             } catch (qrErr) {
                 console.error('Failed to add QR code to PDF:', qrErr);
@@ -1868,14 +1984,14 @@ Status: VERIFIED`;
 
             // Divider
             y += 10;
-            doc.setDrawColor('#e2e8f0');
+            doc.setDrawColor('#E8EAED');
             doc.line(20, y, 190, y);
 
             // 5. Footer
             y += 12;
             doc.setFont('Helvetica', 'italic');
             doc.setFontSize(9);
-            doc.setTextColor('#94a3b8');
+            doc.setTextColor('#9AA0A6');
             doc.text('Thank you for your payment!', 105, y, { align: 'center' });
 
             y += 5;
@@ -1895,8 +2011,8 @@ Status: VERIFIED`;
     // A single selectable product/service row, shown inside the Add Products sheet.
     const renderProductCard = (product: Product) => {
         const isDonation = product.product_type === 'DONATION';
-        const isBooking = isBookingProductType(product.product_type);
-        const bookingUnit = getBookingTerminology(product.product_type).unit;
+        const isBooking = isReservable(product.product_type);
+        const bookingUnit = reservableUnit(product.product_type);
         const qty = selectedQuantities[product.id] || 0;
         const isInCart = qty > 0;
         const stay = bookingDates[product.id];
@@ -1920,7 +2036,7 @@ Status: VERIFIED`;
                 <div className="flex-1 flex flex-col gap-1.5 min-w-0 ml-4">
                     {/* Name + price row */}
                     <div className="flex flex-col">
-                        <span className="text-[#55595E] text-base font-semibold truncate leading-snug">{product.name}</span>
+                        <span className="text-[#5F6368] text-base font-semibold truncate leading-snug">{product.name}</span>
                         <div className="flex items-center gap-2 mt-0.5">
                             {isDonation ? (
                                 isInCart ? (
@@ -1946,6 +2062,7 @@ Status: VERIFIED`;
                                 <>
                                     <span className="text-orange-600 text-base font-semibold">
                                         K{product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}{isBooking ? ` / ${bookingUnit}` : ''}
+                                        {(product as any).usd_price ? <span className="ml-1.5 text-[11px] font-semibold text-zinc-500">${Number((product as any).usd_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span> : null}
                                     </span>
                                     {!isBooking && product.description && (
                                         <>
@@ -1967,7 +2084,7 @@ Status: VERIFIED`;
                             className="inline-flex items-center gap-1.5 self-start px-3 py-1.5 bg-teal-50 text-teal-700 rounded-full text-[11px] font-bold hover:bg-teal-100 transition-colors"
                         >
                             <CalendarDays size={12} />
-                            {formatStayRange(stay.checkIn, stay.checkOut)} · {stay.nights} {bookingUnit}{stay.nights === 1 ? '' : 's'}
+                            {stayLabel(product, stay)}
                         </button>
                     )}
 
@@ -2038,8 +2155,8 @@ Status: VERIFIED`;
                         style={poppedId === product.id ? { animation: 'mw-add-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)' } : undefined}
                         className={`relative w-7 h-7 rounded-full flex items-center justify-center transition-colors duration-200 active:scale-90 ${
                             isInCart
-                                ? 'bg-black border border-black text-white hover:bg-slate-800'
-                                : 'border border-black text-black hover:bg-black hover:text-white'
+                                ? 'bg-[#0B57D0] border border-black text-white hover:bg-[#0842A0]'
+                                : 'border border-black text-black hover:bg-[#0B57D0] hover:text-white'
                         }`}
                         title={isInCart ? (isBooking ? 'Remove booking' : 'Remove from cart') : (isBooking ? 'Choose dates' : 'Add to cart')}
                     >
@@ -2074,8 +2191,8 @@ Status: VERIFIED`;
     // A single catalogue grid card (image on top, name + price, add control).
     const renderGridCard = (product: Product) => {
         const isDonation = product.product_type === 'DONATION';
-        const isBooking = isBookingProductType(product.product_type);
-        const bookingUnit = getBookingTerminology(product.product_type).unit;
+        const isBooking = isReservable(product.product_type);
+        const bookingUnit = reservableUnit(product.product_type);
         const qty = selectedQuantities[product.id] || 0;
         const isInCart = qty > 0;
         const stay = bookingDates[product.id];
@@ -2136,17 +2253,17 @@ Status: VERIFIED`;
                 {/* Info + action */}
                 <div className="pt-3 flex flex-col gap-2.5">
                     <div className="flex flex-col gap-0.5 min-w-0 cursor-pointer" onClick={openDetail}>
-                        <span className="text-[#55595E] text-[11px] truncate">{product.name}</span>
+                        <span className="text-[#5F6368] text-[11px] truncate">{product.name}</span>
                         <span className="text-slate-900 text-sm font-bold">
                             {isDonation
                                 ? 'Open amount'
                                 : isBooking
                                     ? `K ${product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })} / ${bookingUnit}`
-                                    : `K ${product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+                                    : `K ${product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}${(product as any).usd_price ? ` · $${Number((product as any).usd_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : ''}`}
                         </span>
                         {isBooking && isInCart && stay && (
                             <span className="text-[10px] font-semibold text-teal-700 truncate">
-                                {formatStayRange(stay.checkIn, stay.checkOut)} · {stay.nights} {bookingUnit}{stay.nights === 1 ? '' : 's'}
+                                {stayLabel(product, stay)}
                             </span>
                         )}
                     </div>
@@ -2158,11 +2275,11 @@ Status: VERIFIED`;
                             className={`w-full py-2.5 rounded-lg border text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors active:scale-95 ${
                                 isInCart
                                     ? 'bg-black border-black text-white'
-                                    : 'border-[#55595E] text-black hover:bg-black hover:text-white'
+                                    : 'border-[#5F6368] text-black hover:bg-[#0B57D0] hover:text-white'
                             }`}
                         >
                             {isInCart ? <Check size={13} strokeWidth={2.5} /> : <CalendarDays size={13} />}
-                            <span>{isInCart ? 'Reserved · Edit' : 'Reserve'}</span>
+                            <span>{isAppointmentProductType(product.product_type) ? (isInCart ? 'Booked · Edit' : 'Book now') : (isInCart ? 'Reserved · Edit' : 'Reserve')}</span>
                         </button>
                     ) : (
                         // Action area — pulse flash + pop persist across the button↔stepper swap
@@ -2210,7 +2327,7 @@ Status: VERIFIED`;
                                         className={`w-full py-2.5 rounded-lg border text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors active:scale-95 ${
                                             isInCart && isDonation
                                                 ? 'bg-black border-black text-white'
-                                                : 'border-[#55595E] text-black hover:bg-black hover:text-white'
+                                                : 'border-[#5F6368] text-black hover:bg-[#0B57D0] hover:text-white'
                                         }`}
                                     >
                                         {isInCart && isDonation ? (
@@ -2265,9 +2382,9 @@ Status: VERIFIED`;
                             <div className="flex flex-col">
                                 <div className="flex items-center gap-1.5">
                                     <h4 className="text-lg font-black text-slate-900 uppercase tracking-tight">{org.name}</h4>
-                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#2563eb" />
+                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#0B57D0" />
                                 </div>
-                                <p className="text-xs font-thin text-[#5A5A5A]">Payment Checkout Portal</p>
+                                <p className="text-xs font-thin text-[#5F6368]">Payment Checkout Portal</p>
                             </div>
                         </div>
                         <button
@@ -2282,13 +2399,13 @@ Status: VERIFIED`;
                     {/* Search */}
                     <div className="mt-6 max-w-md">
                         <div className="relative">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#55595E]" size={16} />
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#5F6368]" size={16} />
                             <input
                                 type="text"
                                 value={productSearch}
                                 onChange={(e) => setProductSearch(e.target.value)}
                                 aria-label="Search products"
-                                className="w-full pl-11 pr-4 py-3.5 bg-[#F5F5F5] rounded-full text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-slate-200 transition-all"
+                                className="w-full pl-11 pr-4 py-3.5 bg-[#F1F3F4] rounded-full text-sm font-medium text-[#5F6368] outline-none focus:ring-2 focus:ring-slate-200 transition-all"
                             />
                         </div>
                     </div>
@@ -2301,7 +2418,7 @@ Status: VERIFIED`;
                                 <div className="mb-6 max-w-md">
                                     <SegmentedControl
                                         variant="capsule"
-                                        trackBgClassName="bg-[#F5F5F5]"
+                                        trackBgClassName="bg-[#F1F3F4]"
                                         inactiveTextClassName="text-black"
                                         options={productCategories.map(cat => ({ value: cat, label: cat }))}
                                         value={activeCategory}
@@ -2335,7 +2452,7 @@ Status: VERIFIED`;
                                 <div className="mb-6 invisible" aria-hidden="true">
                                     <SegmentedControl
                                         variant="capsule"
-                                        trackBgClassName="bg-[#F5F5F5]"
+                                        trackBgClassName="bg-[#F1F3F4]"
                                         inactiveTextClassName="text-black"
                                         options={productCategories.map(cat => ({ value: cat, label: cat }))}
                                         value={activeCategory}
@@ -2359,7 +2476,7 @@ Status: VERIFIED`;
                                 <div className="flex-1 overflow-y-auto p-5">
                                     {lineItems.length === 0 ? (
                                         <div className="h-full flex items-center justify-center text-center">
-                                            <p className="text-xs font-thin text-[#5A5A5A] leading-relaxed">
+                                            <p className="text-xs font-thin text-[#5F6368] leading-relaxed">
                                                 Items you add will appear here.
                                             </p>
                                         </div>
@@ -2379,7 +2496,7 @@ Status: VERIFIED`;
                                     <button
                                         onClick={handleProceedToSummary}
                                         disabled={subtotal <= 0}
-                                        className="w-full bg-black hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-2xl font-bold text-xs tracking-wide transition-all flex items-center justify-center gap-1.5"
+                                        className="w-full bg-[#0B57D0] hover:bg-[#0842A0] disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-2xl font-bold text-xs tracking-wide transition-all flex items-center justify-center gap-1.5"
                                     >
                                         <span>Checkout</span>
                                         <ChevronRight size={14} strokeWidth={2.5} />
@@ -2501,7 +2618,7 @@ Status: VERIFIED`;
                                                 <button
                                                     onClick={() => handleDownloadPublicReceipt(receipt.reference)}
                                                     disabled={downloadingReference === receipt.reference}
-                                                    className="p-3 bg-slate-950 hover:bg-slate-900 text-white rounded-xl shadow-sm hover:shadow-md transition-all active:scale-95 disabled:opacity-50"
+                                                    className="p-3 bg-slate-950 hover:bg-[#0B57D0] text-white rounded-xl shadow-sm hover:shadow-md transition-all active:scale-95 disabled:opacity-50"
                                                     title="Download Receipt"
                                                 >
                                                     {downloadingReference === receipt.reference ? (
@@ -2538,7 +2655,7 @@ Status: VERIFIED`;
                 {step === 'LOADING' && (
                     <div className="p-10 flex flex-col items-center justify-center min-h-[450px] animate-in fade-in duration-300">
                         {/* Bare ring spinner — no filled tile behind it */}
-                        <svg className="w-10 h-10 animate-spin text-blue-600 mb-6" viewBox="0 0 40 40" fill="none" aria-label="Loading">
+                        <svg className="w-10 h-10 animate-spin text-[#0B57D0] mb-6" viewBox="0 0 40 40" fill="none" aria-label="Loading">
                             <circle cx="20" cy="20" r="16" stroke="currentColor" strokeOpacity="0.15" strokeWidth="3" />
                             <path d="M20 4a16 16 0 0 1 16 16" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
                         </svg>
@@ -2554,8 +2671,8 @@ Status: VERIFIED`;
                     const hasImages = allImages.length > 0;
                     const clampedIdx = Math.max(0, Math.min(detailImageIndex, allImages.length - 1));
                     const isDonation = p.product_type === 'DONATION';
-                    const isBooking = isBookingProductType(p.product_type);
-                    const bookingUnit = getBookingTerminology(p.product_type).unit;
+                    const isBooking = isReservable(p.product_type);
+                    const bookingUnit = reservableUnit(p.product_type);
                     const qty = selectedQuantities[p.id] || 0;
                     const isInCart = qty > 0;
                     const salesCount = p.sales_count ?? 0;
@@ -2683,7 +2800,7 @@ Status: VERIFIED`;
                                 {/* Rating (static) + Sold count — right below the name */}
                                 <div className="mt-1 flex items-center gap-2">
                                     <span className="flex items-center gap-1">
-                                        <Star size={12} className="text-yellow-400" fill="#facc15" />
+                                        <Star size={12} className="text-yellow-400" fill="#FBBC04" />
                                         <span className="text-xs text-[#757575]">4.9 (320 Reviews)</span>
                                     </span>
                                     <span className={`text-xs font-bold ${salesCount > 0 ? 'text-[#757575]' : 'text-teal-600'}`}>
@@ -2762,22 +2879,22 @@ Status: VERIFIED`;
                             <div className="flex flex-col min-w-0">
                                 <div className="flex items-center gap-1.5">
                                     <h4 className="text-base font-black text-slate-900 uppercase tracking-tight truncate">{org.name}</h4>
-                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#2563eb" />
+                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#0B57D0" />
                                 </div>
-                                <p className="text-xs font-thin text-[#5A5A5A]">Payment Checkout Portal</p>
+                                <p className="text-xs font-thin text-[#5F6368]">Payment Checkout Portal</p>
                             </div>
                         </div>
 
                         {/* Search */}
                         <div className="px-4 flex-shrink-0">
                             <div className="relative">
-                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#55595E]" size={16} />
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#5F6368]" size={16} />
                                 <input
                                     type="text"
                                     value={productSearch}
                                     onChange={(e) => setProductSearch(e.target.value)}
                                     aria-label="Search products"
-                                    className="w-full pl-11 pr-4 py-3.5 bg-[#F5F5F5] rounded-full text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-slate-200 transition-all"
+                                    className="w-full pl-11 pr-4 py-3.5 bg-[#F1F3F4] rounded-full text-sm font-medium text-[#5F6368] outline-none focus:ring-2 focus:ring-slate-200 transition-all"
                                 />
                             </div>
                         </div>
@@ -2787,7 +2904,7 @@ Status: VERIFIED`;
                             <div className="px-4 pt-4 flex-shrink-0">
                                 <SegmentedControl
                                     variant="capsule"
-                                    trackBgClassName="bg-[#F5F5F5]"
+                                    trackBgClassName="bg-[#F1F3F4]"
                                     inactiveTextClassName="text-black"
                                     options={productCategories.map(cat => ({ value: cat, label: cat }))}
                                     value={activeCategory}
@@ -2843,7 +2960,7 @@ Status: VERIFIED`;
                                             });
                                             setStep('CATALOG');
                                         }}
-                                        className="w-full bg-black hover:bg-slate-800 text-white py-4 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2.5"
+                                        className="w-full bg-[#0B57D0] hover:bg-[#0842A0] text-white py-4 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2.5"
                                     >
                                         <ShoppingBag size={18} />
                                         <span>Go to Cart</span>
@@ -2876,7 +2993,7 @@ Status: VERIFIED`;
                             <div className="flex flex-col min-w-0 gap-1">
                                 <div className="flex items-center gap-2">
                                     <h4 className="text-base font-bold text-black uppercase tracking-tight truncate">{org.name}</h4>
-                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#2563eb" />
+                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#0B57D0" />
                                 </div>
                                 <p className="text-xs font-normal text-black">Payment Checkout Portal</p>
                             </div>
@@ -2891,7 +3008,7 @@ Status: VERIFIED`;
                         <div className="flex-1 min-h-0 overflow-y-auto px-7 pt-4 pb-2">
                             {lineItems.length === 0 ? (
                                 <div className="flex items-center justify-center py-16">
-                                    <p className="text-center text-xs font-thin text-[#5A5A5A] leading-relaxed">
+                                    <p className="text-center text-xs font-thin text-[#5F6368] leading-relaxed">
                                         Items will appear in your cart when you<br />Add Products and Services
                                     </p>
                                 </div>
@@ -2900,8 +3017,8 @@ Status: VERIFIED`;
                                     {lineItems.map((li) => {
                                         const product = li.product;
                                         const isDonation = product.product_type === 'DONATION';
-                                        const isBooking = isBookingProductType(product.product_type);
-                                        const bookingUnit = getBookingTerminology(product.product_type).unit;
+                                        const isBooking = isReservable(product.product_type);
+                                        const bookingUnit = reservableUnit(product.product_type);
                                         const qty = selectedQuantities[product.id] || 0;
                                         const isInCart = qty > 0;
                                         const stay = bookingDates[product.id];
@@ -2950,7 +3067,7 @@ Status: VERIFIED`;
                                                                 className="inline-flex items-center gap-1.5 self-start px-3 py-1.5 bg-teal-50 text-teal-700 rounded-full text-[11px] font-bold hover:bg-teal-100 transition-colors mt-1"
                                                             >
                                                                 <CalendarDays size={12} />
-                                                                {formatStayRange(stay.checkIn, stay.checkOut)} · {stay.nights} {bookingUnit}{stay.nights === 1 ? '' : 's'}
+                                                                {stayLabel(product, stay)}
                                                             </button>
                                                         )}
                                                     </div>
@@ -3076,8 +3193,8 @@ Status: VERIFIED`;
                             {org.logo_url ? (
                                 <img src={org.logo_url} alt={org.name} className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
                             ) : (
-                                <div className="w-10 h-10 rounded-xl bg-[#0058DB]/10 flex items-center justify-center flex-shrink-0">
-                                    <ShoppingBag className="h-5 w-5 text-[#0058DB]" />
+                                <div className="w-10 h-10 rounded-xl bg-[#0B57D0]/10 flex items-center justify-center flex-shrink-0">
+                                    <ShoppingBag className="h-5 w-5 text-[#0B57D0]" />
                                 </div>
                             )}
                             <div>
@@ -3123,7 +3240,7 @@ Status: VERIFIED`;
                                         className="w-full flex items-center justify-center gap-3 py-3 px-5 bg-white border border-slate-300 rounded-full shadow-sm text-sm text-gray-800 hover:bg-gray-50 active:scale-[0.98] transition-all disabled:opacity-60"
                                     >
                                         {locating ? (
-                                            <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+                                            <Loader2 className="h-4 w-4 animate-spin text-[#0B57D0]" />
                                         ) : (
                                             <MapPin className="h-4 w-4 text-gray-700" />
                                         )}
@@ -3138,7 +3255,7 @@ Status: VERIFIED`;
                                         {/* Country */}
                                         <div>
                                             <label className="text-xs font-semibold text-gray-700 mb-1 block">Country</label>
-                                            <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-full border" style={{borderColor:'#EFF2F6'}}>
+                                            <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-full border" style={{borderColor:'#F1F3F4'}}>
                                                 <span className="text-sm leading-none">🇿🇲</span>
                                                 <span className="flex-1 text-xs text-gray-600 font-normal">{deliveryCountry}</span>
                                                 <span className="text-xs font-semibold text-gray-600">ZM</span>
@@ -3155,7 +3272,7 @@ Status: VERIFIED`;
                                                     value={deliveryState}
                                                     onChange={e => setDeliveryState(e.target.value)}
                                                     placeholder="e.g. Lusaka"
-                                                    className="w-full pl-10 pr-10 py-3 bg-white rounded-full border text-xs text-gray-700 outline-none focus:border-[#0058DB] transition-colors" style={{borderColor:'#EFF2F6'}}
+                                                    className="w-full pl-10 pr-10 py-3 bg-white rounded-full border text-xs text-gray-700 outline-none focus:border-[#0B57D0] transition-colors" style={{borderColor:'#F1F3F4'}}
                                                 />
                                                 <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
                                             </div>
@@ -3170,7 +3287,7 @@ Status: VERIFIED`;
                                                     value={deliveryStreet}
                                                     onChange={e => setDeliveryStreet(e.target.value)}
                                                     placeholder="e.g. E7158 Whitechapel High St"
-                                                    className="w-full pl-10 pr-10 py-3 bg-white rounded-full border text-xs text-gray-700 outline-none focus:border-[#0058DB] transition-colors" style={{borderColor:'#EFF2F6'}}
+                                                    className="w-full pl-10 pr-10 py-3 bg-white rounded-full border text-xs text-gray-700 outline-none focus:border-[#0B57D0] transition-colors" style={{borderColor:'#F1F3F4'}}
                                                 />
                                                 <Edit2 className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                                             </div>
@@ -3185,7 +3302,7 @@ Status: VERIFIED`;
                                                     value={deliveryApartment}
                                                     onChange={e => setDeliveryApartment(e.target.value)}
                                                     placeholder="Suite B225, House No. 12"
-                                                    className="w-full pl-10 pr-10 py-3 bg-white rounded-full border text-xs text-gray-700 outline-none focus:border-[#0058DB] transition-colors" style={{borderColor:'#EFF2F6'}}
+                                                    className="w-full pl-10 pr-10 py-3 bg-white rounded-full border text-xs text-gray-700 outline-none focus:border-[#0B57D0] transition-colors" style={{borderColor:'#F1F3F4'}}
                                                 />
                                                 <Edit2 className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                                             </div>
@@ -3213,7 +3330,7 @@ Status: VERIFIED`;
                                                             }, 50);
                                                         }
                                                     }}
-                                                    className="w-full bg-white rounded-2xl border px-5 py-3 flex items-center gap-2.5 text-left" style={{borderColor:'#EFF2F6'}}
+                                                    className="w-full bg-white rounded-2xl border px-5 py-3 flex items-center gap-2.5 text-left" style={{borderColor:'#F1F3F4'}}
                                                 >
                                                     <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-xl flex-shrink-0 overflow-hidden">
                                                         {activeSvc.logoUrl
@@ -3233,7 +3350,7 @@ Status: VERIFIED`;
                                                 {/* Inline list — not absolute, so it pushes layout down and
                                                     never overlaps the sticky footer */}
                                                 {riderDropdownOpen && (
-                                                    <div className="mt-1.5 bg-white border rounded-2xl overflow-hidden" style={{borderColor:'#EFF2F6'}}>
+                                                    <div className="mt-1.5 bg-white border rounded-2xl overflow-hidden" style={{borderColor:'#F1F3F4'}}>
                                                         {RIDER_SERVICES.map((svc, idx) => (
                                                             <button
                                                                 key={svc.id}
@@ -3255,7 +3372,7 @@ Status: VERIFIED`;
                                                                     </div>
                                                                 </div>
                                                                 {selectedRider === svc.id && (
-                                                                    <div className="w-4 h-4 rounded-full bg-[#0058DB] flex-shrink-0 flex items-center justify-center">
+                                                                    <div className="w-4 h-4 rounded-full bg-[#0B57D0] flex-shrink-0 flex items-center justify-center">
                                                                         <div className="w-2 h-2 bg-white rounded-full" />
                                                                     </div>
                                                                 )}
@@ -3293,7 +3410,7 @@ Status: VERIFIED`;
                                 </button>
                                 <button
                                     onClick={() => setStep('SUMMARY')}
-                                    className="flex-1 h-11 px-3 py-2 bg-gray-900 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-white hover:bg-black transition-colors"
+                                    className="flex-1 h-11 px-3 py-2 bg-[#0B57D0] rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-white hover:bg-[#0B57D0] transition-colors"
                                 >
                                     <CreditCard className="h-3.5 w-3.5" />
                                     Checkout
@@ -3310,8 +3427,8 @@ Status: VERIFIED`;
                             {org.logo_url ? (
                                 <img src={org.logo_url} alt={org.name} className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
                             ) : (
-                                <div className="w-10 h-10 rounded-xl bg-[#0058DB]/10 flex items-center justify-center flex-shrink-0">
-                                    <ShoppingBag className="h-5 w-5 text-[#0058DB]" />
+                                <div className="w-10 h-10 rounded-xl bg-[#0B57D0]/10 flex items-center justify-center flex-shrink-0">
+                                    <ShoppingBag className="h-5 w-5 text-[#0B57D0]" />
                                 </div>
                             )}
                             <div>
@@ -3362,7 +3479,7 @@ Status: VERIFIED`;
                                                         value={value}
                                                         maxLength={200}
                                                         onChange={e => setInfoAnswer(li.product.id, f.id, e.target.value)}
-                                                        className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none"
+                                                        className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] outline-none"
                                                     />
                                                 )}
                                             </div>
@@ -3391,7 +3508,7 @@ Status: VERIFIED`;
                                         setError(null);
                                         startPayment();
                                     }}
-                                    className="flex-1 h-11 px-3 py-2 bg-gray-900 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-white hover:bg-black transition-colors"
+                                    className="flex-1 h-11 px-3 py-2 bg-[#0B57D0] rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-white hover:bg-[#0B57D0] transition-colors"
                                 >
                                     <CreditCard className="h-3.5 w-3.5" />
                                     Pay
@@ -3413,9 +3530,9 @@ Status: VERIFIED`;
                             <div className="flex flex-col min-w-0">
                                 <div className="flex items-center gap-1.5">
                                     <h4 className="text-base font-black text-slate-900 uppercase tracking-tight truncate">{org.name}</h4>
-                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#2563eb" />
+                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#0B57D0" />
                                 </div>
-                                <p className="text-xs font-thin text-[#5A5A5A]">Payment Checkout Portal</p>
+                                <p className="text-xs font-thin text-[#5F6368]">Payment Checkout Portal</p>
                             </div>
                         </div>
 
@@ -3518,7 +3635,7 @@ Status: VERIFIED`;
                                                 value={customerName}
                                                 onChange={(e) => setCustomerName(e.target.value)}
                                                 placeholder="Your full name"
-                                                className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-xl text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
+                                                className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-xl text-sm font-medium text-[#5F6368] outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
                                             />
                                         </div>
                                         <div className="relative">
@@ -3528,7 +3645,7 @@ Status: VERIFIED`;
                                                 value={customerPhone}
                                                 onChange={(e) => setCustomerPhone(e.target.value)}
                                                 placeholder="Phone number"
-                                                className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-xl text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
+                                                className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-xl text-sm font-medium text-[#5F6368] outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
                                             />
                                         </div>
                                     </div>
@@ -3553,7 +3670,7 @@ Status: VERIFIED`;
                                             value={customerEmail}
                                             onChange={(e) => setCustomerEmail(e.target.value)}
                                             placeholder="you@example.com"
-                                            className="w-full pl-11 pr-4 py-3.5 bg-white rounded-xl text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-violet-200 placeholder:text-slate-400 transition-all"
+                                            className="w-full pl-11 pr-4 py-3.5 bg-white rounded-xl text-sm font-medium text-[#5F6368] outline-none focus:ring-2 focus:ring-violet-200 placeholder:text-slate-400 transition-all"
                                         />
                                     </div>
                                 </div>
@@ -3583,7 +3700,7 @@ Status: VERIFIED`;
                                 disabled={!canPay}
                                 className={`w-full py-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${
                                     canPay
-                                        ? 'bg-black hover:bg-slate-800 text-white'
+                                        ? 'bg-[#0B57D0] hover:bg-[#0842A0] text-white'
                                         : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
                                 }`}
                             >
@@ -3665,7 +3782,17 @@ Status: VERIFIED`;
                         </div>
 
                         <div className="flex-1 overflow-y-auto px-6 pt-6 pb-2">
-                            {checkoutMethod === 'mobile-money' ? (
+                            {checkoutMethod === 'mobile-money' && !collectionsApiEnabled ? (
+                                <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-[#E8F0FE] text-[#0B57D0] flex items-center justify-center"><Smartphone size={20} /></div>
+                                        <div>
+                                            <p className="text-sm font-bold text-gray-800">Pay with Mobile Money</p>
+                                            <p className="text-[11px] text-gray-500">You’ll choose your network and approve on your phone in the next window.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : checkoutMethod === 'mobile-money' ? (
                                 <>
                                     <label className="block text-sm font-semibold text-gray-800 mb-2">
                                         Enter your mobile money number
@@ -3695,7 +3822,7 @@ Status: VERIFIED`;
                                     {checkoutPhone.length >= 9 && (
                                         <div className="mt-3 px-4 py-3 rounded-2xl bg-white border border-slate-200 flex items-center gap-3">
                                             {resolvingAccountName ? (
-                                                <Loader2 size={16} className="text-blue-600 animate-spin flex-shrink-0" />
+                                                <Loader2 size={16} className="text-[#0B57D0] animate-spin flex-shrink-0" />
                                             ) : resolvedAccountName ? (
                                                 <Check size={16} className="text-emerald-500 flex-shrink-0" />
                                             ) : (
@@ -3725,6 +3852,35 @@ Status: VERIFIED`;
                                     body={storeLinkBody}
                                     onPaid={handleMoneyWisePaid}
                                 />
+                            ) : cardEnabled ? (
+                                <div className="px-1">
+                                    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-full bg-[#E8F0FE] text-[#0B57D0] flex items-center justify-center"><CreditCard size={20} /></div>
+                                            <div>
+                                                <p className="text-sm font-bold text-gray-800">Pay with a Visa, Mastercard or Amex</p>
+                                                <p className="text-[11px] text-gray-500">You’ll enter your card on a secure page. Your card details never touch this site.</p>
+                                            </div>
+                                        </div>
+                                        <div className="mt-4 space-y-2">
+                                            <input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Your name" autoComplete="name" className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0B57D0]" />
+                                            <input type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="Your phone number" autoComplete="tel" className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0B57D0]" />
+                                            {cartHasDigital && <input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="Email for your download" autoComplete="email" className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0B57D0]" />}
+                                        </div>
+                                        <div className="mt-4 space-y-1 text-xs text-gray-600">
+                                            <div className="flex justify-between"><span>Order total</span><span>K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                            <div className="flex justify-between"><span>Card fee</span><span>K{cardFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                            <div className="flex justify-between border-t border-slate-100 pt-1 font-bold text-gray-800"><span>You pay</span><span>K{cardCharged.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                        </div>
+                                        {cardBlockedByDelivery && <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">Card isn’t available for orders with a delivery charge yet. Use Mobile Money, or choose pick-up.</p>}
+                                    </div>
+                                    {error && (
+                                        <div className="mt-4 p-3.5 bg-rose-50 text-rose-600 rounded-xl flex items-start space-x-2">
+                                            <AlertCircle className="flex-shrink-0 mt-0.5" size={14} />
+                                            <span className="text-[11px] font-semibold leading-normal">{error}</span>
+                                        </div>
+                                    )}
+                                </div>
                             ) : (
                                 <div className="text-center py-10 px-4 bg-white border border-slate-100 rounded-2xl">
                                     <div className="mx-auto w-12 h-12 bg-slate-200 text-slate-500 rounded-full flex items-center justify-center mb-3">
@@ -3743,18 +3899,36 @@ Status: VERIFIED`;
                                 <ShieldCheck size={16} className="text-zinc-600" />
                                 <span className="text-xs text-zinc-600">Secure payments powered by Lenco</span>
                             </div>
-                            {checkoutMethod === 'moneywise' ? null : checkoutMethod === 'mobile-money' ? (
+                            {checkoutMethod === 'moneywise' ? null : checkoutMethod === 'mobile-money' && !collectionsApiEnabled ? (
+                                <button
+                                    onClick={handlePay}
+                                    disabled={submitting || !canPay}
+                                    className={`w-full h-14 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${!submitting && canPay ? 'bg-[#0B57D0] hover:bg-[#0842A0] text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'}`}
+                                >
+                                    {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
+                                    <span>{submitting ? 'Starting…' : `Pay K${totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}</span>
+                                </button>
+                            ) : checkoutMethod === 'mobile-money' ? (
                                 <button
                                     onClick={handlePayMobileMoney}
                                     disabled={submitting || !detectOperator(checkoutPhone) || resolvingAccountName}
                                     className={`w-full h-14 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${
                                         !submitting && detectOperator(checkoutPhone) && !resolvingAccountName
-                                            ? 'bg-black hover:bg-slate-800 text-white'
+                                            ? 'bg-[#0B57D0] hover:bg-[#0842A0] text-white'
                                             : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
                                     }`}
                                 >
                                     {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
                                     <span>{submitting ? 'Starting…' : `Pay K${totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}</span>
+                                </button>
+                            ) : checkoutMethod === 'card' && cardEnabled ? (
+                                <button
+                                    onClick={handlePayCard}
+                                    disabled={submitting || !cardDetailsReady || cardBlockedByDelivery}
+                                    className={`w-full h-14 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${!submitting && cardDetailsReady && !cardBlockedByDelivery ? 'bg-[#0B57D0] hover:bg-[#0842A0] text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'}`}
+                                >
+                                    {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
+                                    <span>{submitting ? 'Starting…' : `Pay K${cardCharged.toLocaleString(undefined, { minimumFractionDigits: 2 })} by card`}</span>
                                 </button>
                             ) : (
                                 <button disabled className="w-full h-14 rounded-xl font-bold text-base bg-neutral-100 text-zinc-400 cursor-not-allowed">
@@ -3855,9 +4029,9 @@ Status: VERIFIED`;
                             <div className="flex flex-col min-w-0">
                                 <div className="flex items-center gap-1.5">
                                     <h4 className="text-base font-black text-slate-900 uppercase tracking-tight truncate">{org.name}</h4>
-                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#2563eb" />
+                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#0B57D0" />
                                 </div>
-                                <p className="text-xs font-thin text-[#5A5A5A]">Payment Checkout Portal</p>
+                                <p className="text-xs font-thin text-[#5F6368]">Payment Checkout Portal</p>
                             </div>
                         </div>
 
@@ -3870,7 +4044,7 @@ Status: VERIFIED`;
                                 >
                                     <BadgeCheck
                                         className="w-24 h-24 text-[#002962]"
-                                        fill="#006AFF"
+                                        fill="#0B57D0"
                                         strokeWidth={1.5}
                                         style={{ filter: 'drop-shadow(-5px 5px 0 rgba(0,41,98,1))' }}
                                     />
@@ -3926,7 +4100,7 @@ Status: VERIFIED`;
                                             <span className="text-xs text-zinc-600 truncate">
                                                 {li.product.name}
                                                 {li.isBooking && li.booking
-                                                    ? ` · ${formatStayRange(li.booking.checkIn, li.booking.checkOut)} (${li.quantity} ${getBookingTerminology(li.product.product_type).unit}${li.quantity === 1 ? '' : 's'})`
+                                                    ? ` · ${stayLabel(li.product, li.booking)}`
                                                     : !li.isDonation && li.quantity > 1 ? ` (x${li.quantity})` : ''}
                                             </span>
                                             <span className="text-xs text-zinc-600 flex-shrink-0">
@@ -3960,7 +4134,7 @@ Status: VERIFIED`;
                             <button
                                 onClick={handleDownloadReceipt}
                                 disabled={isGeneratingReceipt}
-                                className="w-full bg-black hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-2xl font-bold text-xs transition-all flex items-center justify-center gap-2"
+                                className="w-full bg-[#0B57D0] hover:bg-[#0842A0] disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-2xl font-bold text-xs transition-all flex items-center justify-center gap-2"
                             >
                                 {isGeneratingReceipt ? (
                                     <Loader2 size={14} className="animate-spin" />
@@ -4011,7 +4185,7 @@ Status: VERIFIED`;
                         {(errorInfo?.retry ?? true) && (
                             <button
                                 onClick={handleTryAgain}
-                                className="w-full bg-slate-950 hover:bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.15em] transition-all shadow-lg flex items-center justify-center gap-2"
+                                className="w-full bg-slate-950 hover:bg-[#0B57D0] text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.15em] transition-all shadow-lg flex items-center justify-center gap-2"
                             >
                                 <RefreshCw size={14} /> Try Again
                             </button>
@@ -4059,7 +4233,7 @@ Status: VERIFIED`;
                                     value={productSearch}
                                     onChange={(e) => setProductSearch(e.target.value)}
                                     placeholder="Search products"
-                                    className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-full text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
+                                    className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-full text-sm font-medium text-[#5F6368] outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
                                 />
                             </div>
                         </div>
@@ -4069,7 +4243,7 @@ Status: VERIFIED`;
                             <div className="px-4 pt-6 flex-shrink-0">
                                 <SegmentedControl
                                     variant="capsule"
-                                    trackBgClassName="bg-[#F5F5F5]"
+                                    trackBgClassName="bg-[#F1F3F4]"
                                     inactiveTextClassName="text-black"
                                     options={productCategories.map(cat => ({ value: cat, label: cat }))}
                                     value={activeCategory}
@@ -4109,7 +4283,7 @@ Status: VERIFIED`;
                             <button
                                 onClick={closeProductSheet}
                                 disabled={cartItemCount === 0}
-                                className="w-full bg-black hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed text-white py-4 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2"
+                                className="w-full bg-[#0B57D0] hover:bg-[#0842A0] disabled:opacity-40 disabled:cursor-not-allowed text-white py-4 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2"
                             >
                                 <ShoppingBag size={16} />
                                 <span>{cartItemCount > 0 ? `Add ${cartItemCount} Item${cartItemCount === 1 ? '' : 's'}` : 'Add Items'}</span>
@@ -4134,6 +4308,20 @@ Status: VERIFIED`;
             </div>
             )}
         </div>
+        )}
+
+        {/* Appointment day + time-slot picker */}
+        {appointmentProduct && (
+            <AppointmentPicker
+                productId={appointmentProduct.id}
+                productName={appointmentProduct.name}
+                price={appointmentProduct.price}
+                initial={bookingDates[appointmentProduct.id]?.time
+                    ? { date: bookingDates[appointmentProduct.id].checkIn, time: bookingDates[appointmentProduct.id].time!, staffId: bookingDates[appointmentProduct.id].staffId, deposit: bookingDates[appointmentProduct.id].deposit }
+                    : null}
+                onClose={() => setAppointmentProduct(null)}
+                onConfirm={(d, t, e, st, dep) => handleConfirmAppointment(appointmentProduct.id, d, t, e, st, dep)}
+            />
         )}
 
         {/* Booking date calendar — shared across desktop + mobile */}

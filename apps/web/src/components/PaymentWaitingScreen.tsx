@@ -15,12 +15,12 @@ import { Loader2, X } from 'lucide-react';
  * cosmetic pass mirroring the design's own timing (the handoff frames polling
  * copy as reassurance, not literal progress).
  *
- * Brand substitution per the handoff: accent is our #006AFF instead of #2563EB,
+ * Brand substitution per the handoff: accent is our #0B57D0 instead of #0B57D0,
  * and type stays on our existing DM Sans stack. Slow-network notice is folded
  * into the polling reassurance rotation as requested.
  */
 
-const ACCENT = '#006AFF';
+const ACCENT = '#0B57D0';
 
 const STYLE_ID = 'mw-pay-wait-keyframes';
 if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
@@ -31,7 +31,7 @@ if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
 @keyframes mwpw-spin { to{transform:rotate(360deg)} }
 @keyframes mwpw-rise { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
 @keyframes mwpw-barslide { from{transform:translateX(-100%)} to{transform:translateX(250%)} }
-@keyframes mwpw-attn { 0%,100%{box-shadow:0 0 0 0 rgba(0,106,255,.22)} 50%{box-shadow:0 0 0 7px rgba(0,106,255,0)} }
+@keyframes mwpw-attn { 0%,100%{box-shadow:0 0 0 0 rgba(11,87,208,.22)} 50%{box-shadow:0 0 0 7px rgba(11,87,208,0)} }
 @keyframes mwpw-blink { 0%,100%{opacity:.2} 50%{opacity:1} }
 @keyframes mwpw-popin { 0%{transform:scale(0);opacity:0} 62%{transform:scale(1.14)} 100%{transform:scale(1);opacity:1} }
 @keyframes mwpw-draw { to{stroke-dashoffset:0} }
@@ -155,7 +155,7 @@ export const PaymentWaitingScreen: React.FC<PaymentWaitingScreenProps> = ({
                 <button
                     onClick={handleDismiss}
                     className="flex items-center justify-center rounded-full transition-colors hover:bg-slate-200"
-                    style={{ width: 34, height: 34, background: '#F3F5F8', color: '#9AA2AE' }}
+                    style={{ width: 34, height: 34, background: '#F3F5F8', color: '#9AA0A6' }}
                 >
                     <X size={14} />
                 </button>
@@ -192,7 +192,7 @@ export const PaymentWaitingScreen: React.FC<PaymentWaitingScreenProps> = ({
                     {phase === 'failed' && (
                         <div
                             className="flex items-center justify-center"
-                            style={{ position: 'absolute', inset: -3, borderRadius: '50%', background: '#E5484D', zIndex: 3, animation: 'mwpw-popin .45s cubic-bezier(.2,.9,.3,1.3) both, mwpw-shake .5s .3s ease' }}
+                            style={{ position: 'absolute', inset: -3, borderRadius: '50%', background: '#EA4335', zIndex: 3, animation: 'mwpw-popin .45s cubic-bezier(.2,.9,.3,1.3) both, mwpw-shake .5s .3s ease' }}
                         >
                             <svg width="30" height="30" viewBox="0 0 30 30">
                                 <path d="M9 9 L21 21 M21 9 L9 21" fill="none" stroke="#fff" strokeWidth="3.2" strokeLinecap="round" />
@@ -218,8 +218,8 @@ export const PaymentWaitingScreen: React.FC<PaymentWaitingScreenProps> = ({
                         <div className="relative overflow-hidden" style={{ height: 6, borderRadius: 6, background: '#EEF1F5' }}>
                             <div style={{ position: 'absolute', top: 0, left: 0, width: '40%', height: '100%', borderRadius: 6, background: ACCENT, animation: 'mwpw-barslide 1.3s linear infinite' }} />
                         </div>
-                        <div className="mt-3.5 flex items-center justify-center gap-1.5 text-[12.5px] font-semibold" style={{ color: '#9AA2AE' }}>
-                            <svg width="13" height="13" viewBox="0 0 13 13"><rect x="2.5" y="6" width="8" height="5.5" rx="1.2" fill="#9AA2AE" /><path d="M4 6 V4.2 a2.5 2.5 0 0 1 5 0 V6" fill="none" stroke="#9AA2AE" strokeWidth="1.3" /></svg>
+                        <div className="mt-3.5 flex items-center justify-center gap-1.5 text-[12.5px] font-semibold" style={{ color: '#9AA0A6' }}>
+                            <svg width="13" height="13" viewBox="0 0 13 13"><rect x="2.5" y="6" width="8" height="5.5" rx="1.2" fill="#9AA0A6" /><path d="M4 6 V4.2 a2.5 2.5 0 0 1 5 0 V6" fill="none" stroke="#9AA0A6" strokeWidth="1.3" /></svg>
                             Encrypted &amp; secured
                         </div>
                     </div>
@@ -230,7 +230,7 @@ export const PaymentWaitingScreen: React.FC<PaymentWaitingScreenProps> = ({
                         <div
                             style={{ borderRadius: 16, background: '#F7F8FA', border: '1.5px solid #DCE6FB', padding: '15px 16px', animation: 'mwpw-attn 2s ease-in-out infinite', fontFamily: 'ui-monospace, Menlo, monospace' }}
                         >
-                            <div className="mb-2.5 flex items-center gap-1.5" style={{ fontSize: 10.5, letterSpacing: '.4px', color: '#9AA2AE' }}>
+                            <div className="mb-2.5 flex items-center gap-1.5" style={{ fontSize: 10.5, letterSpacing: '.4px', color: '#9AA0A6' }}>
                                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: ACCENT, animation: 'mwpw-blink 1.2s infinite' }} />
                                 {opLabel} · MOBILE MONEY
                             </div>
@@ -256,7 +256,7 @@ export const PaymentWaitingScreen: React.FC<PaymentWaitingScreenProps> = ({
                         <div className="relative overflow-hidden" style={{ height: 6, borderRadius: 6, background: '#EEF1F5' }}>
                             <div style={{ position: 'absolute', top: 0, left: 0, width: '40%', height: '100%', borderRadius: 6, background: ACCENT, animation: 'mwpw-barslide 1.15s linear infinite' }} />
                         </div>
-                        <p className="mt-3.5 text-center text-[12.5px] font-medium leading-normal" style={{ color: '#9AA2AE' }}>
+                        <p className="mt-3.5 text-center text-[12.5px] font-medium leading-normal" style={{ color: '#9AA0A6' }}>
                             Keep this screen open — it updates automatically.
                         </p>
                         <button onClick={onCancel} disabled={cancelling} className={`mt-3 ${ghostBtnClass}`}>
@@ -272,9 +272,9 @@ export const PaymentWaitingScreen: React.FC<PaymentWaitingScreenProps> = ({
                 {phase === 'success' && (
                     <div style={{ animation: 'mwpw-rise .45s ease both' }}>
                         <div style={{ borderRadius: 16, background: '#F4F8FF', border: '1px solid #DBE6FB', padding: 16 }}>
-                            <div className="flex justify-between py-1.5 text-[13px]"><span style={{ color: '#6B7480' }}>Amount</span><span className="font-bold" style={{ color: '#0B0F14' }}>{fmtAmount(amount)}</span></div>
-                            <div className="flex justify-between py-1.5 text-[13px]" style={{ borderTop: '1px solid #E7EEFA' }}><span style={{ color: '#6B7480' }}>Paid to</span><span className="font-bold" style={{ color: '#0B0F14' }}>{businessName}</span></div>
-                            <div className="flex justify-between py-1.5 text-[13px]" style={{ borderTop: '1px solid #E7EEFA' }}><span style={{ color: '#6B7480' }}>Reference</span><span className="font-bold" style={{ color: '#0B0F14', fontFamily: 'ui-monospace, Menlo, monospace' }}>{reference ? `#${reference}` : '—'}</span></div>
+                            <div className="flex justify-between py-1.5 text-[13px]"><span style={{ color: '#5F6368' }}>Amount</span><span className="font-bold" style={{ color: '#0B0F14' }}>{fmtAmount(amount)}</span></div>
+                            <div className="flex justify-between py-1.5 text-[13px]" style={{ borderTop: '1px solid #E7EEFA' }}><span style={{ color: '#5F6368' }}>Paid to</span><span className="font-bold" style={{ color: '#0B0F14' }}>{businessName}</span></div>
+                            <div className="flex justify-between py-1.5 text-[13px]" style={{ borderTop: '1px solid #E7EEFA' }}><span style={{ color: '#5F6368' }}>Reference</span><span className="font-bold" style={{ color: '#0B0F14', fontFamily: 'ui-monospace, Menlo, monospace' }}>{reference ? `#${reference}` : '—'}</span></div>
                         </div>
                         <button onClick={onDone} className={`mt-3 ${primaryBtnClass}`} style={{ background: ACCENT, boxShadow: `0 10px 22px ${ACCENT}44` }}>
                             View receipt
@@ -286,7 +286,7 @@ export const PaymentWaitingScreen: React.FC<PaymentWaitingScreenProps> = ({
                     <div style={{ animation: 'mwpw-rise .45s ease both' }}>
                         {failureIsDeclined ? (
                             <div className="flex items-start gap-2.5" style={{ borderRadius: 16, background: '#FEF6F6', border: '1px solid #F5DADB', padding: '14px 16px' }}>
-                                <svg width="18" height="18" viewBox="0 0 18 18" className="flex-shrink-0 mt-0.5"><circle cx="9" cy="9" r="8" fill="none" stroke="#E5484D" strokeWidth="1.5" /><path d="M9 4.5 V10" stroke="#E5484D" strokeWidth="1.6" strokeLinecap="round" /><circle cx="9" cy="13" r="1" fill="#E5484D" /></svg>
+                                <svg width="18" height="18" viewBox="0 0 18 18" className="flex-shrink-0 mt-0.5"><circle cx="9" cy="9" r="8" fill="none" stroke="#EA4335" strokeWidth="1.5" /><path d="M9 4.5 V10" stroke="#EA4335" strokeWidth="1.6" strokeLinecap="round" /><circle cx="9" cy="13" r="1" fill="#EA4335" /></svg>
                                 <span className="text-[13px] font-semibold leading-snug" style={{ color: '#8A3B3E' }}>
                                     No money has left your wallet. If it looks like you were still charged, press "Check payment status" below.
                                 </span>
@@ -316,8 +316,8 @@ export const PaymentWaitingScreen: React.FC<PaymentWaitingScreenProps> = ({
                 {phase === 'cancelled' && (
                     <div style={{ animation: 'mwpw-rise .45s ease both' }}>
                         <div className="flex items-start gap-2.5" style={{ borderRadius: 16, background: '#F7F8FA', border: '1px solid #E7EAEF', padding: '14px 16px' }}>
-                            <svg width="18" height="18" viewBox="0 0 18 18" className="flex-shrink-0 mt-0.5"><circle cx="9" cy="9" r="8" fill="none" stroke="#9AA2AE" strokeWidth="1.5" /><path d="M9 4.5 V10" stroke="#9AA2AE" strokeWidth="1.6" strokeLinecap="round" /><circle cx="9" cy="13" r="1" fill="#9AA2AE" /></svg>
-                            <span className="text-[12.5px] font-medium leading-snug" style={{ color: '#6B7480' }}>
+                            <svg width="18" height="18" viewBox="0 0 18 18" className="flex-shrink-0 mt-0.5"><circle cx="9" cy="9" r="8" fill="none" stroke="#9AA0A6" strokeWidth="1.5" /><path d="M9 4.5 V10" stroke="#9AA0A6" strokeWidth="1.6" strokeLinecap="round" /><circle cx="9" cy="13" r="1" fill="#9AA0A6" /></svg>
+                            <span className="text-[12.5px] font-medium leading-snug" style={{ color: '#5F6368' }}>
                                 A prompt may still show on <span className="font-bold text-slate-700">{maskPhone(payerPhone)}</span> a couple of times — you can safely ignore it. It expires on its own and you’re only charged if you enter your PIN.
                             </span>
                         </div>

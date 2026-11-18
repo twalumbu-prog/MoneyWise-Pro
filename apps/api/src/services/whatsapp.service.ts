@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { supabase } from '../lib/supabase';
+import { recordUsage, attributeTo } from './usage.service';
 
 /**
  * WhatsApp notifications via WaAPI (https://waapi.app).
@@ -86,6 +87,7 @@ export const whatsappService = {
                 }
             );
             console.log(`[WhatsApp] Sent message to ${chatId}`);
+            recordUsage({ category: 'messaging', kind: 'whatsapp', provider: 'waapi', units: 1, unit: 'message' });
             return true;
         } catch (err: any) {
             const detail = err?.response?.data || err?.message || err;
@@ -104,6 +106,7 @@ export const whatsappService = {
      * webhook or the periodic sync finalised the payment first.
      */
     async notifyPaymentLinkPaid(organizationId: string, reference: string): Promise<void> {
+        attributeTo(organizationId);
         try {
             if (!reference) return;
 

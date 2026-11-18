@@ -22,7 +22,7 @@ function lineItemMatchesAccount(item: any, acc: any): boolean {
  * legacy per-type computation, so partially-backfilled orgs never show a wrong
  * balance sheet. Backfilling an org flips it onto the GL automatically.
  */
-async function isOrgFullyPosted(organizationId: string): Promise<boolean> {
+export async function isOrgFullyPosted(organizationId: string): Promise<boolean> {
     const { data: gaps, error } = await supabase.rpc('cashbook_entries_missing_journal', {
         p_organization_id: organizationId
     });
@@ -125,10 +125,244 @@ async function buildFinancialsFromGL(organizationId: string, startDate: string, 
     return financials;
 }
 
+/**
+ * The report rows for one period — exactly what GET /reports/expenditure returns: the double-entry GL once an org's
+ * history is fully posted, otherwise the legacy per-type computation. Shared by the Grow actuals endpoint so both
+ * screens always agree.
+ */
+export async function computeFinancials(organization_id: string, startDate: string, endDate: string, fullyPosted?: boolean): Promise<any[]> {
+    if (fullyPosted ?? await isOrgFullyPosted(organization_id)) {
+        return buildFinancialsFromGL(organization_id, startDate, endDate);
+    }
+
+    // 1. Fetch all active accounts for the organization
+    const { data: accounts, error: accError } = await supabase
+        .from('accounts')
+        .select('*')
+        .eq('organization_id', organization_id)
+        .eq('is_active', true);
+
+    if (accError) throw accError;
+
+    // Pagination helper to fetch all rows beyond the 1000-row limit
+    const fetchAll = async (queryFn: (from: number, to: number) => any) => {
+        let allData: any[] = [];
+        let from = 0;
+        const limit = 1000;
+        while (true) {
+            const { data, error } = await queryFn(from, from + limit - 1);
+            if (error) throw error;
+            if (!data || data.length === 0) break;
+            allData = allData.concat(data);
+            if (data.length < limit) break;
+            from += limit;
+        }
+        return allData;
+    };
+
+    // 2. Fetch all cashbook entries up to endDate
+    const cbEntries = await fetchAll((from, to) => supabase
+        .from('cashbook_entries')
+        .select('*')
+        .eq('organization_id', organization_id)
+        .lte('date', endDate)
+        .range(from, to)
+    );
+
+    // 3. Fetch all organization wallets
+    const { data: wallets, error: wError } = await supabase
+        .from('organization_wallets')
+        .select('*')
+        .eq('organization_id', organization_id);
+
+    if (wError) throw wError;
+
+    // 4. Fetch all line items of requisitions in allowed statuses
+    const allowedStatuses = ['DISBURSED', 'RECEIVED', 'EXPENSED', 'CHANGE_SUBMITTED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'];
+    const lineItems = await fetchAll((from, to) => supabase
+        .from('line_items')
+        .select(`
+            *,
+            requisition:requisitions!inner(
+                id, 
+                status, 
+                created_at, 
+                updated_at, 
+                organization_id,
+                cashbook_entries(id, date, entry_type)
+            )
+        `)
+        .eq('requisition.organization_id', organization_id)
+        .in('requisition.status', allowedStatuses)
+        .range(from, to)
+    );
+
+    // Date helper for line items
+    const getLineItemDate = (item: any) => {
+        const req = item.requisition;
+        if (!req) return '';
+        const cashbookEntries = req.cashbook_entries || [];
+        const disbursement = cashbookEntries.find((c: any) => c.entry_type === 'DISBURSEMENT');
+        if (disbursement) return disbursement.date;
+        if (cashbookEntries.length > 0) return cashbookEntries[0].date;
+        return req.updated_at || req.created_at || '';
+    };
+
+    // Aggregate calculations for each account
+    const financials = [];
+
+    for (const acc of (accounts || [])) {
+        let totalAmount = 0;
+        let txCount = 0;
+
+        if (acc.type === 'EXPENSE') {
+            // Periodic (between startDate and endDate)
+            // Source A: Requisition line items matching this account within date range
+            const matchingLIs = (lineItems || []).filter(item => {
+                const itemDate = getLineItemDate(item).split('T')[0];
+                const matchAcc = lineItemMatchesAccount(item, acc);
+                return matchAcc && itemDate >= startDate && itemDate <= endDate;
+            });
+            const liSum = matchingLIs.reduce((sum, item) => sum + Number(item.actual_amount || item.estimated_amount || 0), 0);
+
+            // Source B: Non-requisition cashbook entries directly allocated to this account in the date range
+            const matchingCBs = (cbEntries || []).filter(entry => {
+                const entryDate = entry.date;
+                return entry.account_id === acc.id && !entry.requisition_id && entryDate >= startDate && entryDate <= endDate;
+            });
+            // Expense is debit-normal, so cash outflow (credit) increases balance and cash inflow (debit) decreases it
+            const cbSum = matchingCBs.reduce((sum, entry) => sum + (Number(entry.credit || 0) - Number(entry.debit || 0)), 0);
+
+            totalAmount = liSum + cbSum;
+            txCount = matchingLIs.length + matchingCBs.length;
+
+        } else if (acc.type === 'INCOME') {
+            // Periodic (between startDate and endDate)
+            const matchingCBs = (cbEntries || []).filter(entry => {
+                const entryDate = entry.date;
+                return entry.account_id === acc.id && entryDate >= startDate && entryDate <= endDate;
+            });
+            // Income is credit-normal, so cash inflow (debit) increases it and cash outflow (credit) decreases it
+            totalAmount = matchingCBs.reduce((sum, entry) => sum + (Number(entry.debit || 0) - Number(entry.credit || 0)), 0);
+            txCount = matchingCBs.length;
+
+        } else if (acc.type === 'ASSET') {
+            // Cumulative (up to endDate)
+            const nameLower = acc.name.toLowerCase();
+            const isBankWalletOrCash = acc.subtype === 'Bank' || nameLower.includes('wallet') || nameLower.includes('cash') || nameLower.includes('bank');
+
+            if (isBankWalletOrCash) {
+                if (nameLower.includes('main') || acc.code === 'QB-1150040000') {
+                    // Main Wallet balance (debits - credits)
+                    const matchingCBs = (cbEntries || []).filter(entry => entry.account_type === 'MONEYWISE_WALLET');
+                    totalAmount = matchingCBs.reduce((sum, entry) => sum + (Number(entry.debit || 0) - Number(entry.credit || 0)), 0);
+                    txCount = matchingCBs.length;
+                } else {
+                    // Matches a specific subwallet
+                    const matchedWallet = (wallets || []).find(w => w.name === acc.name || (acc.qb_account_id != null && w.qb_account_id === acc.qb_account_id));
+                    if (matchedWallet) {
+                        const matchingCBs = (cbEntries || []).filter(entry => entry.wallet_id === matchedWallet.id);
+                        totalAmount = matchingCBs.reduce((sum, entry) => sum + (Number(entry.debit || 0) - Number(entry.credit || 0)), 0);
+                        txCount = matchingCBs.length;
+                    } else if (nameLower.includes('cash')) {
+                        // Physical Cash account
+                        const matchingCBs = (cbEntries || []).filter(entry => entry.account_type === 'CASH');
+                        totalAmount = matchingCBs.reduce((sum, entry) => sum + (Number(entry.debit || 0) - Number(entry.credit || 0)), 0);
+                        txCount = matchingCBs.length;
+                    } else {
+                        // General Bank Account
+                        const matchingCBs = (cbEntries || []).filter(entry => entry.account_id === acc.id);
+                        const cbSum = matchingCBs.reduce((sum, entry) => sum + (Number(entry.credit || 0) - Number(entry.debit || 0)), 0);
+                        const matchingLIs = (lineItems || []).filter(item => lineItemMatchesAccount(item, acc));
+                        const liSum = matchingLIs.reduce((sum, item) => sum + Number(item.actual_amount || item.estimated_amount || 0), 0);
+                        totalAmount = cbSum + liSum;
+                        txCount = matchingCBs.length + matchingLIs.length;
+                    }
+                }
+            } else {
+                // Other Asset
+                const matchingCBs = (cbEntries || []).filter(entry => entry.account_id === acc.id);
+                const cbSum = matchingCBs.reduce((sum, entry) => sum + (Number(entry.credit || 0) - Number(entry.debit || 0)), 0);
+                const matchingLIs = (lineItems || []).filter(item => lineItemMatchesAccount(item, acc));
+                const liSum = matchingLIs.reduce((sum, item) => sum + Number(item.actual_amount || item.estimated_amount || 0), 0);
+                totalAmount = cbSum + liSum;
+                txCount = matchingCBs.length + matchingLIs.length;
+            }
+
+        } else if (acc.type === 'LIABILITY' || acc.type === 'EQUITY') {
+            // Cumulative (up to endDate)
+            const matchingCBs = (cbEntries || []).filter(entry => entry.account_id === acc.id);
+            const cbSum = matchingCBs.reduce((sum, entry) => sum + (Number(entry.debit || 0) - Number(entry.credit || 0)), 0);
+            const matchingLIs = (lineItems || []).filter(item => lineItemMatchesAccount(item, acc));
+            const liSum = matchingLIs.reduce((sum, item) => sum + Number(item.actual_amount || item.estimated_amount || 0), 0);
+
+            totalAmount = cbSum - liSum;
+            txCount = matchingCBs.length + matchingLIs.length;
+        }
+
+        financials.push({
+            account_id: acc.id,
+            account_name: acc.name,
+            total_amount: totalAmount,
+            transaction_count: txCount,
+            type: acc.type,
+            logo_url: acc.logo_url ?? null
+        });
+    }
+
+    // Retained Earnings: roll cumulative (income - expense) up to endDate onto the
+    // Retained Earnings equity row, mirroring the GL path (buildFinancialsFromGL).
+    // Without this the legacy balance sheet never reflects accumulated profit/loss, so
+    // Equity stays flat and Assets - Liabilities != Total Equity. Income increases it,
+    // expense decreases it — keeping the accounting equation satisfied from day one.
+    let cumIncome = 0;
+    let cumExpense = 0;
+    for (const acc of (accounts || [])) {
+        if (acc.type === 'INCOME') {
+            const cbs = (cbEntries || []).filter(e => e.account_id === acc.id && e.date <= endDate);
+            cumIncome += cbs.reduce((sum, e) => sum + (Number(e.debit || 0) - Number(e.credit || 0)), 0);
+        } else if (acc.type === 'EXPENSE') {
+            const lis = (lineItems || []).filter(item =>
+                lineItemMatchesAccount(item, acc) && getLineItemDate(item).split('T')[0] <= endDate);
+            cumExpense += lis.reduce((sum, item) => sum + Number(item.actual_amount || item.estimated_amount || 0), 0);
+            const cbs = (cbEntries || []).filter(e => e.account_id === acc.id && !e.requisition_id && e.date <= endDate);
+            cumExpense += cbs.reduce((sum, e) => sum + (Number(e.credit || 0) - Number(e.debit || 0)), 0);
+        }
+    }
+    const retainedEarnings = cumIncome - cumExpense;
+
+    const isRetainedAccount = (acc: any) => acc.type === 'EQUITY' && (
+        acc.subtype === 'Retained Earnings' ||
+        acc.code === 'QB-73' ||
+        /retained earnings/i.test(acc.name || '')
+    );
+    // Personal accounts roll income onto Personal Equity (see buildFinancialsFromGL).
+    const personalEquity = (await isPersonalOrganization(organization_id))
+        ? (accounts || []).find((a: any) => a.type === 'EQUITY' && a.code === PERSONAL_EQUITY_CODE)
+        : undefined;
+    const reAccount = personalEquity ?? (accounts || []).find(isRetainedAccount);
+    const reRow = reAccount ? financials.find(f => f.account_id === reAccount.id) : undefined;
+    if (reRow) {
+        reRow.total_amount += retainedEarnings;
+    } else if (Math.abs(retainedEarnings) > 0.005) {
+        // Org has no Retained Earnings account — surface a synthetic row so the
+        // balance sheet still balances.
+        financials.push({
+            account_id: 'RETAINED_EARNINGS',
+            account_name: 'Retained Earnings',
+            total_amount: retainedEarnings,
+            transaction_count: 0,
+            type: 'EQUITY'
+        });
+    }
+
+    return financials;
+}
+
 export const getExpenditure = async (req: any, res: any): Promise<any> => {
     try {
         const organization_id = (req as any).user.organization_id;
-        const { startDate, endDate, mode = 'EXPENSE' } = req.query; 
+        const { startDate, endDate } = req.query;
 
         if (!organization_id) {
             return res.status(400).json({ error: 'Organization context missing' });
@@ -142,235 +376,7 @@ export const getExpenditure = async (req: any, res: any): Promise<any> => {
         // missing, removes ghost postings). Throttled to once per org per 5 minutes; never blocks for long.
         await Promise.race([healIfDue(organization_id), new Promise(r => setTimeout(r, 6_000))]).catch(() => undefined);
 
-        // Double-entry GL path — used once an org's history is fully posted; otherwise
-        // we fall through to the legacy per-type computation below (no regression).
-        if (await isOrgFullyPosted(organization_id)) {
-            const financials = await buildFinancialsFromGL(organization_id, startDate, endDate);
-            return res.json(financials);
-        }
-
-        // 1. Fetch all active accounts for the organization
-        const { data: accounts, error: accError } = await supabase
-            .from('accounts')
-            .select('*')
-            .eq('organization_id', organization_id)
-            .eq('is_active', true);
-
-        if (accError) throw accError;
-
-        // Pagination helper to fetch all rows beyond the 1000-row limit
-        const fetchAll = async (queryFn: (from: number, to: number) => any) => {
-            let allData: any[] = [];
-            let from = 0;
-            const limit = 1000;
-            while (true) {
-                const { data, error } = await queryFn(from, from + limit - 1);
-                if (error) throw error;
-                if (!data || data.length === 0) break;
-                allData = allData.concat(data);
-                if (data.length < limit) break;
-                from += limit;
-            }
-            return allData;
-        };
-
-        // 2. Fetch all cashbook entries up to endDate
-        const cbEntries = await fetchAll((from, to) => supabase
-            .from('cashbook_entries')
-            .select('*')
-            .eq('organization_id', organization_id)
-            .lte('date', endDate)
-            .range(from, to)
-        );
-
-        // 3. Fetch all organization wallets
-        const { data: wallets, error: wError } = await supabase
-            .from('organization_wallets')
-            .select('*')
-            .eq('organization_id', organization_id);
-
-        if (wError) throw wError;
-
-        // 4. Fetch all line items of requisitions in allowed statuses
-        const allowedStatuses = ['DISBURSED', 'RECEIVED', 'EXPENSED', 'CHANGE_SUBMITTED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'];
-        const lineItems = await fetchAll((from, to) => supabase
-            .from('line_items')
-            .select(`
-                *,
-                requisition:requisitions!inner(
-                    id, 
-                    status, 
-                    created_at, 
-                    updated_at, 
-                    organization_id,
-                    cashbook_entries(id, date, entry_type)
-                )
-            `)
-            .eq('requisition.organization_id', organization_id)
-            .in('requisition.status', allowedStatuses)
-            .range(from, to)
-        );
-
-        // Date helper for line items
-        const getLineItemDate = (item: any) => {
-            const req = item.requisition;
-            if (!req) return '';
-            const cashbookEntries = req.cashbook_entries || [];
-            const disbursement = cashbookEntries.find((c: any) => c.entry_type === 'DISBURSEMENT');
-            if (disbursement) return disbursement.date;
-            if (cashbookEntries.length > 0) return cashbookEntries[0].date;
-            return req.updated_at || req.created_at || '';
-        };
-
-        // Aggregate calculations for each account
-        const financials = [];
-
-        for (const acc of (accounts || [])) {
-            let totalAmount = 0;
-            let txCount = 0;
-
-            if (acc.type === 'EXPENSE') {
-                // Periodic (between startDate and endDate)
-                // Source A: Requisition line items matching this account within date range
-                const matchingLIs = (lineItems || []).filter(item => {
-                    const itemDate = getLineItemDate(item).split('T')[0];
-                    const matchAcc = lineItemMatchesAccount(item, acc);
-                    return matchAcc && itemDate >= startDate && itemDate <= endDate;
-                });
-                const liSum = matchingLIs.reduce((sum, item) => sum + Number(item.actual_amount || item.estimated_amount || 0), 0);
-
-                // Source B: Non-requisition cashbook entries directly allocated to this account in the date range
-                const matchingCBs = (cbEntries || []).filter(entry => {
-                    const entryDate = entry.date;
-                    return entry.account_id === acc.id && !entry.requisition_id && entryDate >= startDate && entryDate <= endDate;
-                });
-                // Expense is debit-normal, so cash outflow (credit) increases balance and cash inflow (debit) decreases it
-                const cbSum = matchingCBs.reduce((sum, entry) => sum + (Number(entry.credit || 0) - Number(entry.debit || 0)), 0);
-
-                totalAmount = liSum + cbSum;
-                txCount = matchingLIs.length + matchingCBs.length;
-
-            } else if (acc.type === 'INCOME') {
-                // Periodic (between startDate and endDate)
-                const matchingCBs = (cbEntries || []).filter(entry => {
-                    const entryDate = entry.date;
-                    return entry.account_id === acc.id && entryDate >= startDate && entryDate <= endDate;
-                });
-                // Income is credit-normal, so cash inflow (debit) increases it and cash outflow (credit) decreases it
-                totalAmount = matchingCBs.reduce((sum, entry) => sum + (Number(entry.debit || 0) - Number(entry.credit || 0)), 0);
-                txCount = matchingCBs.length;
-
-            } else if (acc.type === 'ASSET') {
-                // Cumulative (up to endDate)
-                const nameLower = acc.name.toLowerCase();
-                const isBankWalletOrCash = acc.subtype === 'Bank' || nameLower.includes('wallet') || nameLower.includes('cash') || nameLower.includes('bank');
-
-                if (isBankWalletOrCash) {
-                    if (nameLower.includes('main') || acc.code === 'QB-1150040000') {
-                        // Main Wallet balance (debits - credits)
-                        const matchingCBs = (cbEntries || []).filter(entry => entry.account_type === 'MONEYWISE_WALLET');
-                        totalAmount = matchingCBs.reduce((sum, entry) => sum + (Number(entry.debit || 0) - Number(entry.credit || 0)), 0);
-                        txCount = matchingCBs.length;
-                    } else {
-                        // Matches a specific subwallet
-                        const matchedWallet = (wallets || []).find(w => w.name === acc.name || (acc.qb_account_id != null && w.qb_account_id === acc.qb_account_id));
-                        if (matchedWallet) {
-                            const matchingCBs = (cbEntries || []).filter(entry => entry.wallet_id === matchedWallet.id);
-                            totalAmount = matchingCBs.reduce((sum, entry) => sum + (Number(entry.debit || 0) - Number(entry.credit || 0)), 0);
-                            txCount = matchingCBs.length;
-                        } else if (nameLower.includes('cash')) {
-                            // Physical Cash account
-                            const matchingCBs = (cbEntries || []).filter(entry => entry.account_type === 'CASH');
-                            totalAmount = matchingCBs.reduce((sum, entry) => sum + (Number(entry.debit || 0) - Number(entry.credit || 0)), 0);
-                            txCount = matchingCBs.length;
-                        } else {
-                            // General Bank Account
-                            const matchingCBs = (cbEntries || []).filter(entry => entry.account_id === acc.id);
-                            const cbSum = matchingCBs.reduce((sum, entry) => sum + (Number(entry.credit || 0) - Number(entry.debit || 0)), 0);
-                            const matchingLIs = (lineItems || []).filter(item => lineItemMatchesAccount(item, acc));
-                            const liSum = matchingLIs.reduce((sum, item) => sum + Number(item.actual_amount || item.estimated_amount || 0), 0);
-                            totalAmount = cbSum + liSum;
-                            txCount = matchingCBs.length + matchingLIs.length;
-                        }
-                    }
-                } else {
-                    // Other Asset
-                    const matchingCBs = (cbEntries || []).filter(entry => entry.account_id === acc.id);
-                    const cbSum = matchingCBs.reduce((sum, entry) => sum + (Number(entry.credit || 0) - Number(entry.debit || 0)), 0);
-                    const matchingLIs = (lineItems || []).filter(item => lineItemMatchesAccount(item, acc));
-                    const liSum = matchingLIs.reduce((sum, item) => sum + Number(item.actual_amount || item.estimated_amount || 0), 0);
-                    totalAmount = cbSum + liSum;
-                    txCount = matchingCBs.length + matchingLIs.length;
-                }
-
-            } else if (acc.type === 'LIABILITY' || acc.type === 'EQUITY') {
-                // Cumulative (up to endDate)
-                const matchingCBs = (cbEntries || []).filter(entry => entry.account_id === acc.id);
-                const cbSum = matchingCBs.reduce((sum, entry) => sum + (Number(entry.debit || 0) - Number(entry.credit || 0)), 0);
-                const matchingLIs = (lineItems || []).filter(item => lineItemMatchesAccount(item, acc));
-                const liSum = matchingLIs.reduce((sum, item) => sum + Number(item.actual_amount || item.estimated_amount || 0), 0);
-
-                totalAmount = cbSum - liSum;
-                txCount = matchingCBs.length + matchingLIs.length;
-            }
-
-            financials.push({
-                account_id: acc.id,
-                account_name: acc.name,
-                total_amount: totalAmount,
-                transaction_count: txCount,
-                type: acc.type,
-                logo_url: acc.logo_url ?? null
-            });
-        }
-
-        // Retained Earnings: roll cumulative (income - expense) up to endDate onto the
-        // Retained Earnings equity row, mirroring the GL path (buildFinancialsFromGL).
-        // Without this the legacy balance sheet never reflects accumulated profit/loss, so
-        // Equity stays flat and Assets - Liabilities != Total Equity. Income increases it,
-        // expense decreases it — keeping the accounting equation satisfied from day one.
-        let cumIncome = 0;
-        let cumExpense = 0;
-        for (const acc of (accounts || [])) {
-            if (acc.type === 'INCOME') {
-                const cbs = (cbEntries || []).filter(e => e.account_id === acc.id && e.date <= endDate);
-                cumIncome += cbs.reduce((sum, e) => sum + (Number(e.debit || 0) - Number(e.credit || 0)), 0);
-            } else if (acc.type === 'EXPENSE') {
-                const lis = (lineItems || []).filter(item =>
-                    lineItemMatchesAccount(item, acc) && getLineItemDate(item).split('T')[0] <= endDate);
-                cumExpense += lis.reduce((sum, item) => sum + Number(item.actual_amount || item.estimated_amount || 0), 0);
-                const cbs = (cbEntries || []).filter(e => e.account_id === acc.id && !e.requisition_id && e.date <= endDate);
-                cumExpense += cbs.reduce((sum, e) => sum + (Number(e.credit || 0) - Number(e.debit || 0)), 0);
-            }
-        }
-        const retainedEarnings = cumIncome - cumExpense;
-
-        const isRetainedAccount = (acc: any) => acc.type === 'EQUITY' && (
-            acc.subtype === 'Retained Earnings' ||
-            acc.code === 'QB-73' ||
-            /retained earnings/i.test(acc.name || '')
-        );
-        // Personal accounts roll income onto Personal Equity (see buildFinancialsFromGL).
-        const personalEquity = (await isPersonalOrganization(organization_id))
-            ? (accounts || []).find((a: any) => a.type === 'EQUITY' && a.code === PERSONAL_EQUITY_CODE)
-            : undefined;
-        const reAccount = personalEquity ?? (accounts || []).find(isRetainedAccount);
-        const reRow = reAccount ? financials.find(f => f.account_id === reAccount.id) : undefined;
-        if (reRow) {
-            reRow.total_amount += retainedEarnings;
-        } else if (Math.abs(retainedEarnings) > 0.005) {
-            // Org has no Retained Earnings account — surface a synthetic row so the
-            // balance sheet still balances.
-            financials.push({
-                account_id: 'RETAINED_EARNINGS',
-                account_name: 'Retained Earnings',
-                total_amount: retainedEarnings,
-                transaction_count: 0,
-                type: 'EQUITY'
-            });
-        }
-
-        res.json(financials);
+        res.json(await computeFinancials(organization_id, startDate, endDate));
     } catch (error: any) {
         console.error('Error fetching expenditures:', error);
         res.status(500).json({ error: 'Failed to fetch expenditures', details: error.message });
@@ -462,6 +468,49 @@ async function buildItemsFromGL(
     items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     return items;
 }
+
+/**
+ * Grow: every month's report rows in ONE request (instead of one /expenditure call per month), with the ledger
+ * self-heal run once rather than per month. Query: months=YYYY-MM,YYYY-MM,... (max 72). The current month is read
+ * to today. Same rows, same numbers as GET /reports/expenditure for each month.
+ */
+export const getGrowActuals = async (req: any, res: any): Promise<any> => {
+    try {
+        const organization_id = (req as any).user.organization_id;
+        if (!organization_id) return res.status(400).json({ error: 'Organization context missing' });
+        const months = String(req.query.months || '').split(',').map((m) => m.trim()).filter((m) => /^\d{4}-(0[1-9]|1[0-2])$/.test(m));
+        if (months.length === 0) return res.status(400).json({ error: 'months=YYYY-MM,... is required' });
+        if (months.length > 72) return res.status(400).json({ error: 'At most 72 months per request' });
+
+        await Promise.race([healIfDue(organization_id), new Promise(r => setTimeout(r, 6_000))]).catch(() => undefined);
+        const fullyPosted = await isOrgFullyPosted(organization_id);
+
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const now = new Date();
+        const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+        const ranges = months.map((key) => {
+            const [y, m] = key.split('-').map(Number);
+            const last = new Date(y, m, 0).getDate();
+            const start = `${key}-01`;
+            const end = `${key}-${pad(last)}`;
+            return { key, start, end: end < today ? end : today };
+        }).filter((r) => r.start <= today);
+
+        // A few at a time: parallel enough to be quick, gentle enough on the database.
+        const out: Record<string, any[]> = {};
+        for (let i = 0; i < ranges.length; i += 6) {
+            const batch = ranges.slice(i, i + 6);
+            const rows = await Promise.all(batch.map((r) => computeFinancials(organization_id, r.start, r.end, fullyPosted)));
+            batch.forEach((r, k) => {
+                out[r.key] = (rows[k] || []).map((x: any) => ({ account_name: x.account_name, type: x.type, total_amount: Number(x.total_amount) || 0 }));
+            });
+        }
+        res.json({ months: out });
+    } catch (error: any) {
+        console.error('[GrowActuals]', error);
+        res.status(500).json({ error: 'Failed to load your Grow numbers', details: error.message });
+    }
+};
 
 export const getExpenditureItems = async (req: any, res: any): Promise<any> => {
     try {

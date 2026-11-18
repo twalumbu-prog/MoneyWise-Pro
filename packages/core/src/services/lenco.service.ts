@@ -18,6 +18,20 @@ export const lencoService = {
         return apiJson('/lenco/available-accounts');
     },
 
+    /**
+     * Connects the business's own Lenco wallet with its keys, the way Master Fees does: public key, secret key and (optionally) the Account ID.
+     * The server asks Lenco which accounts the secret key can see. When there are several (or none) it answers 409 with `needsAccountId`
+     * and the `accounts` to choose from; read them from the thrown error's `data`.
+     */
+    connectWithKeys(input: { publicKey: string; secretKey: string; accountId?: string }): Promise<{ connected: true; accountId: string; accountName: string | null; balance: number | null; currency: string | null; message: string }> {
+        return apiJson('/lenco/connect', { method: 'POST', body: JSON.stringify(input) });
+    },
+
+    /** Reads the live balance of the saved Lenco link ("Check"). */
+    checkConnection(): Promise<{ connected: true; accountId: string; balance: number | null; currency: string | null; message: string }> {
+        return apiJson('/lenco/connection');
+    },
+
     linkOrganizationSubaccount(organizationId: string, lencoSubaccountId: string): Promise<any> {
         return apiJson(`/lenco/organizations/${organizationId}/link`, {
             method: 'POST',
@@ -136,5 +150,15 @@ export const lencoService = {
         if (amount <= 3000) return 15.00;
         if (amount <= 5000) return 18.00;
         return 20.00;
+    },
+
+    /**
+     * Lipila's payout charge, taken from the Card Wallet on top of the amount: 1.5% rounded up to the cent, never less than K5 (a real K5 and
+     * K10 bank payout each cost K5; same rule as Master Fees). Mirrors the API's payoutFee.
+     */
+    calculateLipilaPayoutFee(amount: number, _rail: 'mobile' | 'bank' = 'mobile'): number {
+        const a = Number(amount);
+        if (!(a > 0)) return 0;
+        return Math.max(5, Math.ceil(a * 0.015 * 100 - 1e-9) / 100);
     },
 };

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { BarChart3 } from 'lucide-react';
 import { AssistantChat } from '../components/assistant/AssistantChat';
@@ -21,7 +22,9 @@ export const Intelligence: React.FC = () => {
     // (back button + title) in place of this shared tab row.
     const [assistantInChat, setAssistantInChat] = useState(false);
     // "New automation" hands off to the Assistant with this opening message.
-    const [seedPrompt, setSeedPrompt] = useState<string | null>(null);
+    // A question typed on the personal Home arrives the same way, via the route state.
+    const location = useLocation();
+    const [seedPrompt, setSeedPrompt] = useState<string | null>(() => (location.state as { prompt?: string } | null)?.prompt ?? null);
     const showTabs = !(activeTab === 'assistant' && assistantInChat);
 
     return (
@@ -42,7 +45,7 @@ export const Intelligence: React.FC = () => {
                                     onClick={() => setActiveTab(tab.id)}
                                     className={`flex-1 whitespace-nowrap rounded-xl px-4 py-2.5 text-[11px] font-black transition-all md:flex-none md:px-8 md:text-[13px] ${
                                         activeTab === tab.id
-                                            ? 'bg-white text-brand-navy shadow-sm'
+                                            ? 'bg-white text-[#1F1F1F] shadow-sm'
                                             : 'text-gray-400 hover:text-gray-600'
                                     }`}
                                 >
@@ -61,7 +64,7 @@ export const Intelligence: React.FC = () => {
 
                 {activeTab === 'insights' && (
                     <Placeholder
-                        icon={<BarChart3 size={30} className="text-[#006AFF]" />}
+                        icon={<BarChart3 size={30} className="text-[#0B57D0]" />}
                         tint="bg-blue-50"
                         title="Financial Insights"
                         body="A visual dashboard of trends and forecasting is on the way. In the meantime, ask the Assistant for any chart you need — it can build them on request."
@@ -86,7 +89,7 @@ const Placeholder: React.FC<{ icon: React.ReactNode; tint: string; title: string
 }) => (
     <div className="flex flex-1 flex-col items-center justify-center px-6 py-20 text-center">
         <div className={`mb-6 flex h-20 w-20 items-center justify-center rounded-3xl ${tint}`}>{icon}</div>
-        <h2 className="mb-2 text-2xl font-black tracking-tight text-brand-navy">{title}</h2>
+        <h2 className="mb-2 text-2xl font-black tracking-tight text-[#1F1F1F]">{title}</h2>
         <p className="max-w-md text-[14px] font-medium leading-relaxed text-gray-500">{body}</p>
     </div>
 );

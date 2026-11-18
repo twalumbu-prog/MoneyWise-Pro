@@ -50,8 +50,8 @@ export const InflowInbox: React.FC<InflowInboxProps> = ({ inflows, onRowClick })
     const getStatusIcon = (status: string) => {
         const config = getStatusConfig(status);
         switch (config.iconType) {
-            case 'clock': return <Clock size={12} className="text-[#0058DB]" />;
-            case 'check-circle': return <CheckCircle2 size={12} className="text-[#0058DB]" />;
+            case 'clock': return <Clock size={12} className="text-[#0B57D0]" />;
+            case 'check-circle': return <CheckCircle2 size={12} className="text-[#0B57D0]" />;
             case 'check': return <Check size={12} className="text-emerald-500" />;
             case 'alert': return <AlertCircle size={12} className="text-red-500" />;
             case 'rotate': return <RotateCcw size={12} className="text-gray-400" />;
@@ -61,7 +61,7 @@ export const InflowInbox: React.FC<InflowInboxProps> = ({ inflows, onRowClick })
 
     return (
         <div className="bg-white rounded-2xl p-3 flex flex-col gap-2">
-            <div className="flex flex-col divide-y divide-[#E8EEF8]">
+            <div className="flex flex-col divide-y divide-[rgba(116,119,117,0.22)]">
                 {inflows.map((row) => {
                     const status = row.status || 'COMPLETED';
                     const source = ACCOUNT_TYPE_LABEL[row.account_type || ''] || 'Inflow';
@@ -72,7 +72,7 @@ export const InflowInbox: React.FC<InflowInboxProps> = ({ inflows, onRowClick })
                             key={row.id}
                             onClick={() => onRowClick?.(row.id)}
                             className={`group px-3 py-3.5 flex items-center gap-4 cursor-pointer transition-colors ${
-                                selected.has(row.id) ? 'bg-[#F0F7FF]' : 'hover:bg-gray-50/70'
+                                selected.has(row.id) ? 'bg-[#E8F0FE]' : 'hover:bg-gray-50/70'
                             }`}
                         >
                             {/* Checkbox */}
@@ -84,7 +84,7 @@ export const InflowInbox: React.FC<InflowInboxProps> = ({ inflows, onRowClick })
                                     type="checkbox"
                                     checked={selected.has(row.id)}
                                     onChange={() => toggleSelected(row.id)}
-                                    className="w-3.5 h-3.5 appearance-none bg-white rounded shadow-[inset_0px_2px_4px_0px_rgba(0,0,0,0.05)] border-[0.50px] border-indigo-300 checked:bg-[#0058DB] checked:border-[#0058DB] cursor-pointer"
+                                    className="w-3.5 h-3.5 appearance-none bg-white rounded shadow-[inset_0px_2px_4px_0px_rgba(0,0,0,0.05)] border-[0.50px] border-indigo-300 checked:bg-[#0B57D0] checked:border-[#0B57D0] cursor-pointer"
                                 />
                             </div>
 
@@ -94,12 +94,12 @@ export const InflowInbox: React.FC<InflowInboxProps> = ({ inflows, onRowClick })
                                     <span className="text-sm truncate font-medium text-gray-700">
                                         {inflowTitle(row.description)}
                                     </span>
-                                    <span className="text-sm whitespace-nowrap font-semibold text-[#111827]">
+                                    <span className="text-sm whitespace-nowrap font-semibold text-[#1F1F1F]">
                                         +K{(row.debit || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </span>
                                 </div>
                                 <div className="flex items-center justify-between mt-px">
-                                    <span className="text-[10px] font-normal capitalize text-[#6B7280]">
+                                    <span className="text-[10px] font-normal capitalize text-[#5F6368]">
                                         {source} · {row.reference_number || 'Receipt'}
                                     </span>
                                     <span className="text-[10px] font-normal text-neutral-500">
@@ -108,7 +108,7 @@ export const InflowInbox: React.FC<InflowInboxProps> = ({ inflows, onRowClick })
                                 </div>
                                 <div className="flex items-center gap-1 mt-1">
                                     {getStatusIcon(status)}
-                                    <span className="text-[10px] font-normal capitalize text-[#6B7280]">
+                                    <span className="text-[10px] font-normal capitalize text-[#5F6368]">
                                         {statusConfig.label}
                                     </span>
                                 </div>
@@ -117,7 +117,7 @@ export const InflowInbox: React.FC<InflowInboxProps> = ({ inflows, onRowClick })
                             {/* Unread dot */}
                             <div className="w-4 flex-shrink-0 flex items-center justify-center">
                                 {row.has_unread_updates && (
-                                    <span className="h-1.5 w-1.5 rounded-full bg-[#0058DB] md:bg-[#0059D8] shadow-sm shadow-blue-200" />
+                                    <span className="h-1.5 w-1.5 rounded-full bg-[#0B57D0] md:bg-[#0B57D0] shadow-sm shadow-blue-200" />
                                 )}
                             </div>
                         </div>
@@ -127,10 +127,10 @@ export const InflowInbox: React.FC<InflowInboxProps> = ({ inflows, onRowClick })
 
             {inflows.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-24 text-center">
-                    <div className="h-20 w-20 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-6 border border-[#E8EEF8]">
+                    <div className="h-20 w-20 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-6 border border-[rgba(116,119,117,0.22)]">
                         <Search size={32} />
                     </div>
-                    <h3 className="text-xl font-bold text-brand-navy">No inflows yet</h3>
+                    <h3 className="text-xl font-bold text-[#1F1F1F]">No inflows yet</h3>
                     <p className="text-gray-400 max-w-xs mx-auto text-sm font-medium mt-2">
                         Record a sale with the New Sale button to see money-in here.
                     </p>

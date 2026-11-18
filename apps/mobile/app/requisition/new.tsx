@@ -11,11 +11,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     X, ArrowRight, ArrowLeft, Plus, Minus, Trash2, User, List, AlertCircle, ArrowDownToLine,
     CheckCircle, Check, Smartphone, Building2, Mail, ChevronDown, Search,
-    ShieldCheck, BookUser,
+    ShieldCheck, BookUser, FileText, Lock, Camera, Upload,
 } from 'lucide-react-native';
+import { File } from 'expo-file-system';
+import { filesAdapter, captureImage } from '../../src/platform/files';
 import {
     requisitionService, departmentService, lencoService, cashbookService, userService,
-    formatKwacha,
+    formatKwacha, lipilaService, matchLipilaBank,
 } from 'core';
 import type { PaymentInfo, MoneyWiseRecipient } from 'core';
 import { useAuth } from '../../src/context/AuthContext';
@@ -39,6 +41,7 @@ interface LineItem {
     quantity: number;
     unit_price: number;
     estimated_amount: number;
+    price_locked?: boolean;
 }
 
 const blankItem = (): LineItem => ({
@@ -133,6 +136,42 @@ export default function NewRequisitionScreen() {
     // Stage 2
     const [lineItems, setLineItems] = useState<LineItem[]>([blankItem()]);
 
+    // Import invoice: the scanned invoice's lines replace the item list, prices locked.
+    const [importInvoice, setImportInvoice] = useState(false);
+    const [scannedInvoice, setScannedInvoice] = useState<any | null>(null);
+    const [invoiceScanLoading, setInvoiceScanLoading] = useState(false);
+    const [invoiceScanError, setInvoiceScanError] = useState<string | null>(null);
+
+    const scanInvoiceFile = async (picked: { uri: string; name: string; mimeType: string; size?: number } | null) => {
+        if (!picked) return;
+        setInvoiceScanLoading(true);
+        setInvoiceScanError(null);
+        try {
+            const file = await filesAdapter.compressImage(picked as any, 3 * 1024 * 1024);
+            const fileBase64 = await new File(file.uri).base64();
+            const result: any = await requisitionService.scanInvoice({ fileBase64, fileName: picked.name });
+            setScannedInvoice(result);
+            setDescription((d) => d.trim() || (result.supplier || result.invoice_number
+                ? `Invoice${result.invoice_number ? ` ${result.invoice_number}` : ''}${result.supplier ? ` — ${result.supplier}` : ''}` : d));
+            setMakeExpenseList(true);
+            setLineItems(result.lines.map((line: any, idx: number) => ({
+                id: `inv-${idx}`, description: line.description, quantity: line.quantity,
+                unit_price: line.unit_price, estimated_amount: line.amount, price_locked: true,
+            })));
+        } catch (e: any) {
+            setInvoiceScanError(e?.message || 'Could not read that invoice. Try again or add the items by hand.');
+        } finally {
+            setInvoiceScanLoading(false);
+        }
+    };
+    const takeInvoicePhoto = async () => {
+        try { await scanInvoiceFile(await captureImage()); } catch (e: any) { setInvoiceScanError(e?.message || 'Could not open the camera.'); }
+    };
+    const chooseInvoiceFile = async () => {
+        try { const [f] = await filesAdapter.pick({ kind: 'any', accept: ['application/pdf', 'image/*'] } as any); await scanInvoiceFile(f ?? null); }
+        catch (e: any) { setInvoiceScanError(e?.message || 'Could not open that file.'); }
+    };
+
     // Stage 5
     const [manualAmount, setManualAmount] = useState('');
 
@@ -146,6 +185,9 @@ export default function NewRequisitionScreen() {
     const [confirmingName, setConfirmingName] = useState(false);
     const [autoAuthorize] = useState(true);
     const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
+    // A bank transfer from the Card Wallet (Lipila) needs the bank's SWIFT code and the account holder's phone number.
+    const [swiftCode, setSwiftCode] = useState('');
+    const [holderPhone, setHolderPhone] = useState('');
     const [selectedWalletBalance, setSelectedWalletBalance] = useState<number | null>(null);
     const [walletPickerOpen, setWalletPickerOpen] = useState(false);
 
@@ -181,27 +223,32 @@ export default function NewRequisitionScreen() {
     });
     const paymentInfo: PaymentInfo | null | undefined = profile?.payment_info;
 
-    const { data: walletsRaw } = useQuery({ queryKey: ['wallets'], queryFn: () => cashbookService.getWallets() });
-    const wallets: any[] = Array.isArray(walletsRaw) ? walletsRaw : (walletsRaw?.data || []);
+    // forDisbursement also lists the Card Wallet (Lipila), which pays mobile money numbers and bank accounts (not MoneyWise accounts).
+    const { data: walletsRaw } = useQuery({ queryKey: ['wallets', 'forDisbursement'], queryFn: () => cashbookService.getWallets({ forDisbursement: true }) });
+    const allWallets: any[] = Array.isArray(walletsRaw) ? walletsRaw : (walletsRaw?.data || []);
+    const wallets: any[] = paymentMethod !== 'moneywise' ? allWallets : allWallets.filter((w: any) => !w.is_card_wallet);
 
     useEffect(() => {
-        if (wallets.length > 0 && !selectedWalletId) {
+        if (wallets.length > 0 && (!selectedWalletId || !wallets.some((w: any) => w.id === selectedWalletId))) {
             const main = wallets.find((w: any) => w.is_main) || wallets[0];
             setSelectedWalletId(main.id);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [wallets.length]);
+    }, [wallets.length, paymentMethod]);
 
     // Re-read the balance every time this screen comes back into view, so topping up in the wallet and returning
     // here clears the "insufficient funds" alert straight away.
     useFocusEffect(useCallback(() => {
         if (!autoAuthorize || useMyAccount || !selectedWalletId) { setSelectedWalletBalance(null); return; }
+        // The Card Wallet isn't a MoneyWise wallet: its balance came with the wallet list.
+        const card = wallets.find((w: any) => w.id === selectedWalletId && w.is_card_wallet);
+        if (card) { setSelectedWalletBalance(Number(card.balance) || 0); return; }
         let cancelled = false;
         cashbookService.getBalance('MONEYWISE_WALLET', undefined, selectedWalletId)
             .then((balance: any) => { if (!cancelled) setSelectedWalletBalance(Number(balance) || 0); })
             .catch(() => { if (!cancelled) setSelectedWalletBalance(null); });
         return () => { cancelled = true; };
-    }, [autoAuthorize, useMyAccount, selectedWalletId]));
+    }, [autoAuthorize, useMyAccount, selectedWalletId, walletsRaw]));
 
     // MoneyWise Pay autosuggest search
     useEffect(() => {
@@ -384,12 +431,24 @@ export default function NewRequisitionScreen() {
     const selectedWalletRow = wallets.find((w) => w.id === selectedWalletId);
     const selectedWalletLine = walletBalanceText(selectedWalletBalance ?? selectedWalletRow?.balance);
 
+    // Lipila's charge is added on top for a Card Wallet payout.
+    const cardFee = selectedWalletRow?.is_card_wallet ? lencoService.calculateLipilaPayoutFee(getTotal(), paymentMethod === 'bank' ? 'bank' : 'mobile') : 0;
+    // The banks Lipila can pay, each with the SWIFT code Lipila itself uses (picked, never typed), filled in from the bank chosen where the lists agree.
+    const lipilaBanks = useQuery({ queryKey: ['lipila', 'banks'], queryFn: () => lipilaService.banks(), enabled: !!selectedWalletRow?.is_card_wallet && paymentMethod === 'bank', staleTime: 3_600_000, retry: false });
+    useEffect(() => {
+        if (!(selectedWalletRow?.is_card_wallet && paymentMethod === 'bank') || !lipilaBanks.data) return;
+        const name = banks.find((b: any) => String(b.id ?? b.code) === bankId)?.name ?? '';
+        const found = matchLipilaBank(name, lipilaBanks.data.banks)?.swiftCode ?? '';
+        setSwiftCode(found);
+        if (found) setError((e) => (e && /SWIFT/i.test(e) ? null : e));
+    }, [bankId, lipilaBanks.data, selectedWalletRow?.is_card_wallet, paymentMethod]); // eslint-disable-line react-hooks/exhaustive-deps
     const isWalletBalanceInsufficient = autoAuthorize && !useMyAccount &&
-        !!selectedWalletId && selectedWalletBalance !== null && getTotal() > selectedWalletBalance;
+        !!selectedWalletId && selectedWalletBalance !== null && getTotal() + cardFee > selectedWalletBalance;
 
     const updateLineItem = (id: string, patch: Partial<LineItem>) => {
         setLineItems((prev) => prev.map((item) => {
             if (item.id !== id) return item;
+            if (item.price_locked) return item; // locked to the invoice
             const updated = { ...item, ...patch };
             if ('quantity' in patch || 'unit_price' in patch) {
                 updated.estimated_amount = Number(updated.quantity) * Number(updated.unit_price);
@@ -400,6 +459,7 @@ export default function NewRequisitionScreen() {
 
     const addLineItem = () => setLineItems((prev) => [...prev, blankItem()]);
     const removeLineItem = (id: string) => {
+        if (lineItems.length === 1 && lineItems[0].price_locked) return; // keep at least one invoice line
         if (lineItems.length === 1) { setLineItems([blankItem()]); return; }
         setLineItems((prev) => prev.filter((i) => i.id !== id));
     };
@@ -419,6 +479,7 @@ export default function NewRequisitionScreen() {
         if (stage === 1) {
             if (!description.trim()) { setError('Please describe the purpose.'); return; }
             if (useDepartments && !department) { setError('Please select a department.'); return; }
+            if (importInvoice && !scannedInvoice) { setError('Upload your invoice first, or switch off Import invoice.'); return; }
         } else if (stage === 5) {
             if (!manualAmount || Number(manualAmount) <= 0) { setError('Please enter an amount greater than zero.'); return; }
         } else if (stage === 3) {
@@ -442,6 +503,11 @@ export default function NewRequisitionScreen() {
     };
 
     const handleSubmit = async () => {
+        const cardBank = !!selectedWalletRow?.is_card_wallet && paymentMethod === 'bank';
+        if (cardBank) {
+            if (!/^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(swiftCode.replace(/\s/g, '').toUpperCase())) { setError('Enter the bank\u2019s SWIFT code (8 or 11 letters and digits, for example SCBLZMLX). A bank transfer from the Card Wallet needs it.'); return; }
+            if (holderPhone.replace(/\D/g, '').length < 9) { setError('Enter the account holder\u2019s phone number. A bank transfer from the Card Wallet needs it.'); return; }
+        }
         if (isWalletBalanceInsufficient) {
             setError(`This wallet only has ${formatKwacha(selectedWalletBalance || 0)} available, but ${formatKwacha(getTotal())} is needed. Choose another wallet or top it up first.`);
             return;
@@ -479,6 +545,10 @@ export default function NewRequisitionScreen() {
                 recipient_name: recipientNameToUse,
                 recipient_organization_id: paymentMethod === 'moneywise' ? (selectedRecipient?.organization_id || undefined) : undefined,
             };
+            if (importInvoice && scannedInvoice) {
+                data.invoice_path = scannedInvoice.path;
+                data.invoice_lines_keep = lineItems.filter((i) => String(i.id).startsWith('inv-')).map((i) => Number(String(i.id).slice(4)));
+            }
             const created = await requisitionService.create(data);
             let sentRequisitionId: string | null = null;
             const sentRecipientName = recipientNameToUse || null;
@@ -501,6 +571,7 @@ export default function NewRequisitionScreen() {
                         recipient_bank_code: recipientBankCode,
                         recipient_account_name: recipientNameToUse || undefined,
                         recipient_organization_id: paymentMethod === 'moneywise' ? (selectedRecipient?.organization_id || undefined) : undefined,
+                        ...(cardBank ? { recipient_swift_code: swiftCode.replace(/\s/g, '').toUpperCase(), recipient_phone: holderPhone } : {}),
                         wallet_id: selectedWalletId || undefined,
                     });
 
@@ -696,12 +767,45 @@ export default function NewRequisitionScreen() {
                                 )}
 
                                 <ToggleRow
+                                    icon={<FileText size={20} color={importInvoice ? colors.blue : colors.textFaint} />}
+                                    title="Import invoice"
+                                    subtitle="Scan it, prices are filled in and locked"
+                                    value={importInvoice}
+                                    onToggle={() => {
+                                        const next = !importInvoice;
+                                        setImportInvoice(next);
+                                        if (next) setMakeExpenseList(true);
+                                        else { setScannedInvoice(null); setInvoiceScanError(null); setLineItems([blankItem()]); }
+                                    }}
+                                />
+                                {importInvoice && (
+                                    <View style={styles.invoiceBox}>
+                                        {invoiceScanLoading ? (
+                                            <View style={styles.invoiceRow}><ActivityIndicator color={colors.blue} /><Text style={styles.invoiceText}>Reading your invoice…</Text></View>
+                                        ) : scannedInvoice ? (
+                                            <View style={{ gap: 6 }}>
+                                                <Text style={styles.invoiceTitle}>{scannedInvoice.supplier || 'Invoice'}{scannedInvoice.invoice_number ? ` · ${scannedInvoice.invoice_number}` : ''}</Text>
+                                                <View style={styles.invoiceRow}><Lock size={13} color={colors.textMuted} /><Text style={styles.invoiceText}>{scannedInvoice.lines.length} lines, {formatKwacha(scannedInvoice.total_zmw)} · prices locked</Text></View>
+                                                {(scannedInvoice.warnings || []).map((w: string, i: number) => <Text key={i} style={styles.invoiceWarn}>{w}</Text>)}
+                                                <Pressable onPress={chooseInvoiceFile}><Text style={styles.invoiceLink}>Use a different invoice</Text></Pressable>
+                                            </View>
+                                        ) : (
+                                            <View style={styles.invoiceRow}>
+                                                <Pressable style={styles.invoiceBtn} onPress={takeInvoicePhoto}><Camera size={18} color={colors.blue} /><Text style={styles.invoiceBtnText}>Take photo</Text></Pressable>
+                                                <Pressable style={styles.invoiceBtn} onPress={chooseInvoiceFile}><Upload size={18} color={colors.blue} /><Text style={styles.invoiceBtnText}>Choose file</Text></Pressable>
+                                            </View>
+                                        )}
+                                        {invoiceScanError ? <Text style={styles.invoiceError}>{invoiceScanError}</Text> : null}
+                                    </View>
+                                )}
+                                <ToggleRow
                                     icon={<List size={20} color={makeExpenseList ? colors.blue : colors.textFaint} />}
                                     title="Create item list"
                                     subtitle="Add specific items and prices"
                                     value={makeExpenseList}
                                     onToggle={() => setMakeExpenseList((v) => {
                                         const next = !v;
+                                        if (next) { setImportInvoice(false); setScannedInvoice(null); }
                                         cacheStoreSync.setItem(PREF_MAKE_EXPENSE_LIST, String(next));
                                         return next;
                                     })}
@@ -722,6 +826,7 @@ export default function NewRequisitionScreen() {
                                             <TextInput
                                                 style={styles.itemDescInput}
                                                 value={item.description}
+                                                editable={!item.price_locked}
                                                 onChangeText={(v) => updateLineItem(item.id, { description: v })}
                                                 placeholder="Item Description"
                                                 placeholderTextColor={colors.textFaint}
@@ -737,6 +842,7 @@ export default function NewRequisitionScreen() {
                                                 <TextInput
                                                     style={styles.itemPriceInput}
                                                     value={item.unit_price ? String(item.unit_price) : ''}
+                                                    editable={!item.price_locked}
                                                     onChangeText={(v) => updateLineItem(item.id, { unit_price: Number(v.replace(/[^0-9.]/g, '')) || 0 })}
                                                     keyboardType="decimal-pad" inputAccessoryViewID={KB_DONE_ID}
                                                     placeholder="0.00"
@@ -1072,9 +1178,24 @@ export default function NewRequisitionScreen() {
                                             <View style={{ flex: 1 }}>
                                                 <Text style={styles.selectInputText}>{wallets.find((w) => w.id === selectedWalletId)?.name || 'Select Wallet'}</Text>
                                                 {!!selectedWalletLine && <Text style={styles.selectInputSub}>{selectedWalletLine}</Text>}
+                                                {!!selectedWalletRow?.is_card_wallet && <Text style={styles.selectInputSub}>Paid from your Card Wallet. A payout charge of {formatKwacha(cardFee)} is added.</Text>}
                                             </View>
                                             <ChevronDown size={16} color={colors.textFaint} />
                                         </Pressable>
+                                        {!!selectedWalletRow?.is_card_wallet && paymentMethod === 'bank' && (
+                                            <View style={{ marginTop: 12, gap: 8 }}>
+                                                <Text style={styles.label}>Bank</Text>
+                                                <InlineSearchSelect
+                                                    items={(lipilaBanks.data?.banks ?? []).map((b) => ({ id: b.swiftCode, label: `${b.name} (${b.swiftCode})` }))}
+                                                    selectedId={swiftCode || null}
+                                                    placeholder={lipilaBanks.data ? 'Choose the bank' : 'Loading banks…'}
+                                                    searchPlaceholder="Search banks…"
+                                                    onSelect={(i) => { setSwiftCode(i.id); setError(null); }}
+                                                />
+                                                <Text style={styles.label}>Account holder’s phone number</Text>
+                                                <TextInput style={styles.input} value={holderPhone} onChangeText={(t) => { setHolderPhone(t); setError(null); }} keyboardType="phone-pad" placeholder="097…" placeholderTextColor={colors.textFaint} />
+                                            </View>
+                                        )}
                                     </View>
                                 )}
 
@@ -1332,6 +1453,15 @@ const styles = StyleSheet.create({
     profileFoundLabel: { fontFamily: fonts.bodyBold, fontSize: 10, color: colors.blue, textTransform: 'uppercase', letterSpacing: 0.5 },
     profileRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     profileRowText: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.navy },
+    invoiceBox: { backgroundColor: '#F5F9FF', borderWidth: 1, borderColor: '#D6E4FF', borderRadius: radius.lg, padding: 14, gap: 8 },
+    invoiceRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    invoiceTitle: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text },
+    invoiceText: { fontFamily: fonts.body, fontSize: 12, color: colors.textMuted },
+    invoiceWarn: { fontFamily: fonts.bodyBold, fontSize: 11, color: '#92400E', backgroundColor: '#FFFBEB', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
+    invoiceError: { fontFamily: fonts.bodyBold, fontSize: 12, color: '#B91C1C' },
+    invoiceLink: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.blue },
+    invoiceBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#fff', borderWidth: 1, borderColor: '#D6E4FF', borderRadius: radius.lg, paddingVertical: 14 },
+    invoiceBtnText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.blue },
     warnCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FDE68A', borderRadius: radius.lg, padding: 14 },
     warnTitle: { fontFamily: fonts.bodyBold, fontSize: 12, color: '#92400E' },
     warnSub: { fontFamily: fonts.body, fontSize: 11, color: '#B45309', marginTop: 2, lineHeight: 15 },

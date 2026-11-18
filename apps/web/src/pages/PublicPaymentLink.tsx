@@ -82,7 +82,11 @@ interface LinkContext {
     customer_name: string;
     customer_phone: string;
     amount: number;
+    /** Set when the business priced this in US dollars: the kwacha `amount` is that price at today's rate. */
+    usd_price?: number | null;
+    usd_rate?: number | null;
     collections_api_enabled?: boolean;
+    card_enabled?: boolean;
 }
 
 export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenOverride }) => {
@@ -675,6 +679,67 @@ export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenO
         }
     };
 
+    // ── Card (Lipila): the customer types their card on Lipila's own page. We record the sale first, start the card payment, then wait for the
+    // result exactly as for mobile money (the status check recognises card payments). Desktop gets a popup; phones go to the card page in this tab.
+    const CARD_RATE = 0.04;
+    // A link priced in dollars charges the card in real dollars (the server decides from the link); anything else in kwacha.
+    const cardInDollars = !!ctx?.usd_price;
+    const cardBase = cardInDollars ? Number(ctx?.usd_price) : subtotal;
+    const cardCharged = Math.round((cardBase / (1 - CARD_RATE)) * 100) / 100;
+    const cardFee = Math.round((cardCharged - cardBase) * 100) / 100;
+    const cardSymbol = cardInDollars ? '$' : 'K';
+    // The kwacha figure the books and the waiting screen use (a dollar card payment is recorded at the day's kwacha equivalent).
+    const cardChargedZmw = Math.round((subtotal / (1 - CARD_RATE)) * 100) / 100;
+    const onPhoneBrowser = typeof navigator !== 'undefined' && /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
+
+    const handlePayCard = async () => {
+        if (!ctx || !token) return;
+        setError(null);
+        // The popup is opened inside the click, before anything is awaited, or the browser blocks it.
+        const popup = !onPhoneBrowser ? window.open('about:blank', 'lipila_card', 'width=440,height=760') : null;
+        const purpose = `Sale: ${linkLabel} | Cust: ${ctx.customer_phone}`;
+        const ref = `LPL-DEP-${Date.now()}-${ctx.organization.id.substring(0, 8)}-PL`;
+        setCurrentReference(ref);
+        setSubmitting(true);
+        pollCancelledRef.current = false;
+        setElapsedSeconds(0);
+        setAwaitingApproval(false);
+        setPaymentPhase('initiating');
+        setStep('VERIFYING');
+        const checkoutStartedAt = Date.now();
+        trackEvent('payment_link_checkout', 'payment', 'started', { workflow_id: ref, organization_id: ctx.organization.id, product_name: linkLabel, subtotal, total_payable: cardChargedZmw, payment_link_token: token, payment_method: 'card' });
+        try {
+            await axios.post(`${API_URL}/lenco/public-wallet-deposit-intent`, { reference: ref, purpose, amount: subtotal, walletId: ctx.wallet.id, customerName: ctx.customer_name, customerPhone: ctx.customer_phone, paymentLinkToken: token, items: intentItems });
+            const [firstName, ...rest] = String(ctx.customer_name || '').trim().split(/\s+/);
+            const init = await axios.post(`${API_URL}/lipila/public/card`, { organizationId: ctx.organization.id, reference: ref, firstName: firstName || undefined, lastName: rest.join(' ') || undefined, phone: ctx.customer_phone, kind: 'payment_link', token, returnUrl: window.location.href });
+            const url: string | undefined = init.data?.redirectUrl;
+            if (init.data?.alreadyPaid) { setPaymentPhase('success'); setStep('VERIFYING'); return; }
+            if (!url) throw new Error('The card payment could not be started. Please try again.');
+
+            savePendingPayment({ reference: ref, contextId: token, orgId: ctx.organization.id, phone: ctx.customer_phone || '', amount: cardChargedZmw, businessName: ctx.organization.name, startedAt: checkoutStartedAt });
+            setResumedPayment(null);
+            setRecheckNote(null);
+            setVerificationStep('POLLING');
+            setPaymentPhase('confirm');
+            setAwaitingApproval(true);
+            setElapsedSeconds(0);
+            setSubmitting(false);
+            startCompletionPoll(ref, ctx.organization.id, checkoutStartedAt, { product_name: linkLabel, subtotal, total_payable: cardChargedZmw, payment_link_token: token });
+
+            if (onPhoneBrowser || !popup || popup.closed) window.location.href = url;
+            else popup.location.href = url;
+        } catch (err: any) {
+            try { popup?.close(); } catch { /* already closed */ }
+            clearPendingPayment();
+            setSubmitting(false);
+            setAwaitingApproval(false);
+            setPaymentPhase(null);
+            setStep('CHECKOUT');
+            setError(err.response?.data?.error || err.message || 'Failed to start the card payment. Please try again.');
+            trackEvent('payment_link_checkout', 'payment', 'failed', { workflow_id: ref, organization_id: ctx.organization.id, error_code: err?.response?.status || 'NETWORK_ERROR', error_message: err?.response?.data?.error || err.message, payment_method: 'card', duration_ms: Date.now() - checkoutStartedAt });
+        }
+    };
+
     // Customer-initiated "stop waiting" on a pending mobile money attempt. This only
     // stops OUR polling and returns them to the checkout form — Lenco has no API to
     // cancel a mobile money prompt already sent to the telco, so if they approve it
@@ -864,7 +929,8 @@ export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenO
 
         // Shared pay/checkout handler
         const handlePayNow = () => {
-            if (ctx.collections_api_enabled) {
+            // With the card option on, the customer first lands on the Mobile Money / Card choice instead of straight in the Lenco window.
+            if (ctx.collections_api_enabled || ctx.card_enabled) {
                 setError(null);
                 setResolvedAccountName('');
                 setResolveFailed(false);
@@ -884,7 +950,7 @@ export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenO
                     {orgAvatar}
                     <div className="flex items-center gap-2 min-w-0">
                         <span className="text-sm font-bold text-black truncate">{ctx.organization.name}</span>
-                        <BadgeCheck size={18} fill="#2563EB" className="text-white flex-shrink-0" strokeWidth={2} />
+                        <BadgeCheck size={18} fill="#0B57D0" className="text-white flex-shrink-0" strokeWidth={2} />
                     </div>
                 </div>
 
@@ -899,7 +965,7 @@ export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenO
                         {orgAvatar}
                         <div className="flex items-center gap-2">
                             <span className="text-base font-bold text-black">{ctx.organization.name}</span>
-                            <BadgeCheck size={20} fill="#2563EB" className="text-white" strokeWidth={2} />
+                            <BadgeCheck size={20} fill="#0B57D0" className="text-white" strokeWidth={2} />
                         </div>
                     </div>
 
@@ -918,6 +984,7 @@ export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenO
                                 <span className="text-4xl font-bold text-black text-center">
                                     K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                 </span>
+                                {ctx?.usd_price ? <span className="text-xs font-bold text-zinc-600 text-center">Priced at ${ctx.usd_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}{ctx.usd_rate ? ` · K${ctx.usd_rate.toFixed(2)} to $1 today` : ''}</span> : null}
                             </div>
                             <p className="text-xs text-zinc-600 text-center">View Invoice and Payment Details</p>
                         </div>
@@ -1053,7 +1120,17 @@ export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenO
 
                 {/* Scrollable content */}
                 <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-6 pb-2">
-                    {checkoutMethod === 'mobile-money' ? (
+                    {checkoutMethod === 'mobile-money' && !ctx.collections_api_enabled ? (
+                        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-[#E8F0FE] text-[#0B57D0] flex items-center justify-center"><Smartphone size={20} /></div>
+                                <div>
+                                    <p className="text-sm font-bold text-gray-800">Pay with Mobile Money</p>
+                                    <p className="text-[11px] text-gray-500">You’ll choose your network and approve on your phone in the next window.</p>
+                                </div>
+                            </div>
+                        </div>
+                    ) : checkoutMethod === 'mobile-money' ? (
                         <>
                             <label className="block text-sm font-semibold text-gray-800 mb-2">
                                 Enter your mobile money number
@@ -1095,7 +1172,7 @@ export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenO
                             {phoneComplete && (
                                 <div className="mt-3 px-4 py-3 rounded-2xl bg-white border border-slate-200 flex items-center gap-3">
                                     {resolvingAccountName ? (
-                                        <Loader2 size={16} className="text-blue-600 animate-spin flex-shrink-0" />
+                                        <Loader2 size={16} className="text-[#0B57D0] animate-spin flex-shrink-0" />
                                     ) : resolvedAccountName ? (
                                         <Check size={16} className="text-emerald-500 flex-shrink-0" />
                                     ) : (
@@ -1119,6 +1196,29 @@ export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenO
                                 </div>
                             )}
                         </>
+                    ) : ctx.card_enabled ? (
+                        <div className="px-1">
+                            <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-[#E8F0FE] text-[#0B57D0] flex items-center justify-center"><CreditCard size={20} /></div>
+                                    <div>
+                                        <p className="text-sm font-bold text-gray-800">Pay with a Visa, Mastercard or Amex</p>
+                                        <p className="text-[11px] text-gray-500">You’ll enter your card on a secure page. Your card details never touch this site.</p>
+                                    </div>
+                                </div>
+                                <div className="mt-4 space-y-1 text-xs text-gray-600">
+                                    <div className="flex justify-between"><span>Invoice amount</span><span>{cardSymbol}{cardBase.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                    <div className="flex justify-between"><span>Card fee</span><span>{cardSymbol}{cardFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                    <div className="flex justify-between border-t border-slate-100 pt-1 font-bold text-gray-800"><span>You pay</span><span>{cardSymbol}{cardCharged.toLocaleString(undefined, { minimumFractionDigits: 2 })}{cardInDollars ? ' USD' : ''}</span></div>
+                                </div>
+                            </div>
+                            {error && (
+                                <div className="mt-4 p-3.5 bg-rose-50 text-rose-600 rounded-xl flex items-start gap-2">
+                                    <AlertCircle className="flex-shrink-0 mt-0.5" size={14} />
+                                    <span className="text-[11px] font-semibold leading-normal">{error}</span>
+                                </div>
+                            )}
+                        </div>
                     ) : (
                         <div className="text-center py-10 px-4 bg-white border border-slate-100 rounded-2xl">
                             <div className="mx-auto w-12 h-12 bg-slate-200 text-slate-500 rounded-full flex items-center justify-center mb-3">
@@ -1146,16 +1246,34 @@ export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenO
                             </div>
                         )}
                     </div>
-                    {checkoutMethod === 'mobile-money' ? (
+                    {checkoutMethod === 'mobile-money' && !ctx.collections_api_enabled ? (
+                        <button
+                            onClick={handlePay}
+                            disabled={submitting}
+                            className={`w-full h-14 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${!submitting ? 'bg-[#0B57D0] hover:bg-[#0842A0] text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'}`}
+                        >
+                            {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
+                            <span>{submitting ? 'Starting…' : `Pay K${totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}</span>
+                        </button>
+                    ) : checkoutMethod === 'mobile-money' ? (
                         <button
                             onClick={handlePayMobileMoney}
                             disabled={!canPay}
                             className={`w-full h-14 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${
-                                canPay ? 'bg-black hover:bg-slate-800 text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
+                                canPay ? 'bg-[#0B57D0] hover:bg-[#0842A0] text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
                             }`}
                         >
                             {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
                             <span>{submitting ? 'Starting…' : `Pay K${totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}</span>
+                        </button>
+                    ) : ctx.card_enabled ? (
+                        <button
+                            onClick={handlePayCard}
+                            disabled={submitting}
+                            className={`w-full h-14 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${!submitting ? 'bg-[#0B57D0] hover:bg-[#0842A0] text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'}`}
+                        >
+                            {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
+                            <span>{submitting ? 'Starting…' : `Pay ${cardSymbol}${cardCharged.toLocaleString(undefined, { minimumFractionDigits: 2 })} by card`}</span>
                         </button>
                     ) : (
                         <button disabled className="w-full h-14 rounded-xl font-bold text-base bg-neutral-100 text-zinc-400 cursor-not-allowed">
@@ -1187,7 +1305,7 @@ export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenO
 
                 {step === 'LOADING' && (
                     <div className="p-10 flex flex-col items-center justify-center min-h-[450px]">
-                        <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl animate-spin mb-4">
+                        <div className="p-4 bg-blue-50 text-[#0B57D0] rounded-2xl animate-spin mb-4">
                             <Loader2 size={32} />
                         </div>
                         <h3 className="text-sm font-bold text-slate-700 uppercase tracking-widest">Loading Payment Link</h3>
@@ -1260,7 +1378,7 @@ export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenO
                                 </p>
                                 <button
                                     onClick={() => { setStep('CHECKOUT'); setVerificationStep('POLLING'); }}
-                                    className="mt-5 px-5 py-2.5 rounded-xl bg-slate-950 hover:bg-slate-900 text-white text-[11px] font-black uppercase tracking-wider transition-all"
+                                    className="mt-5 px-5 py-2.5 rounded-xl bg-slate-950 hover:bg-[#0B57D0] text-white text-[11px] font-black uppercase tracking-wider transition-all"
                                 >
                                     Try Again
                                 </button>
@@ -1276,7 +1394,7 @@ export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenO
                             <div className="relative w-24 h-24 animate-in zoom-in-75 duration-300">
                                 <BadgeCheck
                                     className="w-24 h-24 text-[#002962]"
-                                    fill="#006AFF"
+                                    fill="#0B57D0"
                                     strokeWidth={1.5}
                                     style={{ filter: 'drop-shadow(-5px 5px 0 rgba(0,41,98,1))' }}
                                 />
@@ -1380,7 +1498,7 @@ export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenO
                         {(errorInfo?.retry ?? true) && (
                             <button
                                 onClick={loadContext}
-                                className="mt-6 w-full bg-slate-950 hover:bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.15em] transition-all shadow-lg flex items-center justify-center gap-2"
+                                className="mt-6 w-full bg-slate-950 hover:bg-[#0B57D0] text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.15em] transition-all shadow-lg flex items-center justify-center gap-2"
                             >
                                 <RefreshCw size={14} /> Try Again
                             </button>

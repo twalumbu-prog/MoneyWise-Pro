@@ -18,7 +18,7 @@ export const PayEntry: React.FC = () => {
     const isWalletId = UUID_RE.test(wallet_id || '');
 
     return (
-        <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-slate-400" /></div>}>
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-[#0B57D0]" /></div>}>
             {isWalletId ? <PublicPay /> : <QuickPay />}
         </Suspense>
     );

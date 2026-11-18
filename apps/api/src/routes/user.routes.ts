@@ -4,7 +4,8 @@ import {
     getUsers, getNotificationsSummary, createUser, updateUser, deleteUser, 
     resendInvite, getMyProfile, updatePaymentInfo, registerPushToken, 
     unregisterPushToken, searchRecipients, verifyRecipient,
-    getMyPreferences, updateMyPreferences, getMyEmployers, requestPinRecovery, verifyPinRecovery 
+    getMyPreferences, updateMyPreferences, getMyEmployers, requestPinRecovery, verifyPinRecovery,
+    getMyGrowPlan, saveMyGrowPlan, deleteMyGrowPlan 
 } from '../controllers/user.controller';
 
 const router = Router();
@@ -17,6 +18,9 @@ router.put('/me/payment-info', updatePaymentInfo);
 router.get('/me/preferences', getMyPreferences);
 router.get('/me/employers', getMyEmployers);
 router.put('/me/preferences', updateMyPreferences);
+router.get('/me/grow', getMyGrowPlan);
+router.put('/me/grow', saveMyGrowPlan);
+router.delete('/me/grow', deleteMyGrowPlan);
 router.post('/me/pin-recovery/request', requestPinRecovery);
 router.post('/me/pin-recovery/verify', verifyPinRecovery);
 router.post('/me/push-token', registerPushToken);

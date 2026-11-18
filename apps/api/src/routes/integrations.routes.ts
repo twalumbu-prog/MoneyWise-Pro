@@ -4,6 +4,7 @@ import {
     connectQuickBooks,
     quickBooksCallback,
     getIntegrationStatus,
+    getIntegrationsOverview,
     getQuickBooksAccounts,
     getQuickBooksAccountTransactions,
     getQuickBooksInvoices,
@@ -28,6 +29,7 @@ import {
     correctMasterFeesPaymentDates,
     syncStudentsToCrmNow,
 } from '../controllers/masterfees.controller';
+import { mfRecordPayment, mfVoidPayment, mfCreateStudent, mfUpdateStudent, mfCreateInvoice, mfVoidInvoice } from '../controllers/masterfeesWrite.controller';
 
 import {
     getMetaStatus,
@@ -39,6 +41,23 @@ import {
     verifyMetaWebhook,
     receiveMetaWebhook,
 } from '../controllers/meta.controller';
+import {
+    getSageStatus,
+    connectSage,
+    disconnectSage,
+    getSageAccounts,
+    getSageMappings,
+    updateSageMapping,
+    syncSageNow,
+} from '../controllers/sage.controller';
+import { composioConnect, composioComplete } from '../controllers/composio.controller';
+import {
+    getGmailStatus,
+    getGmailConnectUrl,
+    gmailOAuthCallback,
+    disconnectGmail,
+    gmailSyncCron,
+} from '../controllers/gmail.controller';
 
 import { receiveInboundEmail } from '../services/capture/capture.email';
 
@@ -52,6 +71,7 @@ router.delete('/quickbooks', requireAuth, disconnectQuickBooks);
 
 // Status and Data
 router.get('/status', requireAuth, getIntegrationStatus);
+router.get('/overview', requireAuth, getIntegrationsOverview);
 router.get('/quickbooks/accounts', requireAuth, getQuickBooksAccounts);
 router.get('/quickbooks/accounts/:qbAccountId/transactions', requireAuth, getQuickBooksAccountTransactions);
 router.get('/quickbooks/invoices', requireAuth, getQuickBooksInvoices);
@@ -86,6 +106,13 @@ router.put('/masterfees/lenco-mode', requireAuth, updateMasterFeesLencoMode);
 router.post('/masterfees/sync', requireAuth, syncMasterFeesNow);
 router.post('/masterfees/sync-students', requireAuth, syncStudentsToCrmNow);
 router.get('/masterfees/reconcile', requireAuth, getMasterFeesReconciliation);
+// Changes MoneyWise makes in the school's Master Fees (administrators only; the school must have switched writing on there).
+router.post('/masterfees/write/payments', requireAuth, mfRecordPayment);
+router.post('/masterfees/write/payments/:id/void', requireAuth, mfVoidPayment);
+router.post('/masterfees/write/students', requireAuth, mfCreateStudent);
+router.patch('/masterfees/write/students/:id', requireAuth, mfUpdateStudent);
+router.post('/masterfees/write/invoices', requireAuth, mfCreateInvoice);
+router.post('/masterfees/write/invoices/:id/void', requireAuth, mfVoidInvoice);
 
 // ── Meta messaging (WhatsApp / Facebook / Instagram) ─────────────────────────
 // The webhook and data-deletion callback have no session: Meta signs them, and the handlers verify that signature.
@@ -98,5 +125,27 @@ router.get('/meta/status', requireAuth, getMetaStatus);
 router.get('/meta/connect/:platform', requireAuth, requireRole(META_ROLES), getMetaConnectUrl);
 router.post('/meta/callback', requireAuth, requireRole(META_ROLES), metaOAuthCallback);
 router.delete('/meta/connections/:id', requireAuth, requireRole(META_ROLES), disconnectMeta);
+
+// ── Sage Accounting (Africa cloud, API v2.0.0) ───────────────────────────────
+router.get('/sage/status', requireAuth, getSageStatus);
+router.post('/sage/connect', requireAuth, connectSage);
+router.delete('/sage', requireAuth, disconnectSage);
+router.get('/sage/accounts', requireAuth, getSageAccounts);
+router.get('/sage/mappings', requireAuth, getSageMappings);
+router.put('/sage/mappings', requireAuth, updateSageMapping);
+router.post('/sage/sync', requireAuth, syncSageNow);
+
+// ── Gmail capture (read-only, AI Transaction Capture) ────────────────────────
+// Callback is unauthenticated by design (identity comes from the HMAC-signed state); /sync is the internal
+// scheduler entry point, secured inside the handler with LENCO_SYNC_SECRET.
+router.get('/gmail/callback', gmailOAuthCallback);
+router.post('/gmail/sync', gmailSyncCron);
+router.get('/gmail/status', requireAuth, getGmailStatus);
+router.get('/gmail/connect', requireAuth, getGmailConnectUrl);
+router.delete('/gmail/:id', requireAuth, disconnectGmail);
+
+// ── Quick connect via Composio (Gmail, Facebook, Instagram) — the alternative to the direct connections above ──
+router.post('/composio/:toolkit/connect', requireAuth, composioConnect);
+router.post('/composio/:toolkit/complete', requireAuth, composioComplete);
 
 export default router;

@@ -86,6 +86,42 @@ async function getAccountIdByCode(orgId: string, code: string): Promise<string |
 }
 
 /**
+ * Like getAccountIdByCode, but only returns an ASSET account. QuickBooks-imported charts number accounts QB-<qbId>, so a
+ * fixed code such as QB-1 means a different account in every org (in Twalumbu QB-1 is the "Bus Fares" INCOME account) —
+ * a cash/wallet lookup that trusts the code alone posts wallet money into whatever account owns that number.
+ */
+async function getAssetAccountIdByCode(orgId: string, code: string): Promise<string | null> {
+    const key = `${orgId}:asset:${code}`;
+    if (accountCodeCache.has(key)) return accountCodeCache.get(key)!;
+    const { data } = await supabase
+        .from('accounts')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('code', code)
+        .eq('type', 'ASSET')
+        .limit(1)
+        .maybeSingle();
+    const id = data?.id ?? null;
+    if (id) accountCodeCache.set(key, id); // a miss is not cached: the account may be created next
+    return id;
+}
+
+/** The org's main-wallet ASSET account: by the standard code, else by name (QuickBooks-imported orgs have an empty code). */
+async function getMainWalletAccountId(orgId: string): Promise<string | null> {
+    const byCode = await getAssetAccountIdByCode(orgId, CODE_MAIN_WALLET);
+    if (byCode) return byCode;
+    const { data } = await supabase
+        .from('accounts')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('type', 'ASSET')
+        .ilike('name', 'MoneyWise Wallet')
+        .limit(1)
+        .maybeSingle();
+    return data?.id ?? null;
+}
+
+/**
  * The per-org "Uncategorised / Suspense" equity account — a holding bucket for cash
  * that has not yet been classified as income, expense, capital or a liability. Created
  * on first use so the balance sheet always balances and the residual is visible.
@@ -156,6 +192,12 @@ export async function ensureSavingsTransferAccount(orgId: string): Promise<strin
     return data.id;
 }
 
+/** A withdrawal / transfer / bank fee or charge line ("Withdrawal Fee (MoneyWise)", "Airtel money Withdraw charge") — not a payee's "Entry fee". */
+function isBankFeeLine(description?: string | null): boolean {
+    const d = String(description || '');
+    return /(withdraw\w*|transaction|transfer|bank|airtel|mtn|mobile)[^a-z]*(\w+\s+){0,2}(fee|charge)s?\b/i.test(d) || /\b(fee|charge)s?\b[^a-z]*\(?(withdraw|transaction|transfer|bank|airtel|mtn|moneywise|payroll)/i.test(d);
+}
+
 /** Resolve the ASSET account that represents the wallet/cash this entry moved. */
 export async function resolveCashAccountForEntry(ce: CashbookRow, opts: { create?: boolean } = {}): Promise<string | null> {
     return resolveCashAccount(ce, opts.create !== false);
@@ -163,8 +205,14 @@ export async function resolveCashAccountForEntry(ce: CashbookRow, opts: { create
 
 /** Creates a system ASSET account if the org doesn't have it (some organizations were set up without them). */
 async function ensureAssetAccount(orgId: string, code: string, name: string, subtype: string): Promise<string | null> {
-    const existing = await getAccountIdByCode(orgId, code);
+    const existing = await getAssetAccountIdByCode(orgId, code);
     if (existing) return existing;
+    // The code may be taken by a non-asset account (QB-1 = Bus Fares in Twalumbu): never reuse it, use a system code instead.
+    if (await getAccountIdByCode(orgId, code)) {
+        code = `SYS-${code}`;
+        const sys = await getAssetAccountIdByCode(orgId, code);
+        if (sys) return sys;
+    }
     const { data, error } = await supabase.from('accounts')
         .insert({ organization_id: orgId, code, name, type: 'ASSET', subtype, description: 'Created automatically so wallet and cash movements can be posted to the ledger.' })
         .select('id').single();
@@ -230,13 +278,13 @@ async function resolveCashAccountInner(ce: CashbookRow, create = true): Promise<
             }
         }
         // Main wallet (or a wallet whose account could not be created) → the Main Wallet asset account.
-        return (await getAccountIdByCode(orgId, CODE_MAIN_WALLET))
-            ?? (await getAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
+        return (await getMainWalletAccountId(orgId))
+            ?? (await getAssetAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
     }
 
     if (ce.account_type === 'MASTERFEES') {
         return (await getAccountIdByCode(orgId, CODE_MASTERFEES_COLLECTIONS))
-            ?? (await getAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
+            ?? (await getAssetAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
     }
 
     if (ce.account_type === 'MASTERFEES_MANUAL') {
@@ -265,7 +313,7 @@ async function resolveCashAccountInner(ce: CashbookRow, create = true): Promise<
             if (acct) return acct;
         }
         return (await getAccountIdByCode(orgId, CODE_MASTERFEES_MANUAL_COLLECTIONS))
-            ?? (await getAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
+            ?? (await getAssetAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
     }
 
     // If it's a custom external wallet (where account_type is a UUID)
@@ -277,6 +325,19 @@ async function resolveCashAccountInner(ce: CashbookRow, create = true): Promise<
             .maybeSingle();
 
         if (extWallet) {
+            // external_wallets.qb_account_id is often the linked account's own UUID (set from the app's account picker), not a
+            // QuickBooks number. Matching only by name / QB number missed those wallets, so their journals fell through to the
+            // QB-1 fallback (and, before it was type-checked, landed in Twalumbu's "Bus Fares" income account).
+            if (extWallet.qb_account_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(extWallet.qb_account_id)) {
+                const { data: linked } = await supabase
+                    .from('accounts')
+                    .select('id')
+                    .eq('organization_id', orgId)
+                    .eq('type', 'ASSET')
+                    .eq('id', extWallet.qb_account_id)
+                    .maybeSingle();
+                if (linked) return linked.id;
+            }
             let q = supabase
                 .from('accounts')
                 .select('id')
@@ -299,10 +360,10 @@ async function resolveCashAccountInner(ce: CashbookRow, create = true): Promise<
             .ilike('name', '%cash%')
             .limit(1)
             .maybeSingle();
-        return cashAcct?.id ?? (await getAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
+        return cashAcct?.id ?? (await getAssetAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
     }
 
-    return getAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET);
+    return getAssetAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET);
 }
 
 /** Resolve the account a requisition line item points at (account_id or qb_account_id). */
@@ -425,16 +486,67 @@ export const ledgerService = {
 
             let liQuery = supabase
                 .from('line_items')
-                .select('id, account_id, qb_account_id, actual_amount, estimated_amount')
+                .select('id, description, account_id, qb_account_id, actual_amount, estimated_amount')
                 .eq('requisition_id', ce.requisition_id);
             if (scopedLineItemIds) liQuery = liQuery.in('id', Array.from(scopedLineItemIds));
             const { data: lis } = await liQuery;
+            // Requisitions raised in March-April 2026 often carry the same withdrawal fee twice (client- and server-added lines,
+            // sometimes in two different fee accounts) while the wallet was only charged one fee. Posting every line overshoots
+            // the cash that actually left and the difference used to be forced into Suspense (and Bank charges overstated).
+            // When the overshoot is fully covered by fee/charge lines, trim those lines instead — never a payee line.
+            const lineAmt = new Map<string, number>();
+            for (const li of lis || []) lineAmt.set(li.id, Math.max(0, Number(li.actual_amount ?? li.estimated_amount ?? 0)));
+            if (!scopedLineItemIds && !cashIsDebit) {
+                const total = Array.from(lineAmt.values()).reduce((a, b) => a + b, 0);
+                const overshoot = Number((total - amount).toFixed(2));
+                if (overshoot > TOLERANCE) {
+                    const feeLis = (lis || []).filter((li: any) => isBankFeeLine(li.description) && (lineAmt.get(li.id) || 0) > 0);
+                    const feeTotal = feeLis.reduce((a, li: any) => a + (lineAmt.get(li.id) || 0), 0);
+                    if (feeLis.length > 0 && feeTotal + TOLERANCE >= overshoot) {
+                        const acctIds = await Promise.all(feeLis.map((li: any) => resolveLineItemAccount(orgId, li)));
+                        const ids = acctIds.filter(Boolean) as string[];
+                        const { data: accRows } = ids.length ? await supabase.from('accounts').select('id, name').in('id', ids) : { data: [] as any[] };
+                        const nameOf = new Map((accRows || []).map((a: any) => [a.id, String(a.name || '')]));
+                        const ordered = feeLis
+                            .map((li: any, i: number) => ({ li, i, name: nameOf.get(acctIds[i] || '') || '', keep: /^bank charges$/i.test(nameOf.get(acctIds[i] || '') || '') ? 1 : 0 }))
+                            .filter(x => /charge|fee|bank/i.test(x.name)) // never trim a line booked to a payee/expense account
+                            .sort((a, b) => a.keep - b.keep || b.i - a.i); // trim non-"Bank charges" duplicates first, last-added first
+                        let left = overshoot;
+                        if (ordered.reduce((a, x) => a + (lineAmt.get(x.li.id) || 0), 0) + TOLERANCE < overshoot) left = 0; // fee accounts cannot absorb it: leave to Suspense
+                        for (const { li } of ordered) {
+                            if (left <= TOLERANCE) break;
+                            const cur = lineAmt.get(li.id) || 0;
+                            const cut = Math.min(cur, left);
+                            lineAmt.set(li.id, Number((cur - cut).toFixed(2)));
+                            left = Number((left - cut).toFixed(2));
+                        }
+                    }
+                }
+            }
             for (const li of lis || []) {
-                const amt = Number(li.actual_amount ?? li.estimated_amount ?? 0);
+                const amt = lineAmt.get(li.id) ?? 0;
                 if (amt <= 0) continue;
                 let acct = await resolveLineItemAccount(orgId, li);
                 if (acct && acct === cashAcct) acct = null; // an item pointing at the wallet's own account would net the cash leg to nothing: treat as unclassified
                 add(acct, contraSign * amt);
+            }
+
+            // A batch payout row's cash out is its own line item PLUS its share of the batch's withdrawal fee. Scoping to the one
+            // line item leaves that fee share as a residual, which used to fall into Suspense; every other disbursement books its
+            // fee to the requisition's fee line item (Bank charges), so do the same here. Only a plausible fee is treated this way.
+            if (scopedLineItemIds && !cashIsDebit) {
+                const scoped = (lis || []).reduce((sum, li: any) => sum + (Number(li.actual_amount ?? li.estimated_amount ?? 0) > 0 ? Number(li.actual_amount ?? li.estimated_amount) : 0), 0);
+                const feeShare = Number((amount - scoped).toFixed(2));
+                if (feeShare > TOLERANCE && feeShare <= 100) {
+                    const { data: feeItems } = await supabase
+                        .from('line_items')
+                        .select('id, description, account_id, qb_account_id')
+                        .eq('requisition_id', ce.requisition_id)
+                        ;
+                    const feeItem = (feeItems || []).find((f: any) => !scopedLineItemIds!.has(f.id) && isBankFeeLine(f.description));
+                    const feeAcct = feeItem ? await resolveLineItemAccount(orgId, feeItem) : null;
+                    if (feeAcct && feeAcct !== cashAcct) add(feeAcct, contraSign * feeShare);
+                }
             }
         } else if (ce.account_id && ce.account_id !== cashAcct) {
             // (A category equal to the wallet's own account would cancel the cash leg to nothing and the entry would never post —

@@ -27,7 +27,7 @@ const PAD_BOTTOM = 28;
  */
 export const DesktopLineChart: React.FC<DesktopLineChartProps> = ({
     data,
-    color = '#0058DB',
+    color = '#0B57D0',
     formatValue,
 }) => {
     const [hoverIdx, setHoverIdx] = useState<number | null>(null);
@@ -133,8 +133,8 @@ export const DesktopLineChart: React.FC<DesktopLineChartProps> = ({
                         const y = PAD_TOP + plotH - ((tick - minV) / (maxV - minV)) * plotH;
                         return (
                             <g key={i}>
-                                <line x1={PAD_X} y1={y} x2={viewW - PAD_X} y2={y} stroke="#E8EEF8" strokeWidth={1} />
-                                <text x={PAD_X} y={y - 4} fontSize={10} fill="#9AA0A7" fontFamily="DM Sans, sans-serif">
+                                <line x1={PAD_X} y1={y} x2={viewW - PAD_X} y2={y} stroke="#E9EEF6" strokeWidth={1} />
+                                <text x={PAD_X} y={y - 4} fontSize={10} fill="#9AA0A6" fontFamily="DM Sans, sans-serif">
                                     {formatValue(tick)}
                                 </text>
                             </g>
@@ -158,7 +158,7 @@ export const DesktopLineChart: React.FC<DesktopLineChartProps> = ({
                                 x={points[i]?.x ?? 0}
                                 y={viewH - 8}
                                 fontSize={10}
-                                fill="#9AA0A7"
+                                fill="#9AA0A6"
                                 textAnchor={i === 0 ? 'start' : i === data.length - 1 ? 'end' : 'middle'}
                                 fontFamily="DM Sans, sans-serif"
                             >
@@ -170,7 +170,7 @@ export const DesktopLineChart: React.FC<DesktopLineChartProps> = ({
                     {/* Hover crosshair + snapped dot */}
                     {hovered && (
                         <>
-                            <line x1={hovered.x} y1={PAD_TOP} x2={hovered.x} y2={PAD_TOP + plotH} stroke="#9AA0A7" strokeWidth={1} strokeDasharray="3 3" />
+                            <line x1={hovered.x} y1={PAD_TOP} x2={hovered.x} y2={PAD_TOP + plotH} stroke="#9AA0A6" strokeWidth={1} strokeDasharray="3 3" />
                             <circle cx={hovered.x} cy={hovered.y} r={5} fill={color} stroke="#FFFFFF" strokeWidth={2} />
                         </>
                     )}
@@ -180,7 +180,7 @@ export const DesktopLineChart: React.FC<DesktopLineChartProps> = ({
             {/* Tooltip — HTML overlay for crisp text rendering */}
             {hovered && hoveredPoint && (
                 <div
-                    className="absolute top-2 pointer-events-none bg-[#111827] text-white rounded-lg px-3 py-2 text-xs shadow-lg z-10"
+                    className="absolute top-2 pointer-events-none bg-[#1F1F1F] text-white rounded-lg px-3 py-2 text-xs shadow-lg z-10"
                     style={{
                         left: tooltipOnLeft ? undefined : hovered.x,
                         right: tooltipOnLeft ? viewW - hovered.x : undefined,

@@ -198,6 +198,9 @@ export async function upgradeToPremium(req: Request, res: Response) {
         const organizationId = (req as any).user?.organization_id;
         const sub = await ensureSubscription(organizationId);
 
+        if (sub.plan_id === 'enterprise') {
+            return res.status(400).json({ error: 'Your Enterprise plan is managed by MoneyWise. Contact support to change it.' });
+        }
         if (sub.plan_id === 'premium') {
             return res.status(400).json({ error: 'Already on Premium plan' });
         }
@@ -246,6 +249,9 @@ export async function downgradeToFree(req: Request, res: Response) {
         const organizationId = (req as any).user?.organization_id;
         const sub = await ensureSubscription(organizationId);
 
+        if (sub.plan_id === 'enterprise') {
+            return res.status(400).json({ error: 'Your Enterprise plan is managed by MoneyWise. Contact support to change it.' });
+        }
         if (sub.plan_id === 'free') {
             return res.status(400).json({ error: 'Already on Free plan' });
         }

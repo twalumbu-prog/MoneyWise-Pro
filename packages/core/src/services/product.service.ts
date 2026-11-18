@@ -1,6 +1,6 @@
 import { apiFetch, apiJson } from '../api/apiFetch';
 
-export type ProductType = 'PRODUCT' | 'SERVICE_FIXED' | 'SERVICE_VARIABLE' | 'DONATION' | 'SERVICE_BOOKING' | 'SERVICE_BOOKING_DAILY' | 'DIGITAL';
+export type ProductType = 'PRODUCT' | 'SERVICE_FIXED' | 'SERVICE_VARIABLE' | 'DONATION' | 'SERVICE_BOOKING' | 'SERVICE_BOOKING_DAILY' | 'DIGITAL' | 'SERVICE_APPOINTMENT';
 
 /** A file sold as a digital product, stored in the private `product-assets`
  *  bucket and delivered to the buyer by email once they pay. */
@@ -19,6 +19,7 @@ export const PRODUCT_TYPE_OPTIONS: { value: ProductType; label: string; hint: st
     { value: 'SERVICE_VARIABLE', label: 'Service — variable price', hint: 'Price is set by you when sharing a one-time link.' },
     { value: 'SERVICE_BOOKING', label: 'Service (Booking – Apartments)', hint: 'Guests pick check-in / check-out on a calendar. Total = nights × nightly rate. Booked dates are blocked so you never double-book.' },
     { value: 'SERVICE_BOOKING_DAILY', label: 'Service (Booking – Daily Rental)', hint: 'Customers pick a pickup and drop-off date on a calendar. Total = days × daily rate. Booked dates are blocked so you never double-book.' },
+    { value: 'SERVICE_APPOINTMENT', label: 'Service (Appointment – Time Slots)', hint: 'For salons, clinics and studios: customers pick a day on a calendar, then an available time slot, then pay. You set opening hours, service length and how many clients per slot.' },
     { value: 'DONATION', label: 'Donation', hint: 'The payer decides the amount to give.' },
     { value: 'DIGITAL', label: 'Digital product', hint: 'Upload a file (e-book, template, audio, software). The buyer is emailed the file automatically the moment they pay.' },
 ];
@@ -97,6 +98,54 @@ export interface InflowDetail {
     journals: InflowJournal[];
 }
 
+/** Per-product rules for SERVICE_APPOINTMENT (stored on products.appointment_config). */
+export interface AppointmentConfig {
+    duration_minutes: number;
+    slot_interval_minutes: number;
+    capacity: number;
+    min_notice_hours: number;
+    max_advance_days: number;
+    timezone: string;
+    /** 0=Sun … 6=Sat; a missing day is closed. */
+    hours: Record<string, { start: string; end: string }>;
+    closed_dates: string[];
+}
+
+export const DEFAULT_APPOINTMENT_CONFIG: AppointmentConfig = {
+    duration_minutes: 60,
+    slot_interval_minutes: 60,
+    capacity: 1,
+    min_notice_hours: 2,
+    max_advance_days: 60,
+    timezone: 'Africa/Lusaka',
+    hours: Object.fromEntries([1, 2, 3, 4, 5, 6].map(d => [String(d), { start: '09:00', end: '17:00' }])),
+    closed_dates: [],
+};
+
+export interface AppointmentInfo {
+    /** Who can do this service (a salon's hairdressers). Empty when the service isn't staffed. */
+    staff?: { id: string; name: string }[];
+    /** The full price, and the deposit amounts a client may pay now instead of all of it (each less than the price). */
+    price?: number;
+    deposit_options?: number[];
+    duration_minutes: number;
+    open_weekdays: number[];
+    closed_dates: string[];
+    min_date: string;
+    max_date: string;
+    timezone: string;
+}
+
+export interface AppointmentSlot { start: string; end: string }
+
+export const isAppointmentProductType = (t?: string | null): boolean => t === 'SERVICE_APPOINTMENT';
+
+/** "14:30" → "2:30 PM" */
+export const formatSlotTime = (hhmm: string): string => {
+    const [h, m] = hhmm.split(':').map(Number);
+    return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+};
+
 export interface BookingRange {
     check_in: string;  // YYYY-MM-DD
     check_out: string; // YYYY-MM-DD (exclusive — turnover day stays bookable)
@@ -134,15 +183,20 @@ export interface Product {
     name: string;
     description?: string;
     price: number;
+    /** The currency the price is in: ZMW (kwacha, the default) or USD (US dollars). */
+    currency?: 'ZMW' | 'USD';
     is_active: boolean;
     image_url?: string | null;
     product_type?: ProductType;
+    appointment_config?: AppointmentConfig | null;
     wallet_id?: string | null;
     income_account_id?: string | null;
     category?: string | null;
     digital_assets?: DigitalAsset[] | null;
     /** Whether this product requires physical delivery / pick-up at checkout. */
     requires_delivery?: boolean;
+    /** Whether the seller has chosen to list this product in the in-app Marketplace. */
+    marketplace_listed?: boolean;
     /** When true, the checkout shows the rider-service selector;
      *  when false, the merchant handles delivery at a flat charge. */
     allow_external_delivery?: boolean;
@@ -293,6 +347,19 @@ export const productService = {
         );
         return data?.bookings || [];
     },
+
+    /** Public (no auth): open weekdays / date window for an appointment service. */
+    getAppointmentInfo(productId: string): Promise<AppointmentInfo> {
+        return apiJson<AppointmentInfo>(`/lenco/public-product-appointment-info/${productId}`);
+    },
+
+    /** Public (no auth): bookable time slots on one day (YYYY-MM-DD). */
+    async getAppointmentSlots(productId: string, date: string, staff?: string): Promise<AppointmentSlot[]> {
+        const data = await apiJson<{ slots?: AppointmentSlot[] }>(
+            `/lenco/public-product-slots/${productId}?date=${encodeURIComponent(date)}${staff && staff !== 'any' ? `&staff=${encodeURIComponent(staff)}` : ''}`,
+        );
+        return data?.slots || [];
+    },
 };
 
 export const paymentLinkService = {
@@ -301,6 +368,8 @@ export const paymentLinkService = {
         customer_name: string;
         customer_phone: string;
         amount: number;
+        /** The link's own currency; leave out to use the product's. In USD, `amount` is dollars. */
+        currency?: 'ZMW' | 'USD';
     }): Promise<PaymentLink> {
         return apiJson<PaymentLink>('/organizations/payment-links', {
             method: 'POST',

@@ -146,3 +146,69 @@ export async function getPaymentLinkAnalytics(): Promise<PaymentLinkAnalytics> {
         return { configured: true, loaded: 0, failed: 0, errorsByReason: [], queryError: err?.message || 'PostHog query failed' };
     }
 }
+
+export interface TrackingHealthRow {
+    event: string;
+    platform: string;
+    last24h: number;
+    prior6d: number;
+}
+
+export interface TrackingHealth {
+    configured: boolean;
+    rows: TrackingHealthRow[];
+    queryError?: string;
+}
+
+/**
+ * Event counts for the analytics added in Nov 2026 (usage, sessions, money flows): the last 24 hours against the six days
+ * before, by platform. Used by the daily tracking-health check to spot an app or the API that has stopped reporting.
+ */
+export async function trackingHealth(): Promise<TrackingHealth> {
+    const apiKey = await getPersonalApiKey();
+    if (!apiKey || !PROJECT_ID) return { configured: false, rows: [] };
+    try {
+        const results = await runHogQL(
+            apiKey,
+            `SELECT event, ifNull(toString(properties.platform), 'n/a') AS platform,
+                    countIf(timestamp > now() - INTERVAL 1 DAY) AS last_24h,
+                    countIf(timestamp <= now() - INTERVAL 1 DAY) AS prior_6d
+             FROM events
+             WHERE timestamp > now() - INTERVAL 7 DAY
+               AND event IN ('app_opened', 'app_backgrounded', 'feature_used', 'money_flow_started', 'money_flow_completed', 'money_flow_failed')
+             GROUP BY event, platform`
+        );
+        return {
+            configured: true,
+            rows: results.map((r: any[]) => ({ event: String(r[0]), platform: String(r[1]), last24h: Number(r[2]) || 0, prior6d: Number(r[3]) || 0 })),
+        };
+    } catch (e: any) {
+        return { configured: true, rows: [], queryError: String(e?.message || e).slice(0, 300) };
+    }
+}
+
+export interface TrackingProblem { severity: 'broken' | 'watch'; message: string }
+
+/** Pure: turns the counts into plain-language problems. Empty list = healthy. */
+export function assessTrackingHealth(h: TrackingHealth): TrackingProblem[] {
+    if (!h.configured) return [{ severity: 'broken', message: 'No PostHog personal API key is saved (Admin → Analytics), so tracking cannot be checked.' }];
+    if (h.queryError) return [{ severity: 'broken', message: `PostHog rejected the check query: ${h.queryError}` }];
+
+    const sum = (event: string, platform?: string, field: 'last24h' | 'prior6d' = 'last24h') =>
+        h.rows.filter(r => r.event === event && (!platform || r.platform === platform)).reduce((a, r) => a + r[field], 0);
+    const problems: TrackingProblem[] = [];
+
+    // Each client should keep opening: silence now after activity before is a break; silence in both is "never arrived".
+    for (const p of ['ios', 'android', 'web']) {
+        const now = sum('app_opened', p), before = sum('app_opened', p, 'prior6d');
+        if (now === 0 && before > 0) problems.push({ severity: 'broken', message: `${p}: no app_opened in the last 24h, but ${before} in the six days before. Tracking may have stopped.` });
+        else if (now === 0 && before === 0) problems.push({ severity: 'watch', message: `${p}: no app_opened events in the last 7 days. Never reported (not updated yet, or no users).` });
+        else if (sum('app_backgrounded', p) === 0) problems.push({ severity: 'watch', message: `${p}: app opens arrive but no app_backgrounded, so time-in-app is not being measured.` });
+    }
+    if (sum('feature_used') === 0) problems.push({ severity: 'broken', message: 'The API sent no feature_used events in the last 24h.' });
+
+    const started = sum('money_flow_started'), done = sum('money_flow_completed'), failed = sum('money_flow_failed');
+    if (started > 0 && done === 0) problems.push({ severity: 'broken', message: `Money flows: ${started} started, none completed in 24h. Completion tracking may be broken (or payments are failing).` });
+    if (started >= 10 && failed / started > 0.3) problems.push({ severity: 'watch', message: `Money flows: ${failed} of ${started} attempts failed in 24h (${Math.round((failed / started) * 100)}%).` });
+    return problems;
+}

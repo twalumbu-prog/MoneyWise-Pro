@@ -80,7 +80,7 @@ export const StepProducts: React.FC<Props> = ({ organizationId, storeCategories,
 
             {loading ? (
                 <div className="flex justify-center py-16">
-                    <Loader2 className="h-8 w-8 text-blue-600 animate-spin" />
+                    <Loader2 className="h-8 w-8 text-[#0B57D0] animate-spin" />
                 </div>
             ) : products.length === 0 ? (
                 <button
@@ -133,7 +133,7 @@ export const StepProducts: React.FC<Props> = ({ organizationId, storeCategories,
                                 </div>
                                 <div className="flex items-center gap-1">
                                     {busyId === product.id ? (
-                                        <Loader2 className="h-4 w-4 text-gray-400 animate-spin mx-2" />
+                                        <Loader2 className="h-4 w-4 text-[#0B57D0] animate-spin mx-2" />
                                     ) : (
                                         <>
                                             <button
@@ -329,7 +329,7 @@ const ProductModal: React.FC<{
                         className="relative w-24 h-24 rounded-2xl bg-gray-50 border border-gray-200 flex items-center justify-center overflow-hidden hover:border-blue-600/50 transition-colors"
                     >
                         {uploadingImage ? (
-                            <Loader2 className="h-6 w-6 text-blue-600 animate-spin" />
+                            <Loader2 className="h-6 w-6 text-[#0B57D0] animate-spin" />
                         ) : form.image_url ? (
                             <img src={form.image_url} alt="" className="w-full h-full object-cover" />
                         ) : (

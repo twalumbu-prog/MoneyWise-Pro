@@ -84,7 +84,7 @@ const CloseBalanceModal: React.FC<CloseBalanceModalProps> = ({ isOpen, onClose, 
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col">
                 <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                     <h2 className="text-xl font-bold text-gray-900 flex items-center">
-                        <Calculator className="mr-2 h-5 w-5 text-brand-navy" />
+                        <Calculator className="mr-2 h-5 w-5 text-[#1F1F1F]" />
                         Closing Cash Ledger
                     </h2>
                     <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
@@ -132,7 +132,7 @@ const CloseBalanceModal: React.FC<CloseBalanceModalProps> = ({ isOpen, onClose, 
                                     ))}
                                 </div>
                                 <div className="flex justify-between items-center pt-2 border-t border-gray-200">
-                                    <span className="font-medium text-brand-navy">Total Counted</span>
+                                    <span className="font-medium text-[#1F1F1F]">Total Counted</span>
                                     <span className="text-xl font-black text-brand-green">
                                         K{parseFloat(physicalCount || '0').toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                     </span>
@@ -200,7 +200,7 @@ const CloseBalanceModal: React.FC<CloseBalanceModalProps> = ({ isOpen, onClose, 
                             <button
                                 onClick={handleNext}
                                 disabled={!physicalCount}
-                                className="px-5 py-2.5 text-sm font-bold text-white bg-brand-green hover:bg-green-600 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="px-5 py-2.5 text-sm font-bold text-white bg-brand-green hover:bg-[#0842A0] rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 Summary Review
                             </button>
@@ -217,7 +217,7 @@ const CloseBalanceModal: React.FC<CloseBalanceModalProps> = ({ isOpen, onClose, 
                             <button
                                 onClick={handleSubmit}
                                 disabled={loading}
-                                className="px-5 py-2.5 text-sm font-bold text-white bg-brand-green hover:bg-green-600 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                                className="px-5 py-2.5 text-sm font-bold text-white bg-brand-green hover:bg-[#0842A0] rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                             >
                                 {loading ? 'Processing...' : 'Confirm & Close Books'}
                             </button>

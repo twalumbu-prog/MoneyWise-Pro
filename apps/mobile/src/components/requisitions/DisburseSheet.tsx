@@ -5,7 +5,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Wallet, Coins, Smartphone, Building2, AlertTriangle, Check, Clock, Phone, MessageCircle } from 'lucide-react-native';
 import {
-    requisitionService, cashbookService, lencoService, formatKwacha,
+    requisitionService, cashbookService, lencoService, formatKwacha, lipilaService, matchLipilaBank,
     SUPPORT_PHONE_DISPLAY, SUPPORT_TEL_URL, SUPPORT_WHATSAPP_URL, NETWORK_RETRY_MINUTES, isNetworkTransferFailure, retryAfterLabel,
 } from 'core';
 import { InlineSearchSelect } from '../InlineSearchSelect';
@@ -97,6 +97,9 @@ export const DisburseSheet: React.FC<{
     const [lookupName, setLookupName] = useState<string | null>(recipientName ?? null);
     const [looking, setLooking] = useState(false);
     const [walletId, setWalletId] = useState<string | null>(null);
+    // A bank transfer from the Card Wallet (Lipila) needs the bank's SWIFT code and the account holder's phone number.
+    const [swift, setSwift] = useState('');
+    const [holderPhone, setHolderPhone] = useState('');
     const [status, setStatus] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const failedAt = useRef(0);
@@ -105,21 +108,37 @@ export const DisburseSheet: React.FC<{
     // ── source wallets (with balances) and banks ──
     const { data: wallets = [] } = useQuery({
         queryKey: ['disburse-wallets'],
-        queryFn: async () => ((await cashbookService.getWallets()) || []).map((w: any) => ({ id: String(w.id), name: String(w.name), balance: Number(w.balance) || 0, isMain: !!w.is_main })),
+        // forDisbursement also lists the Card Wallet (Lipila), which can pay mobile money numbers only.
+        queryFn: async () => ((await cashbookService.getWallets({ forDisbursement: true })) || []).map((w: any) => ({ id: String(w.id), name: String(w.name), balance: Number(w.balance) || 0, isMain: !!w.is_main, isCard: !!w.is_card_wallet })),
         enabled: route === 'WALLET',
     });
     const { data: banksRaw } = useQuery({ queryKey: ['lenco-banks'], queryFn: () => lencoService.getBanks(), staleTime: 60 * 60_000, enabled: route === 'WALLET' && rail === 'BANK' });
     const banks: any[] = Array.isArray(banksRaw) ? banksRaw : (banksRaw?.data || []);
 
-    useEffect(() => {
-        if (!walletId && wallets.length > 0) setWalletId((wallets.find((w: any) => w.isMain) || wallets[0]).id);
-    }, [wallets, walletId]);
+    // The Card Wallet pays out to mobile money numbers and bank accounts (not MoneyWise accounts).
+    const isMoneyWisePayEarly = (savedMethod || '').toUpperCase() === 'MONEYWISE_PAY' || savedCode === 'MONEYWISE';
+    const usable = !isMoneyWisePayEarly ? wallets : wallets.filter((w: any) => !w.isCard);
 
-    const selectedWallet = wallets.find((w: any) => w.id === walletId);
+    useEffect(() => {
+        if (usable.length > 0 && (!walletId || !usable.some((w: any) => w.id === walletId))) setWalletId((usable.find((w: any) => w.isMain) || usable[0]).id);
+    }, [usable.length, walletId, rail]);
+
+    const selectedWallet = usable.find((w: any) => w.id === walletId);
+    const selectedIsCard = !!selectedWallet?.isCard;
+    // The banks Lipila can pay, each with the SWIFT code Lipila itself uses (picked, never typed), filled in from the bank chosen where the lists agree.
+    const lipilaBanks = useQuery({ queryKey: ['lipila', 'banks'], queryFn: () => lipilaService.banks(), enabled: selectedIsCard && rail === 'BANK', staleTime: 3_600_000, retry: false });
+    useEffect(() => {
+        if (!(selectedIsCard && rail === 'BANK') || !lipilaBanks.data) return;
+        const name = banks.find((b: any) => String(b.id) === String(provider))?.name ?? '';
+        const found = matchLipilaBank(name, lipilaBanks.data.banks)?.swiftCode ?? '';
+        setSwift(found);
+        if (found) setError((e) => (e && /SWIFT/i.test(e) ? null : e));
+    }, [provider, lipilaBanks.data, selectedIsCard, rail]); // eslint-disable-line react-hooks/exhaustive-deps
     // MoneyWise Pay (wallet-to-wallet) is an on-us transfer: no payout fee, and no bank / mobile-money details to enter or look up
     // (e.g. an approved salary advance or loan going into an employee's personal MoneyWise account).
     const isMoneyWisePay = (savedMethod || '').toUpperCase() === 'MONEYWISE_PAY' || savedCode === 'MONEYWISE';
-    const fee = lencoService.calculatePayoutFee(amount, isMoneyWisePay ? 'MONEYWISE_PAY' : rail);
+    // A Card Wallet payout carries Lipila's own charge, added on top and taken from that wallet.
+    const fee = selectedIsCard ? lencoService.calculateLipilaPayoutFee(amount, rail === 'BANK' ? 'bank' : 'mobile') : lencoService.calculatePayoutFee(amount, isMoneyWisePay ? 'MONEYWISE_PAY' : rail);
     const totalDue = amount + fee;
     const insufficient = route === 'WALLET' && !!selectedWallet && totalDue > selectedWallet.balance;
 
@@ -147,15 +166,19 @@ export const DisburseSheet: React.FC<{
     }, [route, rail, provider, phone, recipient, lookupName, looking, organizationId, isMoneyWisePay]);
 
     const bankItems = useMemo(() => banks.map((b) => ({ id: String(b.id), label: String(b.name) })), [banks]);
-    const walletItems = useMemo(() => wallets.map((w: any) => ({ id: w.id, label: `${w.name} · ${formatKwacha(w.balance)}` })), [wallets]);
+    const walletItems = useMemo(() => usable.map((w: any) => ({ id: w.id, label: `${w.name} · ${formatKwacha(w.balance)}` })), [usable.length, wallets]);
 
     const switchRail = (r: Rail) => {
         if (r === rail) return;
         setRail(r); setProvider(null); setLookupName(null); setRecipient(''); setError(null);
     };
 
+    const cardBank = selectedIsCard && rail === 'BANK' && !isMoneyWisePay;
+    const swiftOk = /^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(swift.replace(/\s/g, '').toUpperCase());
+    const holderPhoneOk = holderPhone.replace(/\D/g, '').length >= 9;
     const walletReady = route === 'WALLET'
-        && (wallets.length === 0 || !!walletId)
+        && (usable.length === 0 || !!walletId)
+        && (!cardBank || (swiftOk && holderPhoneOk))
         && !insufficient
         && (isMoneyWisePay
             ? amount > 0 && !!recipientAccount
@@ -183,6 +206,7 @@ export const DisburseSheet: React.FC<{
                 recipient_account: rail === 'MOBILE_MONEY' ? phone : recipient.trim(),
                 recipient_bank_code: (provider || '').toLowerCase(),
                 recipient_account_name: lookupName && lookupName !== 'Name not found' ? lookupName : undefined,
+                ...(cardBank ? { recipient_swift_code: swift.replace(/\s/g, '').toUpperCase(), recipient_phone: holderPhone } : {}),
                 wallet_id: walletId || undefined,
             };
             const result: any = isExcess
@@ -190,7 +214,7 @@ export const DisburseSheet: React.FC<{
                 : await requisitionService.disburse(requisitionId, payload);
 
             if (!isExcess && String(result?.lencoStatus || '').toLowerCase() === 'pending') {
-                setStatus('Transfer initiated — waiting for Lenco to confirm…');
+                setStatus(`Transfer initiated — waiting for ${selectedIsCard ? 'Lipila' : 'Lenco'} to confirm…`);
                 for (let attempt = 0; attempt < 8; attempt++) {
                     await sleep(4000);
                     const poll: any = await requisitionService.verifyDisbursement(requisitionId);
@@ -214,7 +238,7 @@ export const DisburseSheet: React.FC<{
                     ? `${formatKwacha(amount)} recorded as paid out.`
                     : lenco === 'successful'
                         ? `${formatKwacha(amount)} was sent${lookupName && lookupName !== 'Name not found' ? ` to ${lookupName}` : ''}.`
-                        : 'The transfer is still processing at Lenco. It can take a while to settle — the status will update on its own.',
+                        : `The transfer is still processing at ${selectedIsCard ? 'Lipila' : 'Lenco'}. It can take a while to settle — the status will update on its own.`,
             );
             onDone();
         },
@@ -287,7 +311,7 @@ export const DisburseSheet: React.FC<{
                         <Text style={styles.feeText}>Fee {formatKwacha(fee)}</Text>
                     </View>
 
-                    {wallets.length > 0 && (
+                    {usable.length > 0 && (
                         <>
                             <Text style={[styles.label, styles.spaced]}>Source wallet</Text>
                             <InlineSearchSelect
@@ -297,6 +321,22 @@ export const DisburseSheet: React.FC<{
                                 searchPlaceholder="Search wallets…"
                                 onSelect={(i) => setWalletId(i.id)}
                             />
+                            {selectedIsCard && <Text style={styles.feeText}>Paid from your Card Wallet. A payout charge of {formatKwacha(fee)} is added and taken from the wallet.</Text>}
+                            {cardBank && (
+                                <>
+                                    <Text style={[styles.label, styles.spaced]}>Bank</Text>
+                                    <InlineSearchSelect
+                                        items={(lipilaBanks.data?.banks ?? []).map((b) => ({ id: b.swiftCode, label: `${b.name} (${b.swiftCode})` }))}
+                                        selectedId={swift || null}
+                                        placeholder={lipilaBanks.data ? 'Choose the bank' : 'Loading banks…'}
+                                        searchPlaceholder="Search banks…"
+                                        onSelect={(i) => { setSwift(i.id); setError(null); }}
+                                    />
+                                    <Text style={styles.feeText}>Chosen from the bank above; change it if it’s the wrong one. Only banks the Card Wallet can pay are listed.</Text>
+                                    <Text style={[styles.label, styles.spaced]}>Account holder’s phone number</Text>
+                                    <TextInput style={styles.input} value={holderPhone} onChangeText={(t) => { setHolderPhone(t); setError(null); }} keyboardType="phone-pad" placeholder="097…" placeholderTextColor={colors.textFaint} />
+                                </>
+                            )}
                             {insufficient && (
                                 <View style={styles.warn}>
                                     <AlertTriangle size={14} color="#B45309" />

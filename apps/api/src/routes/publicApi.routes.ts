@@ -30,6 +30,7 @@ import {
     importStatementLines,
     deleteStatementImport,
 } from '../controllers/externalWallets.controller';
+import { createSale, getSaleByExternalReference } from '../controllers/publicSales.controller';
 
 const router = Router();
 
@@ -58,6 +59,10 @@ router.get('/products', requireScope('read'), getProducts);
 router.get('/products/:id', requireScope('read'), getProductById);
 router.post('/products', requireScope('write'), createProduct);
 router.patch('/products/:id', requireScope('write'), updateProduct);
+
+// ── Sales (paid outside MoneyWise: cash / mobile money / bank) ───────────────
+router.get('/sales', requireScope('read'), getSaleByExternalReference);
+router.post('/sales', requireScope('write'), createSale);
 
 // ── Payment Links ─────────────────────────────────────────────────────────────
 router.get('/payment-links', requireScope('read'), getPaymentLinks);

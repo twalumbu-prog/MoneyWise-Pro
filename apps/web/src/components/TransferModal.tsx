@@ -199,7 +199,7 @@ const TransferModal: React.FC<TransferModalProps> = ({
                         <button
                             type="submit"
                             disabled={isSubmitting || !sourceWalletId || !destinationWalletId || !amount}
-                            className="px-6 py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-black transition-all flex items-center text-xs disabled:opacity-50"
+                            className="px-6 py-2.5 bg-[#0B57D0] text-white rounded-xl font-bold hover:bg-[#0B57D0] transition-all flex items-center text-xs disabled:opacity-50"
                         >
                             {isSubmitting ? (
                                 <>

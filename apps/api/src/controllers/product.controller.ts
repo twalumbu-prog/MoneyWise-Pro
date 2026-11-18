@@ -1,7 +1,24 @@
+import { cleanVariants } from '../services/stock';
+import { catalogItemExists } from '../services/priceCompare.service';
 import { Response } from 'express';
 import { supabase } from '../lib/supabase';
+import { sanitizeAppointmentConfig } from '../services/appointment.service';
+import { sanitizeDepositOptions } from '../services/salon.service';
 
-const VALID_PRODUCT_TYPES = ['PRODUCT', 'SERVICE_FIXED', 'SERVICE_VARIABLE', 'DONATION', 'SERVICE_BOOKING', 'SERVICE_BOOKING_DAILY', 'DIGITAL'];
+const PARCEL_SIZES = ['SMALL', 'MEDIUM', 'LARGE', 'BULKY'];
+
+/** The stock columns from what the seller sent: whether it is tracked, the count (or, with options, a count for each), and the low-stock warning. */
+function stockFields(track: unknown, quantity: unknown, threshold: unknown, variants: unknown) {
+    const tracked = track === true;
+    const options = tracked ? cleanVariants(variants) : [];
+    return {
+        track_stock: tracked,
+        stock_quantity: tracked && options.length === 0 ? Math.max(0, Math.floor(Number(quantity) || 0)) : null,
+        low_stock_threshold: Math.max(0, Math.floor(Number(threshold ?? 5) || 0)),
+        variants: options,
+    };
+}
+const VALID_PRODUCT_TYPES = ['PRODUCT', 'SERVICE_FIXED', 'SERVICE_VARIABLE', 'DONATION', 'SERVICE_BOOKING', 'SERVICE_BOOKING_DAILY', 'DIGITAL', 'SERVICE_APPOINTMENT'];
 
 /**
  * Normalise the digital_assets payload into a clean snapshot array. Each asset
@@ -106,8 +123,8 @@ export const createProduct = async (req: any, res: Response): Promise<any> => {
         }
 
         const { name, description, price, image_url, product_type, wallet_id, income_account_id, category, digital_assets,
-                requires_delivery, allow_external_delivery, own_delivery_charge,
-                additional_images, whats_included, checkout_fields } = req.body;
+                requires_delivery, allow_external_delivery, own_delivery_charge, weight_kg, parcel_size, track_stock, stock_quantity, low_stock_threshold, variants,
+                additional_images, whats_included, checkout_fields, marketplace_listed, catalog_item_id, appointment_config, deposit_options, currency } = req.body;
 
         if (!name || name.trim() === '') {
             return res.status(400).json({ error: 'Product name is required' });
@@ -143,6 +160,8 @@ export const createProduct = async (req: any, res: Response): Promise<any> => {
                 name: name.trim(),
                 description: description || null,
                 price: productPrice,
+                // The currency the price is in. Sent only for dollars, so a kwacha product saves even before the currency column exists.
+                ...(String(currency ?? '').toUpperCase() === 'USD' ? { currency: 'USD' } : {}),
                 image_url: image_url || null,
                 product_type: productType,
                 wallet_id: wallet_id || null,
@@ -153,9 +172,21 @@ export const createProduct = async (req: any, res: Response): Promise<any> => {
                 requires_delivery: requires_delivery === true,
                 allow_external_delivery: allow_external_delivery === true,
                 own_delivery_charge: Number(own_delivery_charge) || 0,
+                // Only sent when the seller sets them, so listings still save before the weight/size columns exist.
+                ...(Number(weight_kg) > 0 ? { weight_kg: Number(weight_kg) } : {}),
+                ...(PARCEL_SIZES.includes(parcel_size) ? { parcel_size } : {}),
+                // Stock is saved only when the seller turns tracking on, so saving works before the stock columns exist.
+                ...(track_stock === true ? stockFields(track_stock, stock_quantity, low_stock_threshold, variants) : {}),
                 additional_images: Array.isArray(additional_images) ? additional_images.filter((u: any) => typeof u === 'string' && u.trim()) : [],
                 whats_included: Array.isArray(whats_included) ? whats_included.filter((s: any) => typeof s === 'string' && s.trim()) : [],
                 checkout_fields: sanitizeCheckoutFields(checkout_fields),
+                // Listed on the Marketplace unless the seller switches it off.
+                marketplace_listed: marketplace_listed !== false,
+                // Which catalogue product this is, so it shows up in that product's price comparison. Only sent when chosen.
+                ...(catalog_item_id && (await catalogItemExists(String(catalog_item_id))) ? { catalog_item_id } : {}),
+                appointment_config: productType === 'SERVICE_APPOINTMENT' ? sanitizeAppointmentConfig(appointment_config) : null,
+                deposit_options: productType === 'SERVICE_APPOINTMENT' ? sanitizeDepositOptions(deposit_options) : null,
+                ...(productType === 'SERVICE_APPOINTMENT' ? { duration_minutes: sanitizeAppointmentConfig(appointment_config).duration_minutes } : {}),
             })
             .select()
             .single();
@@ -198,9 +229,24 @@ export const updateProduct = async (req: any, res: Response): Promise<any> => {
         }
 
         const { name, description, price, is_active, image_url, product_type, wallet_id, income_account_id, category, digital_assets,
-                requires_delivery, allow_external_delivery, own_delivery_charge,
-                additional_images, whats_included, checkout_fields } = req.body;
+                requires_delivery, allow_external_delivery, own_delivery_charge, weight_kg, parcel_size, track_stock, stock_quantity, low_stock_threshold, variants,
+                additional_images, whats_included, checkout_fields, marketplace_listed, catalog_item_id, appointment_config, deposit_options, currency } = req.body;
         const updateData: any = {};
+        if (currency !== undefined) {
+            const cur = String(currency).toUpperCase();
+            if (cur !== 'ZMW' && cur !== 'USD') return res.status(400).json({ error: 'Currency must be ZMW (kwacha) or USD (US dollars).' });
+            // Only a real change is written (the current value is asked for on its own), so saving a product works before the currency column exists.
+            const { data: was } = await supabase.from('products').select('currency').eq('id', id).maybeSingle();
+            if (cur !== String((was as any)?.currency ?? 'ZMW').toUpperCase()) updateData.currency = cur;
+        }
+        if (catalog_item_id !== undefined) {
+            if (catalog_item_id === null || catalog_item_id === '') updateData.catalog_item_id = null;
+            else if (await catalogItemExists(String(catalog_item_id))) updateData.catalog_item_id = catalog_item_id;
+            else return res.status(400).json({ error: 'That product isn’t in the catalogue.' });
+        }
+        if (weight_kg !== undefined) updateData.weight_kg = Number(weight_kg) > 0 ? Number(weight_kg) : null;
+        if (parcel_size !== undefined) updateData.parcel_size = PARCEL_SIZES.includes(parcel_size) ? parcel_size : null;
+        if (track_stock !== undefined) Object.assign(updateData, stockFields(track_stock, stock_quantity, low_stock_threshold, variants));
 
         if (name !== undefined) {
             if (name.trim() === '') {
@@ -270,6 +316,14 @@ export const updateProduct = async (req: any, res: Response): Promise<any> => {
         if (additional_images !== undefined) updateData.additional_images = Array.isArray(additional_images) ? additional_images.filter((u: any) => typeof u === 'string' && u.trim()) : [];
         if (whats_included !== undefined) updateData.whats_included = Array.isArray(whats_included) ? whats_included.filter((s: any) => typeof s === 'string' && s.trim()) : [];
         if (checkout_fields !== undefined) updateData.checkout_fields = sanitizeCheckoutFields(checkout_fields);
+        if (marketplace_listed !== undefined) updateData.marketplace_listed = marketplace_listed === true;
+        if (effectiveType === 'SERVICE_APPOINTMENT') {
+            if (appointment_config !== undefined) { updateData.appointment_config = sanitizeAppointmentConfig(appointment_config); updateData.duration_minutes = sanitizeAppointmentConfig(appointment_config).duration_minutes; }
+            if (deposit_options !== undefined) updateData.deposit_options = sanitizeDepositOptions(deposit_options);
+        } else if (product_type !== undefined) {
+            updateData.appointment_config = null;
+            updateData.deposit_options = null;
+        }
         updateData.updated_at = new Date().toISOString();
 
         const { data, error } = await supabase

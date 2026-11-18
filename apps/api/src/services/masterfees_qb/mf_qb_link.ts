@@ -76,7 +76,14 @@ export interface LinkResult {
     tier: LinkTier;
     invoice?: QbInvoiceLike;
     detail: string;
+    /** Set (with tier NONE) when an IMP- reference points at a QuickBooks invoice of this student whose total does NOT match the fee, so the poster can
+     *  say exactly that instead of "not found" — and never creates a second invoice for a fee that probably already exists. */
+    impMismatch?: { docNumber: string; invoiceId: string; qbTotal: number };
 }
+
+/** An IMP- reference names the invoice, but it is not proof of the AMOUNT: of 947 such matches on Twalumbu (Nov 2026) 934 agreed to the ngwee-level and
+ *  13 did not (K20 against K310, K65 against K315 ...). Rounding differences up to this much are accepted; anything bigger goes to a person. */
+export const IMP_AMOUNT_TOLERANCE = 0.05;
 
 /**
  * The academic term a QuickBooks invoice refers to, read from its line
@@ -88,6 +95,16 @@ export function qbTermOf(inv: QbInvoiceLike): number | null {
     const text = (inv.lines.map(l => l.description).join(' ') + ' ' + (inv.privateNote || '') + ' ' + (inv.memo || '')).toUpperCase();
     const m = text.match(/TERM\s*([123])\b/);
     return m ? Number(m[1]) : null;
+}
+
+/**
+ * The school year a QuickBooks invoice belongs to, from its date. The school year runs January–November; invoices raised in December are for
+ * Term 1 of the following year (Master Fees issues next year's Term 1 fees in December too). Null when the invoice has no usable date.
+ */
+export function qbSchoolYearOf(inv: QbInvoiceLike): number | null {
+    const m = String(inv.date || '').match(/^(\d{4})-(\d{2})/);
+    if (!m) return null;
+    return Number(m[2]) === 12 ? Number(m[1]) + 1 : Number(m[1]);
 }
 
 /**
@@ -125,7 +142,7 @@ export function findQbInvoiceForItem(
     customerInvoices: QbInvoiceLike[],
     mfNumberIndex: Map<string, QbInvoiceLike[]>,
     claimed: Set<string>,
-    opts: { mfTerm?: number | null; impDocNumber?: string | null; qbByDoc?: Map<string, QbInvoiceLike> } = {},
+    opts: { mfTerm?: number | null; mfYear?: number | null; impDocNumber?: string | null; qbByDoc?: Map<string, QbInvoiceLike> } = {},
 ): LinkResult {
     // ---- Tier 0: the Master Fees invoice number/ID, quoted in PrivateNote ----
     // An invoice explicitly tagged "Ref: <this exact MF invoice>" was created
@@ -152,10 +169,14 @@ export function findQbInvoiceForItem(
     // ---- Tier 1: the QuickBooks DocNumber embedded in an IMP- reference ----
     // Verified against the customer so a stray docnumber can never pull in
     // another student's invoice. Fallback only — see note above.
+    let impMismatch: LinkResult['impMismatch'];
     if (opts.impDocNumber && opts.qbByDoc) {
         const q = opts.qbByDoc.get(opts.impDocNumber);
         if (q && !claimed.has(q.id) && customerInvoices.some(c => c.id === q.id)) {
-            return { tier: 'IMP_DOCNUM', invoice: q, detail: `Linked by the QuickBooks document number ${opts.impDocNumber} embedded in the Master Fees import reference (IMP-${opts.impDocNumber}-...).` };
+            if (Math.abs(q.totalAmt - itemAmount) <= IMP_AMOUNT_TOLERANCE) {
+                return { tier: 'IMP_DOCNUM', invoice: q, detail: `Linked by the QuickBooks document number ${opts.impDocNumber} embedded in the Master Fees import reference (IMP-${opts.impDocNumber}-...).` };
+            }
+            impMismatch = { docNumber: opts.impDocNumber, invoiceId: q.id, qbTotal: q.totalAmt };   // right student, named invoice, wrong amount: do not link, do not duplicate
         }
     }
 
@@ -163,12 +184,16 @@ export function findQbInvoiceForItem(
     // Where both sides state a term, a differing term disqualifies outright —
     // that is precisely what stops Term 3 money landing on a Term 2 invoice.
     const sameAmount = customerInvoices.filter(q => Math.abs(q.totalAmt - itemAmount) < 0.01 && !claimed.has(q.id));
+    // ...and the SCHOOL YEAR must agree too: "TERM 3" on a September 2025 invoice is not Term 3 of 2026. Before this check a 2026 Term 3 fee of
+    // K1,500 linked to the student's 2025 "TERM 3" K1,500 invoice and 2026 payments were applied to last year's invoice (6 links, Nov 2026).
     const termCompatible = sameAmount.filter(q => {
+        if (opts.mfYear != null) { const qy = qbSchoolYearOf(q); if (qy != null && qy !== opts.mfYear) return false; }
         const qt = qbTermOf(q);
         if (opts.mfTerm == null || qt == null) return true;
         return qt === opts.mfTerm;
     });
 
+    const isCanteen = (t: string) => /lunch|meal|canteen/i.test(t || '');   // daily lunches: exact wording only ("Thu 1st" is a prefix of "Thu 12 Nov")
     // ---- Tier 2: fee description + amount, within this student and term ----
     const target = normDesc(itemDescription);
     if (target) {
@@ -176,7 +201,7 @@ export function findQbInvoiceForItem(
         if (exactDesc.length > 0) {
             return { tier: 'DESCRIPTION', invoice: exactDesc[0], detail: `Matched on identical fee description "${itemDescription}" at K${itemAmount.toFixed(2)}${opts.mfTerm ? ` (term ${opts.mfTerm})` : ''}.` };
         }
-        const partial = termCompatible.filter(q => q.lines.some(l => {
+        const partial = isCanteen(itemDescription) ? [] : termCompatible.filter(q => q.lines.some(l => {
             const d = normDesc(l.description);
             return d.length >= 6 && target.length >= 6 && (d.includes(target) || target.includes(d));
         }));
@@ -190,7 +215,9 @@ export function findQbInvoiceForItem(
     // rule can bridge that, but term + amount + student pins it down — as long
     // as exactly one candidate qualifies, so a shared amount across two terms
     // can never be guessed at.
-    if (opts.mfTerm != null) {
+    // Daily/weekly canteen items are all the same price, so term + amount cannot tell one day's lunch from another: Beatrice Mpande's "Thu 1st" lunch (K35)
+    // was linked to a QuickBooks lunch invoice for 12 Nov (Nov 2026). Lunch lines only match on their own wording (tier 2), never on term + amount.
+    if (opts.mfTerm != null && !isCanteen(itemDescription)) {
         const termExplicit = termCompatible.filter(q => qbTermOf(q) === opts.mfTerm);
         if (termExplicit.length === 1) {
             const q = termExplicit[0];
@@ -198,5 +225,5 @@ export function findQbInvoiceForItem(
         }
     }
 
-    return { tier: 'NONE', detail: `No QuickBooks invoice for "${itemDescription}" (K${itemAmount.toFixed(2)}${opts.mfTerm ? `, term ${opts.mfTerm}` : ''}) — no import-reference link, no invoice-number link, and no description or term match among this student's invoices at that amount. Likely never created in QuickBooks.` };
+    return { tier: 'NONE', detail: `No QuickBooks invoice for "${itemDescription}" (K${itemAmount.toFixed(2)}${opts.mfTerm ? `, term ${opts.mfTerm}` : ''}) — no import-reference link, no invoice-number link, and no description or term match among this student's invoices at that amount. Likely never created in QuickBooks.`, impMismatch };
 }

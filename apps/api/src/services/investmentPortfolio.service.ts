@@ -7,6 +7,8 @@
  * app can say the value hasn't been updated rather than pretend it knows.
  */
 import { supabase } from '../lib/supabase';
+import { positionsFor } from './fundPrices.service';
+import type { Position } from './fundPrices.service';
 
 const round2 = (n: number) => Math.round(Number(n) * 100) / 100;
 
@@ -24,7 +26,7 @@ export interface Holding {
     valuedAt: string | null;
 }
 
-export interface InvestmentRow { investment_target_id: string; amount: number; at: string }
+export interface InvestmentRow { investment_target_id: string; amount: number; at: string; product_name?: string | null }
 export interface ValuationRow { investment_target_id: string; value: number; created_at: string }
 
 /** Pure: turns confirmed investments + recorded values into holdings. Newest valuation wins; later deposits add on top of it. */
@@ -61,13 +63,13 @@ export function buildHoldings(
 
 export async function getPortfolio(orgId: string) {
     const { data: inv } = await supabase.from('investments')
-        .select('investment_target_id, amount_received, amount_paid, confirmed_at, created_at')
+        .select('investment_target_id, amount_received, amount_paid, confirmed_at, created_at, product_name')
         .eq('investor_organization_id', orgId).eq('status', 'CONFIRMED');
     const rows: InvestmentRow[] = (inv ?? []).map((i: any) => ({
-        investment_target_id: i.investment_target_id, amount: Number(i.amount_received ?? i.amount_paid ?? 0), at: i.confirmed_at ?? i.created_at,
+        investment_target_id: i.investment_target_id, amount: Number(i.amount_received ?? i.amount_paid ?? 0), at: i.confirmed_at ?? i.created_at, product_name: i.product_name ?? null,
     }));
     const ids = [...new Set(rows.map((r) => r.investment_target_id))];
-    if (ids.length === 0) return { holdings: [] as Holding[], totals: { invested: 0, currentValue: 0, gain: 0, gainPct: 0 } };
+    if (ids.length === 0) return { holdings: [] as Holding[], positions: [] as Position[], totals: { invested: 0, currentValue: 0, gain: 0, gainPct: 0 } };
 
     const [{ data: ts }, { data: vs }] = await Promise.all([
         supabase.from('investment_targets').select('id, display_name, logo_url, organizations(logo_url)').in('id', ids),
@@ -78,10 +80,28 @@ export async function getPortfolio(orgId: string) {
         return [t.id, { name: t.display_name, logoUrl: t.logo_url || org?.logo_url || null }];
     }));
     const holdings = buildHoldings(rows, (vs ?? []) as ValuationRow[], targets);
+
+    // Where a company has sent real prices for the funds an investor bought, the holding is valued from them: units held times today's price.
+    // Otherwise it keeps the older way (the last value the investor recorded), flagged as not updated.
+    let positions: Position[] = [];
+    try {
+        const priced = await positionsFor(rows.map((r) => ({ investment_target_id: r.investment_target_id, product_name: r.product_name ?? null, amount: r.amount, at: r.at })));
+        positions = priced.positions;
+        for (const h of holdings) {
+            if (priced.unmatchedTargets.has(h.targetId)) continue;
+            const mine = positions.filter((p) => p.targetId === h.targetId);
+            if (!mine.length) continue;
+            h.currentValue = round2(mine.reduce((s, p) => s + p.value, 0));
+            h.gain = round2(h.currentValue - h.invested);
+            h.gainPct = h.invested > 0 ? round2((h.gain / h.invested) * 100) : 0;
+            h.valued = true;
+            h.valuedAt = mine.map((p) => p.asOf).sort().pop() ?? null;
+        }
+    } catch (e) { console.error('[Portfolio] could not value from fund prices:', e); }
     const invested = round2(holdings.reduce((s, h) => s + h.invested, 0));
     const currentValue = round2(holdings.reduce((s, h) => s + h.currentValue, 0));
     const gain = round2(currentValue - invested);
-    return { holdings, totals: { invested, currentValue, gain, gainPct: invested > 0 ? round2((gain / invested) * 100) : 0 } };
+    return { holdings, positions, totals: { invested, currentValue, gain, gainPct: invested > 0 ? round2((gain / invested) * 100) : 0 } };
 }
 
 /** Records what an investment is worth now. Only for companies the organization has actually invested in. */

@@ -75,7 +75,7 @@ export function SegmentedControl({
         ? 'absolute inset-0 bg-white rounded-[80px] shadow-[0px_3px_1px_0px_rgba(0,0,0,0.04),0px_3px_8px_0px_rgba(0,0,0,0.12)] outline outline-[0.5px] outline-black/5'
         : isFlat
         ? 'absolute inset-0 bg-gray-100 rounded-md'
-        : 'absolute inset-0 bg-white rounded-xl border-[1.5px] border-[#006AFF]';
+        : 'absolute inset-0 bg-white rounded-xl border-[1.5px] border-[#0B57D0]';
 
     return (
         <div className={`${trackClass} ${className}`} role="tablist">
@@ -85,7 +85,7 @@ export function SegmentedControl({
                 /* ── Per-variant button classes ── */
                 const btnClass = isPill
                     ? `relative flex-1 py-2 rounded-lg text-xs text-center ${
-                          active ? 'text-brand-navy font-extrabold' : 'text-gray-500 font-bold hover:text-gray-900'
+                          active ? 'text-[#1F1F1F] font-extrabold' : 'text-gray-500 font-bold hover:text-gray-900'
                       }`
                     : isCapsule
                     ? `relative flex-1 py-2 px-2.5 text-xs text-center leading-4 ${
@@ -96,7 +96,7 @@ export function SegmentedControl({
                           active ? 'text-black' : (inactiveTextClassName ?? 'text-neutral-400')
                       }`
                     : `relative px-3 py-1.5 rounded-xl text-sm ${
-                          active ? 'text-[#006AFF] font-bold' : 'text-[#7C8FA2] font-normal'
+                          active ? 'text-[#0B57D0] font-bold' : 'text-[#80868B] font-normal'
                       }`;
 
                 return (
@@ -180,8 +180,8 @@ export function AnimatedTabContent({ tabKey, index, children, className = '' }: 
 //     value={mode}
 //     onChange={setMode}
 //     trackClassName="h-8 px-1 bg-white rounded-lg outline ..."
-//     indicatorClassName="bg-[#F3F5FC] rounded-md"
-//     separator={<div className="w-[1px] h-4 bg-[#E8EEF8]" />}
+//     indicatorClassName="bg-[#F8FAFD] rounded-md"
+//     separator={<div className="w-[1px] h-4 bg-[#E9EEF6]" />}
 //     tabs={[
 //       { value: 'outflows', buttonClassName: '...', label: <…/> },
 //       { value: 'inflows',  buttonClassName: '...', label: <…/> },

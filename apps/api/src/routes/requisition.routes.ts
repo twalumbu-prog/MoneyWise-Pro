@@ -25,6 +25,7 @@ import {
     backfillAuditScores,
     updateLineItemDetails,
     deleteRequisition,
+    batchDeleteRequisitions,
     autoCompleteRequisition,
     sendAutoCategorizationReminder,
     resolveRecipientName,
@@ -32,6 +33,9 @@ import {
     recordLoanRecovery,
     getSendSummaryHandler,
     getLoanBalance,
+    scanRequisitionInvoice,
+    markAllRequisitionsRead,
+    getRequisitionInvoiceUrl,
 } from '../controllers/requisition.controller';
 import {
     disburseRequisition,
@@ -101,13 +105,19 @@ router.get('/:id/messages', getRequisitionMessages);
 router.post('/:id/messages', sendRequisitionMessage);
 router.delete('/:id/messages/:messageId', deleteRequisitionMessage);
 
+// Invoice routes
+router.post('/scan-invoice', scanRequisitionInvoice);
+router.get('/:id/invoice-url', getRequisitionInvoiceUrl);
+
 // Standard routes
 router.post('/', createRequisition);
+router.post('/mark-all-read', markAllRequisitionsRead);
 router.post('/:id/mark-read', markRequisitionRead);
 router.get('/', getRequisitions);
 router.get('/:id', getRequisitionById);
 router.get('/:id/resolve-recipient', resolveRecipientName);
 router.put('/:id', updateRequisition);
+router.post('/batch/delete', batchDeleteRequisitions);
 router.delete('/:id', deleteRequisition);
 
 export default router;

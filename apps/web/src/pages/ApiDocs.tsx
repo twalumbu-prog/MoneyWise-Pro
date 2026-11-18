@@ -359,6 +359,70 @@ X-Api-Key: mwp_live_YOUR_API_KEY
 }
 \`\`\`
 
+#### 11. Record a Sale
+- Method: POST
+- Path: /v1/sales
+- Scope Required: write
+- Description: Records a sale whose money was already collected in cash, mobile money or bank. Booked straight to the ledger (Dr asset / Cr income) with a REC- receipt number; booking dates are reserved immediately.
+- Request Body (JSON):
+\`\`\`json
+{
+  "external_reference": "kaizen:mew3:2026-10-28:1",
+  "date": "2026-10-28",
+  "amount": 950,
+  "account_type": "CASH",
+  "customer_name": "Svea Hannekum",
+  "customer_phone": "+260971234567",
+  "items": [
+    { "product_id": "90bb2ef3-706d-4767-85b1-09de5394ef20", "quantity": 1, "price": 950, "check_in": "2026-10-28", "check_out": "2026-10-29" }
+  ]
+}
+\`\`\`
+  Free-text item (no catalogue product): { "name": "Accommodation – Room 6", "income_account": "Accommodation Revenue", "quantity": 1, "price": 950 }
+- Rules:
+  - An item has either a product_id (a catalogue product; may carry check_in/check_out to reserve a stay) or a free-text name plus income_account.
+  - income_account is one of your INCOME accounts, given as its id, code or name (case-insensitive). If it is missing or not found, the sale posts to your income account whose name contains "Accommodation"; if you have none, the request fails with 400.
+  - amount is what was collected. It is split across the items in proportion to quantity × price, and one ledger entry is booked per income account (the first carries your external_reference, the others <external_reference>::g2, ::g3, …).
+  - Idempotent: external_reference is unique per organization. Sending the same reference again books nothing and returns **200** with the existing sale and "created": false, so it is safe to retry.
+  - The sale is booked straight to the ledger (Dr cash / mobile money / bank, Cr income) with a REC- receipt number, and booking dates are reserved immediately (CONFIRMED).
+- Response (201 Created):
+\`\`\`json
+{
+  "data": {
+    "id": "5b1f0c7e-3a52-4f7e-9d0a-6c2b8e41a9d3",
+    "receipt_number": "REC-2026-00412",
+    "external_reference": "kaizen:mew3:2026-10-28:1",
+    "amount": 950,
+    "date": "2026-10-28",
+    "account_type": "CASH",
+    "entry_ids": ["e7c2a9b4-1d3f-4a8e-b6c5-0f9d2e7a1b34"]
+  },
+  "created": true
+}
+\`\`\`
+- Repeat with the same external_reference: 200 OK, same body with "created": false.
+- Errors: 400 validation; 409 room already booked for those dates; 503 same reference being recorded concurrently (retry after Retry-After).
+
+#### 12. Get a Sale by External Reference
+- Method: GET
+- Path: /v1/sales?external_reference=...
+- Scope Required: read
+- Response (200 OK):
+\`\`\`json
+{
+  "data": {
+    "id": "5b1f0c7e-3a52-4f7e-9d0a-6c2b8e41a9d3",
+    "receipt_number": "REC-2026-00412",
+    "external_reference": "kaizen:mew3:2026-10-28:1",
+    "amount": 950,
+    "date": "2026-10-28",
+    "account_type": "CASH",
+    "entry_ids": ["e7c2a9b4-1d3f-4a8e-b6c5-0f9d2e7a1b34"]
+  }
+}
+\`\`\`
+- 404 if not found.
+
 ---
 
 ### Error Handling & Response Format
@@ -373,6 +437,7 @@ All error responses return a standardized JSON structure:
 - 401 Unauthorized: Missing, invalid, or revoked API key (mwp_live_...).
 - 403 Forbidden: Insufficient scope (read vs write).
 - 404 Not Found: Requested entity not found in your organization.
+- 409 Conflict: The request clashes with existing data (e.g. a room already booked for those dates).
 - 500 Internal Server Error: Server-side error.
 `;
 
@@ -1014,6 +1079,75 @@ const ENDPOINTS: EndpointDoc[] = [
   "paid_at": null,
   "currency": "ZMW",
   "url": "https://moneywise.blueopus.cloud/pl/dGhpc19pc19hX3VuaXF1ZV90b2tlbl9leGFtcGxl"
+}`
+    },
+    {
+        id: 'create-sale',
+        category: 'Sales',
+        method: 'POST',
+        path: '/v1/sales',
+        title: 'Record a Sale',
+        scope: 'write',
+        description: 'Records a sale whose money was already collected in cash, mobile money or bank (for example a handwritten receipt), exactly as the New Sale screen does: it is booked to the ledger with a REC- receipt number, shows in the Inflows inbox and Reports, and reserves any booking dates. income_account is one of your INCOME accounts, given as its id, code or name (case-insensitive). If it is missing or not found, the sale posts to your income account whose name contains "Accommodation"; if you have none, the request fails with 400. amount is what was collected. It is split across the items in proportion to quantity × price, and one ledger entry is booked per income account (the first carries your external_reference, the others <external_reference>::g2, ::g3, …). Idempotent: external_reference is unique per organization. Sending the same reference again books nothing and returns 200 with the existing sale and "created": false, so it is safe to retry. A room already booked for those dates returns 409 and nothing is recorded.',
+        bodyParams: [
+            { name: 'external_reference', type: 'string', required: true, description: 'Your unique id for this sale (≤120 characters). Unique per organization; repeats return the existing sale.' },
+            { name: 'date', type: 'string', required: true, description: 'Sale date, YYYY-MM-DD.' },
+            { name: 'amount', type: 'number', required: true, description: 'Amount collected in ZMW (> 0). Split across items by quantity × price.' },
+            { name: 'account_type', type: 'string', required: true, description: 'Where the money is: CASH, AIRTEL_MONEY or BANK.' },
+            { name: 'customer_name', type: 'string', required: false, description: 'Customer name.' },
+            { name: 'customer_phone', type: 'string', required: false, description: 'Customer phone number.' },
+            { name: 'items', type: 'array', required: true, description: '1–100 items. Each is { product_id, quantity, price, check_in?, check_out? } for a catalogue product (dates reserve a stay), or { name, income_account?, quantity, price } for a free-text item. income_account is an INCOME account id, code or name; defaults to your "Accommodation" income account.' }
+        ],
+        exampleCurl: `curl -X POST "https://moneywise.blueopus.cloud/api/v1/sales" \\
+  -H "Authorization: Bearer mwp_live_..." \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "external_reference": "kaizen:mew3:2026-10-28:1",
+    "date": "2026-10-28",
+    "amount": 950,
+    "account_type": "CASH",
+    "customer_name": "Svea Hannekum",
+    "customer_phone": "+260971234567",
+    "items": [
+      { "name": "Accommodation – Room 6", "income_account": "Accommodation Revenue", "quantity": 1, "price": 950 }
+    ]
+  }'`,
+        exampleResponse: `{
+  "data": {
+    "id": "5b1f0c7e-3a52-4f7e-9d0a-6c2b8e41a9d3",
+    "receipt_number": "REC-2026-00412",
+    "external_reference": "kaizen:mew3:2026-10-28:1",
+    "amount": 950,
+    "date": "2026-10-28",
+    "account_type": "CASH",
+    "entry_ids": ["e7c2a9b4-1d3f-4a8e-b6c5-0f9d2e7a1b34"]
+  },
+  "created": true
+}`
+    },
+    {
+        id: 'get-sale',
+        category: 'Sales',
+        method: 'GET',
+        path: '/v1/sales',
+        title: 'Get a Sale by Reference',
+        scope: 'read',
+        description: 'Returns a sale recorded through POST /v1/sales, looked up by your external_reference. 404 if there is none.',
+        queryParams: [
+            { name: 'external_reference', type: 'string', required: true, description: 'The external_reference you sent when recording the sale.' }
+        ],
+        exampleCurl: `curl -X GET "https://moneywise.blueopus.cloud/api/v1/sales?external_reference=kaizen:mew3:2026-10-28:1" \\
+  -H "Authorization: Bearer mwp_live_..."`,
+        exampleResponse: `{
+  "data": {
+    "id": "5b1f0c7e-3a52-4f7e-9d0a-6c2b8e41a9d3",
+    "receipt_number": "REC-2026-00412",
+    "external_reference": "kaizen:mew3:2026-10-28:1",
+    "amount": 950,
+    "date": "2026-10-28",
+    "account_type": "CASH",
+    "entry_ids": ["e7c2a9b4-1d3f-4a8e-b6c5-0f9d2e7a1b34"]
+  }
 }`
     }
 ];

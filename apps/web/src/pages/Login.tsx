@@ -189,12 +189,12 @@ export const Login: React.FC = () => {
                 <div className="absolute top-0 left-0 w-full p-6 sm:p-8">
                     <div className="flex items-center space-x-3">
                         <img src="/logo.png" alt="MoneyWise" className="h-8 w-8" />
-                        <h1 className="text-xl font-bold text-brand-navy tracking-tight leading-tight">MoneyWise Pro</h1>
+                        <h1 className="text-xl font-bold text-[#1F1F1F] tracking-tight leading-tight">MoneyWise Pro</h1>
                     </div>
                 </div>
 
                 <div className="sm:mx-auto sm:w-full sm:max-w-md mt-24 sm:mt-8">
-                    <h2 className="text-center text-xl font-bold text-brand-navy mb-2">
+                    <h2 className="text-center text-xl font-bold text-[#1F1F1F] mb-2">
                         Welcome back!
                     </h2>
                     <p className="text-center text-sm text-gray-500 mb-8">
@@ -217,14 +217,14 @@ export const Login: React.FC = () => {
                                     type="button"
                                     onClick={() => handleSelectOrg(uo.organization.id)}
                                     disabled={loadingOrg !== null}
-                                    className="w-full text-left p-4 border border-gray-200 rounded-2xl hover:border-[#006AFF] hover:bg-[#006AFF]/5 transition-all flex items-center justify-between group transform hover:-translate-y-0.5 active:translate-y-0"
+                                    className="w-full text-left p-4 border border-gray-200 rounded-2xl hover:border-[#0B57D0] hover:bg-[#0B57D0]/5 transition-all flex items-center justify-between group transform hover:-translate-y-0.5 active:translate-y-0"
                                 >
                                     <div className="flex items-center space-x-4">
-                                        <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center font-bold text-brand-navy group-hover:bg-[#006AFF] group-hover:text-white transition-colors">
+                                        <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center font-bold text-[#1F1F1F] group-hover:bg-[#0B57D0] group-hover:text-white transition-colors">
                                             {uo.organization.name.charAt(0).toUpperCase()}
                                         </div>
                                         <div>
-                                            <div className="font-bold text-brand-navy group-hover:text-[#006AFF] transition-colors">
+                                            <div className="font-bold text-[#1F1F1F] group-hover:text-[#0B57D0] transition-colors">
                                                 {uo.organization.name}
                                             </div>
                                             <div className="text-xs text-gray-400 capitalize">
@@ -232,7 +232,7 @@ export const Login: React.FC = () => {
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="text-gray-400 group-hover:text-[#006AFF] transition-colors">
+                                    <div className="text-gray-400 group-hover:text-[#0B57D0] transition-colors">
                                         {loadingOrg === uo.organization.id ? (
                                             <Loader2 className="h-5 w-5 animate-spin" />
                                         ) : (
@@ -273,12 +273,12 @@ export const Login: React.FC = () => {
                 <div className="absolute top-0 left-0 w-full p-6 sm:p-8">
                     <div className="flex items-center space-x-3">
                         <img src="/logo.png" alt="MoneyWise" className="h-8 w-8" />
-                        <h1 className="text-xl font-bold text-brand-navy tracking-tight leading-tight">MoneyWise Pro</h1>
+                        <h1 className="text-xl font-bold text-[#1F1F1F] tracking-tight leading-tight">MoneyWise Pro</h1>
                     </div>
                 </div>
 
                 <div className="sm:mx-auto sm:w-full sm:max-w-md mt-24 sm:mt-8">
-                    <h2 className="text-center text-xl font-bold text-brand-navy mb-2">
+                    <h2 className="text-center text-xl font-bold text-[#1F1F1F] mb-2">
                         Reset your password
                     </h2>
                     <p className="text-center text-sm text-gray-500 mb-8">
@@ -293,9 +293,9 @@ export const Login: React.FC = () => {
                                 <div className="mx-auto w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mb-5">
                                     <Mail className="h-7 w-7 text-green-600" />
                                 </div>
-                                <h3 className="text-lg font-bold text-brand-navy mb-2">Check your inbox</h3>
+                                <h3 className="text-lg font-bold text-[#1F1F1F] mb-2">Check your inbox</h3>
                                 <p className="text-sm text-gray-500 mb-8">
-                                    If an account exists for <span className="font-bold text-brand-navy">{forgotEmail}</span>, a password reset link is on its way. It expires in 1 hour.
+                                    If an account exists for <span className="font-bold text-[#1F1F1F]">{forgotEmail}</span>, a password reset link is on its way. It expires in 1 hour.
                                 </p>
                                 <button
                                     type="button"
@@ -308,7 +308,7 @@ export const Login: React.FC = () => {
                         ) : (
                             <form className="space-y-6" onSubmit={handleForgotPassword}>
                                 <div>
-                                    <label htmlFor="forgot-email" className="block text-sm font-bold text-brand-navy mb-1">
+                                    <label htmlFor="forgot-email" className="block text-sm font-bold text-[#1F1F1F] mb-1">
                                         Email address
                                     </label>
                                     <div className="mt-1">
@@ -318,7 +318,7 @@ export const Login: React.FC = () => {
                                             type="email"
                                             autoComplete="email"
                                             required
-                                            className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] sm:text-sm transition-all"
+                                            className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] sm:text-sm transition-all"
                                             value={forgotEmail}
                                             onChange={(e) => setForgotEmail(e.target.value)}
                                             placeholder="you@example.com"
@@ -335,7 +335,7 @@ export const Login: React.FC = () => {
                                 <button
                                     type="submit"
                                     disabled={loading}
-                                    className="w-full flex justify-center py-3.5 px-4 border border-transparent rounded-xl text-sm font-bold text-white bg-[#006AFF] hover:bg-[#0052CC] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#006AFF] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                    className="w-full flex justify-center py-3.5 px-4 border border-transparent rounded-xl text-sm font-bold text-white bg-[#0B57D0] hover:bg-[#0842A0] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#0B57D0] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                                 >
                                     {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Send reset link'}
                                 </button>
@@ -363,13 +363,13 @@ export const Login: React.FC = () => {
                 <div className="flex items-center space-x-3">
                     <img src="/logo.png" alt="MoneyWise" className="h-8 w-8" />
                     <div>
-                        <h1 className="text-xl font-bold text-brand-navy tracking-tight leading-tight">MoneyWise Pro</h1>
+                        <h1 className="text-xl font-bold text-[#1F1F1F] tracking-tight leading-tight">MoneyWise Pro</h1>
                     </div>
                 </div>
             </div>
 
             <div className="sm:mx-auto sm:w-full sm:max-w-md mt-24 sm:mt-8">
-                <h2 className="text-center text-xl font-bold text-brand-navy mb-8">
+                <h2 className="text-center text-xl font-bold text-[#1F1F1F] mb-8">
                     {isSignup ? 'Create your account' : 'Sign in to continue'}
                 </h2>
             </div>
@@ -381,14 +381,14 @@ export const Login: React.FC = () => {
                             <button
                                 type="button"
                                 onClick={() => setSignupMode('CREATE')}
-                                className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${signupMode === 'CREATE' ? 'bg-white shadow-sm text-brand-navy' : 'text-gray-500 hover:text-gray-700'}`}
+                                className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${signupMode === 'CREATE' ? 'bg-white shadow-sm text-[#1F1F1F]' : 'text-gray-500 hover:text-gray-700'}`}
                             >
                                 Create New Org
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setSignupMode('JOIN')}
-                                className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${signupMode === 'JOIN' ? 'bg-white shadow-sm text-brand-navy' : 'text-gray-500 hover:text-gray-700'}`}
+                                className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${signupMode === 'JOIN' ? 'bg-white shadow-sm text-[#1F1F1F]' : 'text-gray-500 hover:text-gray-700'}`}
                             >
                                 Join Existing Org
                             </button>
@@ -399,7 +399,7 @@ export const Login: React.FC = () => {
                         {isSignup && (
                             <>
                                 <div>
-                                    <label htmlFor="name" className="block text-sm font-bold text-brand-navy mb-1">
+                                    <label htmlFor="name" className="block text-sm font-bold text-[#1F1F1F] mb-1">
                                         Full Name
                                     </label>
                                     <div className="mt-1">
@@ -408,14 +408,14 @@ export const Login: React.FC = () => {
                                             name="name"
                                             type="text"
                                             required
-                                            className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] sm:text-sm transition-all"
+                                            className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] sm:text-sm transition-all"
                                             value={name}
                                             onChange={(e) => setName(e.target.value)}
                                         />
                                     </div>
                                 </div>
                                 <div>
-                                    <label htmlFor="username" className="block text-sm font-bold text-brand-navy mb-1">
+                                    <label htmlFor="username" className="block text-sm font-bold text-[#1F1F1F] mb-1">
                                         Username
                                     </label>
                                     <div className="mt-1">
@@ -424,7 +424,7 @@ export const Login: React.FC = () => {
                                             name="username"
                                             type="text"
                                             required
-                                            className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] sm:text-sm transition-all"
+                                            className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] sm:text-sm transition-all"
                                             value={username}
                                             onChange={(e) => setUsername(e.target.value)}
                                             placeholder="unique_username"
@@ -434,7 +434,7 @@ export const Login: React.FC = () => {
 
                                 {signupMode === 'CREATE' ? (
                                     <div>
-                                        <label htmlFor="org-name" className="block text-sm font-bold text-brand-navy mb-1">
+                                        <label htmlFor="org-name" className="block text-sm font-bold text-[#1F1F1F] mb-1">
                                             Organization Name
                                         </label>
                                         <div className="mt-1">
@@ -443,7 +443,7 @@ export const Login: React.FC = () => {
                                                 name="organizationName"
                                                 type="text"
                                                 required={signupMode === 'CREATE'}
-                                                className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] sm:text-sm transition-all"
+                                                className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] sm:text-sm transition-all"
                                                 value={organizationName}
                                                 onChange={(e) => {
                                                     setOrganizationName(e.target.value);
@@ -453,10 +453,10 @@ export const Login: React.FC = () => {
                                             />
                                         </div>
                                         {suggestion && (
-                                            <div className="mt-2 p-3 bg-[#006AFF]/5 border border-[#006AFF]/20 rounded-xl flex items-center justify-between">
+                                            <div className="mt-2 p-3 bg-[#0B57D0]/5 border border-[#0B57D0]/20 rounded-xl flex items-center justify-between">
                                                 <div className="text-sm">
                                                     <span className="text-gray-500 font-medium">Suggestion: </span>
-                                                    <span className="text-[#006AFF] font-bold">{suggestion}</span>
+                                                    <span className="text-[#0B57D0] font-bold">{suggestion}</span>
                                                 </div>
                                                 <button
                                                     type="button"
@@ -464,7 +464,7 @@ export const Login: React.FC = () => {
                                                         setOrganizationName(suggestion);
                                                         setSuggestion('');
                                                     }}
-                                                    className="text-xs font-bold text-[#006AFF] hover:bg-[#006AFF]/10 px-2 py-1 rounded-md transition-colors"
+                                                    className="text-xs font-bold text-[#0B57D0] hover:bg-[#0B57D0]/10 px-2 py-1 rounded-md transition-colors"
                                                 >
                                                     Use this
                                                 </button>
@@ -473,7 +473,7 @@ export const Login: React.FC = () => {
                                     </div>
                                 ) : (
                                     <div className="relative">
-                                        <label htmlFor="org-search" className="block text-sm font-bold text-brand-navy mb-1">
+                                        <label htmlFor="org-search" className="block text-sm font-bold text-[#1F1F1F] mb-1">
                                             Search Organization
                                         </label>
                                         <div className="mt-1 relative">
@@ -484,7 +484,7 @@ export const Login: React.FC = () => {
                                                 id="org-search"
                                                 type="text"
                                                 required={signupMode === 'JOIN'}
-                                                className="appearance-none block w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] sm:text-sm transition-all"
+                                                className="appearance-none block w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] sm:text-sm transition-all"
                                                 placeholder="Type to search..."
                                                 value={searchQuery}
                                                 onChange={(e) => {
@@ -497,7 +497,7 @@ export const Login: React.FC = () => {
                                             />
                                             {isSearching && (
                                                 <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                                                    <Loader2 className="h-4 w-4 text-[#006AFF] animate-spin" />
+                                                    <Loader2 className="h-4 w-4 text-[#0B57D0] animate-spin" />
                                                 </div>
                                             )}
                                         </div>
@@ -513,7 +513,7 @@ export const Login: React.FC = () => {
                                                     searchResults.map((org) => (
                                                         <div
                                                             key={org.id}
-                                                            className="cursor-pointer select-none relative py-2 pl-3 pr-9 hover:bg-[#006AFF]/10 hover:text-[#006AFF] text-gray-900 transition-colors"
+                                                            className="cursor-pointer select-none relative py-2 pl-3 pr-9 hover:bg-[#0B57D0]/10 hover:text-[#0B57D0] text-gray-900 transition-colors"
                                                             onClick={() => {
                                                                 setOrganizationId(org.id);
                                                                 setSearchQuery(org.name); // Set input text to selected org
@@ -536,7 +536,7 @@ export const Login: React.FC = () => {
                         )}
 
                         <div>
-                            <label htmlFor="email" className="block text-sm font-bold text-brand-navy mb-1">
+                            <label htmlFor="email" className="block text-sm font-bold text-[#1F1F1F] mb-1">
                                 {isSignup ? 'Email address' : 'Email or Username'}
                             </label>
                             <div className="mt-1">
@@ -546,7 +546,7 @@ export const Login: React.FC = () => {
                                     type={isSignup ? "email" : "text"}
                                     autoComplete={isSignup ? "email" : "username"}
                                     required
-                                    className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] sm:text-sm transition-all"
+                                    className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] sm:text-sm transition-all"
                                     value={loginIdentifier}
                                     onChange={(e) => setLoginIdentifier(e.target.value)}
                                 />
@@ -554,7 +554,7 @@ export const Login: React.FC = () => {
                         </div>
 
                         <div>
-                            <label htmlFor="password" className="block text-sm font-bold text-brand-navy mb-1">
+                            <label htmlFor="password" className="block text-sm font-bold text-[#1F1F1F] mb-1">
                                 Password
                             </label>
                             <div className="mt-1 relative">
@@ -565,7 +565,7 @@ export const Login: React.FC = () => {
                                     autoComplete="current-password"
                                     required
                                     minLength={6}
-                                    className="appearance-none block w-full px-4 py-3 pr-11 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] sm:text-sm transition-all"
+                                    className="appearance-none block w-full px-4 py-3 pr-11 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] sm:text-sm transition-all"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                 />
@@ -587,7 +587,7 @@ export const Login: React.FC = () => {
                                             setForgotMode(true);
                                             setMessage('');
                                         }}
-                                        className="text-sm font-bold text-[#006AFF] hover:text-[#0052CC] transition-colors"
+                                        className="text-sm font-bold text-[#0B57D0] hover:text-[#0842A0] transition-colors"
                                     >
                                         Forgot password?
                                     </button>
@@ -604,7 +604,7 @@ export const Login: React.FC = () => {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full flex justify-center py-3.5 px-4 border border-transparent rounded-xl text-sm font-bold text-white bg-[#006AFF] hover:bg-[#0052CC] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#006AFF] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                            className="w-full flex justify-center py-3.5 px-4 border border-transparent rounded-xl text-sm font-bold text-white bg-[#0B57D0] hover:bg-[#0842A0] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#0B57D0] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                         >
                             {loading ? (
                                 <Loader2 className="h-5 w-5 animate-spin" />
@@ -629,7 +629,7 @@ export const Login: React.FC = () => {
                                     type="button"
                                     disabled={!!socialBusy}
                                     onClick={() => handleSocial(provider)}
-                                    className={`flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-60 ${provider === 'apple' ? 'bg-black text-white hover:bg-neutral-800' : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'}`}
+                                    className={`flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-60 ${provider === 'apple' ? 'bg-[#0B57D0] text-white hover:bg-[#0842A0]' : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'}`}
                                 >
                                     {socialBusy === provider ? <Loader2 className="h-4 w-4 animate-spin" /> : provider === 'apple'
                                         ? <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden><path d="M16.37 1.43c0 1.14-.46 2.22-1.2 3-.78.84-2.06 1.5-3.1 1.41-.13-1.1.42-2.25 1.15-3 .8-.86 2.17-1.5 3.15-1.41zM20.9 17.1c-.55 1.27-.81 1.84-1.52 2.96-1 1.56-2.4 3.5-4.13 3.51-1.55.02-1.95-1-4.05-.99-2.1.01-2.54 1.01-4.09.99-1.73-.02-3.06-1.77-4.06-3.33C-.25 15.6-.54 10.5 1.2 7.9c1.24-1.85 3.2-2.94 5.04-2.94 1.87 0 3.05 1.02 4.6 1.02 1.5 0 2.41-1.02 4.58-1.02 1.64 0 3.37.9 4.6 2.44-4.04 2.2-3.38 7.95.88 9.7z"/></svg>
@@ -663,15 +663,15 @@ export const Login: React.FC = () => {
                         </button>
                     </div>
                 </div>
-                <div className="mt-8 text-center text-xs text-brand-navy/40 font-medium">
+                <div className="mt-8 text-center text-xs text-[#1F1F1F]/40 font-medium">
                     &copy; {new Date().getFullYear()} MoneyWise Pro. All rights reserved.
                 </div>
                 <div className="mt-4 flex justify-center space-x-4 text-[10px] text-gray-400">
-                    <a href="/privacy" className="hover:text-brand-navy transition-colors">Privacy Policy</a>
+                    <a href="/privacy" className="hover:text-[#1F1F1F] transition-colors">Privacy Policy</a>
                     <span className="text-gray-300">|</span>
-                    <a href="/terms" className="hover:text-brand-navy transition-colors">Terms of Service</a>
+                    <a href="/terms" className="hover:text-[#1F1F1F] transition-colors">Terms of Service</a>
                     <span className="text-gray-300">|</span>
-                    <a href="mailto:stephe@blueopus.cloud" className="hover:text-brand-navy transition-colors">Contact Support</a>
+                    <a href="mailto:stephe@blueopus.cloud" className="hover:text-[#1F1F1F] transition-colors">Contact Support</a>
                 </div>
             </div>
         </div>

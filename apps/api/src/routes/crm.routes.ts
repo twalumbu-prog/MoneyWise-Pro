@@ -15,7 +15,10 @@ import {
     getCustomerLoyalty,
     previewCampaignAudience,
     sendCampaign,
-    draftCampaignEmail
+    draftCampaignEmail,
+    listEmailDesigns,
+    saveEmailDesign,
+    deleteEmailDesign
 } from '../controllers/crmLoyalty.controller';
 
 const router = Router();
@@ -39,5 +42,8 @@ router.get('/customers/:id/loyalty', getCustomerLoyalty);
 router.post('/campaigns/preview', requireRole(['ADMIN', 'ACCOUNTANT']), previewCampaignAudience);
 router.post('/campaigns/send', requireRole(['ADMIN', 'ACCOUNTANT']), sendCampaign);
 router.post('/campaigns/draft', requireRole(['ADMIN', 'ACCOUNTANT']), draftCampaignEmail);
+router.get('/email-designs', requireRole(['ADMIN', 'ACCOUNTANT']), listEmailDesigns);
+router.post('/email-designs', requireRole(['ADMIN', 'ACCOUNTANT']), saveEmailDesign);
+router.delete('/email-designs/:id', requireRole(['ADMIN', 'ACCOUNTANT']), deleteEmailDesign);
 
 export default router;

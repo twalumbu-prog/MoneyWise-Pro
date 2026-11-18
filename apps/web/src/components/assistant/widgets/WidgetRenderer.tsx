@@ -15,7 +15,7 @@ import { Download, FileSpreadsheet, FileText } from 'lucide-react';
 import type { ChartSpec, ChoiceSpec, FileSpec, KpiSpec, TableSpec, Widget } from 'core';
 
 // A single ordered palette keeps every chart in the conversation consistent.
-const PALETTE = ['#006AFF', '#00C48C', '#FFB020', '#7C3AED', '#F0507E', '#14B8A6', '#F97316', '#6366F1'];
+const PALETTE = ['#0B57D0', '#00C48C', '#FFB020', '#7C3AED', '#F0507E', '#14B8A6', '#F97316', '#6366F1'];
 
 // Chart entry animations are off throughout. These charts mount mid-stream,
 // while the surrounding message is still re-rendering on every token — the
@@ -58,7 +58,7 @@ const TOOLTIP_STYLE = {
     padding: '10px 12px',
 };
 
-const AXIS_STYLE = { fontSize: 11, fill: '#9CA3AF' } as const;
+const AXIS_STYLE = { fontSize: 11, fill: '#9AA0A6' } as const;
 
 // ─── Chart ───────────────────────────────────────────────────────────────────
 
@@ -95,7 +95,7 @@ const ChartWidget: React.FC<{ spec: ChartSpec }> = ({ spec }) => {
             case 'line':
                 return (
                     <LineChart data={spec.data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#F1F3F4" vertical={false} />
                         <XAxis dataKey={spec.xKey} tick={AXIS_STYLE} tickLine={false} axisLine={false} />
                         <YAxis tick={AXIS_STYLE} tickLine={false} axisLine={false} tickFormatter={axisFormatter(fmt)} width={54} />
                         <Tooltip formatter={tooltipFormatter} contentStyle={TOOLTIP_STYLE} />
@@ -126,7 +126,7 @@ const ChartWidget: React.FC<{ spec: ChartSpec }> = ({ spec }) => {
                                 </linearGradient>
                             ))}
                         </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#F1F3F4" vertical={false} />
                         <XAxis dataKey={spec.xKey} tick={AXIS_STYLE} tickLine={false} axisLine={false} />
                         <YAxis tick={AXIS_STYLE} tickLine={false} axisLine={false} tickFormatter={axisFormatter(fmt)} width={54} />
                         <Tooltip formatter={tooltipFormatter} contentStyle={TOOLTIP_STYLE} />
@@ -149,7 +149,7 @@ const ChartWidget: React.FC<{ spec: ChartSpec }> = ({ spec }) => {
             default:
                 return (
                     <BarChart data={spec.data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#F1F3F4" vertical={false} />
                         <XAxis dataKey={spec.xKey} tick={AXIS_STYLE} tickLine={false} axisLine={false} />
                         <YAxis tick={AXIS_STYLE} tickLine={false} axisLine={false} tickFormatter={axisFormatter(fmt)} width={54} />
                         <Tooltip formatter={tooltipFormatter} contentStyle={TOOLTIP_STYLE} cursor={{ fill: '#F9FAFB' }} />
@@ -174,7 +174,7 @@ const ChartWidget: React.FC<{ spec: ChartSpec }> = ({ spec }) => {
     return (
         <figure className="my-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-[0_2px_16px_rgba(0,0,0,0.03)]">
             <figcaption className="mb-3 px-1">
-                <h4 className="text-[14px] font-black tracking-tight text-brand-navy">{spec.title}</h4>
+                <h4 className="text-[14px] font-black tracking-tight text-[#1F1F1F]">{spec.title}</h4>
                 {spec.subtitle && <p className="mt-0.5 text-[11px] font-medium text-gray-400">{spec.subtitle}</p>}
             </figcaption>
             <div className="h-[260px] w-full">
@@ -191,7 +191,7 @@ const ChartWidget: React.FC<{ spec: ChartSpec }> = ({ spec }) => {
 const TableWidget: React.FC<{ spec: TableSpec }> = ({ spec }) => (
     <div className="my-4 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-[0_2px_16px_rgba(0,0,0,0.03)]">
         <div className="border-b border-gray-100 px-4 py-3">
-            <h4 className="text-[14px] font-black tracking-tight text-brand-navy">{spec.title}</h4>
+            <h4 className="text-[14px] font-black tracking-tight text-[#1F1F1F]">{spec.title}</h4>
         </div>
         {/* Wide tables scroll inside the card rather than stretching the message. */}
         <div className="overflow-x-auto">
@@ -232,7 +232,7 @@ const TableWidget: React.FC<{ spec: TableSpec }> = ({ spec }) => (
                             {spec.columns.map(col => (
                                 <td
                                     key={col.key}
-                                    className={`px-4 py-3 text-[13px] font-black text-brand-navy ${
+                                    className={`px-4 py-3 text-[13px] font-black text-[#1F1F1F] ${
                                         col.align === 'right' ? 'text-right tabular-nums' : 'text-left'
                                     }`}
                                 >
@@ -251,12 +251,12 @@ const TableWidget: React.FC<{ spec: TableSpec }> = ({ spec }) => (
 
 const KpiWidget: React.FC<{ spec: KpiSpec }> = ({ spec }) => (
     <div className="my-4">
-        {spec.title && <h4 className="mb-2 px-1 text-[13px] font-black tracking-tight text-brand-navy">{spec.title}</h4>}
+        {spec.title && <h4 className="mb-2 px-1 text-[13px] font-black tracking-tight text-[#1F1F1F]">{spec.title}</h4>}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {spec.items.map((item, i) => (
                 <div key={i} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-[0_2px_16px_rgba(0,0,0,0.03)]">
                     <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">{item.label}</p>
-                    <p className="mt-1.5 text-[19px] font-black tracking-tight text-brand-navy tabular-nums">{item.value}</p>
+                    <p className="mt-1.5 text-[19px] font-black tracking-tight text-[#1F1F1F] tabular-nums">{item.value}</p>
                     <div className="mt-1 flex items-center gap-2">
                         {item.delta !== undefined && (
                             <span
@@ -295,7 +295,7 @@ const FileWidget: React.FC<{ spec: FileSpec }> = ({ spec }) => {
                 {isPdf ? <FileText size={20} /> : <FileSpreadsheet size={20} />}
             </div>
             <div className="min-w-0 flex-1">
-                <p className="truncate text-[13px] font-black text-brand-navy">{spec.name}</p>
+                <p className="truncate text-[13px] font-black text-[#1F1F1F]">{spec.name}</p>
                 <p className="text-[11px] font-medium text-gray-400">
                     {isPdf ? 'PDF document' : 'Excel workbook'}
                     {spec.sizeLabel ? ` · ${spec.sizeLabel}` : ''}

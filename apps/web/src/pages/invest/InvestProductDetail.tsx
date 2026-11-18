@@ -1,25 +1,17 @@
 import React, { useMemo, useState } from 'react';
 import { Layout } from '../../components/Layout';
+import { Dialog } from '../../components/ui/Dialog';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, MoreVertical } from 'lucide-react';
-import { StarIcon, UsersIcon, VerifiedIcon, INVEST_PROVIDERS, TYPE_CONFIG } from './InvestHome';
+import { VerifiedIcon, TYPE_CONFIG } from './InvestHome';
+import type { InvestProduct, InvestProvider } from './InvestHome';
+import { fmtNav, pct, prettyDate, realPoints, useFundSeries, useInvestProviders } from './investData';
 import { InvestChart } from './InvestChart';
 import { InvestPaymentFlow } from './InvestPaymentFlow';
 import { SegmentedControl } from '../../components/AnimatedTabs';
-import {
-    generateDailyHistory,
-    generateIntradayHistory,
-    sliceForTimeframe,
-    type Timeframe,
-} from './investChartData';
+import type { Timeframe } from './investChartData';
 
 const TIMEFRAMES: Timeframe[] = ['1D', '1W', '1M', '3M', 'YTD'];
-
-const DESCRIPTIONS: Record<string, string> = {
-    UNIT_TRUST: 'A professionally managed pooled fund investing across diversified equities and money market instruments, aiming for long-term capital growth while spreading risk across sectors.',
-    FIXED_DEPOSIT: 'A fixed-term deposit that locks in your capital for the selected duration in exchange for a guaranteed annual interest rate, paid out at maturity or on a recurring schedule.',
-    BOND: 'A debt instrument that pays a fixed coupon over its term, backed by the issuer, offering a predictable income stream with lower volatility than equities.',
-};
 
 const UpArrowIcon = () => (
     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#05C702" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -35,40 +27,48 @@ const ShieldIcon = () => (
     </svg>
 );
 
-export const InvestProductDetail: React.FC = () => {
+const ProductDetailBody: React.FC<{ provider: InvestProvider; product: InvestProduct }> = ({ provider, product }) => {
     const navigate = useNavigate();
-    const { id } = useParams();
     const [isBuyModalOpen, setIsBuyModalOpen] = useState(false);
     const [timeframe, setTimeframe] = useState<Timeframe>('3M');
-
-    const provider = INVEST_PROVIDERS.find(p => p.products.some(pr => pr.id === id)) ?? INVEST_PROVIDERS[0];
-    const product = provider.products.find(pr => pr.id === id) ?? provider.products[0];
 
     const companyName = provider.name;
     const companyLogo = provider.logo;
     const productName = product.name;
-    const productSubName = `${provider.name} (${product.id.toUpperCase()})`;
-    const price = product.price;
-    const priceChange = product.ytd;
+    const productSubName = provider.name;
+    const fundSeries = useFundSeries(product.fundId);
+    const real = !!fundSeries.data && fundSeries.data.points.length > 0;
     const unitLabel = TYPE_CONFIG[product.type].label.toLowerCase();
-    const description = DESCRIPTIONS[product.type];
+    const [factsOpen, setFactsOpen] = useState(false);
+    // What the company publishes about the fund, one fact a line. The page shows the first few; the rest open under "fund facts".
+    const factLines = (fundSeries.data?.facts?.description ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
+    const description = factLines.slice(0, 3).join(' ');
+    const factSheetUrl = fundSeries.data?.company?.factSheetUrl ?? null;
 
-    // ── Synthetic 3-year price history, deterministic per product ──────────────
-    const dailyHistory = useMemo(
-        () => generateDailyHistory(product.id, product.price, product.ytd, product.type),
-        [product.id, product.price, product.ytd, product.type]
-    );
-    const intradayHistory = useMemo(
-        () => generateIntradayHistory(product.id, dailyHistory),
-        [product.id, dailyHistory]
-    );
-    const chartData = useMemo(
-        () => sliceForTimeframe(dailyHistory, intradayHistory, timeframe),
-        [dailyHistory, intradayHistory, timeframe]
-    );
-    const chartPositive = chartData.length >= 2
-        ? chartData[chartData.length - 1].price >= chartData[0].price
-        : true;
+    // Only prices the company has sent. With fewer than two in the chosen period there is nothing honest to draw.
+    const chartData = useMemo(() => (real ? realPoints(fundSeries.data!.points, timeframe) : []), [real, fundSeries.data, timeframe]);
+    const latestReal = fundSeries.data?.latest ?? null;
+    const price = latestReal ? fmtNav(latestReal.nav) : 'No price yet';
+    const periodChange = chartData.length >= 2 ? ((chartData[chartData.length - 1].price - chartData[0].price) / chartData[0].price) * 100 : null;
+    const priceChange = periodChange != null ? `${pct(periodChange)} ${timeframe}` : 'No change to show yet';
+    const updatedText = latestReal ? `${fundSeries.data!.demo ? 'Demo prices, not real. ' : ''}Updated ${prettyDate(latestReal.date)}${fundSeries.data!.stale ? ' (older than expected)' : ''}` : 'The company hasn’t sent a price yet';
+    const yields = fundSeries.data?.yields ?? null;
+    const returnsStrip = yields ? (
+        <div className="px-6 mt-4">
+            <div className="grid grid-cols-3 gap-2">
+                {([['3 months', yields.m3], ['6 months', yields.m6], ['12 months', yields.m12]] as const).map(([label, v]) => (
+                    <div key={label} className="rounded-xl bg-neutral-50 px-3 py-2.5 text-center">
+                        <div className="text-[10px] uppercase tracking-wide text-neutral-500">{label}</div>
+                        <div className={`mt-0.5 text-base font-bold ${v == null ? 'text-neutral-400' : v >= 0 ? 'text-[#05C702]' : 'text-[#D93025]'}`}>{pct(v)}</div>
+                    </div>
+                ))}
+            </div>
+            <p className="mt-1.5 text-[10px] text-neutral-400">Reported by the company as of {prettyDate(yields.asOf)}. Past returns don’t guarantee future ones.</p>
+        </div>
+    ) : null;
+    const chartNode = chartData.length < 2
+        ? <div className="flex h-full items-center justify-center px-6 text-center text-sm text-neutral-500">{fundSeries.isPending ? 'Loading prices…' : latestReal ? 'There aren’t enough prices yet to draw this period. The chart fills in as new prices arrive.' : 'This company hasn’t sent prices for this fund yet.'}</div>
+        : <InvestChart data={chartData} timeframe={timeframe} positive={chartData[chartData.length - 1].price >= chartData[0].price} />;
 
     return (
         <Layout noPadding backgroundColor="bg-white" mobileHeaderHidden>
@@ -104,8 +104,8 @@ export const InvestProductDetail: React.FC = () => {
                                 </div>
                                 <div className="flex items-center gap-1 mt-1">
                                     <UpArrowIcon />
-                                    <span className="text-[#05C702] text-xs font-bold font-['DM_Sans']">{priceChange}</span>
-                                    <span className="text-neutral-700 text-xs font-normal font-['DM_Sans']"> Last Updated today</span>
+                                    <span className={`text-xs font-bold font-['DM_Sans'] ${periodChange == null ? 'text-neutral-500' : periodChange >= 0 ? 'text-[#05C702]' : 'text-[#D93025]'}`}>{priceChange}</span>
+                                    <span className="text-xs font-normal font-['DM_Sans'] text-neutral-700"> {updatedText}</span>
                                 </div>
                             </div>
                             <div className="w-14 h-14 bg-white rounded-[38px] shadow-[0px_1px_1px_0px_rgba(0,0,0,0.25)] outline outline-1 outline-offset-[-1px] outline-gray-300 flex items-center justify-center overflow-hidden p-2.5 flex-shrink-0">
@@ -115,7 +115,7 @@ export const InvestProductDetail: React.FC = () => {
 
                         {/* Chart — edge to edge, fills remaining height of this block */}
                         <div className="flex-1 min-h-0">
-                            <InvestChart data={chartData} timeframe={timeframe} positive={chartPositive} />
+                            {chartNode}
                         </div>
                     </div>
 
@@ -143,20 +143,17 @@ export const InvestProductDetail: React.FC = () => {
                                 <div className={`w-[5px] h-[5px] rounded-full flex-shrink-0 ${TYPE_CONFIG[product.type].dot}`} />
                                 <span className="text-gray-800 text-xs font-medium font-['DM_Sans']">{TYPE_CONFIG[product.type].label}</span>
                             </div>
-                            <div className="flex items-center gap-1">
-                                <UsersIcon />
-                                <span className="text-black text-xs font-normal font-['DM_Sans']">{product.productInvestors} Investors</span>
-                            </div>
                         </div>
 
+                        {returnsStrip}
                         {/* Description */}
                         <div className="px-6 mt-5">
                             <p className="text-neutral-800 text-sm font-light font-['DM_Sans'] leading-relaxed">
                                 {description}
                             </p>
-                            <button className="text-neutral-800 text-sm font-normal font-['DM_Sans'] underline mt-3">
-                                Read Full Prospectus
-                            </button>
+                            {factLines.length > 0 && <button type="button" onClick={() => setFactsOpen(true)} className="text-neutral-800 text-sm font-normal font-['DM_Sans'] underline mt-3">
+                                Read the fund facts
+                            </button>}
                         </div>
 
                         <div className="h-4" />
@@ -225,7 +222,7 @@ export const InvestProductDetail: React.FC = () => {
                                         <span className="text-black text-base font-normal font-['Figtree'] mb-1">/unit</span>
                                     </div>
                                     <div className="flex items-center gap-2 mt-2">
-                                        <div className="text-green-500 text-xs font-bold font-['Figtree'] flex items-center gap-1 bg-green-50 px-2 py-1 rounded-full">
+                                        <div className={`text-xs font-bold font-['Figtree'] flex items-center gap-1 px-2 py-1 rounded-full ${periodChange == null ? 'text-neutral-500 bg-neutral-100' : periodChange >= 0 ? 'text-green-500 bg-green-50' : 'text-red-600 bg-red-50'}`}>
                                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="transform rotate-45">
                                                 <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
                                                 <polyline points="17 6 23 6 23 12"></polyline>
@@ -237,7 +234,7 @@ export const InvestProductDetail: React.FC = () => {
                             </div>
 
                             <div className="px-2 pt-2 h-[260px]">
-                                <InvestChart data={chartData} timeframe={timeframe} positive={chartPositive} />
+                                {chartNode}
                             </div>
 
                             <div className="flex items-center gap-2">
@@ -258,20 +255,13 @@ export const InvestProductDetail: React.FC = () => {
                             </div>
 
                             <div className="flex flex-col gap-4 mt-4">
-                                <div className="flex items-center gap-6">
-                                    <div className="flex items-center gap-1 text-black text-xs font-normal">
-                                        <StarIcon /> {provider.reviews}
-                                    </div>
-                                    <div className="flex items-center gap-1 text-black text-xs font-normal">
-                                        <UsersIcon /> {product.productInvestors} Investors
-                                    </div>
-                                </div>
+                                {returnsStrip}
                                 <div className="text-neutral-800 text-base font-light font-['Figtree'] max-w-3xl leading-relaxed">
                                     {description}
                                 </div>
-                                <div className="text-neutral-800 text-base font-normal font-['Figtree'] underline cursor-pointer hover:text-blue-600 transition-colors">
-                                    Read Full Prospectus
-                                </div>
+                                {factLines.length > 0 && <button type="button" onClick={() => setFactsOpen(true)} className="w-fit text-neutral-800 text-base font-normal font-['Figtree'] underline hover:text-blue-600 transition-colors">
+                                    Read the fund facts
+                                </button>}
                             </div>
 
                         </div>
@@ -286,6 +276,32 @@ export const InvestProductDetail: React.FC = () => {
                 product={product}
                 provider={provider}
             />
+            <Dialog open={factsOpen} title={`${productName}: fund facts`} onClose={() => setFactsOpen(false)} size="md">
+                <p className="mb-3 text-xs text-[#5F6368]">Published by {fundSeries.data?.company?.name ?? companyName} on its website and read by MoneyWise{latestReal ? `, with the price of ${prettyDate(latestReal.date)}` : ''}. This is a summary of the published facts, not the legal prospectus: ask {companyName} for the full document before you invest.</p>
+                <ul className="space-y-2.5 text-sm leading-6 text-[#1F1F1F]">{factLines.map((l, i) => <li key={i} className={/^[A-Z][A-Za-z ]+: /.test(l) && i > 7 ? 'pl-3 text-[#5F6368]' : ''}>{l}</li>)}</ul>
+                {factSheetUrl && <a href={factSheetUrl} target="_blank" rel="noreferrer" className="mt-4 inline-block text-sm font-semibold text-[#0B57D0] underline">Open {companyName}’s fact sheet</a>}
+            </Dialog>
         </Layout>
     );
+};
+
+/** One fund's page. The fund must be one a company has really listed; anything else is not found. */
+export const InvestProductDetail: React.FC = () => {
+    const navigate = useNavigate();
+    const { id } = useParams();
+    const { providers, loading } = useInvestProviders();
+    const provider = providers.find((p) => p.products.some((pr) => pr.id === id));
+    const product = provider?.products.find((pr) => pr.id === id);
+    if (!provider || !product) {
+        return (
+            <Layout noPadding backgroundColor="bg-white" mobileHeaderHidden>
+                <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+                    <p className="text-base font-bold text-black">{loading ? 'Loading…' : 'We can’t find that fund'}</p>
+                    {!loading && <p className="mt-1 text-sm text-neutral-500">It may have been removed by the company.</p>}
+                    <button type="button" onClick={() => navigate('/invest')} className="mt-4 rounded-full bg-[#0B57D0] px-6 py-2.5 text-sm font-semibold text-white">Back to Invest</button>
+                </div>
+            </Layout>
+        );
+    }
+    return <ProductDetailBody provider={provider} product={product} />;
 };

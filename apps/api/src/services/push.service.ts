@@ -50,6 +50,8 @@ function chunkMessages(messages: ExpoPushMessage[], size = 100): ExpoPushMessage
     return chunks;
 }
 
+import { recordUsage, attributeTo } from './usage.service';
+
 async function sendPushChunk(chunk: ExpoPushMessage[]): Promise<ExpoPushTicket[]> {
     const res = await fetch(EXPO_PUSH_ENDPOINT, {
         method: 'POST',
@@ -58,6 +60,7 @@ async function sendPushChunk(chunk: ExpoPushMessage[]): Promise<ExpoPushTicket[]
     });
     if (!res.ok) throw new Error(`Expo push API responded ${res.status}`);
     const json = (await res.json()) as { data?: ExpoPushTicket[] };
+    recordUsage({ category: 'messaging', kind: 'push', provider: 'expo', units: chunk.length, unit: 'notification' });
     return json.data ?? [];
 }
 
@@ -184,6 +187,7 @@ export const pushService = {
     },
 
     async sendToRoles(organizationId: string, roles: string[], payload: PushPayload): Promise<void> {
+        attributeTo(organizationId);
         const userIds = await this.getUserIdsByRoles(organizationId, roles);
         await this.sendToUsers(userIds, { orgId: organizationId, ...payload });
     },

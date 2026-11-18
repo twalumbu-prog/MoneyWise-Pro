@@ -194,7 +194,7 @@ const ApplicationDrawer: React.FC<{ id: string; onClose: () => void }> = ({ id, 
                 </header>
 
                 <div className="flex-1 overflow-y-auto p-5 space-y-5">
-                    {isLoading && <div className="flex items-center gap-2 text-sm text-gray-400"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>}
+                    {isLoading && <div className="flex items-center gap-2 text-sm text-[#0B57D0]"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>}
                     {isError && <p className="text-sm text-red-500">Could not load this application.</p>}
 
                     {data && (
@@ -313,7 +313,7 @@ const ApplicationDrawer: React.FC<{ id: string; onClose: () => void }> = ({ id, 
                             {data.status === 'ACTIVE' && (
                                 <button disabled={busy} onClick={() => review.mutate('SUSPENDED')} className="h-9 px-4 rounded-lg border border-red-200 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60">Suspend</button>
                             )}
-                            {busy && <Loader2 className="w-4 h-4 animate-spin self-center text-gray-400" />}
+                            {busy && <Loader2 className="w-4 h-4 animate-spin self-center text-[#0B57D0]" />}
                         </div>
                     </footer>
                 )}

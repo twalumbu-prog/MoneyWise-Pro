@@ -4,24 +4,25 @@ import { QuickBooksIntegration } from '../components/settings/integrations/Quick
 import { LencoIntegration } from '../components/settings/integrations/LencoIntegration';
 import { MetaMessagingIntegration } from '../components/settings/integrations/MetaMessagingIntegration';
 import { MasterfeesIntegration } from '../components/settings/integrations/MasterfeesIntegration';
-import { CaptureSettingsIntegration } from '../components/settings/integrations/CaptureSettingsIntegration';
-import { useAuth } from '../context/AuthContext';
+import { IntegrationLogo } from '../components/settings/integrations/IntegrationLogo';
+import { SageIntegration } from '../components/settings/integrations/SageIntegration';
+import { GmailIntegration, GmailLogo } from '../components/settings/integrations/GmailIntegration';
+import { LipilaIntegration } from '../components/settings/integrations/LipilaIntegration';
+import { TapToPay } from '../components/settings/TapToPay';
 import { DeveloperAPI } from '../components/settings/DeveloperAPI';
 import { InvestorPayouts } from '../components/settings/InvestorPayouts';
 import { useQuery } from '@tanstack/react-query';
-import { investmentService } from 'core';
+import { investmentService, apiJson } from 'core';
 import {
     Settings as SettingsIcon,
     Users,
     FileText,
     Share2,
     User,
-    GraduationCap,
     CreditCard,
     Code2,
     Landmark,
-    MessageCircle,
-    ScanLine
+    CheckCircle2
 } from 'lucide-react';
 import { GeneralSettings } from '../components/settings/GeneralSettings';
 import { UserManagement } from '../components/settings/UserManagement';
@@ -29,6 +30,19 @@ import { ChartOfAccounts } from '../components/settings/ChartOfAccounts';
 import { MyProfileSettings } from '../components/settings/MyProfileSettings';
 import { SubscriptionBilling } from '../components/settings/SubscriptionBilling';
 import { Layout } from '../components/Layout';
+import { ImportPanel, VatSettingsPanel } from '../components/accounting/AccountingParts';
+
+/** Which integrations this organisation has connected — drives the "Connected" label on the cards. */
+interface IntegrationsOverview {
+    quickbooks: boolean; sage: boolean; masterfees: boolean; lenco: boolean; gmail: boolean; meta: boolean;
+    messaging: { whatsapp: boolean; facebook: boolean; instagram: boolean };
+}
+
+const ConnectedBadge: React.FC = () => (
+    <span className="absolute top-4 right-4 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
+        <CheckCircle2 className="h-3.5 w-3.5" /> Connected
+    </span>
+);
 
 export const Settings: React.FC = () => {
     const [searchParams, setSearchParams] = useSearchParams();
@@ -42,9 +56,25 @@ export const Settings: React.FC = () => {
         staleTime: 5 * 60_000,
     });
 
-    const [activeIntegration, setActiveIntegration] = useState<'quickbooks' | 'lenco' | 'masterfees' | 'meta' | 'capture' | null>(null);
-    const { userRole } = useAuth();
+    const { data: overview, refetch: refetchOverview } = useQuery({
+        queryKey: ['integrations-overview'],
+        queryFn: () => apiJson<IntegrationsOverview>('/integrations/overview'),
+        retry: false,
+        staleTime: 60_000,
+    });
+
+    const [activeIntegration, setActiveIntegration] = useState<'quickbooks' | 'sage' | 'lenco' | 'masterfees' | 'meta' | 'gmail' | 'lipila' | null>(null);
+    // Card payments through Lipila are switched on business by business, so the card only shows for those that have it.
+    const lipilaAvailable = useQuery({ queryKey: ['lipila', 'available'], queryFn: () => apiJson<{ available?: boolean; configured?: boolean }>('/lipila/settings'), staleTime: 300_000, retry: false });
     const [integrationError, setIntegrationError] = useState<string | null>(null);
+
+    // Back on the grid (they may just have connected something inside a card): refresh the "Connected" labels.
+    useEffect(() => {
+        if (activeTab === 'integrations' && !activeIntegration) {
+            refetchOverview();
+            lipilaAvailable.refetch();
+        }
+    }, [activeTab, activeIntegration]);
 
     useEffect(() => {
         // Handle QuickBooks OAuth callback params (?status=success|error)
@@ -65,6 +95,20 @@ export const Settings: React.FC = () => {
             if (mfStatus === 'error') {
                 setIntegrationError(searchParams.get('mf_message') || 'Master Fees connection failed');
             }
+            return;
+        }
+        // Back from Composio's sign-in (?composio=gmail|facebook|instagram) — the card finishes the connection itself
+        const quickConnect = searchParams.get('composio');
+        if (quickConnect === 'gmail' || quickConnect === 'facebook' || quickConnect === 'instagram') {
+            setActiveTab('integrations');
+            setActiveIntegration(quickConnect === 'gmail' ? 'gmail' : 'meta');
+            return;
+        }
+        // Gmail OAuth callback (?gmail=connected|error) — the card reads and clears its own params
+        const gmailStatus = searchParams.get('gmail');
+        if (gmailStatus === 'connected' || gmailStatus === 'error') {
+            setActiveTab('integrations');
+            setActiveIntegration('gmail');
         }
     }, [searchParams]);
 
@@ -92,13 +136,16 @@ export const Settings: React.FC = () => {
 
                             {/* Tabs Row */}
                             <div className="self-stretch flex-shrink-0 overflow-x-auto no-scrollbar">
-                                <div className="flex items-center gap-1 p-1 bg-[#F3F5FC] md:bg-[#F8FAFD] rounded-[10px] min-w-max">
+                                <div className="flex items-center gap-1 p-1 bg-[#F8FAFD] md:bg-[#F8FAFD] rounded-[10px] min-w-max">
                                     {[
                                         { id: 'general', label: 'General Settings', icon: <SettingsIcon className="w-2.5 h-2.5" /> },
                                         { id: 'profile', label: 'My Profile', icon: <User className="w-2.5 h-2.5" /> },
                                         { id: 'users', label: 'Team Members', icon: <Users className="w-2.5 h-2.5" /> },
                                         { id: 'coa', label: 'Chart of Accounts', icon: <FileText className="w-2.5 h-2.5" /> },
+                                        { id: 'vat', label: 'VAT', icon: <FileText className="w-2.5 h-2.5" /> },
+                                        { id: 'import', label: 'Import Data', icon: <FileText className="w-2.5 h-2.5" /> },
                                         { id: 'integrations', label: 'Integrations', icon: <Share2 className="w-2.5 h-2.5" /> },
+                                        { id: 'tap', label: 'Tap to pay', icon: <Share2 className="w-2.5 h-2.5" /> },
                                         { id: 'billing', label: 'Subscription & Billing', icon: <CreditCard className="w-2.5 h-2.5" /> },
                                         { id: 'api', label: 'MoneyWise API', icon: <Code2 className="w-2.5 h-2.5" /> },
                                         ...(payoutInfo?.isInvestmentCompany ? [{ id: 'investor-payouts', label: 'Investor Payouts', icon: <Landmark className="w-2.5 h-2.5" /> }] : []),
@@ -109,7 +156,7 @@ export const Settings: React.FC = () => {
                                             onClick={() => handleTabChange(tab.id)}
                                             className={`px-3.5 py-1.5 rounded-lg text-[11px] whitespace-nowrap transition-all flex items-center gap-1.5 ${
                                                 activeTab === tab.id
-                                                    ? 'font-bold bg-white text-[#111827] shadow-sm'
+                                                    ? 'font-bold bg-white text-[#1F1F1F] shadow-sm'
                                                     : 'font-normal text-gray-500 hover:text-gray-700'
                                             }`}
                                         >
@@ -135,6 +182,9 @@ export const Settings: React.FC = () => {
                                     {/* Chart of Accounts Tab */}
                                     {activeTab === 'coa' && <ChartOfAccounts />}
 
+                                    {activeTab === 'vat' && <VatSettingsPanel />}
+                                    {activeTab === 'import' && <ImportPanel />}
+
                                     {/* Integrations Tab */}
                                     {activeTab === 'integrations' && (
                                         <div className="space-y-6">
@@ -142,7 +192,7 @@ export const Settings: React.FC = () => {
                                                 <>
                                                     <div className="flex justify-between items-center">
                                                         <div>
-                                                            <h3 className="text-lg font-bold text-brand-navy">Integrations</h3>
+                                                            <h3 className="text-lg font-bold text-[#1F1F1F]">Integrations</h3>
                                                             <p className="text-sm text-gray-500">Manage connections to external services.</p>
                                                         </div>
                                                     </div>
@@ -151,23 +201,32 @@ export const Settings: React.FC = () => {
                                                         {/* QuickBooks Card */}
                                                         <button
                                                             onClick={() => setActiveIntegration('quickbooks')}
-                                                            className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-green/30 transition-all text-left group"
+                                                            className="relative flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-green/30 transition-all text-left group"
                                                         >
-                                                            <div className="h-12 w-12 bg-[#2CA01C] rounded-xl flex items-center justify-center text-white font-bold text-xl mb-4 group-hover:scale-105 transition-transform shadow-sm">
-                                                                qb
-                                                            </div>
+                                                            {overview?.quickbooks && <ConnectedBadge />}
+                                                            <IntegrationLogo name="quickbooks" className="mb-4 group-hover:scale-105 transition-transform" />
                                                             <h4 className="text-base font-bold text-gray-900 mb-1">QuickBooks Online</h4>
                                                             <p className="text-sm text-gray-500">Sync expenses and chart of accounts</p>
+                                                        </button>
+
+                                                        {/* Sage Card */}
+                                                        <button
+                                                            onClick={() => setActiveIntegration('sage')}
+                                                            className="relative flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-green/30 transition-all text-left group"
+                                                        >
+                                                            {overview?.sage && <ConnectedBadge />}
+                                                            <IntegrationLogo name="sage" className="mb-4 group-hover:scale-105 transition-transform" />
+                                                            <h4 className="text-base font-bold text-gray-900 mb-1">Sage Accounting</h4>
+                                                            <p className="text-sm text-gray-500">Post journals to Sage Business Cloud (Pastel Online)</p>
                                                         </button>
 
                                                         {/* Lenco Card */}
                                                         <button
                                                             onClick={() => setActiveIntegration('lenco')}
-                                                            className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-pink/30 transition-all text-left group"
+                                                            className="relative flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-pink/30 transition-all text-left group"
                                                         >
-                                                            <div className="h-12 w-12 bg-brand-pink rounded-xl flex items-center justify-center text-white font-bold text-xl mb-4 group-hover:scale-105 transition-transform shadow-sm">
-                                                                L
-                                                            </div>
+                                                            {overview?.lenco && <ConnectedBadge />}
+                                                            <IntegrationLogo name="lenco" wide className="mb-4 group-hover:scale-105 transition-transform" />
                                                             <h4 className="text-base font-bold text-gray-900 mb-1">Lenco Banking</h4>
                                                             <p className="text-sm text-gray-500">Manage corporate wallets and transfers</p>
                                                         </button>
@@ -175,35 +234,50 @@ export const Settings: React.FC = () => {
                                                         {/* Master Fees Card */}
                                                         <button
                                                             onClick={() => setActiveIntegration('masterfees')}
-                                                            className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-navy/30 transition-all text-left group"
+                                                            className="relative flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-navy/30 transition-all text-left group"
                                                         >
-                                                            <div className="h-12 w-12 bg-brand-navy rounded-xl flex items-center justify-center text-white mb-4 group-hover:scale-105 transition-transform shadow-sm">
-                                                                <GraduationCap className="h-6 w-6" />
-                                                            </div>
+                                                            {overview?.masterfees && <ConnectedBadge />}
+                                                            <IntegrationLogo name="masterfees" className="mb-4 group-hover:scale-105 transition-transform" />
                                                             <h4 className="text-base font-bold text-gray-900 mb-1">Master Fees</h4>
                                                             <p className="text-sm text-gray-500">Sync school invoices, fee revenue &amp; receivables</p>
                                                         </button>
                                                         {/* Messaging (Meta) Card */}
                                                         <button
                                                             onClick={() => setActiveIntegration('meta')}
-                                                            className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-navy/30 transition-all text-left group"
+                                                            className="relative flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-navy/30 transition-all text-left group"
                                                         >
-                                                            <div className="h-12 w-12 bg-[#25D366] rounded-xl flex items-center justify-center text-white mb-4 group-hover:scale-105 transition-transform shadow-sm">
-                                                                <MessageCircle className="h-6 w-6" />
+                                                            {overview?.meta && <ConnectedBadge />}
+                                                            <div className="flex -space-x-2 mb-4">
+                                                                <IntegrationLogo name="whatsapp" className="group-hover:scale-105 transition-transform" />
+                                                                <IntegrationLogo name="facebook" className="group-hover:scale-105 transition-transform" />
+                                                                <IntegrationLogo name="instagram" className="group-hover:scale-105 transition-transform" />
                                                             </div>
                                                             <h4 className="text-base font-bold text-gray-900 mb-1">WhatsApp, Facebook &amp; Instagram</h4>
                                                             <p className="text-sm text-gray-500">Spot orders and payments in customer messages</p>
                                                         </button>
-                                                        {/* Transaction capture Card */}
+                                                        {/* Lipila card payments */}
+                                                        {lipilaAvailable.data?.available && (
+                                                            <button
+                                                                onClick={() => setActiveIntegration('lipila')}
+                                                                className="relative flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-navy/30 transition-all text-left group"
+                                                            >
+                                                            {lipilaAvailable.data?.configured && <ConnectedBadge />}
+                                                                <div className="h-12 w-12 bg-[#0B57D0] rounded-xl flex items-center justify-center text-white mb-4 group-hover:scale-105 transition-transform shadow-sm">
+                                                                    <CreditCard className="h-6 w-6" />
+                                                                </div>
+                                                                <h4 className="text-base font-bold text-gray-900 mb-1">Lipila Card Payments</h4>
+                                                                <p className="text-sm text-gray-500">Take card payments straight into your own Card Wallet</p>
+                                                            </button>
+                                                        )}
+                                                        {/* Gmail Card */}
                                                         <button
-                                                            onClick={() => setActiveIntegration('capture')}
-                                                            className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-navy/30 transition-all text-left group"
+                                                            onClick={() => setActiveIntegration('gmail')}
+                                                            className="relative flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-navy/30 transition-all text-left group"
                                                         >
-                                                            <div className="h-12 w-12 bg-[#006AFF] rounded-xl flex items-center justify-center text-white mb-4 group-hover:scale-105 transition-transform shadow-sm">
-                                                                <ScanLine className="h-6 w-6" />
-                                                            </div>
-                                                            <h4 className="text-base font-bold text-gray-900 mb-1">Transaction capture</h4>
-                                                            <p className="text-sm text-gray-500">Receipts and mobile money messages become entries you approve</p>
+                                                            {overview?.gmail && <ConnectedBadge />}
+                                                            <GmailLogo className="mb-4 group-hover:scale-105 transition-transform" />
+                                                            <h4 className="text-base font-bold text-gray-900 mb-1">Gmail</h4>
+                                                            <p className="text-sm text-gray-500">Pick up receipts, invoices and payment emails</p>
                                                         </button>
                                                     </div>
                                                 </>
@@ -212,10 +286,14 @@ export const Settings: React.FC = () => {
                                                     onBack={() => setActiveIntegration(null)}
                                                     initialError={integrationError}
                                                 />
-                                            ) : activeIntegration === 'capture' ? (
-                                                <CaptureSettingsIntegration onBack={() => setActiveIntegration(null)} canEdit={userRole === 'ADMIN' || userRole === 'OWNER'} />
+                                            ) : activeIntegration === 'sage' ? (
+                                                <SageIntegration onBack={() => setActiveIntegration(null)} />
                                             ) : activeIntegration === 'meta' ? (
                                                 <MetaMessagingIntegration onBack={() => setActiveIntegration(null)} />
+                                            ) : activeIntegration === 'lipila' ? (
+                                                <LipilaIntegration onBack={() => setActiveIntegration(null)} />
+                                            ) : activeIntegration === 'gmail' ? (
+                                                <GmailIntegration onBack={() => setActiveIntegration(null)} />
                                             ) : activeIntegration === 'masterfees' ? (
                                                 <MasterfeesIntegration
                                                     onBack={() => setActiveIntegration(null)}
@@ -237,6 +315,7 @@ export const Settings: React.FC = () => {
 
                                     {/* Investor payouts (investment companies only) */}
                                     {activeTab === 'investor-payouts' && <InvestorPayouts />}
+                                    {activeTab === 'tap' && <TapToPay />}
 
                                 </div>
                             </div>

@@ -3,7 +3,8 @@ import { Modal, View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, Scr
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { X, Building2, Check, LogOut } from 'lucide-react-native';
+import { X, Check, LogOut } from 'lucide-react-native';
+import { OrgAvatar } from '../OrgAvatar';
 import { useAuth } from '../../context/AuthContext';
 import { colors, fonts, radius } from '../../theme/tokens';
 
@@ -82,7 +83,7 @@ export const AccountMenuSheet: React.FC<Props> = ({ visible, onClose }) => {
         ]);
     };
 
-    const initial = (userName || user?.email || 'U').trim().charAt(0).toUpperCase();
+    const currentOrg = userOrganizations.find((uo) => uo.organization?.id === organizationId)?.organization;
 
     return (
         <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -91,9 +92,7 @@ export const AccountMenuSheet: React.FC<Props> = ({ visible, onClose }) => {
                 <View style={styles.handle} />
 
                 <View style={styles.header}>
-                    <View style={styles.avatar}>
-                        <Text style={styles.avatarText}>{initial}</Text>
-                    </View>
+                    <OrgAvatar name={organizationName || userName || 'U'} url={currentOrg?.logo_url} size={44} />
                     <View style={styles.userMain}>
                         <Text style={styles.userName} numberOfLines={1}>
                             {userName || user?.email || 'Account'}
@@ -151,13 +150,10 @@ export const AccountMenuSheet: React.FC<Props> = ({ visible, onClose }) => {
                                     onPress={() => void handleSwitch(org.id)}
                                     style={({ pressed }) => [
                                         styles.orgRow,
-                                        isCurrent && styles.orgRowActive,
                                         pressed && !isCurrent && { opacity: 0.7 },
                                     ]}
                                 >
-                                    <View style={[styles.orgIconWrap, isCurrent && styles.orgIconWrapActive]}>
-                                        <Building2 size={18} color={isCurrent ? colors.blue : colors.textMuted} />
-                                    </View>
+                                    <OrgAvatar name={org.name} url={org.logo_url} size={36} />
                                     <View style={styles.orgMain}>
                                         <Text style={[styles.orgName, isCurrent && styles.orgNameActive]} numberOfLines={1}>
                                             {org.name}
@@ -281,9 +277,6 @@ const styles = StyleSheet.create({
         flexDirection: 'row', alignItems: 'center', gap: 14, padding: 14,
         borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
         backgroundColor: colors.surface,
-    },
-    orgRowActive: {
-        borderColor: colors.blue, backgroundColor: colors.canvasAlt,
     },
     orgIconWrap: {
         width: 36, height: 36, borderRadius: 18, backgroundColor: colors.canvasAlt,

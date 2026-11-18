@@ -141,7 +141,7 @@ export default function ProductEditScreen() {
                 <View style={styles.card}>
                     <Text style={styles.label}>Type</Text>
                     <View style={styles.chips}>
-                        {PRODUCT_TYPE_OPTIONS.filter((o) => !o.value.startsWith('SERVICE_BOOKING')).map((o) => (
+                        {PRODUCT_TYPE_OPTIONS.filter((o) => !o.value.startsWith('SERVICE_BOOKING') && o.value !== 'SERVICE_APPOINTMENT').map((o) => (
                             <Pressable key={o.value} onPress={() => setType(o.value)} style={[styles.chip, type === o.value && styles.chipActive]}>
                                 <Text style={[styles.chipText, type === o.value && styles.chipTextActive]}>{o.label}</Text>
                             </Pressable>

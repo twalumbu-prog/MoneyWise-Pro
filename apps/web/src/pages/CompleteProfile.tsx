@@ -47,7 +47,7 @@ export const CompleteProfile: React.FC = () => {
     return (
         <div className="min-h-screen bg-brand-light flex items-center justify-center p-4">
             <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8">
-                <h1 className="text-2xl font-bold text-brand-navy">{first ? `Welcome, ${first}` : 'Welcome to MoneyWise'}</h1>
+                <h1 className="text-2xl font-bold text-[#1F1F1F]">{first ? `Welcome, ${first}` : 'Welcome to MoneyWise'}</h1>
                 <p className="text-sm text-gray-500 mt-1 mb-6">How will you use MoneyWise? You can add more later.</p>
 
                 <div className="space-y-3">
@@ -56,14 +56,14 @@ export const CompleteProfile: React.FC = () => {
                             key={value}
                             type="button"
                             onClick={() => { setType(value); setError(''); setSuggestion(''); }}
-                            className={`w-full flex items-center gap-4 text-left p-4 rounded-2xl border-2 transition-all ${type === value ? 'border-[#006AFF] bg-blue-50/50' : 'border-gray-200 hover:border-gray-300'}`}
+                            className={`w-full flex items-center gap-4 text-left p-4 rounded-2xl border-2 transition-all ${type === value ? 'border-[#0B57D0] bg-blue-50/50' : 'border-gray-200 hover:border-gray-300'}`}
                         >
-                            <span className={`w-11 h-11 rounded-full flex items-center justify-center ${type === value ? 'bg-[#006AFF] text-white' : 'bg-blue-50 text-[#006AFF]'}`}><Icon size={20} /></span>
+                            <span className={`w-11 h-11 rounded-full flex items-center justify-center ${type === value ? 'bg-[#0B57D0] text-white' : 'bg-blue-50 text-[#0B57D0]'}`}><Icon size={20} /></span>
                             <span className="flex-1">
-                                <span className="block font-bold text-brand-navy">{title}</span>
-                                <span className="block text-sm text-gray-500">{body}</span>
+                                <span className="block font-bold text-[#1F1F1F]">{title}</span>
+                                <span className="block text-sm text-white/70">{body}</span>
                             </span>
-                            {type === value && <Check size={18} className="text-[#006AFF]" />}
+                            {type === value && <Check size={18} className="text-[#0B57D0]" />}
                         </button>
                     ))}
                 </div>
@@ -75,14 +75,14 @@ export const CompleteProfile: React.FC = () => {
                             value={businessName}
                             onChange={(e) => { setBusinessName(e.target.value); setError(''); setSuggestion(''); }}
                             placeholder="e.g. Kapambwe Traders"
-                            className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#006AFF]"
+                            className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]"
                         />
                     </div>
                 )}
 
                 {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
                 {suggestion && (
-                    <button type="button" onClick={() => { setBusinessName(suggestion); void submit(suggestion); }} className="mt-2 px-4 py-2 rounded-full bg-blue-50 text-[#006AFF] text-sm font-bold">
+                    <button type="button" onClick={() => { setBusinessName(suggestion); void submit(suggestion); }} className="mt-2 px-4 py-2 rounded-full bg-blue-50 text-[#0B57D0] text-sm font-bold">
                         Use “{suggestion}” instead
                     </button>
                 )}
@@ -91,7 +91,7 @@ export const CompleteProfile: React.FC = () => {
                     type="button"
                     onClick={() => submit()}
                     disabled={!canContinue}
-                    className="mt-6 w-full flex justify-center py-3.5 rounded-xl text-sm font-bold text-white bg-[#006AFF] hover:bg-[#0052CC] disabled:opacity-50 transition-all"
+                    className="mt-6 w-full flex justify-center py-3.5 rounded-xl text-sm font-bold text-white bg-[#0B57D0] hover:bg-[#0842A0] disabled:opacity-50 transition-all"
                 >
                     {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Continue'}
                 </button>

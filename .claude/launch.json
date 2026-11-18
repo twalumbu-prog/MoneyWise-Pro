@@ -4,7 +4,7 @@
     {
       "name": "web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "web", "dev"],
+      "runtimeArgs": ["--filter", "web", "exec", "vite"],
       "port": 5173,
       "autoPort": true
     },
@@ -13,6 +13,13 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "admin", "dev"],
       "port": 5174,
+      "autoPort": false
+    },
+    {
+      "name": "mobile",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "mobile", "exec", "expo", "start", "--port", "8081"],
+      "port": 8081,
       "autoPort": false
     },
     {

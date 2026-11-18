@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 
@@ -12,6 +13,8 @@ export function useNotificationNavigation() {
     const router = useRouter();
 
     useEffect(() => {
+        // Push notifications are a phone feature; the browser build has no notification module to ask.
+        if (Platform.OS === 'web') return;
         const handle = (data: Record<string, any> | undefined) => {
             if (!data?.type) return;
             switch (data.type) {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Requisition } from '../../services/requisition.service';
-import { Check, BrainCircuit, Receipt } from 'lucide-react';
+import { Check, BrainCircuit, Receipt, FileText, Lock } from 'lucide-react';
 import axios from 'axios';
 import { supabase } from '../../lib/supabase';
 
@@ -69,7 +69,17 @@ export const PurchaseRequisitionForm: React.FC<DocumentTemplateProps> = ({ requi
                     <tbody className="divide-y divide-gray-50">
                         {requisition.items?.map((item: any, idx: number) => (
                             <tr key={idx}>
-                                <td className="px-3 sm:px-5 py-3 md:py-4 text-xs sm:text-sm font-medium text-gray-700">{item.description}</td>
+                                <td className="px-3 sm:px-5 py-3 md:py-4 text-xs sm:text-sm font-medium text-gray-700">
+                                    <span className="inline-flex items-center gap-1.5">
+                                        {item.description}
+                                        {item.price_locked && (
+                                            <span title="Price locked from invoice" className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-blue-50 border border-blue-100 rounded text-[9px] font-bold text-blue-500 uppercase tracking-wide">
+                                                <Lock size={8} />
+                                                locked
+                                            </span>
+                                        )}
+                                    </span>
+                                </td>
                                 <td className="px-3 sm:px-5 py-3 md:py-4 text-xs sm:text-sm font-medium text-gray-500 text-center">{item.quantity}</td>
                                 <td className="px-3 sm:px-5 py-3 md:py-4 text-xs sm:text-sm font-medium text-gray-900 text-right whitespace-nowrap">K{item.unit_price ? Number(item.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '0.00'}</td>
                                 <td className="px-3 sm:px-5 py-3 md:py-4 text-xs sm:text-sm font-bold text-gray-900 text-right whitespace-nowrap">K{item.estimated_amount ? Number(item.estimated_amount).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '0.00'}</td>
@@ -85,6 +95,43 @@ export const PurchaseRequisitionForm: React.FC<DocumentTemplateProps> = ({ requi
                 </table>
             </div>
         </div>
+
+        {/* Invoice Reference — only shown when an invoice was imported */}
+        {(requisition.invoice_number || requisition.invoice_supplier || requisition.invoice_url) && (
+            <div className="mb-7 md:mb-10 p-4 md:p-5 bg-blue-50/60 border border-blue-100 rounded-xl">
+                <div className="flex items-center gap-2 mb-3">
+                    <FileText size={14} className="text-[#0B57D0] shrink-0" />
+                    <h3 className="text-[10px] font-bold text-[#0B57D0] uppercase tracking-widest">Attached Supplier Invoice</h3>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                    {requisition.invoice_supplier && (
+                        <div>
+                            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">Supplier</p>
+                            <p className="font-semibold text-gray-800">{requisition.invoice_supplier}</p>
+                        </div>
+                    )}
+                    {requisition.invoice_number && (
+                        <div>
+                            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">Invoice No.</p>
+                            <p className="font-semibold text-gray-800">{requisition.invoice_number}</p>
+                        </div>
+                    )}
+                    {requisition.invoice_date && (
+                        <div>
+                            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">Invoice Date</p>
+                            <p className="font-semibold text-gray-800">{requisition.invoice_date}</p>
+                        </div>
+                    )}
+                    {(requisition.invoice_total != null || requisition.invoice_currency) && (
+                        <div>
+                            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">Invoice Total</p>
+                            <p className="font-semibold text-gray-800">{requisition.invoice_currency || 'ZMW'} {requisition.invoice_total != null ? Number(requisition.invoice_total).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '—'}</p>
+                        </div>
+                    )}
+                </div>
+                <p className="mt-2 text-[10px] text-blue-500 font-medium">Line item prices are locked to match this invoice.</p>
+            </div>
+        )}
 
         {/* Signature row — stack on mobile */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 md:gap-12 pt-8 md:pt-12 border-t border-gray-100 mt-auto">

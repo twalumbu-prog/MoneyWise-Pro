@@ -16,5 +16,6 @@ export type {
     CampaignPreview,
     SendCampaignInput,
     DraftCampaignInput,
+    EmailDesign,
     SendCampaignResult,
 } from 'core';

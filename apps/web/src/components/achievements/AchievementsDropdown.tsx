@@ -25,16 +25,16 @@ export const AchievementsDropdown: React.FC = () => {
             />
 
             {/* Dropdown Container */}
-            <div className="absolute right-0 mt-3 w-96 bg-white rounded-2xl shadow-xl border border-[#E8EEF8] z-50 overflow-hidden transform origin-top-right animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="absolute right-0 mt-3 w-96 bg-white rounded-2xl shadow-xl border border-[rgba(116,119,117,0.22)] z-50 overflow-hidden transform origin-top-right animate-in fade-in slide-in-from-top-2 duration-200">
                 {/* Header */}
-                <div className="p-5 bg-white border-b border-[#E8EEF8]">
+                <div className="p-5 bg-white border-b border-[rgba(116,119,117,0.22)]">
                     <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-2.5">
-                            <div className="w-9 h-9 rounded-xl bg-[#006AFF]/10 flex items-center justify-center">
-                                <Trophy size={16} className="text-[#006AFF]" />
+                            <div className="w-9 h-9 rounded-xl bg-[#0B57D0]/10 flex items-center justify-center">
+                                <Trophy size={16} className="text-[#0B57D0]" />
                             </div>
                             <div>
-                                <h3 className="font-bold text-sm leading-tight text-brand-navy">Guided Missions</h3>
+                                <h3 className="font-bold text-sm leading-tight text-[#1F1F1F]">Guided Missions</h3>
                                 <p className="text-[11px] text-gray-400 font-medium">Learn MoneyWise Pro, step by step</p>
                             </div>
                         </div>
@@ -51,21 +51,21 @@ export const AchievementsDropdown: React.FC = () => {
                         <span className="text-gray-600">{completedCount} of {totalCount} missions completed</span>
                         <span className="text-gray-400 font-medium">{earnedXp} / {totalXp} XP</span>
                     </div>
-                    <div className="w-full bg-[#E8EEF8] h-1.5 rounded-full overflow-hidden">
+                    <div className="w-full bg-[#E9EEF6] h-1.5 rounded-full overflow-hidden">
                         <div
-                            className="bg-[#006AFF] h-full rounded-full transition-all duration-500 ease-out"
+                            className="bg-[#0B57D0] h-full rounded-full transition-all duration-500 ease-out"
                             style={{ width: `${percentage}%` }}
                         />
                     </div>
                 </div>
 
                 {/* Sub-tabs */}
-                <div className="flex border-b border-[#E8EEF8] bg-[#F8FAFC] px-4 pt-2">
+                <div className="flex border-b border-[rgba(116,119,117,0.22)] bg-[#F8FAFD] px-4 pt-2">
                     <button
                         onClick={() => setTab('missions')}
                         className={`flex-1 py-2 text-xs font-bold border-b-2 transition-all flex items-center justify-center gap-1.5 ${
                             tab === 'missions'
-                                ? 'border-[#006AFF] text-[#006AFF]'
+                                ? 'border-[#0B57D0] text-[#0B57D0]'
                                 : 'border-transparent text-gray-400 hover:text-gray-600'
                         }`}
                     >
@@ -76,7 +76,7 @@ export const AchievementsDropdown: React.FC = () => {
                         onClick={() => setTab('badges')}
                         className={`flex-1 py-2 text-xs font-bold border-b-2 transition-all flex items-center justify-center gap-1.5 ${
                             tab === 'badges'
-                                ? 'border-[#006AFF] text-[#006AFF]'
+                                ? 'border-[#0B57D0] text-[#0B57D0]'
                                 : 'border-transparent text-gray-400 hover:text-gray-600'
                         }`}
                     >
@@ -94,7 +94,7 @@ export const AchievementsDropdown: React.FC = () => {
                                 className={`p-3.5 rounded-2xl border transition-all ${
                                     item.completed
                                         ? 'bg-gray-50/70 border-gray-100 opacity-80'
-                                        : 'bg-white border-[#E8EEF8] hover:border-blue-200 hover:shadow-sm'
+                                        : 'bg-white border-[rgba(116,119,117,0.22)] hover:border-blue-200 hover:shadow-sm'
                                 }`}
                             >
                                 <div className="flex items-start justify-between gap-3">
@@ -121,7 +121,7 @@ export const AchievementsDropdown: React.FC = () => {
                                     ) : (
                                         <button
                                             onClick={() => startMission(item.id)}
-                                            className="flex items-center gap-1 text-xs font-bold text-white bg-[#006AFF] hover:bg-[#0058DB] active:scale-95 px-3 py-1.5 rounded-xl shadow-sm transition-all flex-shrink-0"
+                                            className="flex items-center gap-1 text-xs font-bold text-white bg-[#0B57D0] hover:bg-[#0842A0] active:scale-95 px-3 py-1.5 rounded-xl shadow-sm transition-all flex-shrink-0"
                                         >
                                             <Play size={12} className="fill-white" />
                                             Start Now
@@ -137,14 +137,14 @@ export const AchievementsDropdown: React.FC = () => {
                                     key={item.id}
                                     className={`p-3 rounded-2xl border text-center transition-all ${
                                         item.completed
-                                            ? 'bg-white border-[#E8EEF8] shadow-xs'
+                                            ? 'bg-white border-[rgba(116,119,117,0.22)] shadow-xs'
                                             : 'bg-gray-50 border-gray-100 opacity-50 grayscale'
                                     }`}
                                 >
                                     <div
                                         className="w-10 h-10 mx-auto rounded-2xl flex items-center justify-center mb-2 shadow-xs"
                                         style={{
-                                            backgroundColor: item.completed ? item.badgeColor : '#9CA3AF',
+                                            backgroundColor: item.completed ? item.badgeColor : '#9AA0A6',
                                             color: '#FFF',
                                         }}
                                     >
@@ -161,7 +161,7 @@ export const AchievementsDropdown: React.FC = () => {
                 </div>
 
                 {/* Footer Note */}
-                <div className="p-3 bg-[#F8FAFC] border-t border-[#E8EEF8] text-center">
+                <div className="p-3 bg-[#F8FAFD] border-t border-[rgba(116,119,117,0.22)] text-center">
                     <p className="text-[10px] font-medium text-gray-400">
                         Complete missions to master MoneyWise Pro, one feature at a time.
                     </p>

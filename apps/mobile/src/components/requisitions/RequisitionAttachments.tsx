@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, Image, StyleSheet, Modal, Linking } from 'react-native';
-import { Lock, X } from 'lucide-react-native';
+import { Lock, X, FileText } from 'lucide-react-native';
 import { requisitionService, formatKwacha } from 'core';
 import { colors, fonts, radius } from '../../theme/tokens';
 
@@ -31,6 +31,11 @@ export const RequisitionAttachments: React.FC<{ requisition: any }> = ({ requisi
                 `Amount: ${formatKwacha(req.estimated_total)}`,
                 `Requestor: ${req.requestor_name || 'System User'}`,
                 `Status: ${req.status}`,
+                ...(req.invoice_url ? [
+                    `Supplier invoice: ${[req.invoice_number, req.invoice_supplier].filter(Boolean).join(' · ') || 'attached'}`,
+                    ...(req.invoice_total != null ? [`Invoice total: ${req.invoice_currency || 'ZMW'} ${Number(req.invoice_total).toLocaleString(undefined, { minimumFractionDigits: 2 })}`] : []),
+                    'Line prices are locked to the invoice',
+                ] : []),
             ],
         },
         {
@@ -69,10 +74,32 @@ export const RequisitionAttachments: React.FC<{ requisition: any }> = ({ requisi
 
     const receipts = (requisition.items ?? []).filter((it: any) => !!it.receipt_url);
 
+    // The imported supplier invoice, opened through a short-lived link.
+    const [invoiceUrl, setInvoiceUrl] = useState<string | null>(null);
+    useEffect(() => {
+        if (!requisition.invoice_url) return;
+        let live = true;
+        requisitionService.getInvoiceUrl(requisition.id).then((u: string | null) => { if (live) setInvoiceUrl(u); }).catch(() => undefined);
+        return () => { live = false; };
+    }, [requisition.id, requisition.invoice_url]);
+
     return (
         <ScrollView style={styles.root} contentContainerStyle={styles.scroll}>
             <Text style={styles.sectionTitle}>Audit Trail</Text>
             <Text style={styles.sectionSub}>SYSTEM GENERATED DOCUMENTS</Text>
+
+            {requisition.invoice_url ? (
+                <View style={styles.invoiceCard}>
+                    <View style={styles.invoiceIcon}><FileText size={16} color={colors.blue} /></View>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.invoiceTitle} numberOfLines={1}>Supplier invoice{requisition.invoice_number ? ` ${requisition.invoice_number}` : ''}</Text>
+                        <Text style={styles.invoiceSub} numberOfLines={1}>{requisition.invoice_supplier || 'Imported invoice'} · prices locked</Text>
+                    </View>
+                    {invoiceUrl ? (
+                        <Pressable style={styles.invoiceBtn} onPress={() => Linking.openURL(invoiceUrl)}><Text style={styles.invoiceBtnText}>View</Text></Pressable>
+                    ) : null}
+                </View>
+            ) : null}
 
             <View style={styles.timelineCard}>
                 {docs.map((doc, i) => (
@@ -140,6 +167,12 @@ const styles = StyleSheet.create({
     sectionTitle: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.text },
     sectionSub: { fontFamily: fonts.bodyBold, fontSize: 10, color: colors.textFaint, letterSpacing: 0.5, marginTop: 2, marginBottom: 14 },
     spaced: { marginTop: 28 },
+    invoiceCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.surface, borderRadius: radius.lg, padding: 14, marginBottom: 14, borderWidth: 1, borderColor: '#D6E4FF' },
+    invoiceIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#EAF1FF', alignItems: 'center', justifyContent: 'center' },
+    invoiceTitle: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.text },
+    invoiceSub: { fontFamily: fonts.body, fontSize: 11, color: colors.textMuted, marginTop: 1 },
+    invoiceBtn: { backgroundColor: colors.blue, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8 },
+    invoiceBtnText: { fontFamily: fonts.bodyBold, fontSize: 12, color: '#fff' },
     timelineCard: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: 20, gap: 0 },
     timelineRow: { flexDirection: 'row' },
     timelineLeft: { alignItems: 'center', width: 28, marginRight: 14 },

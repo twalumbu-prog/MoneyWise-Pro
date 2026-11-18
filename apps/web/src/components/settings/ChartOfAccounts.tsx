@@ -131,14 +131,14 @@ export const ChartOfAccounts: React.FC = () => {
     );
 
     if (loading && accounts.length === 0) {
-        return <div className="flex justify-center p-12"><Loader2 className="animate-spin h-8 w-8 text-brand-green" /></div>;
+        return <div className="flex justify-center p-12"><Loader2 className="animate-spin h-8 w-8 text-[#0B57D0]" /></div>;
     }
 
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                    <h3 className="text-lg font-bold text-brand-navy">Chart of Accounts</h3>
+                    <h3 className="text-lg font-bold text-[#1F1F1F]">Chart of Accounts</h3>
                     <p className="text-sm text-gray-500">Configure financial accounts for your organization.</p>
                 </div>
                 <div className="flex items-center space-x-3 w-full sm:w-auto">
@@ -158,7 +158,7 @@ export const ChartOfAccounts: React.FC = () => {
                     </div>
                     <button
                         onClick={openAddModal}
-                        className="inline-flex items-center px-4 py-2 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white bg-brand-green hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green transition-all"
+                        className="inline-flex items-center px-4 py-2 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white bg-brand-green hover:bg-[#0842A0] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green transition-all"
                     >
                         <Plus className="h-4 w-4 mr-2" />
                         Add
@@ -320,7 +320,7 @@ export const ChartOfAccounts: React.FC = () => {
                                     type="button"
                                     onClick={handleAddAccount}
                                     disabled={actionLoading}
-                                    className="w-full inline-flex justify-center rounded-xl border border-transparent shadow-sm px-4 py-2 bg-brand-green text-base font-medium text-white hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+                                    className="w-full inline-flex justify-center rounded-xl border border-transparent shadow-sm px-4 py-2 bg-brand-green text-base font-medium text-white hover:bg-[#0842A0] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
                                 >
                                     {actionLoading ? 'Saving...' : 'Save Account'}
                                 </button>
@@ -420,7 +420,7 @@ export const ChartOfAccounts: React.FC = () => {
                                     type="button"
                                     onClick={handleEditAccount}
                                     disabled={actionLoading}
-                                    className="w-full inline-flex justify-center rounded-xl border border-transparent shadow-sm px-4 py-2 bg-brand-green text-base font-medium text-white hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+                                    className="w-full inline-flex justify-center rounded-xl border border-transparent shadow-sm px-4 py-2 bg-brand-green text-base font-medium text-white hover:bg-[#0842A0] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
                                 >
                                     {actionLoading ? 'Saving...' : 'Save Changes'}
                                 </button>

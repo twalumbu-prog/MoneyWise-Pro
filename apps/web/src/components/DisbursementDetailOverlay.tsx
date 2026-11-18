@@ -92,7 +92,7 @@ export const DisbursementDetailOverlay: React.FC<DisbursementDetailOverlayProps>
                             <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${isPending ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
                                 {isPending ? 'Pending Acknowledgment' : 'Received & Confirmed'}
                             </span>
-                            <h3 className="text-2xl font-black text-brand-navy mt-2 flex items-center gap-2">
+                            <h3 className="text-2xl font-black text-[#1F1F1F] mt-2 flex items-center gap-2">
                                 Disbursement Details
                                 <span className={`flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-lg uppercase ${
                                     disbursement.payment_method === 'CASH' ? 'bg-brand-green/10 text-brand-green' : 'bg-brand-pink/10 text-brand-pink'
@@ -121,14 +121,14 @@ export const DisbursementDetailOverlay: React.FC<DisbursementDetailOverlayProps>
                                 <span className="text-[10px] text-gray-400 uppercase font-bold">Issued By</span>
                                 <div className="flex items-center mt-1">
                                     <User className="h-4 w-4 text-brand-green mr-2" />
-                                    <span className="text-sm font-medium text-brand-navy">{disbursement.cashier_name || 'N/A'}</span>
+                                    <span className="text-sm font-medium text-[#1F1F1F]">{disbursement.cashier_name || 'N/A'}</span>
                                 </div>
                             </div>
                             <div className="bg-gray-50 rounded-2xl p-4">
                                 <span className="text-[10px] text-gray-400 uppercase font-bold">Issued At</span>
                                 <div className="flex items-center mt-1">
                                     <Calendar className="h-4 w-4 text-brand-green mr-2" />
-                                    <span className="text-sm font-medium text-brand-navy">{new Date(disbursement.issued_at).toLocaleString()}</span>
+                                    <span className="text-sm font-medium text-[#1F1F1F]">{new Date(disbursement.issued_at).toLocaleString()}</span>
                                 </div>
                             </div>
                         </div>
@@ -190,14 +190,14 @@ export const DisbursementDetailOverlay: React.FC<DisbursementDetailOverlayProps>
                                                 </div>
                                                 <div>
                                                     <p className="text-[10px] text-gray-400 uppercase">Recorded Total</p>
-                                                    <p className="text-lg font-black text-brand-navy">
+                                                    <p className="text-lg font-black text-[#1F1F1F]">
                                                         K{Number(aiResult.recordedAmount).toLocaleString()}
                                                     </p>
                                                 </div>
                                             </div>
                                             {aiResult.ocrData.vendor && (
                                                 <div className="mt-2 pt-2 border-t border-gray-100">
-                                                    <p className="text-[10px] text-gray-400 uppercase font-bold">Entity Name: <span className="text-brand-navy uppercase">{aiResult.ocrData.vendor}</span></p>
+                                                    <p className="text-[10px] text-gray-400 uppercase font-bold">Entity Name: <span className="text-[#1F1F1F] uppercase">{aiResult.ocrData.vendor}</span></p>
                                                 </div>
                                             )}
                                         </div>
@@ -216,7 +216,7 @@ export const DisbursementDetailOverlay: React.FC<DisbursementDetailOverlayProps>
                                                 disabled={!isPending}
                                                 value={count}
                                                 onChange={(e) => handleDenominationChange(value, parseInt(e.target.value) || 0)}
-                                                className={`block w-full text-center bg-transparent border-none p-0 focus:ring-0 text-sm font-bold ${isPending ? 'text-brand-navy' : 'text-gray-500'}`}
+                                                className={`block w-full text-center bg-transparent border-none p-0 focus:ring-0 text-sm font-bold ${isPending ? 'text-[#1F1F1F]' : 'text-gray-500'}`}
                                             />
                                         </div>
                                     ))}
@@ -224,7 +224,7 @@ export const DisbursementDetailOverlay: React.FC<DisbursementDetailOverlayProps>
                             ) : (
                                 <div className="space-y-4">
                                     <div className="bg-gray-50 rounded-2xl p-6 border-2 border-dashed border-gray-200 text-center">
-                                        <span className="text-xs text-brand-navy font-bold">{disbursement.payment_method === 'MONEYWISE_WALLET' ? 'MoneyWise Wallet' : disbursement.payment_method} Transfer</span>
+                                        <span className="text-xs text-[#1F1F1F] font-bold">{disbursement.payment_method === 'MONEYWISE_WALLET' ? 'MoneyWise Wallet' : disbursement.payment_method} Transfer</span>
                                         {isPending ? (
                                             <div className="mt-4">
                                                 <input
@@ -236,7 +236,7 @@ export const DisbursementDetailOverlay: React.FC<DisbursementDetailOverlayProps>
                                                 />
                                             </div>
                                         ) : (
-                                            <div className="text-2xl font-black text-brand-navy mt-1">K{Number(totalPrepared).toLocaleString()}</div>
+                                            <div className="text-2xl font-black text-[#1F1F1F] mt-1">K{Number(totalPrepared).toLocaleString()}</div>
                                         )}
                                     </div>
                                     
@@ -244,15 +244,15 @@ export const DisbursementDetailOverlay: React.FC<DisbursementDetailOverlayProps>
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="bg-brand-pink/5 p-4 rounded-xl border border-brand-pink/10">
                                                 <p className="text-[10px] text-gray-400 uppercase font-bold">Recipient Account</p>
-                                                <p className="text-sm font-black text-brand-navy">{disbursement.recipient_account ?? 'N/A'}</p>
+                                                <p className="text-sm font-black text-[#1F1F1F]">{disbursement.recipient_account ?? 'N/A'}</p>
                                             </div>
                                             <div className="bg-brand-pink/5 p-4 rounded-xl border border-brand-pink/10">
                                                 <p className="text-[10px] text-gray-400 uppercase font-bold">Bank / Provider</p>
-                                                <p className="text-sm font-black text-brand-navy">{disbursement.recipient_bank_code === '01' ? 'Airtel Money' : disbursement.recipient_bank_code === '02' ? 'MTN Money' : (disbursement.recipient_bank_code ?? 'N/A')}</p>
+                                                <p className="text-sm font-black text-[#1F1F1F]">{disbursement.recipient_bank_code === '01' ? 'Airtel Money' : disbursement.recipient_bank_code === '02' ? 'MTN Money' : (disbursement.recipient_bank_code ?? 'N/A')}</p>
                                             </div>
                                             <div className="col-span-2 bg-brand-pink/5 p-4 rounded-xl border border-brand-pink/10">
                                                 <p className="text-[10px] text-gray-400 uppercase font-bold">Account Name</p>
-                                                <p className="text-sm font-black text-brand-navy">{disbursement.recipient_account_name || 'N/A'}</p>
+                                                <p className="text-sm font-black text-[#1F1F1F]">{disbursement.recipient_account_name || 'N/A'}</p>
                                             </div>
                                         </div>
                                     )}
@@ -281,7 +281,7 @@ export const DisbursementDetailOverlay: React.FC<DisbursementDetailOverlayProps>
                 {/* Right Panel: Requisition Context */}
                 <div className="lg:w-96 bg-gray-50/50 p-8 overflow-y-auto border-l border-gray-100">
                     <div className="flex justify-between items-center mb-6">
-                        <div className="flex items-center text-brand-navy font-black text-lg">
+                        <div className="flex items-center text-[#1F1F1F] font-black text-lg">
                             <FileText className="h-5 w-5 mr-2 text-brand-pink" />
                             Original Requisition
                         </div>
@@ -294,20 +294,20 @@ export const DisbursementDetailOverlay: React.FC<DisbursementDetailOverlayProps>
                         <div className="space-y-6 text-sm">
                             <div>
                                 <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-1">Description</p>
-                                <p className="font-bold text-brand-navy">{requisition.description}</p>
+                                <p className="font-bold text-[#1F1F1F]">{requisition.description}</p>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-1">Department</p>
-                                    <p className="font-bold text-brand-navy flex items-center">
+                                    <p className="font-bold text-[#1F1F1F] flex items-center">
                                         <Building className="h-3 w-3 mr-1" />
                                         {requisition.department || 'N/A'}
                                     </p>
                                 </div>
                                 <div>
                                     <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-1">Type</p>
-                                    <p className="font-bold text-brand-navy">{requisition.type}</p>
+                                    <p className="font-bold text-[#1F1F1F]">{requisition.type}</p>
                                 </div>
                             </div>
 
@@ -317,7 +317,7 @@ export const DisbursementDetailOverlay: React.FC<DisbursementDetailOverlayProps>
                                     {(requisition.line_items || requisition.requisition_line_items)?.map((item: any, idx: number) => (
                                         <div key={item.id || idx} className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex justify-between items-center">
                                             <span className="text-gray-600 truncate mr-2">{item.description}</span>
-                                            <span className="font-bold text-brand-navy whitespace-nowrap">K{Number(item.total_cost ?? item.estimated_amount ?? 0).toLocaleString()}</span>
+                                            <span className="font-bold text-[#1F1F1F] whitespace-nowrap">K{Number(item.total_cost ?? item.estimated_amount ?? 0).toLocaleString()}</span>
                                         </div>
                                     ))}
                                 </div>

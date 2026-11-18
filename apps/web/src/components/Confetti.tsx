@@ -12,7 +12,7 @@ import React, { useEffect, useRef } from 'react';
  * Respects prefers-reduced-motion by rendering nothing at all.
  */
 
-const COLORS = ['#006AFF', '#FFFFFF', '#9AA0A7', '#16181D'];
+const COLORS = ['#0B57D0', '#FFFFFF', '#9AA0A6', '#16181D'];
 
 interface Particle {
     x: number;

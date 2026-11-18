@@ -115,6 +115,10 @@ export { aiService } from './services/ai.service';
 export type { AccountingRule, AIMetric } from './services/ai.service';
 
 export { cashbookService } from './services/cashbook.service';
+export { lipilaService, matchLipilaBank } from './services/lipila.service';
+export { tapService, parseTapCode } from './services/tap.service';
+export type { TapMode, TapRequest, TapRequestView, TapRequestStatus } from './services/tap.service';
+export type { LipilaBankOption, LipilaCardStart, LipilaCardOutcome, LipilaWalletSummary, LipilaCardPayment, LipilaSettingsView } from './services/lipila.service';
 export type { ManualEntryResult } from './services/cashbook.service';
 export type { CashbookEntry, CashbookSummary } from './services/cashbook.service';
 
@@ -124,12 +128,16 @@ export type { OnboardingProgress, BusinessProfile, OnboardingState, PlSection, C
 export { organizationService } from './services/organization.service';
 export type { Organization } from './services/organization.service';
 
-export { integrationService, masterFeesService } from './services/integration.service';
+export { integrationService, masterFeesService, sageService } from './services/integration.service';
 export type {
     IntegrationStatus,
     MasterFeesStatus,
     MasterFeesCategory,
     MasterFeesReconciliation,
+    SageStatus,
+    SageAccount,
+    SageMapping,
+    SageSyncResult,
 } from './services/integration.service';
 
 export { lencoService } from './services/lenco.service';
@@ -207,6 +215,7 @@ export type {
     CampaignPreview,
     SendCampaignInput,
     DraftCampaignInput,
+    EmailDesign,
     SendCampaignResult,
 } from './services/crm.service';
 
@@ -215,6 +224,9 @@ export {
     isBookingProductType,
     getBookingTerminology,
     formatBookingDuration,
+    isAppointmentProductType,
+    formatSlotTime,
+    DEFAULT_APPOINTMENT_CONFIG,
     productService,
     paymentLinkService,
 } from './services/product.service';
@@ -223,6 +235,9 @@ export type {
     DigitalAsset,
     BookingRange,
     BookingTerminology,
+    AppointmentConfig,
+    AppointmentInfo,
+    AppointmentSlot,
     Product,
     ProductSale,
     InflowDetail,
@@ -250,6 +265,7 @@ export type {
 
 export {
     formatKwacha,
+    formatMoney,
     formatKwachaCompact,
     formatShortDate,
     formatRelative,
@@ -304,3 +320,14 @@ export type { InvestProductType, PricePoint, Timeframe } from './invest/chartDat
 
 export { buildInflowReceipt, renderReceiptHtml, channelLabel, paymentMethodLabel, isDeliverable, formatReceiptDate } from './receipt/inflowReceipt';
 export type { InflowReceipt, ReceiptItem, ReceiptJournalLine } from './receipt/inflowReceipt';
+
+export { growService } from './services/grow.service';
+export {
+    GROW_FREQUENCIES, GROW_FREQUENCY_LABEL, GROW_FREQUENCY_UNIT, GROW_TARGET_KEYS,
+    monthKeyOf, parseMonthKey, addMonths, monthsBetween, monthRange, monthName, monthLabelWithYear,
+    amountForMonth, monthlyEquivalent, planLength, projectGrowPlan, gradeMonth, summariseGrowMonth, sanitizeGrowPlan,
+} from './grow';
+export type {
+    GrowFrequency, GrowTargetKey, GrowTarget, GrowPlan, GrowMonthPlan, GrowProjection,
+    GrowMonthActuals, GrowTargetStatus, GrowMonthStatus, GrowMonthResult, GrowLedgerRow,
+} from './grow';

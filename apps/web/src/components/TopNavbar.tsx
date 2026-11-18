@@ -28,8 +28,8 @@ export const TopNavbar: React.FC = () => {
                 <div className="flex items-center space-x-4">
                     <div className="flex items-center">
                         <img src="/logo.png" alt="MoneyWise" className="h-7 w-7 mr-2" />
-                        <span className="text-xl font-medium text-brand-navy tracking-tight">MoneyWise</span>
-                        <span className="text-xl font-bold text-[#006AFF] ml-1 tracking-tight">Pro</span>
+                        <span className="text-xl font-medium text-[#1F1F1F] tracking-tight">MoneyWise</span>
+                        <span className="text-xl font-bold text-[#0B57D0] ml-1 tracking-tight">Pro</span>
                     </div>
                     {organizationName && (
                         <>
@@ -39,7 +39,7 @@ export const TopNavbar: React.FC = () => {
                                     <button
                                         type="button"
                                         onClick={() => setIsOrgMenuOpen(!isOrgMenuOpen)}
-                                        className="flex items-center space-x-1 text-sm font-bold text-gray-500 hover:text-brand-navy p-1.5 rounded-xl hover:bg-gray-55/80 transition-all border border-transparent hover:border-gray-100"
+                                        className="flex items-center space-x-1 text-sm font-bold text-gray-500 hover:text-[#1F1F1F] p-1.5 rounded-xl hover:bg-gray-55/80 transition-all border border-transparent hover:border-gray-100"
                                     >
                                         <span>{organizationName}</span>
                                         <ChevronDown size={14} className={`transition-transform duration-205 ${isOrgMenuOpen ? 'rotate-180' : ''}`} />
@@ -70,7 +70,7 @@ export const TopNavbar: React.FC = () => {
                                                             className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors flex items-center justify-between ${
                                                                 isCurrent 
                                                                     ? 'text-brand-green bg-brand-green/5 cursor-default font-bold' 
-                                                                    : 'text-gray-600 hover:bg-gray-50 hover:text-brand-navy'
+                                                                    : 'text-gray-600 hover:bg-gray-50 hover:text-[#1F1F1F]'
                                                             }`}
                                                         >
                                                             <span>{uo.organization.name}</span>
@@ -99,7 +99,7 @@ export const TopNavbar: React.FC = () => {
                             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none mb-1 group-hover:text-gray-500 transition-colors">
                                 {getPosition(userRole)}
                             </p>
-                            <p className="text-sm font-bold text-brand-navy leading-none">
+                            <p className="text-sm font-bold text-[#1F1F1F] leading-none">
                                 {userName || 'User Name'}
                             </p>
                         </div>
@@ -117,7 +117,7 @@ export const TopNavbar: React.FC = () => {
                             <div className="fixed inset-0 z-40" onClick={() => setIsMenuOpen(false)}></div>
                             <div className="absolute right-0 mt-3 w-56 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden py-2 transform origin-top-right animate-in fade-in slide-in-from-top-1">
                                 <div className="px-4 py-3 border-b border-gray-50 mb-1">
-                                    <p className="text-sm font-bold text-brand-navy truncate">{userName}</p>
+                                    <p className="text-sm font-bold text-[#1F1F1F] truncate">{userName}</p>
                                     <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-0.5">{getPosition(userRole)}</p>
                                 </div>
                                 <button 

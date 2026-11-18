@@ -194,7 +194,7 @@ export const StepWalletActivation: React.FC<Props> = ({
     if (phase === 'LOADING') {
         return (
             <div className="flex justify-center py-20">
-                <Loader2 className="h-8 w-8 text-blue-600 animate-spin" />
+                <Loader2 className="h-8 w-8 text-[#0B57D0] animate-spin" />
             </div>
         );
     }
@@ -231,7 +231,7 @@ export const StepWalletActivation: React.FC<Props> = ({
     if (phase === 'VERIFYING') {
         return (
             <div className="text-center py-16" role="status">
-                <Loader2 className="h-10 w-10 text-blue-600 animate-spin mx-auto mb-5" />
+                <Loader2 className="h-10 w-10 text-[#0B57D0] animate-spin mx-auto mb-5" />
                 <h2 className="text-lg font-bold text-gray-800 mb-1.5">Confirming your deposit…</h2>
                 <p className="text-sm text-gray-500">This usually takes a few seconds. Please don't close this page.</p>
             </div>
@@ -399,7 +399,7 @@ export const StepWalletActivation: React.FC<Props> = ({
                     type="button"
                     onClick={handleActivate}
                     disabled={claiming}
-                    className="w-full min-h-12 px-5 py-3 bg-black rounded-full flex items-center justify-center gap-2.5 text-white text-base font-semibold hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors active:scale-[0.98]"
+                    className="w-full min-h-12 px-5 py-3 bg-[#0B57D0] rounded-full flex items-center justify-center gap-2.5 text-white text-base font-semibold hover:bg-[#0842A0] disabled:opacity-50 disabled:cursor-not-allowed transition-colors active:scale-[0.98]"
                 >
                     {claiming && <Loader2 className="h-4 w-4 animate-spin" />}
                     Activate

@@ -12,6 +12,8 @@ import { FinancialHighlights } from '../components/FinancialHighlights';
 import { BucketProgressBar } from '../components/BucketProgressBar';
 
 import { StaffPortfolio } from './StaffPortfolio';
+import { FinancialStatements, STATEMENT_TABS, StatementTab } from '../components/FinancialStatements';
+import { useSearchParams } from 'react-router-dom';
 import {
   Accordion,
   AccordionItem,
@@ -24,6 +26,18 @@ import { buildReportGroups, computeReportTotals, getPercentageChange } from 'cor
 
 type PeriodType = 'MONTHLY' | 'WEEKLY' | 'QUARTERLY';
 type ModeType = 'EXPENSE' | 'CASH_OUTFLOW';
+
+export type ReportView = 'PROFIT_LOSS' | 'NET_WORTH' | StatementTab;
+
+export const REPORT_VIEWS: { id: ReportView; label: string }[] = [
+    { id: 'NET_WORTH', label: 'Net Worth' },
+    { id: 'PROFIT_LOSS', label: 'Profit/Loss' },
+    ...STATEMENT_TABS,
+];
+
+const isStatementView = (v: ReportView): v is StatementTab => {
+    return STATEMENT_TABS.some(t => t.id === v);
+};
 
 interface ReportGroup {
     id: string;
@@ -51,7 +65,24 @@ export const Reporting: React.FC = () => {
     const [filterEndInput, setFilterEndInput] = useState('');
     
     const queryClient = useQueryClient();
-    const [reportView, setReportView] = useState<'PROFIT_LOSS' | 'NET_WORTH'>('PROFIT_LOSS');
+    const [searchParams, setSearchParams] = useSearchParams();
+    const initialView = useMemo<ReportView>(() => {
+        const p = (searchParams.get('tab') || searchParams.get('view') || '').toUpperCase();
+        if (p === 'STATEMENTS') return 'CASHFLOW';
+        if (REPORT_VIEWS.some(r => r.id === p)) return p as ReportView;
+        return 'PROFIT_LOSS';
+    }, [searchParams]);
+
+    const [reportView, setReportView] = useState<ReportView>(initialView);
+
+    const selectView = (v: string) => {
+        const next = v as ReportView;
+        if (isStatementView(next)) {
+            setIsChartOpen(false);
+        }
+        setReportView(next);
+        setSearchParams(next === 'PROFIT_LOSS' ? {} : { view: next }, { replace: true });
+    };
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['INCOME', 'EXPENSE', 'ASSET', 'LIABILITY', 'EQUITY']));
 
     // Mobile Layout States
@@ -60,7 +91,8 @@ export const Reporting: React.FC = () => {
     // Visibility Settings
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [hiddenAccounts, setHiddenAccounts] = useState<Set<string>>(new Set());
-    const [excludeZeroSpend, setExcludeZeroSpend] = useState(false);
+    // On by default: zero-balance accounts have always been hidden, so the toggle starts matching what is shown.
+    const [excludeZeroSpend, setExcludeZeroSpend] = useState(true);
     
     const [expandedAccount, setExpandedAccount] = useState<string | null>(null);
     const [itemsLoading, setItemsLoading] = useState(false);
@@ -516,26 +548,30 @@ export const Reporting: React.FC = () => {
     
 
     const periodKeyRef = useRef(`${periodData.start}|${periodData.end}|${mode}`);
+    const requestedItemsRef = useRef<Set<string>>(new Set());
     
     // Prefetch all account items so the progress bar is instant
     useEffect(() => {
         const currentPeriodKey = `${periodData.start}|${periodData.end}|${mode}`;
         
-        // If timeframe changed, clear accountItems immediately
+        // If timeframe changed, clear accountItems and forget what was already requested
         if (periodKeyRef.current !== currentPeriodKey) {
             setAccountItems({});
             periodKeyRef.current = currentPeriodKey;
-            // The next render/effect run will have empty accountItems
-            return;
+            requestedItemsRef.current = new Set();
         }
 
         if (!expenditures.length) return;
-        
+
+        // Each account is asked for ONCE per period. This effect used to depend on accountItems and skip only accounts already
+        // loaded, so every answer re-ran it and re-requested everything still in flight (or that had failed): hundreds of
+        // identical requests that starved the API. The ref remembers what was already requested, loaded or not.
         const fetchAll = async () => {
             const activeAccounts = expenditures.filter(e => Number(e.total_amount) !== 0);
-            const toFetch = activeAccounts.filter(e => !accountItems[e.account_id]);
-            
+            const toFetch = activeAccounts.filter(e => !requestedItemsRef.current.has(e.account_id));
+
             if (toFetch.length === 0) return;
+            toFetch.forEach(e => requestedItemsRef.current.add(e.account_id));
 
             for (let i = 0; i < toFetch.length; i += 5) {
                 const chunk = toFetch.slice(i, i + 5);
@@ -545,14 +581,14 @@ export const Reporting: React.FC = () => {
                             const items = await reportService.getExpenditureItems(acc.account_id, periodData.start, periodData.end, mode);
                             setAccountItems(prev => ({ ...prev, [acc.account_id]: items }));
                         } catch (err) {
-                            // ignore
+                            // ignore; opening the account asks again
                         }
                     })
                 );
             }
         };
         fetchAll();
-    }, [expenditures, periodData.start, periodData.end, mode, accountItems]);
+    }, [expenditures, periodData.start, periodData.end, mode]);
 
     const toggleExpand = async (accountId: string) => {
         if (expandedAccount === accountId) {
@@ -626,8 +662,9 @@ export const Reporting: React.FC = () => {
     // accounts to expenditures, merging budgets, and grouping by type is not
     // logic either client should carry an independent copy of.
     const displayData = useMemo(() => {
+        const coreView = reportView === 'NET_WORTH' ? 'NET_WORTH' : 'PROFIT_LOSS';
         const { groups, flatData } = buildReportGroups(
-            allAccounts, expenditures, budgets, prevExpenditures, reportView,
+            allAccounts, expenditures, budgets, prevExpenditures, coreView,
             { hiddenAccountIds: hiddenAccounts, excludeZeroSpend, sortField, sortDesc },
         );
         return { isGrouped: true as const, groups, data: flatData, flatData };
@@ -741,7 +778,7 @@ export const Reporting: React.FC = () => {
     // Ordering for the animated tab transitions (drives slide direction).
     const REPORT_VIEW_ORDER: ('NET_WORTH' | 'PROFIT_LOSS')[] = ['NET_WORTH', 'PROFIT_LOSS'];
     const TIMEFRAME_ORDER: ('1D' | '1W' | '1M' | '3M' | 'YTD')[] = ['1D', '1W', '1M', '3M', 'YTD'];
-    const reportViewIndex = REPORT_VIEW_ORDER.indexOf(reportView);
+    const reportViewIndex = REPORT_VIEW_ORDER.indexOf(reportView === 'NET_WORTH' ? 'NET_WORTH' : 'PROFIT_LOSS');
     const timeframeIndex = TIMEFRAME_ORDER.indexOf(chartTimeframe);
 
     if (isRequestor) {
@@ -762,36 +799,22 @@ export const Reporting: React.FC = () => {
                             
                             {/* Header Tabs */}
                             <div className="self-stretch inline-flex justify-between items-center flex-shrink-0">
-                                <div className="h-8 p-1 bg-slate-100 md:bg-[#F8FAFD] rounded-[10px] flex justify-start items-center gap-1">
+                                <div className="h-8 p-1 bg-slate-100 md:bg-[#F8FAFD] rounded-[10px] flex justify-start items-center gap-1 overflow-x-auto no-scrollbar max-w-[calc(100%-200px)]">
                                     <TabPillGroup
                                         value={reportView}
-                                        onChange={(v) => setReportView(v as 'NET_WORTH' | 'PROFIT_LOSS')}
+                                        onChange={selectView}
                                         trackClassName="flex items-center gap-1"
                                         indicatorClassName="bg-white rounded-lg shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)]"
-                                        tabs={[
-                                            {
-                                                value: 'NET_WORTH',
-                                                buttonClassName: 'px-3.5 h-6 rounded-lg flex justify-center items-center',
-                                                label: (
-                                                    <span className={`text-center text-[10px] font-['DM_Sans'] leading-5 ${reportView === 'NET_WORTH' ? 'text-gray-900 font-bold' : 'text-gray-600 font-normal'}`}>
-                                                        Net Worth
-                                                    </span>
-                                                ),
-                                            },
-                                            {
-                                                value: 'PROFIT_LOSS',
-                                                buttonClassName: 'px-3.5 h-6 rounded-lg flex justify-center items-center',
-                                                label: (
-                                                    <span className={`text-center text-[10px] font-['DM_Sans'] leading-5 ${reportView === 'PROFIT_LOSS' ? 'text-gray-900 font-bold' : 'text-gray-600 font-normal'}`}>
-                                                        Profit/Loss
-                                                    </span>
-                                                ),
-                                            },
-                                        ]}
+                                        tabs={REPORT_VIEWS.map(t => ({
+                                            value: t.id,
+                                            buttonClassName: 'px-3.5 h-6 rounded-lg flex justify-center items-center shrink-0',
+                                            label: (
+                                                <span className={`text-center text-[10px] font-['DM_Sans'] leading-5 whitespace-nowrap ${reportView === t.id ? 'text-gray-900 font-bold' : 'text-gray-600 font-normal'}`}>
+                                                    {t.label}
+                                                </span>
+                                            ),
+                                        }))}
                                     />
-                                    {reportView === 'PROFIT_LOSS' && (
-                                        <div className="w-[1px] h-3 bg-gray-300" />
-                                    )}
                                 </div>
 
                                 {/* Date-range filter — defaults to YTD; filter opens a date picker */}
@@ -861,7 +884,7 @@ export const Reporting: React.FC = () => {
 
                             {/* Main Chart/Reporting Area */}
                             <div className="w-full flex-1 flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-1 min-h-0">
-                                {isChartOpen ? (
+                                {isStatementView(reportView) ? <FinancialStatements tab={reportView} start={periodData.start} end={periodData.end} /> : isChartOpen ? (
                                     <div className="w-full flex-1 min-h-0 flex flex-col bg-white rounded-xl outline outline-1 outline-offset-[-1px] outline-violet-100 overflow-visible mb-4 shadow-[0px_4px_4px_0px_rgba(0,0,0,0.10)]">
                                         <div className="w-full py-4 px-6 flex justify-between items-center border-b border-gray-100">
                                             <div className="flex flex-col">
@@ -907,7 +930,7 @@ export const Reporting: React.FC = () => {
                                         <div ref={desktopChartBodyRef} className="flex-1 min-h-0 flex flex-col">
                                         {chartLoading ? (
                                             <div className="flex-1 flex items-center justify-center">
-                                                <Loader2 className="h-8 w-8 animate-spin text-[#2563EB]" />
+                                                <Loader2 className="h-8 w-8 animate-spin text-[#0B57D0]" />
                                             </div>
                                         ) : chartData.length > 0 ? (() => {
                                             const CHART_H = desktopChartHeight;
@@ -921,7 +944,7 @@ export const Reporting: React.FC = () => {
                                             const renderYAxisTick = (props: any) => {
                                                 const { y, payload } = props;
                                                 return (
-                                                    <text x={4} y={y} dy={4} textAnchor="start" fontSize={11} fontWeight={500} fill="#94a3b8">
+                                                    <text x={4} y={y} dy={4} textAnchor="start" fontSize={11} fontWeight={500} fill="#9AA0A6">
                                                         {yTickFormatter(payload.value)}
                                                     </text>
                                                 );
@@ -982,30 +1005,30 @@ export const Reporting: React.FC = () => {
                                                         >
                                                             <defs>
                                                                 <linearGradient id="colorValueDesktop" x1="0" y1="0" x2="0" y2="1">
-                                                                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3}/>
-                                                                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
+                                                                    <stop offset="5%" stopColor="#4285F4" stopOpacity={0.3}/>
+                                                                    <stop offset="95%" stopColor="#4285F4" stopOpacity={0}/>
                                                                 </linearGradient>
                                                             </defs>
-                                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F3F4" />
                                                             <XAxis
                                                                 dataKey="startDate"
                                                                 axisLine={false}
                                                                 tickLine={false}
-                                                                tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 500 }}
+                                                                tick={{ fill: '#9AA0A6', fontSize: 11, fontWeight: 500 }}
                                                                 tickFormatter={(val) => new Date(val).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                                                                 dy={10}
                                                                 minTickGap={40}
                                                             />
                                                             <YAxis hide domain={domain} />
-                                                            <Tooltip content={tooltipContent} cursor={{ stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '4 4' }} />
+                                                            <Tooltip content={tooltipContent} cursor={{ stroke: '#DADCE0', strokeWidth: 1, strokeDasharray: '4 4' }} />
                                                             <Area
                                                                 type="monotone"
                                                                 dataKey="value"
-                                                                stroke="#3B82F6"
+                                                                stroke="#4285F4"
                                                                 strokeWidth={3}
                                                                 fillOpacity={1}
                                                                 fill="url(#colorValueDesktop)"
-                                                                activeDot={{ r: 6, fill: '#3B82F6', stroke: 'white', strokeWidth: 2 }}
+                                                                activeDot={{ r: 6, fill: '#4285F4', stroke: 'white', strokeWidth: 2 }}
                                                             />
                                                         </AreaChart>
                                                     </div>
@@ -1020,7 +1043,7 @@ export const Reporting: React.FC = () => {
                                     <div className="w-full flex flex-col gap-4">
                                         <div className="flex flex-col gap-2">
                                             {/* Desktop Summary Banner */}
-                                            <div className="w-full h-24 p-5 bg-gradient-to-l from-blue-950 to-slate-900 rounded-2xl flex justify-between items-center overflow-hidden">
+                                            <div className="w-full h-24 p-5 bg-gradient-to-l from-[#0B57D0] to-[#0842A0] rounded-2xl flex justify-between items-center overflow-hidden">
                                                 <div className="flex flex-col justify-start items-start gap-2">
                                                     <div className="text-white text-[10px] font-normal font-['Figtree'] uppercase tracking-wider text-white/70">
                                                         {reportView === 'PROFIT_LOSS' ? 'Total Profit' : 'Net Worth'}
@@ -1059,8 +1082,12 @@ export const Reporting: React.FC = () => {
                                                     >
                                                         <ArrowUpDown size={16} className="text-gray-900" />
                                                     </button>
-                                                    <button className="p-1 hover:bg-gray-100 rounded-lg transition-colors">
-                                                        <Filter size={16} className="text-gray-900" />
+                                                    <button
+                                                        onClick={() => setExcludeZeroSpend(!excludeZeroSpend)}
+                                                        title={excludeZeroSpend ? 'Zero-balance accounts hidden (click to show)' : 'Showing zero-balance accounts (click to hide)'}
+                                                        className={`p-1 rounded-lg transition-colors ${excludeZeroSpend ? 'bg-[#0059D8] text-white' : 'hover:bg-gray-100 text-gray-900'}`}
+                                                    >
+                                                        <Filter size={16} />
                                                     </button>
                                                 </div>
                                             </div>
@@ -1068,7 +1095,7 @@ export const Reporting: React.FC = () => {
 
                                         {loading && (!displayData.isGrouped ? displayData.data?.length === 0 : displayData.flatData?.length === 0) ? (
                                             <div className="w-full bg-white rounded-xl outline outline-1 outline-offset-[-1px] outline-violet-100 flex flex-col justify-center items-center p-8 shadow-[0px_4px_4px_0px_rgba(0,0,0,0.10)]">
-                                                <Loader2 className="h-7 w-7 animate-spin text-[#2563EB]" />
+                                                <Loader2 className="h-7 w-7 animate-spin text-[#0B57D0]" />
                                             </div>
                                         ) : (!displayData.isGrouped ? displayData.data?.length === 0 : displayData.flatData?.length === 0) ? (
                                             <div className="w-full bg-white rounded-xl outline outline-1 outline-offset-[-1px] outline-violet-100 flex flex-col justify-center items-center p-8 shadow-[0px_4px_4px_0px_rgba(0,0,0,0.10)] text-center text-gray-500 font-bold">
@@ -1137,7 +1164,7 @@ export const Reporting: React.FC = () => {
                                                                         {groupData.items
                                                                             .filter((row: any) => {
                                                                                 const curr = Number(row.total_amount) || 0;
-                                                                                return curr !== 0; // Hide if current balance is zero
+                                                                                return !excludeZeroSpend || curr !== 0; // Hide zero balances only while the filter is on
                                                                             })
                                                                             .map((row: any) => {
                                                                             const isRowExpanded = expandedAccount === row.account_id;
@@ -1248,20 +1275,106 @@ export const Reporting: React.FC = () => {
                 } : { minHeight: '100vh', paddingBottom: '7rem' }}
             >
                 {/* Mobile View Toggle */}
-                <SegmentedControl
-                    className="mx-4 mb-4"
-                    variant="capsule"
-                    value={reportView}
-                    onChange={(v) => setReportView(v as 'NET_WORTH' | 'PROFIT_LOSS')}
-                    options={[
-                        { value: 'NET_WORTH', label: 'Net Worth' },
-                        { value: 'PROFIT_LOSS', label: 'Profit/Loss' },
-                    ]}
-                />
+                <div className="px-4 mb-3 overflow-x-auto no-scrollbar">
+                    <div className="inline-flex p-1 bg-slate-100 rounded-[12px]">
+                        <TabPillGroup
+                            value={reportView}
+                            onChange={selectView}
+                            trackClassName="flex items-center gap-1"
+                            indicatorClassName="bg-white rounded-lg shadow-sm"
+                            tabs={REPORT_VIEWS.map(t => ({
+                                value: t.id,
+                                buttonClassName: 'px-3 py-1.5 rounded-lg flex justify-center items-center shrink-0',
+                                label: (
+                                    <span className={`text-xs font-['DM_Sans'] whitespace-nowrap ${reportView === t.id ? 'text-gray-900 font-bold' : 'text-gray-500 font-medium'}`}>
+                                        {t.label}
+                                    </span>
+                                ),
+                            }))}
+                        />
+                    </div>
+                </div>
 
-                {!isChartOpen && (
+                {isStatementView(reportView) ? (
+                    <div className="flex flex-col flex-1 pb-24">
+                        {/* Mobile Date Filter header for statement views */}
+                        <div className="mx-5 mb-3 flex items-center justify-between">
+                            <div className="relative flex items-center gap-2">
+                                <button
+                                    onClick={openDateFilter}
+                                    className="flex items-center gap-1.5 text-2xl font-black text-brand-navy tracking-tight focus:outline-none"
+                                >
+                                    <span>{displayPeriodLabel}</span>
+                                    <CalendarDays size={18} className={`mt-0.5 ${customFilter ? 'text-[#006AFF]' : 'text-gray-400'}`} />
+                                </button>
+                                {customFilter && (
+                                    <button
+                                        onClick={handleClearFilter}
+                                        className="flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors mt-0.5"
+                                        title="Reset to YTD"
+                                    >
+                                        <X size={12} />
+                                    </button>
+                                )}
+
+                                {isDateFilterOpen && (
+                                    <>
+                                        <div className="fixed inset-0 z-40 bg-black/20" onClick={() => setIsDateFilterOpen(false)} />
+                                        <div className="absolute left-0 top-10 z-50 bg-white border border-gray-100 rounded-3xl shadow-xl p-5 w-72 animate-in fade-in slide-in-from-top-2 duration-200">
+                                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Filter by Date Range</p>
+                                            <div className="flex flex-col gap-3">
+                                                <div>
+                                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">From</label>
+                                                    <input
+                                                        type="date"
+                                                        value={filterStartInput}
+                                                        onChange={e => setFilterStartInput(e.target.value)}
+                                                        className="w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-[#006AFF] focus:ring-1 focus:ring-[#006AFF]"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">To</label>
+                                                    <input
+                                                        type="date"
+                                                        value={filterEndInput}
+                                                        onChange={e => setFilterEndInput(e.target.value)}
+                                                        className="w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-[#006AFF] focus:ring-1 focus:ring-[#006AFF]"
+                                                    />
+                                                </div>
+                                                <div className="flex gap-2 pt-1">
+                                                    <button
+                                                        onClick={handleClearFilter}
+                                                        className="flex-1 py-2.5 text-xs font-bold text-gray-500 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+                                                    >
+                                                        Reset to YTD
+                                                    </button>
+                                                    <button
+                                                        onClick={handleApplyFilter}
+                                                        disabled={!filterStartInput || !filterEndInput || filterStartInput > filterEndInput}
+                                                        className="flex-1 py-2.5 text-xs font-bold text-white bg-[#006AFF] md:bg-[#0059D8] rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-40"
+                                                    >
+                                                        Apply
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                        <div className="px-3">
+                            <FinancialStatements
+                                tab={reportView}
+                                start={periodData.start}
+                                end={periodData.end}
+                            />
+                        </div>
+                    </div>
+                ) : (
+                    <>
+                        {!isChartOpen && (
                 <div
-                    className="mx-5 mb-3 rounded-2xl p-5 text-white relative overflow-hidden bg-gradient-to-l from-blue-950 to-slate-900"
+                    className="mx-5 mb-3 rounded-2xl p-5 text-white relative overflow-hidden bg-gradient-to-l from-[#0B57D0] to-[#0842A0]"
                     style={{
                         animation: 'atabs-fade-up 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
                     }}
@@ -1597,7 +1710,7 @@ export const Reporting: React.FC = () => {
                     <div className="flex-1 min-h-0 rounded-[28px] overflow-hidden flex flex-col bg-white">
                         {chartLoading ? (
                             <div className="flex items-center justify-center flex-1">
-                                <Loader2 className="h-7 w-7 animate-spin text-[#2563EB]" />
+                                <Loader2 className="h-7 w-7 animate-spin text-[#0B57D0]" />
                             </div>
                         ) : chartRenderData ? (
                             <div className="pt-4 pb-3 flex flex-col flex-1 min-h-0">
@@ -1637,9 +1750,9 @@ export const Reporting: React.FC = () => {
                                         <svg width={chartRenderData.svgWidth} height={chartRenderData.SVG_H}>
                                             <defs>
                                                 <linearGradient id="chartAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                                                    <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.20" />
-                                                    <stop offset="80%" stopColor="#3B82F6" stopOpacity="0.04" />
-                                                    <stop offset="100%" stopColor="#3B82F6" stopOpacity="0" />
+                                                    <stop offset="0%" stopColor="#4285F4" stopOpacity="0.20" />
+                                                    <stop offset="80%" stopColor="#4285F4" stopOpacity="0.04" />
+                                                    <stop offset="100%" stopColor="#4285F4" stopOpacity="0" />
                                                 </linearGradient>
                                             </defs>
 
@@ -1657,7 +1770,7 @@ export const Reporting: React.FC = () => {
                                                 if (!p) return null;
                                                 return (
                                                     <line key={i} x1={0} y1={p.y} x2={chartRenderData.svgWidth} y2={p.y}
-                                                        stroke="#CBD5E1" strokeWidth={1} strokeDasharray="6 6" />
+                                                        stroke="#DADCE0" strokeWidth={1} strokeDasharray="6 6" />
                                                 );
                                             })}
 
@@ -1667,7 +1780,7 @@ export const Reporting: React.FC = () => {
                                                 if (!p) return null;
                                                 return (
                                                     <line key={`v-${i}`} x1={p.x} y1={0} x2={p.x} y2={chartRenderData.SVG_H}
-                                                        stroke="#CBD5E1" strokeWidth={1} strokeDasharray="6 6" />
+                                                        stroke="#DADCE0" strokeWidth={1} strokeDasharray="6 6" />
                                                 );
                                             })}
 
@@ -1680,7 +1793,7 @@ export const Reporting: React.FC = () => {
                                                 if (!isMarker) return null;
                                                 return (
                                                     <g key={i}>
-                                                        <circle cx={p.x} cy={p.y} r={8} fill="white" stroke="#2563EB" strokeWidth={2.5} />
+                                                        <circle cx={p.x} cy={p.y} r={8} fill="white" stroke="#0B57D0" strokeWidth={2.5} />
                                                         <circle cx={p.x} cy={p.y} r={3.5} fill="#FACC15" />
                                                     </g>
                                                 );
@@ -1753,7 +1866,7 @@ export const Reporting: React.FC = () => {
                     </div>
 
                     {/* Delta card — flex-shrink-0, anchored at bottom of the chart flex column */}
-                    <div className="flex-shrink-0 rounded-2xl p-6 text-white shadow-[0px_2px_6px_3px_rgba(0,0,0,0.25)] overflow-hidden bg-gradient-to-l from-blue-950 to-slate-900">
+                    <div className="flex-shrink-0 rounded-2xl p-6 text-white shadow-[0px_2px_6px_3px_rgba(0,0,0,0.25)] overflow-hidden bg-gradient-to-l from-[#0B57D0] to-[#0842A0]">
                         <div className="flex items-center justify-between mb-1">
                             <p className="font-figtree text-xs font-normal uppercase tracking-wide leading-4 text-white">
                                 {reportView === 'PROFIT_LOSS' ? 'Net Profit' : 'Net Worth'}
@@ -1870,7 +1983,7 @@ export const Reporting: React.FC = () => {
                                                 {groupData.items
                                                     .filter((row: any) => {
                                                         const curr = Number(row.total_amount) || 0;
-                                                        return curr !== 0; // Hide if current balance is zero
+                                                        return !excludeZeroSpend || curr !== 0; // Hide zero balances only while the filter is on
                                                     })
                                                     .map((row: any) => {
                                                     const isRowExpanded = expandedAccount === row.account_id;
@@ -1970,6 +2083,8 @@ export const Reporting: React.FC = () => {
                 )}
                 </AnimatedTabContent>
                 </>)}
+                </>
+                )}
             </div>
 
             {isBudgetModalOpen && selectedAccountForBudget && (

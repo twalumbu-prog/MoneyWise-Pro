@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Requisition, requisitionService } from '../../services/requisition.service';
-import { Lock, FileDown } from 'lucide-react';
+import { Lock, FileDown, FileText, ExternalLink } from 'lucide-react';
 import RequisitionDocumentPreview from './RequisitionDocumentPreview';
 
 interface RequisitionAttachmentsProps {
@@ -16,6 +16,8 @@ const RequisitionAttachments: React.FC<RequisitionAttachmentsProps> = ({
     onAutoOpenDocHandled,
 }) => {
     const [previewDoc, setPreviewDoc] = useState<{ type: string; title: string } | null>(null);
+    const [invoiceUrl, setInvoiceUrl] = useState<string | null>(null);
+    const [loadingInvoice, setLoadingInvoice] = useState(false);
 
     // Auto-open a document when the parent requests it (e.g. "View Request Details" button)
     useEffect(() => {
@@ -24,6 +26,16 @@ const RequisitionAttachments: React.FC<RequisitionAttachmentsProps> = ({
             onAutoOpenDocHandled?.();
         }
     }, [autoOpenDoc]);
+
+    // Fetch invoice signed URL when the requisition has one
+    useEffect(() => {
+        if (!requisition.invoice_url) return;
+        setLoadingInvoice(true);
+        requisitionService.getInvoiceUrl(requisition.id)
+            .then(url => setInvoiceUrl(url))
+            .catch(() => setInvoiceUrl(null))
+            .finally(() => setLoadingInvoice(false));
+    }, [requisition.id, requisition.invoice_url]);
 
     const isLoan = requisition.type === 'LOAN';
     const status = requisition.status || 'DRAFT';
@@ -81,13 +93,37 @@ const RequisitionAttachments: React.FC<RequisitionAttachmentsProps> = ({
                     {docs.some(d => d.isAvailable) && (
                         <button
                             onClick={() => setPreviewDoc({ type: 'all', title: 'Complete Audit Trail' })}
-                            className="flex-shrink-0 h-9 md:h-11 px-4 md:px-6 bg-[#006AFF] hover:bg-[#0052cc] text-white rounded-full text-xs md:text-sm font-bold shadow-xl shadow-blue-500/20 transition-all flex items-center gap-1.5"
+                            className="flex-shrink-0 h-9 md:h-11 px-4 md:px-6 bg-[#0B57D0] hover:bg-[#0842A0] text-white rounded-full text-xs md:text-sm font-bold shadow-xl shadow-blue-500/20 transition-all flex items-center gap-1.5"
                         >
                             <FileDown size={14} className="md:w-[18px] md:h-[18px]" />
                             <span className="whitespace-nowrap">Combine to PDF</span>
                         </button>
                     )}
                 </div>
+
+                {/* ── Imported supplier invoice ───────────────────────────── */}
+                {requisition.invoice_url && (
+                    <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-blue-100 bg-white px-4 py-3 shadow-sm">
+                        <div className="flex min-w-0 items-center gap-3">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[#0B57D0]"><FileText size={16} /></div>
+                            <div className="min-w-0">
+                                <p className="truncate text-sm font-bold text-gray-900">
+                                    Supplier invoice{requisition.invoice_number ? ` ${requisition.invoice_number}` : ''}
+                                </p>
+                                <p className="truncate text-[11px] font-medium text-gray-500">
+                                    {requisition.invoice_supplier || 'Imported invoice'} · prices locked to the invoice
+                                </p>
+                            </div>
+                        </div>
+                        {invoiceUrl ? (
+                            <a href={invoiceUrl} target="_blank" rel="noreferrer" className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#0B57D0] px-4 py-2 text-xs font-bold text-white hover:bg-[#0842A0]">
+                                View invoice <ExternalLink size={12} />
+                            </a>
+                        ) : (
+                            <span className="shrink-0 text-xs font-semibold text-gray-400">{loadingInvoice ? 'Loading…' : 'Unavailable'}</span>
+                        )}
+                    </div>
+                )}
 
                 {/* ── Timeline card ───────────────────────────────────────── */}
                 <div className="bg-white rounded-2xl md:rounded-3xl shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-gray-100 px-4 py-5 sm:px-6 sm:py-6 md:px-10 md:py-10">
@@ -108,8 +144,8 @@ const RequisitionAttachments: React.FC<RequisitionAttachmentsProps> = ({
                                         style={{ width: ICON_SIZE_SM, height: ICON_SIZE_SM }}
                                     >
                                         {doc.isCompleted ? (
-                                            <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-blue-100 border border-[#006AFF] flex items-center justify-center">
-                                                <svg className="w-3 h-3 md:w-4 md:h-4" fill="none" stroke="#006AFF" strokeWidth={3} viewBox="0 0 24 24">
+                                            <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-blue-100 border border-[#0B57D0] flex items-center justify-center">
+                                                <svg className="w-3 h-3 md:w-4 md:h-4" fill="none" stroke="#0B57D0" strokeWidth={3} viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                                                 </svg>
                                             </div>
@@ -118,8 +154,8 @@ const RequisitionAttachments: React.FC<RequisitionAttachmentsProps> = ({
                                                 <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-gray-200" />
                                             </div>
                                         ) : (
-                                            <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-white border-2 border-[#006AFF] flex items-center justify-center">
-                                                <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-[#006AFF]" />
+                                            <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-white border-2 border-[#0B57D0] flex items-center justify-center">
+                                                <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-[#0B57D0]" />
                                             </div>
                                         )}
                                     </div>

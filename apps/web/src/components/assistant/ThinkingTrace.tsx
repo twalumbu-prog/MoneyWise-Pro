@@ -51,7 +51,7 @@ export const ThinkingTrace: React.FC<Props> = ({ content, streaming }) => {
                 onClick={() => setManuallyToggled(!open)}
                 className="flex items-center gap-1.5 text-[11px] font-bold text-gray-400 transition-colors hover:text-gray-600"
             >
-                <Brain size={12} className={streaming ? 'text-[#006AFF]' : ''} />
+                <Brain size={12} className={streaming ? 'text-[#0B57D0]' : ''} />
                 <span className={streaming ? 'status-live' : ''}>
                     {streaming ? 'Thinking' : 'Thought process'}
                 </span>

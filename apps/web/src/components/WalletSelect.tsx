@@ -118,7 +118,7 @@ export default function WalletSelect({
                                         {balance ? `${balance} available` : 'Balance unavailable'}
                                     </span>
                                 </span>
-                                {isSelected && <Check size={16} className="text-[#006AFF] flex-shrink-0 ml-3" />}
+                                {isSelected && <Check size={16} className="text-[#0B57D0] flex-shrink-0 ml-3" />}
                             </button>
                         );
                     })}

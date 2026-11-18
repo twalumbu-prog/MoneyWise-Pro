@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { apiJson } from 'core';
-import { ArrowLeft, MessageCircle, Facebook, Instagram, AlertCircle, Trash2 } from 'lucide-react';
-import { ConnectMetaButton } from './ConnectMetaButton';
+import { ArrowLeft, AlertCircle, CheckCircle2, Trash2 } from 'lucide-react';
+import { IntegrationLogo, IntegrationLogoKey } from './IntegrationLogo';
+import { startQuickConnect, completeQuickConnect, takeQuickConnectReturn, QuickToolkit } from './quickConnect';
 
 interface Connection {
     id: string;
@@ -10,15 +11,19 @@ interface Connection {
     display_phone?: string | null;
     status: string;
     last_message_at?: string | null;
-    needs_reconnect?: boolean;
+    auth_mode?: 'DIRECT' | 'COMPOSIO';
 }
 
-interface MetaStatus { configured: boolean; connections: Connection[] }
+/** configured = our own Meta connection is set up server-side; composio = Quick connect is. */
+interface MetaStatus { configured: boolean; composio?: boolean; connections: Connection[] }
 
-const PLATFORMS: { key: Connection['platform']; label: string; blurb: string; icon: React.ReactNode }[] = [
-    { key: 'WHATSAPP', label: 'WhatsApp Business', blurb: 'Read customer messages and spot orders and payments.', icon: <MessageCircle className="h-5 w-5" /> },
-    { key: 'FACEBOOK', label: 'Facebook Page', blurb: 'Messenger conversations on your business Page.', icon: <Facebook className="h-5 w-5" /> },
-    { key: 'INSTAGRAM', label: 'Instagram Business', blurb: 'Direct messages on your business or creator account.', icon: <Instagram className="h-5 w-5" /> },
+/** Facebook Pages the signed-in person manages that are not connected yet (they pick one at a time). */
+interface PagePick { composioAccountId?: string; choices: { id: string; name: string }[] }
+
+const PLATFORMS: { key: Connection['platform']; label: string; blurb: string; logo: IntegrationLogoKey }[] = [
+    { key: 'WHATSAPP', label: 'WhatsApp Business', blurb: 'Read customer messages and spot orders and payments.', logo: 'whatsapp' },
+    { key: 'FACEBOOK', label: 'Facebook Page', blurb: 'Messenger conversations on your business Page.', logo: 'facebook' },
+    { key: 'INSTAGRAM', label: 'Instagram Business', blurb: 'Direct messages on your business or creator account.', logo: 'instagram' },
 ];
 
 export const MetaMessagingIntegration: React.FC<{ onBack: () => void }> = ({ onBack }) => {
@@ -26,6 +31,8 @@ export const MetaMessagingIntegration: React.FC<{ onBack: () => void }> = ({ onB
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState<string | null>(null);
+    const [notice, setNotice] = useState<string | null>(null);
+    const [pick, setPick] = useState<PagePick | null>(null);
 
     const load = async () => {
         try {
@@ -36,7 +43,55 @@ export const MetaMessagingIntegration: React.FC<{ onBack: () => void }> = ({ onB
             setLoading(false);
         }
     };
-    useEffect(() => { load(); }, []);
+    const finishQuick = async (toolkit: QuickToolkit, body: { externalId?: string; composioAccountId?: string } = {}) => {
+        setBusy('finish'); setError(null);
+        try {
+            const r = await completeQuickConnect(toolkit, body);
+            if (r.ok) {
+                setNotice(`Connected ${r.labels.join(', ')}. New messages are checked every few minutes.`);
+                setPick(r.remaining?.length ? { composioAccountId: r.composioAccountId, choices: r.remaining } : null);
+            } else if (r.choices?.length) {
+                setPick({ composioAccountId: r.composioAccountId, choices: r.choices });
+                setError(r.message);
+            } else {
+                setError(r.message);
+            }
+        } catch (e: any) {
+            setError(e?.message || 'Could not finish connecting');
+        } finally {
+            setBusy(null);
+            load();
+        }
+    };
+
+    useEffect(() => {
+        // Back from the Quick connect (Composio) sign-in: register what it now holds for this organisation.
+        const returned = takeQuickConnectReturn();
+        if (returned === 'facebook' || returned === 'instagram') finishQuick(returned);
+        else load();
+    }, []);
+
+    const quickConnect = async (platform: Connection['platform']) => {
+        setBusy(`quick-${platform}`); setError(null);
+        try {
+            await startQuickConnect(platform === 'FACEBOOK' ? 'facebook' : 'instagram');
+        } catch (e: any) {
+            setError(e?.message || 'Could not start the connection');
+            setBusy(null);
+        }
+    };
+
+    const connect = async (platform: string) => {
+        setBusy(platform); setError(null);
+        try {
+            const r = await apiJson<{ url: string }>(`/integrations/meta/connect/${platform}`);
+            window.location.href = r.url;
+        } catch (e: any) {
+            setError(e?.message || 'Could not start the connection');
+        } finally {
+            setBusy(null);
+        }
+    };
 
     const disconnect = async (id: string) => {
         setBusy(id);
@@ -51,6 +106,7 @@ export const MetaMessagingIntegration: React.FC<{ onBack: () => void }> = ({ onB
     };
 
     const configured = !!status?.configured;
+    const quick = !!status?.composio;
 
     return (
         <div className="space-y-6">
@@ -62,13 +118,34 @@ export const MetaMessagingIntegration: React.FC<{ onBack: () => void }> = ({ onB
                 <p className="text-sm text-gray-500">Connect your business accounts so MoneyWise can spot orders and payments in customer messages and match them to money received.</p>
             </div>
 
-            {!loading && !configured && (
+            {!loading && !configured && !quick && (
                 <div className="flex gap-3 p-4 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-900">
                     <AlertCircle className="h-5 w-5 shrink-0" />
                     <div>Not configured yet. This connection is being set up with Meta and will be available soon.</div>
                 </div>
             )}
+            {busy === 'finish' && <div className="p-3 rounded-xl bg-gray-50 border border-gray-200 text-sm text-gray-600">Finishing your connection…</div>}
+            {notice && (
+                <div className="flex gap-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-sm text-emerald-800">
+                    <CheckCircle2 className="h-5 w-5 shrink-0" /> <div>{notice}</div>
+                </div>
+            )}
             {error && <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">{error}</div>}
+            {pick && (
+                <div className="p-4 rounded-xl bg-white border border-gray-200 space-y-2">
+                    <div className="text-sm font-semibold text-gray-900">Which Facebook Page should MoneyWise read?</div>
+                    {pick.choices.map(p => (
+                        <button
+                            key={p.id}
+                            onClick={() => finishQuick('facebook', { externalId: p.id, composioAccountId: pick.composioAccountId })}
+                            disabled={busy === 'finish'}
+                            className="w-full text-left px-3 py-2 rounded-xl border border-gray-200 hover:border-brand-navy/40 text-sm text-gray-800 disabled:opacity-40"
+                        >
+                            {p.name}
+                        </button>
+                    ))}
+                </div>
+            )}
 
             <div className="space-y-3">
                 {PLATFORMS.map(p => {
@@ -76,26 +153,39 @@ export const MetaMessagingIntegration: React.FC<{ onBack: () => void }> = ({ onB
                     return (
                         <div key={p.key} className="p-5 bg-white border border-gray-200 rounded-2xl">
                             <div className="flex items-center gap-4">
-                                <div className="h-10 w-10 rounded-xl bg-brand-navy text-white flex items-center justify-center">{p.icon}</div>
+                                <IntegrationLogo name={p.logo} size={40} />
                                 <div className="flex-1 min-w-0">
                                     <div className="font-bold text-gray-900">{p.label}</div>
                                     <div className="text-sm text-gray-500">{p.blurb}</div>
                                 </div>
-                                {p.key === 'INSTAGRAM' ? (
-                                    <span className="text-xs font-semibold text-gray-400">Connects with Facebook</span>
-                                ) : (
-                                    <ConnectMetaButton
-                                        platform={p.key}
-                                        label={conns.some(c => c.needs_reconnect) ? 'Reconnect' : conns.length ? 'Add another' : 'Connect'}
-                                        disabled={!configured}
-                                        onConnected={() => { setError(null); load(); }}
-                                        onError={setError}
-                                    />
-                                )}
+                                <div className="flex flex-col gap-2 shrink-0">
+                                    {p.key !== 'WHATSAPP' && (
+                                        <button
+                                            onClick={() => quickConnect(p.key)}
+                                            disabled={!quick || busy === `quick-${p.key}` || busy === 'finish'}
+                                            className="px-4 py-2 rounded-xl text-sm font-semibold bg-brand-navy text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                                        >
+                                            {busy === `quick-${p.key}` ? 'Opening sign-in…' : conns.length ? 'Add another (quick)' : 'Quick connect'}
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={() => connect(p.key)}
+                                        disabled={!configured || busy === p.key}
+                                        className={`px-4 py-2 rounded-xl text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed ${p.key === 'WHATSAPP' ? 'bg-brand-navy text-white' : 'border border-gray-300 text-gray-800 bg-white'}`}
+                                    >
+                                        {p.key === 'WHATSAPP' ? (conns.length ? 'Add another' : 'Connect') : 'Connect directly'}
+                                    </button>
+                                </div>
                             </div>
+                            {p.key === 'WHATSAPP' && (
+                                <p className="mt-3 text-xs text-gray-500">WhatsApp connects directly only for now: Quick connect can send WhatsApp messages but cannot read the ones your customers send you.</p>
+                            )}
                             {conns.map(c => (
                                 <div key={c.id} className="mt-3 flex items-center justify-between text-sm bg-gray-50 rounded-xl px-3 py-2">
-                                    <span className="text-gray-800">{c.display_name || c.display_phone || 'Connected account'} · <span className={c.needs_reconnect ? 'text-amber-700' : 'text-gray-500'}>{c.needs_reconnect ? 'needs reconnect' : `connected${c.last_message_at ? `, last message ${new Date(c.last_message_at).toLocaleDateString('en-ZM')}` : ''}`}</span></span>
+                                    <span className="text-gray-800">
+                                        {c.display_name || c.display_phone || 'Connected account'} · <span className="text-gray-500">{c.status.toLowerCase()}</span>
+                                        {c.auth_mode === 'COMPOSIO' && <span className="ml-2 px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 text-[11px] font-semibold align-middle">Quick connect</span>}
+                                    </span>
                                     <button onClick={() => disconnect(c.id)} disabled={busy === c.id} className="text-gray-400 hover:text-red-600" aria-label="Disconnect">
                                         <Trash2 className="h-4 w-4" />
                                     </button>

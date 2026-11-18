@@ -10,7 +10,7 @@ interface InvestChartProps {
 
 const AXIS_LABEL_HEIGHT = 22;
 const POSITIVE_COLOR = '#05C702';
-const NEGATIVE_COLOR = '#dc2626';
+const NEGATIVE_COLOR = '#D93025';
 
 export const InvestChart: React.FC<InvestChartProps> = ({ data, timeframe, positive }) => {
     const outerRef = useRef<HTMLDivElement>(null);

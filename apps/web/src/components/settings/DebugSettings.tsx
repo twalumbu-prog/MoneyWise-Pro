@@ -43,7 +43,7 @@ export const DebugSettings: React.FC = () => {
     if (loading) {
         return (
             <div className="flex items-center justify-center p-12">
-                <RefreshCw className="w-8 h-8 animate-spin text-brand-green" />
+                <RefreshCw className="w-8 h-8 animate-spin text-[#0B57D0]" />
             </div>
         );
     }
@@ -51,7 +51,7 @@ export const DebugSettings: React.FC = () => {
     return (
         <div className="space-y-8 max-w-4xl animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div>
-                <h3 className="text-xl font-black text-brand-navy tracking-tight flex items-center">
+                <h3 className="text-xl font-black text-[#1F1F1F] tracking-tight flex items-center">
                     <Beaker className="w-6 h-6 mr-2 text-brand-green" />
                     System Debug & Development
                 </h3>

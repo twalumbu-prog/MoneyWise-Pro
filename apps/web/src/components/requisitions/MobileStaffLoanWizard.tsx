@@ -286,7 +286,7 @@ export const MobileStaffLoanWizard: React.FC<MobileStaffLoanWizardProps> = ({ is
                                 value={staffName}
                                 onChange={e => setStaffName(e.target.value)}
                                 placeholder="Enter full name"
-                                className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] transition-all"
+                                className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] transition-all"
                             />
                         </div>
                         <div>
@@ -296,7 +296,7 @@ export const MobileStaffLoanWizard: React.FC<MobileStaffLoanWizardProps> = ({ is
                                 value={employeeId}
                                 onChange={e => setEmployeeId(e.target.value)}
                                 placeholder="e.g. EMP-001"
-                                className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] transition-all"
+                                className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] transition-all"
                             />
                         </div>
                         <div>
@@ -306,7 +306,7 @@ export const MobileStaffLoanWizard: React.FC<MobileStaffLoanWizardProps> = ({ is
                                 value={amount || ''}
                                 onChange={e => setAmount(Number(e.target.value))}
                                 placeholder="0.00"
-                                className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] transition-all"
+                                className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] transition-all"
                             />
                         </div>
                         <div>
@@ -318,7 +318,7 @@ export const MobileStaffLoanWizard: React.FC<MobileStaffLoanWizardProps> = ({ is
                                         onClick={() => setRepaymentPeriod(m)}
                                         className={`py-3 rounded-2xl text-sm font-bold transition-all border ${
                                             repaymentPeriod === m
-                                                ? 'bg-[#006AFF] text-white border-[#006AFF] shadow-lg shadow-blue-100'
+                                                ? 'bg-[#0B57D0] text-white border-[#0B57D0] shadow-lg shadow-blue-100'
                                                 : 'bg-gray-50 text-gray-600 border-gray-100'
                                         }`}
                                     >
@@ -334,12 +334,12 @@ export const MobileStaffLoanWizard: React.FC<MobileStaffLoanWizardProps> = ({ is
                                 onChange={e => setRemarks(e.target.value)}
                                 rows={3}
                                 placeholder="Any notes..."
-                                className="w-full border border-gray-200 rounded-2xl px-4 py-3 text-sm text-gray-800 placeholder-gray-300 resize-none focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] transition-all"
+                                className="w-full border border-gray-200 rounded-2xl px-4 py-3 text-sm text-gray-800 placeholder-gray-300 resize-none focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:border-[#0B57D0] transition-all"
                             />
                         </div>
 
                         {amount > 0 && (
-                            <div className="bg-gradient-to-br from-[#006AFF] to-blue-600 rounded-2xl p-5 text-white shadow-xl shadow-blue-500/20">
+                            <div className="bg-gradient-to-br from-[#0B57D0] to-blue-600 rounded-2xl p-5 text-white shadow-xl shadow-blue-500/20">
                                 <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-4 text-blue-100">Repayment Preview</p>
                                 <div className="space-y-4">
                                     <div className="flex justify-between items-baseline border-b border-white/10 pb-3">
@@ -363,7 +363,7 @@ export const MobileStaffLoanWizard: React.FC<MobileStaffLoanWizardProps> = ({ is
                     <button
                         onClick={handleSubmit}
                         disabled={submitting || amount <= 0 || !staffName.trim() || !employeeId.trim()}
-                        className="w-full h-14 bg-black hover:bg-neutral-800 rounded-xl inline-flex justify-center items-center text-white text-lg font-bold active:scale-[0.98] transition-all disabled:opacity-60 gap-2"
+                        className="w-full h-14 bg-[#0B57D0] hover:bg-[#0842A0] rounded-xl inline-flex justify-center items-center text-white text-lg font-bold active:scale-[0.98] transition-all disabled:opacity-60 gap-2"
                     >
                         {submitting ? <><Loader2 size={18} className="animate-spin" />Submitting...</> : 'Submit Request'}
                     </button>

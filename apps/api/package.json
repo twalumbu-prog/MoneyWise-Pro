@@ -8,15 +8,18 @@
         "start": "node dist/index.js",
         "lint": "eslint .",
         "test:ledger": "tsc && node dist/scripts/test_ledger_scenarios.js",
+        "test:journals": "tsc && node dist/scripts/test_journal_entries.js",
         "audit:ledger": "tsc && node dist/scripts/ledger_audit.js --all",
         "test:ai": "tsc && node dist/scripts/sanity_ai.js",
         "oauth:create-client": "ts-node --transpile-only src/scripts/create_oauth_client.ts",
         "test:momo": "tsc && node dist/scripts/test_momo_parser.js",
         "test:capture": "tsc && node dist/scripts/test_capture_logic.js",
         "test:capture-chat": "tsc && node dist/scripts/test_capture_chat.js",
-        "test:capture-flow": "tsc && node dist/scripts/test_capture_flow.js"
+        "test:capture-flow": "tsc && node dist/scripts/test_capture_flow.js",
+        "test:sales": "tsc && node dist/scripts/test_public_sales.js"
     },
     "dependencies": {
+        "@composio/core": "0.18.0",
         "@google/generative-ai": "^0.24.1",
         "@supabase/supabase-js": "^2.86.0",
         "@vercel/functions": "^3.9.9",

@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { SegmentedControl, AnimatedTabContent, TabPillGroup } from '../AnimatedTabs';
-import { ArrowRight, ArrowLeft, X, Plus, Trash2, User, List, AlertCircle, RotateCcw, CheckCircle, Smartphone, Building2, Mail, Zap } from 'lucide-react';
+import { ArrowRight, ArrowLeft, X, Plus, Trash2, User, List, AlertCircle, RotateCcw, CheckCircle, Smartphone, Building2, Mail, Zap, FileText, Upload, Lock } from 'lucide-react';
 import { requisitionService } from '../../services/requisition.service';
 import { lencoService } from '../../services/lenco.service';
 import { cashbookService } from '../../services/cashbook.service';
@@ -17,6 +17,7 @@ interface LineItem {
     quantity: number;
     unit_price: number;
     estimated_amount: number;
+    price_locked?: boolean;
 }
 
 interface MobileRequisitionWizardProps {
@@ -103,6 +104,12 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
     const [department, setDepartment] = useState('');
     const [useMyAccount, setUseMyAccount] = useState(true);
     const [makeExpenseList, setMakeExpenseList] = useState(true);
+    // Invoice import: the scanned invoice's lines replace the item list, with their prices locked.
+    const [importInvoice, setImportInvoice] = useState(false);
+    const [scannedInvoice, setScannedInvoice] = useState<any | null>(null);
+    const [invoiceScanLoading, setInvoiceScanLoading] = useState(false);
+    const [invoiceScanError, setInvoiceScanError] = useState<string | null>(null);
+    const invoiceFileRef = useRef<HTMLInputElement>(null);
 
     // Stage 2: Expense List
     const [lineItems, setLineItems] = useState<LineItem[]>([
@@ -149,6 +156,9 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
             setDepartment('');
             setUseMyAccount(prefs.useMyAccount);
             setMakeExpenseList(prefs.makeExpenseList);
+            setImportInvoice(false);
+            setScannedInvoice(null);
+            setInvoiceScanError(null);
             setLineItems([{ id: '1', description: '', quantity: 1, unit_price: 0, estimated_amount: 0 }]);
             setManualAmount('');
             setPaymentMethod('mobile');
@@ -286,9 +296,42 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
         selectedWalletBalance !== null &&
         getTotal() > selectedWalletBalance;
 
+    const handleScanInvoice = async (file: File) => {
+        setInvoiceScanLoading(true);
+        setInvoiceScanError(null);
+        setScannedInvoice(null);
+        try {
+            const fileBase64 = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+            const result = await requisitionService.scanInvoice({ fileBase64, fileName: file.name });
+            setScannedInvoice(result);
+            if (!description.trim() && (result.supplier || result.invoice_number)) {
+                setDescription(`Invoice${result.invoice_number ? ` ${result.invoice_number}` : ''}${result.supplier ? ` — ${result.supplier}` : ''}`);
+            }
+            setMakeExpenseList(true);
+            setLineItems(result.lines.map((line: any, idx: number) => ({
+                id: `inv-${idx}`,
+                description: line.description,
+                quantity: line.quantity,
+                unit_price: line.unit_price,
+                estimated_amount: line.amount,
+                price_locked: true,
+            })));
+        } catch (err: any) {
+            setInvoiceScanError(err.message || 'Could not read that invoice. Try again or add the items by hand.');
+        } finally {
+            setInvoiceScanLoading(false);
+        }
+    };
+
     const updateLineItem = (id: string, field: keyof LineItem, value: any) => {
         setLineItems(prev => prev.map(item => {
             if (item.id !== id) return item;
+            if (item.price_locked) return item; // locked to the invoice
             const updated = { ...item, [field]: value };
             if (field === 'quantity' || field === 'unit_price') {
                 const qty = field === 'quantity' ? Number(value) : Number(updated.quantity);
@@ -302,6 +345,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
     const addLineItem = () => setLineItems(prev => [...prev, { id: Date.now().toString(), description: '', quantity: 1, unit_price: 0, estimated_amount: 0 }]);
     
     const removeLineItem = (id: string) => {
+        if (lineItems.length === 1 && lineItems[0].price_locked) return; // keep at least one invoice line
         if (lineItems.length === 1) {
             setLineItems([{ id: Date.now().toString(), description: '', quantity: 1, unit_price: 0, estimated_amount: 0 }]);
             return;
@@ -325,6 +369,11 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
         if (stage === 1) {
             if (!description.trim()) { setError('Please describe the purpose.'); return; }
             if (useDepartments && !department) { setError('Please select a department.'); return; }
+            if (importInvoice && !scannedInvoice) { setError('Upload your invoice first, or switch off Import invoice.'); return; }
+        } else if (stage === 2) {
+            if (lineItems.length === 0) { setError('Add at least one item to the expense list.'); return; }
+            const bad = lineItems.findIndex(i => !i.description.trim() || !(Number(i.unit_price) > 0) || !(Number(i.quantity) > 0));
+            if (bad !== -1) { setError(`Complete all details for item ${bad + 1}: description, price and quantity.`); return; }
         } else if (stage === 5) {
             if (!manualAmount || Number(manualAmount) <= 0) { setError('Please enter an amount greater than zero.'); return; }
         } else if (stage === 3) {
@@ -375,6 +424,10 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                     ? (paymentInfo?.mobile_money_name || paymentInfo?.bank_account_name || userName)
                     : resolvedName
             };
+            if (importInvoice && scannedInvoice) {
+                data.invoice_path = scannedInvoice.path;
+                data.invoice_lines_keep = lineItems.filter(i => String(i.id).startsWith('inv-')).map(i => Number(String(i.id).slice(4)));
+            }
             const created = await requisitionService.create(data);
 
             // Remember the toggle choices for next time (auto-fill).
@@ -444,14 +497,14 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
         <div className="fixed inset-0 z-[80] bg-white flex flex-col md:hidden">
             <div className="h-16 bg-white border-b border-gray-100 px-6 flex items-center justify-between shrink-0">
                 <div className="flex items-center">
-                    <span className="text-xl font-medium text-brand-navy tracking-tight">MoneyWise</span>
-                    <span className="text-xl font-bold text-[#006AFF] ml-1 tracking-tight">Pro</span>
+                    <span className="text-xl font-medium text-[#1F1F1F] tracking-tight">MoneyWise</span>
+                    <span className="text-xl font-bold text-[#0B57D0] ml-1 tracking-tight">Pro</span>
                 </div>
             </div>
 
             <div className="px-6 py-4 flex items-center justify-between shrink-0">
-                <h1 className="text-[18px] font-bold text-brand-navy">New Requisition</h1>
-                <button onClick={onClose} className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-brand-navy shadow-[0_4px_12px_rgba(0,106,255,0.4)] active:scale-95 transition-all">
+                <h1 className="text-[18px] font-bold text-[#1F1F1F]">New Requisition</h1>
+                <button onClick={onClose} className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-[#1F1F1F] shadow-[0_4px_12px_rgba(11,87,208,0.4)] active:scale-95 transition-all">
                     <X size={16} strokeWidth={3} />
                 </button>
             </div>
@@ -498,16 +551,16 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
 
                         {stage === 1 && (
                             <div className="space-y-6">
-                                <h2 className="text-[20px] font-bold text-brand-navy">Request Details</h2>
+                                <h2 className="text-[20px] font-bold text-[#1F1F1F]">Request Details</h2>
                                 <div className="space-y-4">
                                     <div className="space-y-1.5">
                                         <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Purpose of funds</label>
-                                        <input type="text" value={description} onChange={e => setDescription(e.target.value)} placeholder="What is this request for?" className="w-full h-14 bg-gray-50 border border-gray-100 rounded-2xl px-5 text-brand-navy placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/10 focus:bg-white transition-all" />
+                                        <input type="text" value={description} onChange={e => setDescription(e.target.value)} placeholder="What is this request for?" className="w-full h-14 bg-gray-50 border border-gray-100 rounded-2xl px-5 text-[#1F1F1F] placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/10 focus:bg-white transition-all" />
                                     </div>
                                     {useDepartments && (
                                     <div className="space-y-1.5">
                                         <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Department</label>
-                                        <select value={department} onChange={e => setDepartment(e.target.value)} className="w-full h-14 bg-gray-50 border border-gray-100 rounded-2xl px-5 text-brand-navy focus:outline-none focus:ring-2 focus:ring-[#006AFF]/10 focus:bg-white transition-all appearance-none">
+                                        <select value={department} onChange={e => setDepartment(e.target.value)} className="w-full h-14 bg-gray-50 border border-gray-100 rounded-2xl px-5 text-[#1F1F1F] focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/10 focus:bg-white transition-all appearance-none">
                                             <option value="">Select Department</option>
                                             {orgDepartments.map(d => <option key={d} value={d}>{d}</option>)}
                                         </select>
@@ -517,10 +570,10 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                         <div className="space-y-3">
                                             <button onClick={() => { const v = !useMyAccount; setUseMyAccount(v); saveTogglePrefs({ useMyAccount: v, makeExpenseList, autoAuthorize }); }} className="w-full flex items-center justify-between p-4 rounded-2xl bg-gray-50 border border-gray-100 active:scale-[0.98] transition-all">
                                                 <div className="flex items-center gap-3 text-left">
-                                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${useMyAccount ? 'bg-[#006AFF]/10 text-[#006AFF]' : 'bg-gray-200 text-gray-400'}`}><User size={20} /></div>
-                                                    <div><p className="text-sm font-bold text-brand-navy">Send to my account</p><p className="text-[11px] text-gray-400">Use details from your profile</p></div>
+                                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${useMyAccount ? 'bg-[#0B57D0]/10 text-[#0B57D0]' : 'bg-gray-200 text-gray-400'}`}><User size={20} /></div>
+                                                    <div><p className="text-sm font-bold text-[#1F1F1F]">Send to my account</p><p className="text-[11px] text-gray-400">Use details from your profile</p></div>
                                                 </div>
-                                                <div className={`w-12 h-6 rounded-full transition-all relative ${useMyAccount ? 'bg-[#006AFF]' : 'bg-gray-300'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${useMyAccount ? 'right-1' : 'left-1'}`} /></div>
+                                                <div className={`w-12 h-6 rounded-full transition-all relative ${useMyAccount ? 'bg-[#0B57D0]' : 'bg-gray-300'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${useMyAccount ? 'right-1' : 'left-1'}`} /></div>
                                             </button>
 
                                             {useMyAccount && (
@@ -531,19 +584,19 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                                             <span>Checking your account details...</span>
                                                         </div>
                                                     ) : paymentInfo && (paymentInfo.bank_account_number || paymentInfo.mobile_money_number) ? (
-                                                        <div className="bg-[#EEF4FF] border border-[#006AFF]/10 rounded-2xl p-4 space-y-2">
+                                                        <div className="bg-[#E8F0FE] border border-[#0B57D0]/10 rounded-2xl p-4 space-y-2">
                                                             <div className="flex items-center gap-2">
                                                                 <CheckCircle size={14} className="text-emerald-500" />
-                                                                <span className="text-[11px] font-black uppercase tracking-widest text-[#006AFF]">Profile Details Found</span>
+                                                                <span className="text-[11px] font-black uppercase tracking-widest text-[#0B57D0]">Profile Details Found</span>
                                                             </div>
                                                             {paymentInfo.bank_account_number && (
-                                                                <div className="flex items-center gap-2 text-xs text-brand-navy font-bold">
+                                                                <div className="flex items-center gap-2 text-xs text-[#1F1F1F] font-bold">
                                                                     <Building2 size={14} className="text-gray-400" />
                                                                     <span>{paymentInfo.bank_name} · {paymentInfo.bank_account_number}</span>
                                                                 </div>
                                                             )}
                                                             {paymentInfo.mobile_money_number && (
-                                                                <div className="flex items-center gap-2 text-xs text-brand-navy font-bold">
+                                                                <div className="flex items-center gap-2 text-xs text-[#1F1F1F] font-bold">
                                                                     <Smartphone size={14} className="text-gray-400" />
                                                                     <span>{paymentInfo.mobile_money_provider} · {paymentInfo.mobile_money_number}</span>
                                                                 </div>
@@ -562,12 +615,37 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                             )}
                                         </div>
 
-                                        <button onClick={() => { const v = !makeExpenseList; setMakeExpenseList(v); saveTogglePrefs({ useMyAccount, makeExpenseList: v, autoAuthorize }); }} className="w-full flex items-center justify-between p-4 rounded-2xl bg-gray-50 border border-gray-100 active:scale-[0.98] transition-all">
+                                        <input ref={invoiceFileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleScanInvoice(f); e.target.value = ''; }} />
+                                        <button onClick={() => { const v = !importInvoice; setImportInvoice(v); if (v) { setMakeExpenseList(true); if (!scannedInvoice) setLineItems([{ id: '1', description: '', quantity: 1, unit_price: 0, estimated_amount: 0 }]); } else { setScannedInvoice(null); setInvoiceScanError(null); setLineItems([{ id: '1', description: '', quantity: 1, unit_price: 0, estimated_amount: 0 }]); } }} className="w-full flex items-center justify-between p-4 rounded-2xl bg-[#F8FAFD] border border-gray-100">
                                             <div className="flex items-center gap-3 text-left">
-                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${makeExpenseList ? 'bg-[#006AFF]/10 text-[#006AFF]' : 'bg-gray-200 text-gray-400'}`}><List size={20} /></div>
-                                                <div><p className="text-sm font-bold text-brand-navy">Create item list</p><p className="text-[11px] text-gray-400">Add specific items and prices</p></div>
+                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${importInvoice ? 'bg-[#0B57D0]/10 text-[#0B57D0]' : 'bg-gray-200 text-gray-400'}`}><FileText size={20} /></div>
+                                                <div><p className="text-sm font-bold text-[#1F1F1F]">Import invoice</p><p className="text-[11px] text-gray-400">Scan it, prices are filled in and locked</p></div>
                                             </div>
-                                            <div className={`w-12 h-6 rounded-full transition-all relative ${makeExpenseList ? 'bg-[#006AFF]' : 'bg-gray-300'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${makeExpenseList ? 'right-1' : 'left-1'}`} /></div>
+                                            <div className={`w-12 h-6 rounded-full transition-all relative ${importInvoice ? 'bg-[#0B57D0]' : 'bg-gray-300'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${importInvoice ? 'right-1' : 'left-1'}`} /></div>
+                                        </button>
+                                        {importInvoice && (
+                                            <div className="rounded-2xl border border-blue-100 bg-white p-4">
+                                                {invoiceScanLoading ? (
+                                                    <div className="flex items-center gap-3 text-sm font-semibold text-gray-600"><RotateCcw size={18} className="animate-spin text-[#0B57D0]" /> Reading your invoice…</div>
+                                                ) : scannedInvoice ? (
+                                                    <div className="space-y-2">
+                                                        <p className="text-sm font-bold text-[#1F1F1F]">{scannedInvoice.supplier || 'Invoice'}{scannedInvoice.invoice_number ? ` · ${scannedInvoice.invoice_number}` : ''}</p>
+                                                        <p className="text-xs text-gray-500 flex items-center gap-1"><Lock size={12} /> {scannedInvoice.lines.length} lines, K{Number(scannedInvoice.total_zmw).toLocaleString(undefined, { minimumFractionDigits: 2 })} · prices locked</p>
+                                                        {(scannedInvoice.warnings || []).map((w: string, i: number) => <p key={i} className="text-[11px] font-semibold text-amber-700 bg-amber-50 rounded-lg px-2 py-1">{w}</p>)}
+                                                        <button onClick={() => invoiceFileRef.current?.click()} className="text-xs font-bold text-[#0B57D0]">Use a different invoice</button>
+                                                    </div>
+                                                ) : (
+                                                    <button onClick={() => invoiceFileRef.current?.click()} className="w-full flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-gray-200 py-6 text-sm font-bold text-gray-600"><Upload size={22} className="text-[#0B57D0]" />Take a photo or choose the invoice<span className="text-[11px] font-medium text-gray-400">PDF, JPG, PNG or WebP · up to 10 MB</span></button>
+                                                )}
+                                                {invoiceScanError && <p className="mt-2 text-xs font-semibold text-red-600">{invoiceScanError}</p>}
+                                            </div>
+                                        )}
+                                        <button onClick={() => { const v = !makeExpenseList; if (v) { setImportInvoice(false); setScannedInvoice(null); } setMakeExpenseList(v); saveTogglePrefs({ useMyAccount, makeExpenseList: v, autoAuthorize }); }} className="w-full flex items-center justify-between p-4 rounded-2xl bg-gray-50 border border-gray-100 active:scale-[0.98] transition-all">
+                                            <div className="flex items-center gap-3 text-left">
+                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${makeExpenseList ? 'bg-[#0B57D0]/10 text-[#0B57D0]' : 'bg-gray-200 text-gray-400'}`}><List size={20} /></div>
+                                                <div><p className="text-sm font-bold text-[#1F1F1F]">Create item list</p><p className="text-[11px] text-gray-400">Add specific items and prices</p></div>
+                                            </div>
+                                            <div className={`w-12 h-6 rounded-full transition-all relative ${makeExpenseList ? 'bg-[#0B57D0]' : 'bg-gray-300'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${makeExpenseList ? 'right-1' : 'left-1'}`} /></div>
                                         </button>
                                     </div>
                                 </div>
@@ -576,18 +654,18 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
 
                         {stage === 2 && (
                             <div className="space-y-6">
-                                <div className="flex justify-between items-center"><h2 className="text-[20px] font-bold text-brand-navy">Expense List</h2><p className="text-[18px] font-black text-brand-navy">K{getTotal().toLocaleString(undefined, { minimumFractionDigits: 2 })}</p></div>
+                                <div className="flex justify-between items-center"><h2 className="text-[20px] font-bold text-[#1F1F1F]">Expense List</h2><p className="text-[18px] font-black text-[#1F1F1F]">K{getTotal().toLocaleString(undefined, { minimumFractionDigits: 2 })}</p></div>
                                 <div className="space-y-6">
                                     {lineItems.map((item, idx) => (
                                         <div key={item.id} className="relative pb-6 border-b border-gray-100 last:border-0">
                                             <div className="flex items-center gap-3 mb-3">
-                                                <div className="w-8 shrink-0 flex items-center justify-center"><div className="w-8 h-8 rounded-full bg-[#EEF4FF] text-[#006AFF] flex items-center justify-center font-bold text-sm">{idx + 1}</div></div>
-                                                <input type="text" value={item.description} onChange={e => updateLineItem(item.id, 'description', e.target.value)} placeholder="Item Description" className="flex-1 text-base font-bold text-brand-navy border-none p-0 focus:ring-0 bg-transparent min-w-0" />
-                                                <span className="text-sm font-black text-brand-navy min-w-[32px] text-right">{item.estimated_amount > 0 ? `K${item.estimated_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-'}</span>
+                                                <div className="w-8 shrink-0 flex items-center justify-center"><div className="w-8 h-8 rounded-full bg-[#E8F0FE] text-[#0B57D0] flex items-center justify-center font-bold text-sm">{idx + 1}</div></div>
+                                                <input type="text" value={item.description} onChange={e => updateLineItem(item.id, 'description', e.target.value)} readOnly={!!item.price_locked} placeholder="Type to Enter Description" className="flex-1 h-12 px-4 text-base font-bold text-[#1F1F1F] bg-white border border-gray-200 rounded-full placeholder:font-normal placeholder:text-gray-400 focus:ring-2 focus:ring-[#0B57D0]/10 focus:border-[#0B57D0] min-w-0" />
+                                                <span className="text-sm font-black text-[#1F1F1F] min-w-[32px] text-right">{item.estimated_amount > 0 ? `K${item.estimated_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-'}</span>
                                                 <div className="w-8 shrink-0 flex items-center justify-end"><button onClick={() => removeLineItem(item.id)} className="text-gray-300 hover:text-red-500"><Trash2 size={20} /></button></div>
                                             </div>
                                             <div className="flex items-center gap-3"><div className="w-8 shrink-0" />
-                                                <div className="flex-[1.5] relative"><input type="number" value={item.unit_price || ''} onChange={e => updateLineItem(item.id, 'unit_price', e.target.value)} placeholder="0.00" className="w-full h-12 border border-gray-200 rounded-full px-5 text-right font-bold text-gray-800 focus:ring-2 focus:ring-[#006AFF]/10 focus:border-[#006AFF] pr-10" /><span className="absolute left-5 top-1/2 -translate-y-1/2 font-bold text-gray-300">K</span></div>
+                                                <div className="flex-[1.5] relative"><input type="number" value={item.unit_price || ''} readOnly={!!item.price_locked} onChange={e => updateLineItem(item.id, 'unit_price', e.target.value)} placeholder="0.00" className="w-full h-12 border border-gray-200 rounded-full px-5 text-right font-bold text-gray-800 focus:ring-2 focus:ring-[#0B57D0]/10 focus:border-[#0B57D0] pr-10" /><span className="absolute left-5 top-1/2 -translate-y-1/2 font-bold text-gray-300">K</span></div>
                                                 <div className="flex items-center bg-gray-50 rounded-full p-1 border border-gray-100 min-w-[110px]">
                                                     <button 
                                                         onClick={() => updateLineItem(item.id, 'quantity', Math.max(1, (Number(item.quantity) || 1) - 1))} 
@@ -600,7 +678,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                                         value={item.quantity} 
                                                         onChange={e => updateLineItem(item.id, 'quantity', e.target.value)}
                                                         onFocus={(e) => e.target.select()}
-                                                        className="w-12 text-center font-bold text-brand-navy text-sm bg-transparent border-none focus:ring-0 p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                        className="w-12 text-center font-bold text-[#1F1F1F] text-sm bg-transparent border-none focus:ring-0 p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                     />
                                                     <button 
                                                         onClick={() => updateLineItem(item.id, 'quantity', (Number(item.quantity) || 0) + 1)} 
@@ -621,7 +699,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                         {stage === 5 && (
                             <div className="space-y-6">
                                 <div className="space-y-1">
-                                    <h2 className="text-[20px] font-bold text-brand-navy">Amount Requested</h2>
+                                    <h2 className="text-[20px] font-bold text-[#1F1F1F]">Amount Requested</h2>
                                     <p className="text-sm text-gray-400">Enter the total amount you are requesting.</p>
                                 </div>
                                 <div className="space-y-1.5">
@@ -635,7 +713,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                             onChange={e => setManualAmount(e.target.value)}
                                             placeholder="0.00"
                                             autoFocus
-                                            className="w-full h-16 bg-gray-50 border border-gray-100 rounded-2xl pl-11 pr-5 text-2xl font-black text-brand-navy placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/10 focus:bg-white transition-all"
+                                            className="w-full h-16 bg-gray-50 border border-gray-100 rounded-2xl pl-11 pr-5 text-2xl font-black text-[#1F1F1F] placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/10 focus:bg-white transition-all"
                                         />
                                     </div>
                                 </div>
@@ -644,7 +722,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
 
                         {stage === 3 && (
                             <div className="space-y-6">
-                                <h2 className="text-[20px] font-bold text-brand-navy">Payment Method</h2>
+                                <h2 className="text-[20px] font-bold text-[#1F1F1F]">Payment Method</h2>
                                 <TabPillGroup
                                     value={paymentMethod}
                                     onChange={(v) => setPaymentMethod(v as 'mobile' | 'bank')}
@@ -654,12 +732,12 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                         {
                                             value: 'mobile',
                                             buttonClassName: 'flex-1 py-3 text-xs font-black uppercase tracking-widest',
-                                            label: <span className={paymentMethod === 'mobile' ? 'text-[#006AFF]' : 'text-gray-400'}>Mobile Money</span>,
+                                            label: <span className={paymentMethod === 'mobile' ? 'text-[#0B57D0]' : 'text-gray-400'}>Mobile Money</span>,
                                         },
                                         {
                                             value: 'bank',
                                             buttonClassName: 'flex-1 py-3 text-xs font-black uppercase tracking-widest',
-                                            label: <span className={paymentMethod === 'bank' ? 'text-[#006AFF]' : 'text-gray-400'}>Bank Account</span>,
+                                            label: <span className={paymentMethod === 'bank' ? 'text-[#0B57D0]' : 'text-gray-400'}>Bank Account</span>,
                                         },
                                     ]}
                                 />
@@ -687,7 +765,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                                             setMomoOperator(operator);
                                                         }}
                                                         placeholder="Enter phone number"
-                                                        className="w-full h-14 bg-gray-50 border border-gray-100 rounded-2xl px-5 text-brand-navy focus:outline-none focus:ring-2 focus:ring-[#006AFF]/10 focus:bg-white transition-all pr-24"
+                                                        className="w-full h-14 bg-gray-50 border border-gray-100 rounded-2xl px-5 text-[#1F1F1F] focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/10 focus:bg-white transition-all pr-24"
                                                     />
                                                     {momoOperator && (
                                                         <div className="absolute right-4 top-1/2 -translate-y-1/2">
@@ -707,7 +785,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                                     banks={banks}
                                                     value={bankId}
                                                     onChange={setBankId}
-                                                    className="w-full h-14 bg-gray-50 border border-gray-100 rounded-2xl px-5 text-brand-navy focus:ring-2 focus:ring-[#006AFF]/10"
+                                                    className="w-full h-14 bg-gray-50 border border-gray-100 rounded-2xl px-5 text-[#1F1F1F] focus:ring-2 focus:ring-[#0B57D0]/10"
                                                     placeholder="Select Bank"
                                                 />
                                             </div>
@@ -718,16 +796,16 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                                     value={accountNumber}
                                                     onChange={e => setAccountNumber(e.target.value)}
                                                     placeholder="Enter account number"
-                                                    className="w-full h-14 bg-gray-50 border border-gray-100 rounded-2xl px-5 text-brand-navy focus:outline-none focus:ring-2 focus:ring-[#006AFF]/10 focus:bg-white transition-all"
+                                                    className="w-full h-14 bg-gray-50 border border-gray-100 rounded-2xl px-5 text-[#1F1F1F] focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/10 focus:bg-white transition-all"
                                                 />
                                             </div>
                                         </>
                                     )}
 
                                     {(phoneNumber.length >= 10 || accountNumber.length >= 5) && (
-                                        <div className="p-4 rounded-2xl bg-[#EEF4FF] border border-[#006AFF]/10 flex items-center gap-3">
+                                        <div className="p-4 rounded-2xl bg-[#E8F0FE] border border-[#0B57D0]/10 flex items-center gap-3">
                                             {confirmingName ? (
-                                                <div className="animate-spin text-[#006AFF]">
+                                                <div className="animate-spin text-[#0B57D0]">
                                                     <RotateCcw size={16} />
                                                 </div>
                                             ) : resolvedName ? (
@@ -736,8 +814,8 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                                 <AlertCircle size={16} className="text-amber-500" />
                                             )}
                                             <div className="flex-1">
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-[#006AFF]">Account Holder</p>
-                                                <p className="text-sm font-bold text-brand-navy">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-[#0B57D0]">Account Holder</p>
+                                                <p className="text-sm font-bold text-[#1F1F1F]">
                                                     {confirmingName ? 'Verifying account...' : (resolvedName || 'Waiting for valid details...')}
                                                 </p>
                                             </div>
@@ -752,13 +830,13 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                                 className="w-full flex items-center justify-between p-4 rounded-2xl bg-gray-50 border border-gray-100 active:scale-[0.98] transition-all"
                                             >
                                                 <div className="flex items-center gap-3 text-left">
-                                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${autoAuthorize ? 'bg-[#006AFF]/10 text-[#006AFF]' : 'bg-gray-200 text-gray-400'}`}><Zap size={20} /></div>
+                                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${autoAuthorize ? 'bg-[#0B57D0]/10 text-[#0B57D0]' : 'bg-gray-200 text-gray-400'}`}><Zap size={20} /></div>
                                                     <div>
-                                                        <p className="text-sm font-bold text-brand-navy">Auto-authorize &amp; send</p>
+                                                        <p className="text-sm font-bold text-[#1F1F1F]">Auto-authorize &amp; send</p>
                                                         <p className="text-[11px] text-gray-400">Approve and disburse instantly on submit</p>
                                                     </div>
                                                 </div>
-                                                <div className={`w-12 h-6 rounded-full transition-all relative ${autoAuthorize ? 'bg-[#006AFF]' : 'bg-gray-300'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${autoAuthorize ? 'right-1' : 'left-1'}`} /></div>
+                                                <div className={`w-12 h-6 rounded-full transition-all relative ${autoAuthorize ? 'bg-[#0B57D0]' : 'bg-gray-300'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${autoAuthorize ? 'right-1' : 'left-1'}`} /></div>
                                             </button>
                                             {autoAuthorize && (
                                                 <p className="text-[11px] text-amber-600 font-medium mt-2 ml-1 flex items-start gap-1.5">
@@ -815,7 +893,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                             value={selectedWalletId}
                                             onChange={setSelectedWalletId}
                                             placeholder="Send From Wallet"
-                                            triggerClassName="w-full h-14 bg-gray-50 border border-gray-100 rounded-2xl px-5 text-brand-navy font-bold"
+                                            triggerClassName="w-full h-14 bg-gray-50 border border-gray-100 rounded-2xl px-5 text-[#1F1F1F] font-bold"
                                         />
                                         {isWalletBalanceInsufficient && (
                                             <p className="text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
@@ -857,7 +935,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                         <div className="flex justify-end">
                             <button
                                 onClick={handleProceed}
-                                className="w-14 h-14 bg-[#006AFF] rounded-full flex items-center justify-center text-white active:scale-90 transition-all"
+                                className="w-14 h-14 bg-[#0B57D0] rounded-full flex items-center justify-center text-white active:scale-90 transition-all"
                             >
                                 <ArrowRight size={24} />
                             </button>
@@ -873,7 +951,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                             <button
                                 onClick={handleSubmit}
                                 disabled={submitting || isWalletBalanceInsufficient}
-                                className="flex-1 h-16 bg-[#006AFF] rounded-full text-white font-bold text-base active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="flex-1 h-16 bg-[#0B57D0] rounded-full text-white font-bold text-base active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {submitting ? (
                                     <>

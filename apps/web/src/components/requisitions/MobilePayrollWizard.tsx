@@ -423,17 +423,17 @@ export const MobilePayrollWizard: React.FC<MobilePayrollWizardProps> = ({ isOpen
             {/* App Top Bar */}
             <div className="h-16 bg-white border-b border-gray-100 px-6 flex items-center justify-between shrink-0">
                 <div className="flex items-center">
-                    <span className="text-xl font-medium text-brand-navy tracking-tight">MoneyWise</span>
-                    <span className="text-xl font-bold text-[#006AFF] ml-1 tracking-tight">Pro</span>
+                    <span className="text-xl font-medium text-[#1F1F1F] tracking-tight">MoneyWise</span>
+                    <span className="text-xl font-bold text-[#0B57D0] ml-1 tracking-tight">Pro</span>
                 </div>
             </div>
 
             {/* Header */}
             <div className="px-6 py-4 flex items-center justify-between shrink-0">
-                <h1 className="text-[18px] font-bold text-brand-navy">New Payroll Requisition</h1>
+                <h1 className="text-[18px] font-bold text-[#1F1F1F]">New Payroll Requisition</h1>
                 <button
                     onClick={handleClose}
-                    className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-brand-navy shadow-[0_4px_12px_rgba(0,106,255,0.4)] active:scale-95 transition-all"
+                    className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-[#1F1F1F] shadow-[0_4px_12px_rgba(11,87,208,0.4)] active:scale-95 transition-all"
                 >
                     <X size={16} strokeWidth={3} />
                 </button>
@@ -463,7 +463,7 @@ export const MobilePayrollWizard: React.FC<MobilePayrollWizardProps> = ({ isOpen
                 {stage === 1 && (
                     <>
                         <div>
-                            <h2 className="text-[20px] font-bold text-brand-navy">Upload Payroll</h2>
+                            <h2 className="text-[20px] font-bold text-[#1F1F1F]">Upload Payroll</h2>
                             <p className="text-[13px] text-gray-400 mt-1">Select your department and upload your employee payroll sheet</p>
                         </div>
 
@@ -496,7 +496,7 @@ export const MobilePayrollWizard: React.FC<MobilePayrollWizardProps> = ({ isOpen
                                     />
                                     <Upload size={24} className="text-emerald-500" />
                                     <div>
-                                        <p className="text-xs font-bold text-brand-navy">{fileName || 'Choose CSV or Excel sheet'}</p>
+                                        <p className="text-xs font-bold text-[#1F1F1F]">{fileName || 'Choose CSV or Excel sheet'}</p>
                                         <p className="text-[10px] text-gray-400 mt-0.5">Max size 5MB</p>
                                     </div>
                                 </div>
@@ -533,7 +533,7 @@ export const MobilePayrollWizard: React.FC<MobilePayrollWizardProps> = ({ isOpen
                 {stage === 2 && (
                     <>
                         <div>
-                            <h2 className="text-[20px] font-bold text-brand-navy">Verify Employees</h2>
+                            <h2 className="text-[20px] font-bold text-[#1F1F1F]">Verify Employees</h2>
                             <p className="text-[13px] text-gray-400 mt-1">Review employee payout details and verify accounts before proceeding.</p>
                         </div>
 
@@ -664,7 +664,7 @@ export const MobilePayrollWizard: React.FC<MobilePayrollWizardProps> = ({ isOpen
                                                                     await handleVerifySingle(item.id, updated);
                                                                 }}
                                                                 disabled={!editName || !editAccount || !editBankCode || !editAmount}
-                                                                className="px-3 py-1.5 bg-emerald-500 text-white rounded-lg text-xs font-bold disabled:opacity-50"
+                                                                className="px-3 py-1.5 bg-[#0B57D0] text-white rounded-lg text-xs font-bold disabled:opacity-50"
                                                             >
                                                                 Save & Verify
                                                             </button>
@@ -674,7 +674,7 @@ export const MobilePayrollWizard: React.FC<MobilePayrollWizardProps> = ({ isOpen
                                                     <div className="flex justify-between items-start">
                                                         <div className="space-y-1.5 flex-1 min-w-0 pr-2">
                                                             <div className="flex items-center gap-2">
-                                                                <p className="text-xs font-bold text-brand-navy truncate">{item.employee_name}</p>
+                                                                <p className="text-xs font-bold text-[#1F1F1F] truncate">{item.employee_name}</p>
                                                                 {status === 'verified' && (
                                                                     <span className="text-[12px] font-bold text-emerald-600">✓</span>
                                                                 )}
@@ -692,7 +692,7 @@ export const MobilePayrollWizard: React.FC<MobilePayrollWizardProps> = ({ isOpen
                                                             
                                                             {status === 'pending' && (
                                                                 <div className="flex items-center gap-1.5 text-[10px] text-gray-405 mt-1">
-                                                                    <Loader2 size={10} className="animate-spin text-[#006AFF]" />
+                                                                    <Loader2 size={10} className="animate-spin text-[#0B57D0]" />
                                                                     <span>Verifying details...</span>
                                                                 </div>
                                                             )}
@@ -714,7 +714,7 @@ export const MobilePayrollWizard: React.FC<MobilePayrollWizardProps> = ({ isOpen
                                                         </div>
                                                         <div className="flex items-center space-x-3 shrink-0">
                                                             <div className="text-right">
-                                                                <p className="text-sm font-black text-brand-navy">K{Number(item.estimated_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                                                <p className="text-sm font-black text-[#1F1F1F]">K{Number(item.estimated_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                                                             </div>
                                                             <button
                                                                 type="button"
@@ -746,7 +746,7 @@ export const MobilePayrollWizard: React.FC<MobilePayrollWizardProps> = ({ isOpen
                 {stage === 3 && (
                     <>
                         <div>
-                            <h2 className="text-[20px] font-bold text-brand-navy">Confirm Requisition</h2>
+                            <h2 className="text-[20px] font-bold text-[#1F1F1F]">Confirm Requisition</h2>
                             <p className="text-[13px] text-gray-400 mt-1">Review the final payroll details and submit for approval</p>
                         </div>
 
@@ -759,7 +759,7 @@ export const MobilePayrollWizard: React.FC<MobilePayrollWizardProps> = ({ isOpen
                             ].map(row => (
                                 <div key={row.label} className="flex justify-between items-start gap-4">
                                     <span className="text-xs text-gray-500 font-medium whitespace-nowrap">{row.label}</span>
-                                    <span className="text-sm font-bold text-brand-navy text-right break-words">{row.value}</span>
+                                    <span className="text-sm font-bold text-[#1F1F1F] text-right break-words">{row.value}</span>
                                 </div>
                             ))}
                         </div>
@@ -772,7 +772,7 @@ export const MobilePayrollWizard: React.FC<MobilePayrollWizardProps> = ({ isOpen
                         <button
                             onClick={handleSubmit}
                             disabled={submitting}
-                            className="w-full h-14 bg-emerald-500 rounded-2xl text-white font-black text-base active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-2 mt-4"
+                            className="w-full h-14 bg-[#0B57D0] rounded-2xl text-white font-black text-base active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-2 mt-4"
                         >
                             {submitting ? <><Loader2 size={18} className="animate-spin" />Submitting...</> : 'Submit Payroll Requisition'}
                         </button>
@@ -788,7 +788,7 @@ export const MobilePayrollWizard: React.FC<MobilePayrollWizardProps> = ({ isOpen
                                 type="button"
                                 onClick={handleVerifyAll}
                                 disabled={isVerifying || lineItems.length === 0}
-                                className="flex-1 py-4 px-4 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-bold rounded-2xl text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                                className="flex-1 py-4 px-4 bg-[#0B57D0] hover:bg-[#0842A0] disabled:opacity-50 text-white font-bold rounded-2xl text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
                             >
                                 {isVerifying ? (
                                     <>
@@ -802,7 +802,7 @@ export const MobilePayrollWizard: React.FC<MobilePayrollWizardProps> = ({ isOpen
                             <button 
                                 onClick={handleProceedToSummary} 
                                 disabled={!lineItems.every(item => verificationResults[item.id]?.status === 'verified') || isVerifying}
-                                className="w-14 h-14 bg-emerald-500 disabled:bg-gray-200 disabled:text-gray-400 rounded-full flex-shrink-0 flex items-center justify-center text-white active:scale-90 transition-all"
+                                className="w-14 h-14 bg-[#0B57D0] disabled:bg-gray-200 disabled:text-gray-400 rounded-full flex-shrink-0 flex items-center justify-center text-white active:scale-90 transition-all"
                             >
                                 <ArrowRight size={24} />
                             </button>
@@ -811,7 +811,7 @@ export const MobilePayrollWizard: React.FC<MobilePayrollWizardProps> = ({ isOpen
                         <div className="flex w-full justify-end">
                             <button 
                                 onClick={handleProceedToPreview} 
-                                className="w-14 h-14 bg-emerald-500 rounded-full flex items-center justify-center text-white active:scale-90 transition-all"
+                                className="w-14 h-14 bg-[#0B57D0] rounded-full flex items-center justify-center text-white active:scale-90 transition-all"
                             >
                                 <ArrowRight size={24} />
                             </button>

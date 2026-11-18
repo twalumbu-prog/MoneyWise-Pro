@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { cashbookService } from './cashbook.service';
 import { ledgerService } from './ledger.service';
+import { confirmAppointment } from './appointment.service';
 import { withTiming } from '../utils/analytics';
 import { QuickBooksService } from './quickbooks.service';
 import { settleCreditInvoiceByReference } from './customerInvoice.service';
@@ -29,10 +30,21 @@ export async function markPaymentLinkPaid(orgId: string, reference: string): Pro
                 .eq('organization_id', orgId)
                 .eq('reference', reference)
                 .eq('status', 'ACTIVE')
-                .select('id, items');
+                .select('id, items, appointment_id, amount');
             if (error) throw new Error(error.message);
 
             const flipped = Array.isArray(data) && data.length > 0;
+
+            // A link that pays a booking's balance: add what was paid to the booking (never past the price).
+            if (flipped) {
+                for (const link of data as any[]) {
+                    if (!link.appointment_id) continue;
+                    const { data: appt } = await supabase.from('product_appointments').select('amount, paid_amount').eq('id', link.appointment_id).maybeSingle();
+                    if (!appt || appt.paid_amount == null) continue; // already counted as paid in full
+                    const next = Math.min(Number(appt.amount), Math.round((Number(appt.paid_amount) + Number(link.amount)) * 100) / 100);
+                    await supabase.from('product_appointments').update({ paid_amount: next, updated_at: new Date().toISOString() }).eq('id', link.appointment_id);
+                }
+            }
 
             // For invoice-type links (have items[]), void the PENDING Accounts
             // Receivable cashbook entry that was created at invoice issuance.
@@ -76,6 +88,27 @@ export async function markPaymentLinkPaid(orgId: string, reference: string): Pro
  */
 export async function confirmBookingsForReference(orgId: string, reference: string): Promise<void> {
     try {
+        // Time-slot appointments confirm through an advisory-locked RPC (capacity-aware).
+        const { data: pendingAppts } = await supabase
+            .from('product_appointments')
+            .select('id, product_id, appointment_date, start_time')
+            .eq('organization_id', orgId)
+            .eq('reference', reference)
+            .eq('status', 'PENDING');
+        for (const a of (pendingAppts || []) as any[]) {
+            try {
+                const result = await confirmAppointment(a.id);
+                if (result === 'CONFLICT') {
+                    console.warn(
+                        `[ProductRouting] APPOINTMENT CONFLICT ref ${reference}: product ${a.product_id} ` +
+                        `${a.appointment_date} ${a.start_time} was already taken. Payment succeeded — flagged CONFLICT for merchant review.`
+                    );
+                }
+            } catch (e: any) {
+                console.error(`[ProductRouting] Failed to confirm appointment ${a.id} for ref ${reference}:`, e.message);
+            }
+        }
+
         const { data: pending } = await supabase
             .from('product_bookings')
             .select('id, product_id, check_in, check_out')

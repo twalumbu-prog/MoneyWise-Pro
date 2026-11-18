@@ -22,6 +22,44 @@ import { aiService } from '../services/ai/ai.service';
 import { resolveStaffFromFreeText } from '../lib/staffUserMatching';
 import { decisionRouter } from '../services/ai/decision.router';
 import { AuditService } from '../services/audit.service';
+import {
+    scanInvoice,
+    loadScannedInvoice,
+    pickInvoiceLines,
+    invoiceColumns,
+    signedInvoiceUrl,
+    ScannedInvoice,
+    InvoiceError,
+} from '../services/requisitionInvoice.service';
+
+/**
+ * POST /requisitions/mark-all-read: clears the "new" flag on everything in the person's inbox in one go.
+ * Same rule as opening each one: your own requests, and (for finance and admin roles) any request in your organization.
+ * Only requests that are actually flagged are touched, and the answer says how many.
+ */
+export const markAllRequisitionsRead = async (req: any, res: any): Promise<any> => {
+    try {
+        const user_id = (req as any).user.id;
+        const organization_id = (req as any).user.organization_id;
+        const userRole = (req as any).user.role;
+        if (!organization_id) return res.status(400).json({ error: 'Organization context missing.' });
+        const isPrivileged = ['ADMIN', 'ACCOUNTANT', 'MANAGER', 'CASHIER'].includes(userRole);
+
+        let q = supabase
+            .from('requisitions')
+            .update({ has_unread_updates: false }, { count: 'exact' })
+            .eq('organization_id', organization_id)
+            .eq('has_unread_updates', true);
+        if (!isPrivileged) q = q.eq('requestor_id', user_id);
+        const { error, count } = await q;
+        if (error) throw error;
+
+        res.json({ message: 'All marked as read', updated: count ?? 0 });
+    } catch (error: any) {
+        console.error('Error marking all requisitions as read:', error);
+        res.status(500).json({ error: 'Failed to mark all as read', details: error.message });
+    }
+};
 
 export const markRequisitionRead = async (req: any, res: any): Promise<any> => {
     try {
@@ -93,6 +131,8 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             wallet_id,
             walletId,
             target_organization_id,
+            invoice_path,
+            invoice_lines_keep,
         } = req.body;
         const requestor_id = (req as any).user.id;
         let organization_id = (req as any).user.organization_id;
@@ -142,12 +182,38 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
         // match — is_personal is a real column, set only by ensurePersonalWorkspace.
         const isPersonalOrg = orgData?.is_personal === true;
 
+        // If an invoice was scanned, load the verified data from storage
+        let scannedInvoice: ScannedInvoice | null = null;
+        let invoiceLineItems: any[] | null = null;
+        if (invoice_path) {
+            if (type !== 'EXPENSE') {
+                return res.status(400).json({ error: 'An invoice can only be imported into an expense request.' });
+            }
+            try {
+                scannedInvoice = await loadScannedInvoice(organization_id, requestor_id, invoice_path);
+                const picked = pickInvoiceLines(scannedInvoice, invoice_lines_keep);
+                invoiceLineItems = picked.map((line) => ({
+                    description: line.description,
+                    quantity: line.quantity,
+                    unit_price: line.unit_price,
+                    estimated_amount: line.amount,
+                    price_locked: true,
+                }));
+            } catch (invErr: any) {
+                return res.status(invErr.httpStatus || 400).json({ error: invErr.message || 'Failed to attach invoice' });
+            }
+        }
+
+        const calculatedTotal = invoiceLineItems
+            ? Math.round(invoiceLineItems.reduce((s: number, it: any) => s + (Number(it.estimated_amount) || 0), 0) * 100) / 100
+            : estimated_total;
+
         // 1. Insert Requisition
         const insertData: any = {
             requestor_id,
             organization_id,
-            description,
-            estimated_total,
+            description: description || (scannedInvoice ? `Invoice ${scannedInvoice.invoice_number || ''}${scannedInvoice.supplier ? ` — ${scannedInvoice.supplier}` : ''}`.trim() : ''),
+            estimated_total: calculatedTotal,
             status: isPersonalOrg ? 'AUTHORISED' : 'DRAFT',
             interest_rate,
             monthly_deduction,
@@ -155,6 +221,10 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             department: department || null, // Ensure empty strings are handled as null
             wallet_id: personalPayout ? null : (wallet_id || walletId || null)
         };
+
+        if (scannedInvoice) {
+            Object.assign(insertData, invoiceColumns(scannedInvoice));
+        }
 
         // LOAN/ADVANCE requests are filed by an accountant on the employee's
         // behalf — the requestor is the filer, not the employee, so staff_name/
@@ -221,7 +291,7 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
         }
 
         // 2. Insert Line Items
-        let lineItemsToInsert = items || [];
+        let lineItemsToInsert = invoiceLineItems || items || [];
         
         if (type === 'LOAN' || type === 'ADVANCE') {
             const principalDesc = type === 'LOAN' ? 'Staff Loan Principal' : 'Salary Advance Principal';
@@ -321,7 +391,8 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             recipient_bank_code: item.recipient_bank_code || null,
             verified_name: item.verified_name || null,
             is_valid: item.is_valid !== undefined ? item.is_valid : true,
-            error_message: item.error_message || null
+            error_message: item.error_message || null,
+            price_locked: item.price_locked === true
         }));
 
         const { error: itemsError } = await supabase
@@ -500,9 +571,13 @@ export const updateRequisition = async (req: any, res: any): Promise<any> => {
         const { id } = req.params;
         const { description, estimated_total, wallet_id, walletId } = req.body;
 
+        // A request built from an invoice is for exactly the invoice's lines, so its total cannot be changed here.
+        const { data: existing } = await supabase.from('requisitions').select('invoice_url, estimated_total').eq('id', id).maybeSingle();
+        const fromInvoice = !!(existing as any)?.invoice_url;
+
         const updateData: any = {
             description,
-            estimated_total,
+            estimated_total: fromInvoice ? (existing as any).estimated_total : estimated_total,
             updated_at: new Date().toISOString()
         };
 
@@ -3325,6 +3400,74 @@ export const backfillAuditScores = async (req: any, res: any): Promise<any> => {
     }
 };
 
+/**
+ * Deletes a requisition and everything hanging off it. Every step is error-checked and the requisition itself is deleted last: if a ledger
+ * row failed to delete and the requisition went anyway, that row would survive as an invisible orphan (it once orphaned a K71,354.03 payroll
+ * outflow). The caller has already decided this requisition may be deleted.
+ */
+async function removeRequisitionAndChildren(id: string): Promise<void> {
+    const { data: relatedVouchers } = await supabase.from('vouchers').select('id').eq('requisition_id', id);
+    if (relatedVouchers && relatedVouchers.length > 0) {
+        const voucherIds = relatedVouchers.map((v: any) => v.id);
+        await supabase.from('voucher_lines').delete().in('voucher_id', voucherIds);
+        await supabase.from('vouchers').delete().in('id', voucherIds);
+    }
+    const steps: [string, () => PromiseLike<{ error: any }>][] = [
+        ['requisition messages', () => supabase.from('requisition_messages').delete().eq('requisition_id', id)],
+        ['disbursements', () => supabase.from('disbursements').delete().eq('requisition_id', id)],
+        ['line items', () => supabase.from('line_items').delete().eq('requisition_id', id)],
+        ['audit logs', () => supabase.from('audit_logs').delete().eq('entity_id', id)],
+        ['cashbook entries', () => supabase.from('cashbook_entries').delete().eq('requisition_id', id)],
+    ];
+    for (const [what, run] of steps) {
+        const { error } = await run();
+        if (error) throw new Error(`Failed to delete ${what}: ${error.message}`);
+    }
+    const { error: deleteError } = await supabase.from('requisitions').delete().eq('id', id);
+    if (deleteError) throw deleteError;
+}
+
+/**
+ * POST /requisitions/batch/delete  { ids: string[] }  Admin only. Clears out several requests at once (test requests, mostly).
+ * Allowed: anything a single delete allows (draft, pending approval, rejected, change submitted) and also an Authorised request that has
+ * never been paid: no payout, no ledger entry. Anything else is skipped with the reason, and the rest still go.
+ */
+export const batchDeleteRequisitions = async (req: AuthRequest, res: Response): Promise<any> => {
+    try {
+        const user = (req as any).user;
+        if (user.role !== 'ADMIN') return res.status(403).json({ error: 'Only an admin can delete several requests at once.' });
+        const ids: string[] = Array.isArray(req.body?.ids) ? [...new Set<string>(req.body.ids.map(String))].slice(0, 200) : [];
+        if (!ids.length) return res.status(400).json({ error: 'Choose at least one request.' });
+
+        const { data: rows, error } = await supabase.from('requisitions').select('id, status, organization_id, description').in('id', ids);
+        if (error) throw error;
+        const byId = new Map<string, any>((rows ?? []).map((r: any) => [r.id, r]));
+        const plainly = ['DRAFT', 'PENDING_APPROVAL', 'REJECTED', 'CHANGE_SUBMITTED'];
+
+        let deleted = 0;
+        const skipped: { id: string; description?: string; reason: string }[] = [];
+        for (const id of ids) {
+            const r = byId.get(id);
+            if (!r || r.organization_id !== user.organization_id) { skipped.push({ id, reason: 'Not found.' }); continue; }
+            if (!plainly.includes(r.status)) {
+                if (r.status !== 'AUTHORISED') { skipped.push({ id, description: r.description, reason: `It is ${String(r.status).toLowerCase().replace(/_/g, ' ')}, so it can’t be deleted.` }); continue; }
+                // Authorised: only if no money has been moved for it.
+                const [{ count: payouts }, { count: entries }] = await Promise.all([
+                    supabase.from('disbursements').select('id', { count: 'exact', head: true }).eq('requisition_id', id),
+                    supabase.from('cashbook_entries').select('id', { count: 'exact', head: true }).eq('requisition_id', id),
+                ]);
+                if ((payouts ?? 0) > 0 || (entries ?? 0) > 0) { skipped.push({ id, description: r.description, reason: 'A payment has been started or recorded for it.' }); continue; }
+            }
+            try { await removeRequisitionAndChildren(id); deleted++; } catch (e: any) { skipped.push({ id, description: r.description, reason: e?.message || 'Could not delete it.' }); }
+        }
+        console.log(`[Batch Delete Requisitions] ${user.id} deleted ${deleted}, skipped ${skipped.length}`);
+        res.json({ deleted, skipped });
+    } catch (e: any) {
+        console.error('[Batch Delete Requisitions] Error:', e);
+        res.status(500).json({ error: 'Failed to delete the requests', details: e.message });
+    }
+};
+
 export const deleteRequisition = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const { id } = req.params;
@@ -3355,74 +3498,7 @@ export const deleteRequisition = async (req: AuthRequest, res: Response): Promis
         }
 
         console.log(`[Delete Requisition] Deleting requisition ${id}...`);
-
-        // 4. Delete related records
-        // 4.1 Delete related vouchers & voucher lines to avoid foreign key constraints
-        const { data: relatedVouchers } = await supabase
-            .from('vouchers')
-            .select('id')
-            .eq('requisition_id', id);
-
-        if (relatedVouchers && relatedVouchers.length > 0) {
-            const voucherIds = relatedVouchers.map(v => v.id);
-            await supabase
-                .from('voucher_lines')
-                .delete()
-                .in('voucher_id', voucherIds);
-            
-            await supabase
-                .from('vouchers')
-                .delete()
-                .in('id', voucherIds);
-        }
-
-        // 4.2 Delete messages
-        const { error: msgDelErr } = await supabase
-            .from('requisition_messages')
-            .delete()
-            .eq('requisition_id', id);
-        if (msgDelErr) throw new Error(`Failed to delete requisition messages: ${msgDelErr.message}`);
-
-        // 4.3 Delete disbursements
-        const { error: disbDelErr } = await supabase
-            .from('disbursements')
-            .delete()
-            .eq('requisition_id', id);
-        if (disbDelErr) throw new Error(`Failed to delete disbursements: ${disbDelErr.message}`);
-
-        // 4.4 Delete line items
-        const { error: liDelErr } = await supabase
-            .from('line_items')
-            .delete()
-            .eq('requisition_id', id);
-        if (liDelErr) throw new Error(`Failed to delete line items: ${liDelErr.message}`);
-
-        // 4.5 Delete audit logs
-        const { error: auditDelErr } = await supabase
-            .from('audit_logs')
-            .delete()
-            .eq('entity_id', id);
-        if (auditDelErr) throw new Error(`Failed to delete audit logs: ${auditDelErr.message}`);
-
-        // 4.6 Delete cashbook entries.
-        // IMPORTANT: if this fails we MUST abort before deleting the requisition —
-        // otherwise a ledger row survives with a dangling requisition_id and becomes an
-        // invisible orphan (wallet views miss it, but org-level reconciliation counts it).
-        // That exact silent failure orphaned a duplicate K71,354.03 payroll outflow on
-        // Twalumbu (fixed 2026-07-11). All child deletes above are error-checked too.
-        const { error: cbDelErr } = await supabase
-            .from('cashbook_entries')
-            .delete()
-            .eq('requisition_id', id);
-        if (cbDelErr) throw new Error(`Failed to delete cashbook entries: ${cbDelErr.message}`);
-
-        // 5. Delete requisition (only after ALL child cleanup verifiably succeeded)
-        const { error: deleteError } = await supabase
-            .from('requisitions')
-            .delete()
-            .eq('id', id);
-
-        if (deleteError) throw deleteError;
+        await removeRequisitionAndChildren(id);
 
         console.log(`[Delete Requisition] Requisition ${id} deleted successfully.`);
         res.json({ success: true, message: 'Requisition deleted successfully' });
@@ -3544,3 +3620,60 @@ export const getSendSummaryHandler = async (req: any, res: any): Promise<any> =>
         res.status(500).json({ error: 'Could not load the payment summary.' });
     }
 };
+
+/** POST /requisitions/scan-invoice — scans an uploaded invoice, stores it, and returns extracted lines & metadata */
+export const scanRequisitionInvoice = async (req: any, res: any): Promise<any> => {
+    try {
+        const { fileBase64, fileName } = req.body;
+        const organization_id = req.user?.organization_id;
+        const user_id = req.user?.id;
+        if (!organization_id) {
+            return res.status(400).json({ error: 'Organization context missing.' });
+        }
+        const scanned = await scanInvoice(organization_id, user_id, { fileBase64, fileName });
+        res.json(scanned);
+    } catch (error: any) {
+        if (error instanceof InvoiceError) {
+            return res.status(error.httpStatus).json({ error: error.message });
+        }
+        console.error('[scanRequisitionInvoice] Error:', error);
+        res.status(500).json({ error: 'Failed to scan invoice', details: error.message });
+    }
+};
+
+/** GET /requisitions/:id/invoice-url — returns a signed URL to view the attached invoice */
+export const getRequisitionInvoiceUrl = async (req: any, res: any): Promise<any> => {
+    try {
+        const { id } = req.params;
+        const organization_id = req.user?.organization_id;
+
+        const { data: requisition, error } = await supabase
+            .from('requisitions')
+            .select('id, organization_id, invoice_url')
+            .eq('id', id)
+            .single();
+
+        if (error || !requisition) {
+            return res.status(404).json({ error: 'Requisition not found' });
+        }
+
+        if (requisition.organization_id !== organization_id) {
+            return res.status(403).json({ error: 'Unauthorized to view this requisition invoice' });
+        }
+
+        if (!requisition.invoice_url) {
+            return res.status(404).json({ error: 'No invoice attached to this requisition' });
+        }
+
+        const url = await signedInvoiceUrl(requisition.invoice_url, 3600);
+        if (!url) {
+            return res.status(404).json({ error: 'Could not generate invoice preview link' });
+        }
+
+        res.json({ url });
+    } catch (error: any) {
+        console.error('[getRequisitionInvoiceUrl] Error:', error);
+        res.status(500).json({ error: 'Failed to get invoice url', details: error.message });
+    }
+};
+

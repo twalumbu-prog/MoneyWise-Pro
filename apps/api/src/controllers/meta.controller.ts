@@ -7,6 +7,8 @@ import {
 } from '../services/meta.service';
 import { deleteMetaUserData, deletionStatus } from '../services/meta.deletion';
 import { isCapturePlanEligible } from '../services/capture/capture.settings';
+import { classifyMessage } from '../services/messageIntent.service';
+import { isComposioConfigured, disconnectComposioConnection } from '../services/composio.service';
 
 const RECONNECT_WINDOW_MS = 7 * 86400_000;
 const PLAN_MESSAGE = 'Connecting messaging needs an active Premium plan. Manage your plan under Settings → Subscription & Billing.';
@@ -22,14 +24,14 @@ export const getMetaStatus = async (req: Request, res: Response) => {
     const organizationId = (req as any).user.organization_id;
     if (!organizationId) return res.status(400).json({ error: 'User does not belong to an organization' });
     const { data, error } = await supabase.from('messaging_connections')
-        .select('id, platform, display_name, display_phone, status, last_error, last_message_at, created_at, token_expires_at')
+        .select('id, platform, display_name, display_phone, status, last_error, last_message_at, created_at, token_expires_at, auth_mode')
         .eq('organization_id', organizationId).neq('status', 'DISCONNECTED');
-    if (error) return res.status(500).json({ error: 'Could not load connections' });
+    if (error) return res.status(500).json({ error: error.message });
     const connections = (data || []).map((c: any) => ({
         ...c,
         needs_reconnect: c.status === 'EXPIRED' || (!!c.token_expires_at && new Date(c.token_expires_at).getTime() - Date.now() < RECONNECT_WINDOW_MS),
     }));
-    res.json({ configured: isMetaConfigured(), connections });
+    res.json({ configured: isMetaConfigured(), composio: isComposioConfigured(), connections });
 };
 
 /** GET /integrations/meta/connect/:platform — what the Connect button needs to open Meta's sign-up. */
@@ -123,6 +125,8 @@ export const metaOAuthCallback = async (req: Request, res: Response) => {
 /** DELETE /integrations/meta/connections/:id — stops delivery at Meta and locally. Captures and ledger entries stay. */
 export const disconnectMeta = async (req: Request, res: Response) => {
     const user = (req as any).user;
+    if (await disconnectComposioConnection('messaging', String(req.params.id), user.organization_id)) return res.json({ success: true });
+
     const { data: conn } = await supabase.from('messaging_connections').select('id, platform, external_id, parent_external_id, access_token_enc')
         .eq('id', req.params.id).eq('organization_id', user.organization_id).maybeSingle();
     if (!conn) return res.status(404).json({ error: 'Connection not found' });

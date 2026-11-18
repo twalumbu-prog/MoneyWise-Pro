@@ -85,12 +85,12 @@ export const Approvals: React.FC = () => {
         <Layout>
             <div className="space-y-6">
                 <div className="flex justify-between items-center">
-                    <h1 className="text-2xl font-bold text-brand-navy">Approvals</h1>
+                    <h1 className="text-2xl font-bold text-[#1F1F1F]">Approvals</h1>
                 </div>
 
                 {loading && (
                     <div className="bg-white shadow-sm border border-gray-100 rounded-xl p-12 text-center">
-                        <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-brand-green mb-4"></div>
+                        <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-[#0B57D0] mb-4"></div>
                         <p className="text-gray-500 font-medium">Loading requisitions...</p>
                     </div>
                 )}
@@ -145,10 +145,10 @@ export const Approvals: React.FC = () => {
                                             <td className="px-6 py-4 text-sm font-medium text-gray-900">
                                                 {req.requestor_name || 'Unknown'}
                                             </td>
-                                            <td className="px-6 py-4 text-sm text-brand-navy font-medium">
+                                            <td className="px-6 py-4 text-sm text-[#1F1F1F] font-medium">
                                                 {req.description}
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-brand-navy">
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-[#1F1F1F]">
                                                 K{Number(req.estimated_total).toLocaleString()}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap">
@@ -188,7 +188,7 @@ export const Approvals: React.FC = () => {
                                                     )}
                                                     <button
                                                         onClick={() => navigate(`/requisitions?id=${req.id}`)}
-                                                        className="text-gray-400 hover:text-brand-navy p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                                                        className="text-gray-400 hover:text-[#1F1F1F] p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
                                                     >
                                                         <Eye className="h-5 w-5" />
                                                     </button>
@@ -212,7 +212,7 @@ export const Approvals: React.FC = () => {
                                         <div>
                                             <p className="text-xs text-gray-400 font-mono mb-1">...{req.id.slice(-6)}</p>
                                             <h3 className="font-bold text-gray-900 leading-tight">{req.description}</h3>
-                                            <p className="text-sm text-brand-navy mt-1 opacity-80">{req.requestor_name || 'Unknown'}</p>
+                                            <p className="text-sm text-[#1F1F1F] mt-1 opacity-80">{req.requestor_name || 'Unknown'}</p>
                                         </div>
                                         <span className={`px-2.5 py-0.5 inline-flex text-[10px] font-bold rounded-full uppercase tracking-wide shrink-0 ${getStatusBadge(req.status)}`}>
                                             {req.status}

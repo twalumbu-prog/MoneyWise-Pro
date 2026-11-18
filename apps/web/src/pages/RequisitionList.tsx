@@ -18,7 +18,7 @@ import { DesktopStaffLoanWorkspace } from '../components/requisitions/DesktopSta
 import { DesktopSalaryAdvanceWorkspace } from '../components/requisitions/DesktopSalaryAdvanceWorkspace';
 import { DesktopPayrollWorkspace } from '../components/requisitions/DesktopPayrollWorkspace';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Plus, Clock, CheckCircle2, Check, AlertCircle, RotateCcw, ArrowUpDown, ListFilter, ShoppingBag } from 'lucide-react';
+import { Search, Plus, Clock, CheckCircle2, Check, CheckCheck, AlertCircle, RotateCcw, ArrowUpDown, ListFilter, ShoppingBag } from 'lucide-react';
 import { Requisition as RequisitionType, REQUISITION_STATUS_CONFIG, getStatusConfig } from '../services/requisition.service';
 import { departmentService } from '../services/department.service';
 import { SegmentedControl } from '../components/AnimatedTabs';
@@ -90,6 +90,23 @@ export const RequisitionList: React.FC = () => {
         queryFn: () => requisitionService.getAll(),
         enabled: !!organizationId,
     });
+    // "Mark all read": clears the new-flag on every request in one call, and the list and badges follow.
+    const [markingAll, setMarkingAll] = useState(false);
+    const unreadCount = requisitions.filter((r) => r.has_unread_updates).length;
+    const markAllRead = async () => {
+        if (markingAll || unreadCount === 0) return;
+        setMarkingAll(true);
+        queryClient.setQueryData<Requisition[]>(requisitionsKey, (prev) => prev?.map((r) => ({ ...r, has_unread_updates: false })));
+        try {
+            await requisitionService.markAllRead();
+        } catch (e) {
+            console.error(e);
+            await queryClient.invalidateQueries({ queryKey: requisitionsKey });
+        } finally {
+            setMarkingAll(false);
+            refreshNotifications();
+        }
+    };
     // Cached data paints instantly; only block on the true first-ever load.
     const loading = requisitionsLoading || !organizationId;
     const error = requisitionsError ? 'Failed to load requisitions' : null;
@@ -494,35 +511,35 @@ export const RequisitionList: React.FC = () => {
             label: 'New Requisition',
             description: 'Office items, services, or equipment',
             icon: FileText,
-            iconColor: '#0F172A',
+            iconColor: '#1F1F1F',
             onSelect: () => setIsDesktopRequisitionOpen(true),
         },
         {
             label: 'New Salary Advance',
             description: 'Quick funds from your next payroll',
             icon: History,
-            iconColor: '#0F172A',
+            iconColor: '#1F1F1F',
             onSelect: () => setIsDesktopSalaryAdvanceOpen(true),
         },
         {
             label: 'New Staff Loan',
             description: 'Long-term loan with fixed 15% interest',
             icon: Plus,
-            iconColor: '#0F172A',
+            iconColor: '#1F1F1F',
             onSelect: () => setIsDesktopStaffLoanOpen(true),
         },
         {
             label: 'Invest',
             description: 'Grow your money with our partners',
             icon: TrendingUp,
-            iconColor: '#0F172A',
+            iconColor: '#1F1F1F',
             onSelect: () => setIsInvestWizardOpen(true),
         },
         ...(!isRequestor ? [{
             label: 'New Payroll Requisition',
             description: 'Batch processing via spreadsheet upload',
             icon: Users,
-            iconColor: '#0F172A',
+            iconColor: '#1F1F1F',
             onSelect: () => setIsDesktopPayrollOpen(true),
         }] : []),
     ];
@@ -533,14 +550,14 @@ export const RequisitionList: React.FC = () => {
             label: 'Cash Sale',
             description: 'Customer pays now — cash, mobile money or bank',
             icon: Banknote,
-            iconColor: '#059669',
+            iconColor: '#1E8E3E',
             onSelect: () => navigate('/sales/new'),
         },
         {
             label: 'Credit Sale',
             description: 'Invoice the customer and collect payment later',
             icon: Receipt,
-            iconColor: '#0058DB',
+            iconColor: '#0B57D0',
             onSelect: () => navigate('/sales/new?mode=credit'),
         },
         ...(userRole === 'ADMIN' ? [{
@@ -598,25 +615,35 @@ export const RequisitionList: React.FC = () => {
                                         placeholder="Search..."
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="flex-1 min-w-0 bg-transparent border-none outline-none text-xs text-brand-navy placeholder:text-stone-300 font-normal"
+                                        className="flex-1 min-w-0 bg-transparent border-none outline-none text-xs text-[#1F1F1F] placeholder:text-stone-300 font-normal"
                                     />
                                     <button
                                         onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
                                         className={`w-10 h-10 rounded-full transition-all flex-shrink-0 flex items-center justify-center ${
-                                            sortOrder !== 'desc' ? 'text-[#006AFF]' : 'text-zinc-600 hover:text-brand-navy'
+                                            sortOrder !== 'desc' ? 'text-[#0B57D0]' : 'text-zinc-600 hover:text-[#1F1F1F]'
                                         }`}
                                         title="Sort by Date"
                                     >
                                         <ArrowUpDown size={16} />
                                     </button>
+                                    {inboxMode === 'outflows' && unreadCount > 0 && (
+                                        <button
+                                            onClick={markAllRead}
+                                            disabled={markingAll}
+                                            className="w-10 h-10 rounded-full transition-all flex-shrink-0 flex items-center justify-center text-[#0B57D0] disabled:opacity-50"
+                                            title="Mark all as read"
+                                        >
+                                            <CheckCheck size={16} />
+                                        </button>
+                                    )}
                                     {inboxMode === 'outflows' && (<>
                                     <div className="w-[1px] h-5 bg-slate-200 flex-shrink-0" />
                                     <button
                                         onClick={() => setIsFilterSheetOpen(true)}
                                         className={`w-10 h-10 rounded-full transition-all flex-shrink-0 flex items-center justify-center ${
                                             !activeTab.includes('ALL') || filterRead !== 'ALL' || (useDepartments && !filterDepartment.includes('ALL')) || filterStartDate || filterEndDate
-                                                ? 'text-[#006AFF]'
-                                                : 'text-zinc-600 hover:text-brand-navy'
+                                                ? 'text-[#0B57D0]'
+                                                : 'text-zinc-600 hover:text-[#1F1F1F]'
                                         }`}
                                         title="Filters"
                                     >
@@ -630,14 +657,14 @@ export const RequisitionList: React.FC = () => {
                             {inboxMode === 'outflows' && (!activeTab.includes('ALL') || filterRead !== 'ALL' || (useDepartments && !filterDepartment.includes('ALL')) || filterStartDate || filterEndDate || sortOrder !== 'desc') && (
                                 <div className="md:hidden px-6 pb-3 flex items-center gap-2 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
                                     {activeTab.filter(t => t !== 'ALL').map(status => (
-                                        <span key={status} className="inline-flex items-center gap-1.5 bg-[#F0F7FF] text-[#006AFF] border border-[#006AFF]/20 rounded-full px-3 py-1.5 text-[11px] font-bold whitespace-nowrap flex-shrink-0">
+                                        <span key={status} className="inline-flex items-center gap-1.5 bg-[#E8F0FE] text-[#0B57D0] border border-[#0B57D0]/20 rounded-full px-3 py-1.5 text-[11px] font-bold whitespace-nowrap flex-shrink-0">
                                             {MOBILE_STATUS_LABELS[status] ?? status}
                                             <button
                                                 onClick={() => {
                                                     const next = activeTab.filter(t => t !== status);
                                                     setActiveTab(next.length === 0 ? ['ALL'] : next);
                                                 }}
-                                                className="ml-0.5 rounded-full hover:bg-[#006AFF]/10 p-0.5 transition-colors"
+                                                className="ml-0.5 rounded-full hover:bg-[#0B57D0]/10 p-0.5 transition-colors"
                                                 aria-label="Remove status filter"
                                             >
                                                 <X size={11} />
@@ -645,11 +672,11 @@ export const RequisitionList: React.FC = () => {
                                         </span>
                                     ))}
                                     {filterRead !== 'ALL' && (
-                                        <span className="inline-flex items-center gap-1.5 bg-[#F0F7FF] text-[#006AFF] border border-[#006AFF]/20 rounded-full px-3 py-1.5 text-[11px] font-bold whitespace-nowrap flex-shrink-0">
+                                        <span className="inline-flex items-center gap-1.5 bg-[#E8F0FE] text-[#0B57D0] border border-[#0B57D0]/20 rounded-full px-3 py-1.5 text-[11px] font-bold whitespace-nowrap flex-shrink-0">
                                             {filterRead === 'UNREAD' ? 'Unread Only' : 'Read Only'}
                                             <button
                                                 onClick={() => setFilterRead('ALL')}
-                                                className="ml-0.5 rounded-full hover:bg-[#006AFF]/10 p-0.5 transition-colors"
+                                                className="ml-0.5 rounded-full hover:bg-[#0B57D0]/10 p-0.5 transition-colors"
                                                 aria-label="Remove read filter"
                                             >
                                                 <X size={11} />
@@ -657,14 +684,14 @@ export const RequisitionList: React.FC = () => {
                                         </span>
                                     )}
                                     {useDepartments && filterDepartment.filter(d => d !== 'ALL').map(dept => (
-                                        <span key={dept} className="inline-flex items-center gap-1.5 bg-[#F0F7FF] text-[#006AFF] border border-[#006AFF]/20 rounded-full px-3 py-1.5 text-[11px] font-bold whitespace-nowrap flex-shrink-0">
+                                        <span key={dept} className="inline-flex items-center gap-1.5 bg-[#E8F0FE] text-[#0B57D0] border border-[#0B57D0]/20 rounded-full px-3 py-1.5 text-[11px] font-bold whitespace-nowrap flex-shrink-0">
                                             {dept} Dept.
                                             <button
                                                 onClick={() => {
                                                     const next = filterDepartment.filter(d => d !== dept);
                                                     setFilterDepartment(next.length === 0 ? ['ALL'] : next);
                                                 }}
-                                                className="ml-0.5 rounded-full hover:bg-[#006AFF]/10 p-0.5 transition-colors"
+                                                className="ml-0.5 rounded-full hover:bg-[#0B57D0]/10 p-0.5 transition-colors"
                                                 aria-label="Remove department filter"
                                             >
                                                 <X size={11} />
@@ -672,7 +699,7 @@ export const RequisitionList: React.FC = () => {
                                         </span>
                                     ))}
                                     {(filterStartDate || filterEndDate) && (
-                                        <span className="inline-flex items-center gap-1.5 bg-[#F0F7FF] text-[#006AFF] border border-[#006AFF]/20 rounded-full px-3 py-1.5 text-[11px] font-bold whitespace-nowrap flex-shrink-0">
+                                        <span className="inline-flex items-center gap-1.5 bg-[#E8F0FE] text-[#0B57D0] border border-[#0B57D0]/20 rounded-full px-3 py-1.5 text-[11px] font-bold whitespace-nowrap flex-shrink-0">
                                             {filterStartDate && filterEndDate
                                                 ? `${new Date(filterStartDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} – ${new Date(filterEndDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}`
                                                 : filterStartDate
@@ -680,7 +707,7 @@ export const RequisitionList: React.FC = () => {
                                                     : `Until ${new Date(filterEndDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}`}
                                             <button
                                                 onClick={() => { setFilterStartDate(''); setFilterEndDate(''); }}
-                                                className="ml-0.5 rounded-full hover:bg-[#006AFF]/10 p-0.5 transition-colors"
+                                                className="ml-0.5 rounded-full hover:bg-[#0B57D0]/10 p-0.5 transition-colors"
                                                 aria-label="Remove date filter"
                                             >
                                                 <X size={11} />
@@ -688,11 +715,11 @@ export const RequisitionList: React.FC = () => {
                                         </span>
                                     )}
                                     {sortOrder !== 'desc' && (
-                                        <span className="inline-flex items-center gap-1.5 bg-[#F0F7FF] text-[#006AFF] border border-[#006AFF]/20 rounded-full px-3 py-1.5 text-[11px] font-bold whitespace-nowrap flex-shrink-0">
+                                        <span className="inline-flex items-center gap-1.5 bg-[#E8F0FE] text-[#0B57D0] border border-[#0B57D0]/20 rounded-full px-3 py-1.5 text-[11px] font-bold whitespace-nowrap flex-shrink-0">
                                             Oldest First
                                             <button
                                                 onClick={() => setSortOrder('desc')}
-                                                className="ml-0.5 rounded-full hover:bg-[#006AFF]/10 p-0.5 transition-colors"
+                                                className="ml-0.5 rounded-full hover:bg-[#0B57D0]/10 p-0.5 transition-colors"
                                                 aria-label="Remove sort filter"
                                             >
                                                 <X size={11} />
@@ -750,8 +777,10 @@ export const RequisitionList: React.FC = () => {
                             onOpenFilters={() => setIsFilterSheetOpen(true)}
                             onRefresh={() => inboxMode === 'inflows' ? (loadInflows(), refetchCreditInvoices()) : loadRequisitions()}
                             hasActiveFilters={hasActiveDesktopFilters}
+                            onMarkAllRead={inboxMode === 'outflows' && unreadCount > 0 ? markAllRead : undefined}
+                            markAllReadBusy={markingAll}
                             leftContent={inboxMode === 'inflows' && !isRequestor ? (
-                                <div className="flex items-center gap-1 p-1 bg-[#F3F5FC] md:bg-[#F8FAFD] rounded-[10px]">
+                                <div className="flex items-center gap-1 p-1 bg-[#F8FAFD] md:bg-[#F8FAFD] rounded-[10px]">
                                     {([
                                         { value: 'cash', label: 'Cash', count: sortedInflows.length },
                                         { value: 'invoices', label: 'Invoices', count: invoiceTabCount },
@@ -762,7 +791,7 @@ export const RequisitionList: React.FC = () => {
                                             onClick={() => setInflowSubMode(tab.value)}
                                             className={`px-3.5 py-1.5 rounded-lg text-[11px] whitespace-nowrap transition-all flex items-center gap-1.5 ${
                                                 inflowSubMode === tab.value
-                                                    ? 'font-bold bg-white text-[#111827] shadow-sm'
+                                                    ? 'font-bold bg-white text-[#1F1F1F] shadow-sm'
                                                     : 'font-normal text-gray-500 hover:text-gray-700'
                                             }`}
                                         >
@@ -770,7 +799,7 @@ export const RequisitionList: React.FC = () => {
                                             {tab.count > 0 && (
                                                 <span className={`px-1 rounded text-[9px] ${
                                                     inflowSubMode === tab.value
-                                                        ? 'bg-[#E8EEF8] text-[#0058DB]'
+                                                        ? 'bg-[#E9EEF6] text-[#0B57D0]'
                                                         : 'bg-gray-200 text-gray-500'
                                                 }`}>
                                                     {tab.count}
@@ -785,7 +814,7 @@ export const RequisitionList: React.FC = () => {
                                 <>
                                     {loading && (
                                         <div className="bg-gray-50/60 rounded-2xl p-24 text-center">
-                                            <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-[#006AFF] mb-6"></div>
+                                            <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-[#0B57D0] mb-6"></div>
                                             <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Syncing your inbox...</p>
                                         </div>
                                     )}
@@ -813,6 +842,16 @@ export const RequisitionList: React.FC = () => {
                                                     console.error('Failed to fetch requisition details:', err);
                                                 }
                                             }}
+                                            onDeleteMany={userRole === 'ADMIN' ? async (ids) => {
+                                                if (!window.confirm(`Delete ${ids.length} request${ids.length === 1 ? '' : 's'}? This can't be undone. Only requests that haven't been paid can be deleted; any others are skipped.`)) return;
+                                                try {
+                                                    const r = await requisitionService.deleteMany(ids);
+                                                    await loadRequisitions();
+                                                    if (r.skipped.length) alert(`Deleted ${r.deleted}. Skipped ${r.skipped.length}:\n\n` + r.skipped.slice(0, 8).map((x) => `• ${x.description || x.id}: ${x.reason}`).join('\n'));
+                                                } catch (err: any) {
+                                                    alert(err.message || 'Failed to delete the requests');
+                                                }
+                                            } : undefined}
                                             onDelete={async (id) => {
                                                 if (window.confirm('Are you sure you want to delete this requisition? This action cannot be undone.')) {
                                                     try {
@@ -832,7 +871,7 @@ export const RequisitionList: React.FC = () => {
                                     {inflowSubMode === 'cash' && (<>
                                         {inflowsLoading && inflows.length === 0 && (
                                             <div className="bg-gray-50/60 rounded-2xl p-24 text-center">
-                                                <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-emerald-500 mb-6"></div>
+                                                <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-[#0B57D0] mb-6"></div>
                                                 <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Loading inflows...</p>
                                             </div>
                                         )}
@@ -841,7 +880,7 @@ export const RequisitionList: React.FC = () => {
                                                 <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-white mb-6 border border-gray-100">
                                                     <FileText className="h-10 w-10 text-gray-200" />
                                                 </div>
-                                                <h3 className="text-xl font-bold text-brand-navy">No inflows yet</h3>
+                                                <h3 className="text-xl font-bold text-[#1F1F1F]">No inflows yet</h3>
                                                 <p className="text-gray-400 mt-2 max-w-sm mx-auto font-medium">Record a sale with the New Sale button to see money-in here.</p>
                                             </div>
                                         )}
@@ -857,7 +896,7 @@ export const RequisitionList: React.FC = () => {
                                     {inflowSubMode === 'invoices' && (<>
                                         {invoicesLoading && (
                                             <div className="bg-gray-50/60 rounded-2xl p-24 text-center">
-                                                <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-[#0058DB] mb-6"></div>
+                                                <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-[#0B57D0] mb-6"></div>
                                                 <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Loading invoices...</p>
                                             </div>
                                         )}
@@ -890,7 +929,7 @@ export const RequisitionList: React.FC = () => {
                     {inboxMode === 'outflows' && (<>
                     {loading && (
                         <div className="md:hidden bg-white shadow-sm border border-gray-100 rounded-[2.5rem] p-24 text-center">
-                            <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-[#006AFF] mb-6"></div>
+                            <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-[#0B57D0] mb-6"></div>
                             <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Syncing your inbox...</p>
                         </div>
                     )}
@@ -909,7 +948,7 @@ export const RequisitionList: React.FC = () => {
                             <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-gray-50 mb-6 border border-gray-100">
                                 <FileText className="h-10 w-10 text-gray-200" />
                             </div>
-                            <h3 className="text-xl font-bold text-brand-navy">No requisitions found</h3>
+                            <h3 className="text-xl font-bold text-[#1F1F1F]">No requisitions found</h3>
                             <p className="text-gray-400 mt-2 max-w-sm mx-auto font-medium">Your request list is currently empty.</p>
                         </div>
                     )}
@@ -1040,7 +1079,7 @@ export const RequisitionList: React.FC = () => {
                         {inflowSubMode === 'cash' && (<>
                             {inflowsLoading && inflows.length === 0 && (
                                 <div className="md:hidden bg-white shadow-sm border border-gray-100 rounded-[2.5rem] p-24 text-center">
-                                    <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-emerald-500 mb-6"></div>
+                                    <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-[#0B57D0] mb-6"></div>
                                     <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Loading inflows...</p>
                                 </div>
                             )}
@@ -1050,7 +1089,7 @@ export const RequisitionList: React.FC = () => {
                                     <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-gray-50 mb-6 border border-gray-100">
                                         <FileText className="h-10 w-10 text-gray-200" />
                                     </div>
-                                    <h3 className="text-xl font-bold text-brand-navy">No inflows yet</h3>
+                                    <h3 className="text-xl font-bold text-[#1F1F1F]">No inflows yet</h3>
                                     <p className="text-gray-400 mt-2 max-w-sm mx-auto font-medium">Record a sale with the New Sale button to see money-in here.</p>
                                 </div>
                             )}
@@ -1122,7 +1161,7 @@ export const RequisitionList: React.FC = () => {
                             <div className="md:hidden px-5 space-y-5">
                                 {invoicesLoading && invoices.length === 0 && (
                                     <div className="bg-white shadow-sm border border-gray-100 rounded-[2.5rem] p-24 text-center">
-                                        <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-[#0058DB] mb-6"></div>
+                                        <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-[#0B57D0] mb-6"></div>
                                         <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Loading invoices...</p>
                                     </div>
                                 )}
@@ -1136,7 +1175,7 @@ export const RequisitionList: React.FC = () => {
                                         <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-gray-50 mb-6 border border-gray-100">
                                             <FileText className="h-10 w-10 text-gray-200" />
                                         </div>
-                                        <h3 className="text-xl font-bold text-brand-navy">No invoices yet</h3>
+                                        <h3 className="text-xl font-bold text-[#1F1F1F]">No invoices yet</h3>
                                         <p className="text-gray-400 mt-2 max-w-sm mx-auto font-medium">Record a credit sale from New Sale to invoice a customer.</p>
                                     </div>
                                 )}
@@ -1250,7 +1289,7 @@ export const RequisitionList: React.FC = () => {
 
                     {/* Sheet Header */}
                     <div className="px-6 py-4 flex items-center justify-between border-b border-gray-50">
-                        <h2 className="text-xl font-bold text-brand-navy">{inboxMode === 'inflows' ? 'New Sale' : 'New Requisition'}</h2>
+                        <h2 className="text-xl font-bold text-[#1F1F1F]">{inboxMode === 'inflows' ? 'New Sale' : 'New Requisition'}</h2>
                         <button
                             onClick={() => setIsNewRequisitionOpen(false)}
                             className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100 transition-colors"
@@ -1287,11 +1326,11 @@ export const RequisitionList: React.FC = () => {
                                     className="w-full flex items-center p-4 text-left bg-white hover:bg-gray-50 rounded-2xl transition-all group active:scale-[0.98]"
                                 >
                                     <div className="p-3 bg-white rounded-xl mr-4 shadow-sm group-hover:shadow-md transition-shadow">
-                                        <Receipt className="h-6 w-6 text-[#0058DB]" />
+                                        <Receipt className="h-6 w-6 text-[#0B57D0]" />
                                     </div>
                                     <div>
                                         <div className="font-bold text-gray-900 text-base">Credit Sale</div>
-                                        <div className="text-xs text-[#0058DB]/70 font-medium">Invoice the customer, collect later</div>
+                                        <div className="text-xs text-[#0B57D0]/70 font-medium">Invoice the customer, collect later</div>
                                     </div>
                                 </button>
                                 {userRole === 'ADMIN' && <button
@@ -1324,7 +1363,7 @@ export const RequisitionList: React.FC = () => {
                             className="w-full flex items-center p-4 text-left bg-white hover:bg-gray-50 rounded-2xl transition-all group active:scale-[0.98]"
                         >
                             <div className="p-3 bg-white rounded-xl mr-4 shadow-sm group-hover:shadow-md transition-shadow">
-                                <FileText className="h-6 w-6 text-brand-navy" />
+                                <FileText className="h-6 w-6 text-[#1F1F1F]" />
                             </div>
                             <div>
                                 <div className="font-bold text-gray-900 text-base">New Requisition</div>
@@ -1340,7 +1379,7 @@ export const RequisitionList: React.FC = () => {
                             className="w-full flex items-center p-4 text-left bg-white hover:bg-gray-50 rounded-2xl transition-all group active:scale-[0.98]"
                         >
                             <div className="p-3 bg-white rounded-xl mr-4 shadow-sm group-hover:shadow-md transition-shadow">
-                                <History className="h-6 w-6 text-brand-navy" />
+                                <History className="h-6 w-6 text-[#1F1F1F]" />
                             </div>
                             <div>
                                 <div className="font-bold text-gray-900 text-base">New Salary Advance</div>
@@ -1356,7 +1395,7 @@ export const RequisitionList: React.FC = () => {
                             className="w-full flex items-center p-4 text-left bg-white hover:bg-gray-50 rounded-2xl transition-all group active:scale-[0.98]"
                         >
                             <div className="p-3 bg-white rounded-xl mr-4 shadow-sm group-hover:shadow-md transition-shadow">
-                                <Plus className="h-6 w-6 text-brand-navy" />
+                                <Plus className="h-6 w-6 text-[#1F1F1F]" />
                             </div>
                             <div>
                                 <div className="font-bold text-gray-900 text-base">New Staff Loan</div>
@@ -1372,7 +1411,7 @@ export const RequisitionList: React.FC = () => {
                             className="w-full flex items-center p-4 text-left bg-white hover:bg-gray-50 rounded-2xl transition-all group active:scale-[0.98]"
                         >
                             <div className="p-3 bg-white rounded-xl mr-4 shadow-sm group-hover:shadow-md transition-shadow">
-                                <TrendingUp className="h-6 w-6 text-brand-navy" />
+                                <TrendingUp className="h-6 w-6 text-[#1F1F1F]" />
                             </div>
                             <div>
                                 <div className="font-bold text-gray-900 text-base">Invest</div>
@@ -1389,7 +1428,7 @@ export const RequisitionList: React.FC = () => {
                                 className="w-full flex items-center p-4 text-left bg-white hover:bg-gray-50 rounded-2xl transition-all group active:scale-[0.98]"
                             >
                                 <div className="p-3 bg-white rounded-xl mr-4 shadow-sm group-hover:shadow-md transition-shadow">
-                                    <FileText className="h-6 w-6 text-brand-navy" />
+                                    <FileText className="h-6 w-6 text-[#1F1F1F]" />
                                 </div>
                                 <div>
                                     <div className="font-bold text-gray-900 text-base">New Payroll Requisition</div>
@@ -1413,7 +1452,7 @@ export const RequisitionList: React.FC = () => {
                         <div className="w-12 h-1.5 bg-gray-200 rounded-full" />
                     </div>
                     <div className="px-6 py-4 flex items-center justify-between border-b border-gray-50">
-                        <h2 className="text-xl font-bold text-brand-navy">Filters</h2>
+                        <h2 className="text-xl font-bold text-[#1F1F1F]">Filters</h2>
                         <button
                             onClick={() => setIsFilterSheetOpen(false)}
                             className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100 transition-colors"
@@ -1452,7 +1491,7 @@ export const RequisitionList: React.FC = () => {
                                         }}
                                         className={`px-4 py-2 rounded-full text-xs font-bold transition-all border ${
                                             (status.value === 'ALL' ? tempStatus.includes('ALL') : tempStatus.includes(status.value))
-                                                ? 'bg-[#F0F7FF] text-[#006AFF] border-[#006AFF]/30'
+                                                ? 'bg-[#E8F0FE] text-[#0B57D0] border-[#0B57D0]/30'
                                                 : 'bg-gray-50 text-gray-500 border-transparent hover:bg-gray-100'
                                         }`}
                                     >
@@ -1474,7 +1513,7 @@ export const RequisitionList: React.FC = () => {
                                         onClick={() => setTempRead(option.value as any)}
                                         className={`flex-1 py-2.5 rounded-2xl text-xs font-bold transition-all border text-center ${
                                             tempRead === option.value
-                                                ? 'bg-[#F0F7FF] text-[#006AFF] border-[#006AFF]/30'
+                                                ? 'bg-[#E8F0FE] text-[#0B57D0] border-[#0B57D0]/30'
                                                 : 'bg-gray-50 text-gray-500 border-transparent hover:bg-gray-100'
                                         }`}
                                     >
@@ -1506,7 +1545,7 @@ export const RequisitionList: React.FC = () => {
                                         }}
                                         className={`px-4 py-2 rounded-full text-xs font-bold transition-all border ${
                                             (dept === 'ALL' ? tempDepartment.includes('ALL') : tempDepartment.includes(dept))
-                                                ? 'bg-[#F0F7FF] text-[#006AFF] border-[#006AFF]/30'
+                                                ? 'bg-[#E8F0FE] text-[#0B57D0] border-[#0B57D0]/30'
                                                 : 'bg-gray-50 text-gray-500 border-transparent hover:bg-gray-100'
                                         }`}
                                     >
@@ -1525,7 +1564,7 @@ export const RequisitionList: React.FC = () => {
                                         type="date"
                                         value={tempStartDate}
                                         onChange={(e) => setTempStartDate(e.target.value)}
-                                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3 text-sm text-brand-navy font-bold focus:outline-none focus:ring-2 focus:ring-[#006AFF]/10 focus:bg-white transition-all"
+                                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3 text-sm text-[#1F1F1F] font-bold focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/10 focus:bg-white transition-all"
                                     />
                                 </div>
                                 <div className="flex-1">
@@ -1534,7 +1573,7 @@ export const RequisitionList: React.FC = () => {
                                         type="date"
                                         value={tempEndDate}
                                         onChange={(e) => setTempEndDate(e.target.value)}
-                                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3 text-sm text-brand-navy font-bold focus:outline-none focus:ring-2 focus:ring-[#006AFF]/10 focus:bg-white transition-all"
+                                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3 text-sm text-[#1F1F1F] font-bold focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/10 focus:bg-white transition-all"
                                     />
                                 </div>
                             </div>
@@ -1562,7 +1601,7 @@ export const RequisitionList: React.FC = () => {
                                 setFilterEndDate(tempEndDate);
                                 setIsFilterSheetOpen(false);
                             }}
-                            className="flex-1 py-4 bg-[#006AFF] md:bg-[#0059D8] hover:bg-blue-600 text-white font-bold rounded-2xl active:scale-[0.98] transition-all text-sm text-center shadow-md shadow-blue-100"
+                            className="flex-1 py-4 bg-[#0B57D0] md:bg-[#0B57D0] hover:bg-blue-600 text-white font-bold rounded-2xl active:scale-[0.98] transition-all text-sm text-center shadow-md shadow-blue-100"
                         >
                             Apply Filters
                         </button>
@@ -1586,7 +1625,7 @@ export const RequisitionList: React.FC = () => {
                 >
                     <button
                         onClick={() => setIsNewRequisitionOpen(true)}
-                        className="h-16 w-16 bg-[#006AFF] md:bg-[#0059D8] text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-all hover:bg-blue-600"
+                        className="h-16 w-16 bg-[#0B57D0] md:bg-[#0B57D0] text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-all hover:bg-blue-600"
                     >
                         <Plus size={32} />
                     </button>

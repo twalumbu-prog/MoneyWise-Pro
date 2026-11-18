@@ -10,7 +10,9 @@ import { supabase } from '../lib/supabase';
 export type PlanEntitlements = {
     planId: string;
     status: string;
+    /** Premium or Enterprise: both have the paid team features. */
     isPremium: boolean;
+    isEnterprise: boolean;
     /** null = unlimited */
     maxMembers: number | null;
 };
@@ -41,7 +43,8 @@ export async function getEntitlements(organizationId: string): Promise<PlanEntit
     return {
         planId,
         status: sub?.status || 'active',
-        isPremium: planId === 'premium',
+        isPremium: planId === 'premium' || planId === 'enterprise',
+        isEnterprise: planId === 'enterprise',
         // Unknown plan row => fall back to the Free plan's limit rather than unlimited.
         maxMembers: plan ? (plan.max_members ?? null) : 1,
     };
@@ -67,6 +70,14 @@ export async function assertCanAddMember(organizationId: string): Promise<void> 
             `Your ${ent.planId === 'free' ? 'Free' : ent.planId} plan is limited to ${ent.maxMembers} team member${ent.maxMembers === 1 ? '' : 's'}. ` +
             'Upgrade to Premium under Settings → Subscription & Billing to add more people.'
         );
+    }
+}
+
+/** Throws PlanLimitError unless the org is on Enterprise (for example Accounting). */
+export async function assertEnterprise(organizationId: string, feature: string): Promise<void> {
+    const ent = await getEntitlements(organizationId);
+    if (!ent.isEnterprise) {
+        throw new PlanLimitError(`${feature} is an Enterprise feature. Upgrade to Enterprise to use it.`);
     }
 }
 

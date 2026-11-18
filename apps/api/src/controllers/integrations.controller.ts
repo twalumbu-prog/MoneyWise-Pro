@@ -152,3 +152,39 @@ export const syncRequisition = async (req: AuthRequest, res: Response<any>) => {
         res.status(500).json({ error: error.message });
     }
 };
+
+/**
+ * GET /integrations/overview — one cheap call telling the Integrations page which cards to mark "Connected".
+ * Connected = a record exists (QuickBooks, Sage, Master Fees), a wallet is linked (Lenco), or at least one ACTIVE
+ * mailbox / messaging account exists (Gmail, WhatsApp / Facebook / Instagram). Org-scoped; leaks no credentials.
+ */
+export const getIntegrationsOverview = async (req: AuthRequest, res: Response<any>) => {
+    try {
+        const organizationId = (req as any).user.organization_id;
+        if (!organizationId) return res.status(400).json({ error: 'User does not belong to an organization' });
+
+        const [records, org, mailboxes, messaging] = await Promise.all([
+            supabase.from('integrations').select('provider').eq('organization_id', organizationId)
+                .in('provider', ['QUICKBOOKS', 'SAGE_ACCOUNTING', 'MASTERFEES']),
+            supabase.from('organizations').select('lenco_subaccount_id').eq('id', organizationId).maybeSingle(),
+            supabase.from('email_connections').select('id', { count: 'exact', head: true })
+                .eq('organization_id', organizationId).eq('status', 'ACTIVE'),
+            supabase.from('messaging_connections').select('platform')
+                .eq('organization_id', organizationId).eq('status', 'ACTIVE'),
+        ]);
+
+        const has = (provider: string) => (records.data || []).some((r: any) => r.provider === provider);
+        const platforms = new Set((messaging.data || []).map((m: any) => m.platform));
+        res.json({
+            quickbooks: has('QUICKBOOKS'),
+            sage: has('SAGE_ACCOUNTING'),
+            masterfees: has('MASTERFEES'),
+            lenco: !!(org.data as any)?.lenco_subaccount_id,
+            gmail: (mailboxes.count ?? 0) > 0,
+            meta: platforms.size > 0,
+            messaging: { whatsapp: platforms.has('WHATSAPP'), facebook: platforms.has('FACEBOOK'), instagram: platforms.has('INSTAGRAM') },
+        });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+};

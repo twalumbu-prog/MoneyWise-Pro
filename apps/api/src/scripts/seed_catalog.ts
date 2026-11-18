@@ -1,0 +1,190 @@
+/**
+ * Seeds the construction catalogue used by price comparison. Safe to run again: items are matched by slug and updated, never duplicated.
+ * Names, units and sizes are the usual ones used by Zambian suppliers; the team can edit or add items in the Price desk.
+ * Run: npx tsx src/scripts/seed_catalog.ts
+ */
+import { supabase } from '../lib/supabase';
+
+type Row = [name: string, unit: string, detail?: string, brand?: string, keywords?: string];
+const CATALOG: Record<string, Row[]> = {
+    'Cement & concrete': [
+        ['Cement 50 kg bag (32.5)', 'bag', '50 kg', undefined, 'portland general purpose 32.5 mamba chilanga dangote lafarge'],
+        ['Cement 50 kg bag (42.5)', 'bag', '50 kg', undefined, 'portland high strength 42.5 structural'],
+        ['Mamba cement 50 kg bag', 'bag', '50 kg', 'Mamba', 'cement'],
+        ['Chilanga cement 50 kg bag', 'bag', '50 kg', 'Chilanga', 'cement lafarge'],
+        ['Dangote cement 50 kg bag', 'bag', '50 kg', 'Dangote', 'cement'],
+        ['Tile adhesive 20 kg bag', 'bag', '20 kg', undefined, 'cement glue tiling'],
+        ['Plaster mix 25 kg bag', 'bag', '25 kg', undefined, 'plastering render'],
+        ['Ready-mix concrete', 'm3', 'per cubic metre', undefined, 'concrete delivered mixer'],
+        ['Hydrated lime 25 kg bag', 'bag', '25 kg', undefined, 'lime'],
+        ['Waterproofing additive 5 litre', 'tin', '5 litre', undefined, 'damp proof additive'],
+    ],
+    'Blocks & bricks': [
+        ['Hollow block 4 inch (100 mm)', 'piece', '100 mm', undefined, 'concrete block cement brick'],
+        ['Hollow block 6 inch (150 mm)', 'piece', '150 mm', undefined, 'concrete block'],
+        ['Hollow block 9 inch (230 mm)', 'piece', '230 mm', undefined, 'concrete block'],
+        ['Solid block 6 inch', 'piece', '150 mm', undefined, 'concrete block solid'],
+        ['Burnt brick (clay)', 'piece', undefined, undefined, 'bricks clay burnt'],
+        ['Face brick', 'piece', undefined, undefined, 'bricks facing decorative'],
+        ['Paving brick', 'piece', undefined, undefined, 'pavers driveway'],
+        ['Kerb stone', 'piece', undefined, undefined, 'curb concrete'],
+        ['Airbrick vent', 'piece', undefined, undefined, 'ventilation'],
+    ],
+    'Sand & stone': [
+        ['River sand', 'tonne', undefined, undefined, 'building sand'],
+        ['River sand 7 tonne load', 'load', '7 tonnes', undefined, 'truck tipper building sand'],
+        ['Pit sand', 'tonne', undefined, undefined, 'plaster sand'],
+        ['Quarry dust', 'tonne', undefined, undefined, 'crusher dust'],
+        ['Crusher stone 19 mm', 'tonne', '19 mm', undefined, 'aggregate gravel concrete stone'],
+        ['Crusher stone 13 mm', 'tonne', '13 mm', undefined, 'aggregate gravel'],
+        ['Crusher stone 7 tonne load', 'load', '7 tonnes', undefined, 'truck tipper aggregate'],
+        ['Gravel', 'tonne', undefined, undefined, 'road base murram'],
+        ['Murram', 'tonne', undefined, undefined, 'gravel fill road'],
+        ['Fill material', 'load', undefined, undefined, 'soil earth'],
+    ],
+    'Steel & reinforcement': [
+        ['Reinforcing bar Y8 (12 m)', 'length', '12 m', undefined, 'rebar steel y8 8mm'],
+        ['Reinforcing bar Y10 (12 m)', 'length', '12 m', undefined, 'rebar steel y10 10mm'],
+        ['Reinforcing bar Y12 (12 m)', 'length', '12 m', undefined, 'rebar steel y12 12mm'],
+        ['Reinforcing bar Y16 (12 m)', 'length', '12 m', undefined, 'rebar steel y16 16mm'],
+        ['Reinforcing bar Y20 (12 m)', 'length', '12 m', undefined, 'rebar steel y20 20mm'],
+        ['Reinforcing mesh A142 sheet', 'sheet', '6 x 2.4 m', undefined, 'brc mesh fabric'],
+        ['Reinforcing mesh A193 sheet', 'sheet', '6 x 2.4 m', undefined, 'brc mesh fabric'],
+        ['Binding wire', 'kg', undefined, undefined, 'tie wire'],
+        ['Square tube 25 x 25 mm (6 m)', 'length', '6 m', undefined, 'steel tubing box'],
+        ['Square tube 50 x 50 mm (6 m)', 'length', '6 m', undefined, 'steel tubing box'],
+        ['Angle iron 40 x 40 mm (6 m)', 'length', '6 m', undefined, 'steel angle'],
+        ['Flat bar 25 x 3 mm (6 m)', 'length', '6 m', undefined, 'steel flat'],
+        ['Round tube 25 mm (6 m)', 'length', '6 m', undefined, 'steel pipe'],
+    ],
+    'Roofing': [
+        ['IBR roofing sheet 0.4 mm', 'metre', '0.4 mm', undefined, 'iron sheet corrugated roofing galvanised'],
+        ['IBR roofing sheet 0.5 mm', 'metre', '0.5 mm', undefined, 'iron sheet roofing'],
+        ['Chromadek roofing sheet 0.5 mm', 'metre', '0.5 mm', undefined, 'coloured roofing sheet'],
+        ['Corrugated iron sheet (3 m)', 'sheet', '3 m', undefined, 'zinc galvanised'],
+        ['Roof tile (concrete)', 'piece', undefined, undefined, 'tiles roofing'],
+        ['Ridge cap', 'piece', undefined, undefined, 'roofing ridge'],
+        ['Roofing screws (box of 100)', 'box', '100 pieces', undefined, 'self drilling screws'],
+        ['Roofing nails 75 mm', 'kg', '75 mm', undefined, 'umbrella head nails'],
+        ['Gutter 3 m', 'piece', '3 m', undefined, 'guttering rain'],
+        ['Brandering (50 x 38 mm)', 'metre', '50 x 38 mm', undefined, 'purlin timber roof'],
+        ['Roof insulation (foil)', 'roll', undefined, undefined, 'insulation sisalation'],
+    ],
+    'Timber & boards': [
+        ['Timber 38 x 38 mm', 'metre', '38 x 38 mm', undefined, 'wood 2x2'],
+        ['Timber 38 x 76 mm', 'metre', '38 x 76 mm', undefined, 'wood 2x3'],
+        ['Timber 50 x 100 mm', 'metre', '50 x 100 mm', undefined, 'wood 2x4 rafter'],
+        ['Timber 50 x 152 mm', 'metre', '50 x 152 mm', undefined, 'wood 2x6'],
+        ['Plywood 18 mm sheet', 'sheet', '2.4 x 1.2 m, 18 mm', undefined, 'board shuttering'],
+        ['Plywood 12 mm sheet', 'sheet', '2.4 x 1.2 m, 12 mm', undefined, 'board'],
+        ['Ceiling board (gypsum) sheet', 'sheet', '2.4 x 1.2 m', undefined, 'drywall ceiling'],
+        ['Chipboard 16 mm sheet', 'sheet', '2.4 x 1.2 m, 16 mm', undefined, 'board particle'],
+        ['Hardboard sheet', 'sheet', '2.4 x 1.2 m', undefined, 'masonite'],
+        ['Fascia board', 'metre', undefined, undefined, 'roof trim'],
+        ['Door frame (timber)', 'piece', undefined, undefined, 'frame wooden'],
+    ],
+    'Paint & finishes': [
+        ['Emulsion paint 20 litre', 'tin', '20 litre', undefined, 'wall paint pva interior plascon crown dulux'],
+        ['Emulsion paint 5 litre', 'tin', '5 litre', undefined, 'wall paint'],
+        ['Exterior wall paint 20 litre', 'tin', '20 litre', undefined, 'weather guard exterior'],
+        ['Roof paint 20 litre', 'tin', '20 litre', undefined, 'roof coating'],
+        ['Gloss enamel paint 5 litre', 'tin', '5 litre', undefined, 'oil paint'],
+        ['Undercoat 20 litre', 'tin', '20 litre', undefined, 'primer'],
+        ['Wall putty 25 kg', 'bag', '25 kg', undefined, 'skim filler'],
+        ['Paint brush 100 mm', 'piece', '100 mm', undefined, 'brush'],
+        ['Paint roller set', 'piece', undefined, undefined, 'roller'],
+        ['Varnish 5 litre', 'tin', '5 litre', undefined, 'wood finish'],
+    ],
+    'Plumbing': [
+        ['PVC pipe 110 mm (6 m)', 'length', '110 mm, 6 m', undefined, 'sewer drainage'],
+        ['PVC pipe 50 mm (6 m)', 'length', '50 mm, 6 m', undefined, 'waste drainage'],
+        ['PVC pressure pipe 25 mm (6 m)', 'length', '25 mm, 6 m', undefined, 'water supply'],
+        ['PVC pressure pipe 20 mm (6 m)', 'length', '20 mm, 6 m', undefined, 'water supply'],
+        ['Water tank 1000 litre', 'piece', '1000 litre', undefined, 'jojo plastic storage'],
+        ['Water tank 5000 litre', 'piece', '5000 litre', undefined, 'jojo plastic storage'],
+        ['Toilet (WC) set', 'set', undefined, undefined, 'cistern pan'],
+        ['Wash basin', 'piece', undefined, undefined, 'sink'],
+        ['Kitchen sink (single bowl)', 'piece', undefined, undefined, 'stainless'],
+        ['Shower mixer', 'piece', undefined, undefined, 'tap bathroom'],
+        ['Tap (bib tap)', 'piece', undefined, undefined, 'faucet outside'],
+        ['Gate valve 20 mm', 'piece', '20 mm', undefined, 'water valve'],
+        ['Septic tank ring', 'piece', undefined, undefined, 'soak pit concrete'],
+    ],
+    'Electrical': [
+        ['Twin and earth cable 2.5 mm (100 m)', 'roll', '2.5 mm, 100 m', undefined, 'wire electrical'],
+        ['Twin and earth cable 1.5 mm (100 m)', 'roll', '1.5 mm, 100 m', undefined, 'wire lighting'],
+        ['Twin and earth cable 6 mm (50 m)', 'roll', '6 mm, 50 m', undefined, 'wire cooker'],
+        ['Double socket outlet', 'piece', undefined, undefined, 'plug'],
+        ['Light switch (1 gang)', 'piece', undefined, undefined, 'switch'],
+        ['Distribution board (8 way)', 'piece', undefined, undefined, 'db box breaker'],
+        ['Circuit breaker 20 A', 'piece', '20 A', undefined, 'mcb'],
+        ['LED bulb 9 W', 'piece', '9 W', undefined, 'light globe'],
+        ['LED floodlight 50 W', 'piece', '50 W', undefined, 'security light'],
+        ['Conduit pipe 20 mm (3 m)', 'length', '20 mm, 3 m', undefined, 'electrical pvc'],
+        ['Solar panel 200 W', 'piece', '200 W', undefined, 'pv'],
+        ['Solar battery 100 Ah', 'piece', '100 Ah', undefined, 'gel deep cycle'],
+        ['Inverter 1 kVA', 'piece', '1 kVA', undefined, 'power'],
+    ],
+    'Tiles & flooring': [
+        ['Floor tile 60 x 60 cm', 'm2', undefined, undefined, 'porcelain ceramic'],
+        ['Floor tile 40 x 40 cm', 'm2', undefined, undefined, 'ceramic'],
+        ['Wall tile 30 x 60 cm', 'm2', undefined, undefined, 'bathroom kitchen'],
+        ['Tile grout 5 kg', 'bag', '5 kg', undefined, 'tile'],
+        ['Skirting tile', 'piece', undefined, undefined, 'tile'],
+        ['Vinyl flooring', 'm2', undefined, undefined, 'floor covering'],
+        ['Laminate flooring', 'm2', undefined, undefined, 'wood floor'],
+        ['Carpet tile', 'm2', undefined, undefined, 'floor'],
+    ],
+    'Doors & windows': [
+        ['Steel door frame', 'piece', undefined, undefined, 'door frame metal'],
+        ['Steel window frame (standard)', 'piece', undefined, undefined, 'window metal'],
+        ['Aluminium window (standard)', 'piece', undefined, undefined, 'window'],
+        ['Flush door (interior)', 'piece', undefined, undefined, 'door wooden hollow core'],
+        ['Security door (steel)', 'piece', undefined, undefined, 'door burglar'],
+        ['Burglar bars', 'piece', undefined, undefined, 'window guard'],
+        ['Door lock set', 'set', undefined, undefined, 'mortice lock'],
+        ['Glass 4 mm', 'm2', '4 mm', undefined, 'window pane'],
+        ['Garage door', 'piece', undefined, undefined, 'roller'],
+    ],
+    'Hardware & fasteners': [
+        ['Nails 75 mm', 'kg', '75 mm', undefined, 'wire nails'],
+        ['Nails 100 mm', 'kg', '100 mm', undefined, 'wire nails'],
+        ['Wood screws (box of 200)', 'box', '200 pieces', undefined, 'screws'],
+        ['Padlock', 'piece', undefined, undefined, 'lock'],
+        ['Hinges (pair)', 'pair', undefined, undefined, 'door'],
+        ['Damp proof course (DPC) roll', 'roll', undefined, undefined, 'dpc membrane'],
+        ['Polythene sheeting (DPM)', 'roll', undefined, undefined, 'plastic damp'],
+        ['Barbed wire', 'roll', undefined, undefined, 'fencing'],
+        ['Chain link fencing', 'roll', undefined, undefined, 'fence'],
+        ['Fence poles (concrete)', 'piece', undefined, undefined, 'pole fencing'],
+        ['Razor wire', 'roll', undefined, undefined, 'security'],
+    ],
+    'Tools & equipment': [
+        ['Wheelbarrow', 'piece', undefined, undefined, 'builders'],
+        ['Shovel', 'piece', undefined, undefined, 'spade'],
+        ['Pick axe', 'piece', undefined, undefined, 'dig'],
+        ['Claw hammer', 'piece', undefined, undefined, 'tool'],
+        ['Brick trowel', 'piece', undefined, undefined, 'tool'],
+        ['Spirit level (1.2 m)', 'piece', '1.2 m', undefined, 'level'],
+        ['Measuring tape (5 m)', 'piece', '5 m', undefined, 'tool'],
+        ['Electric drill', 'piece', undefined, undefined, 'power tool'],
+        ['Angle grinder', 'piece', undefined, undefined, 'power tool'],
+        ['Concrete mixer (hire per day)', 'day', undefined, undefined, 'hire machine'],
+        ['Scaffolding (hire per day)', 'day', undefined, undefined, 'hire'],
+    ],
+};
+
+const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+
+(async () => {
+    const rows = Object.entries(CATALOG).flatMap(([category, items]) => items.map(([name, unit, unit_detail, brand, keywords]) => ({
+        slug: slugify(name), name, category, vertical: 'CONSTRUCTION', unit, unit_detail: unit_detail ?? null, brand: brand ?? null, keywords: keywords ?? null, is_active: true, updated_at: new Date().toISOString(),
+    })));
+    const dupes = rows.length - new Set(rows.map((r) => r.slug)).size;
+    if (dupes) { console.error(`${dupes} duplicate names would collide; fix the list first.`); process.exit(1); }
+    const { error } = await supabase.from('catalog_items').upsert(rows, { onConflict: 'slug' });
+    if (error) { console.error('seed failed:', error.message); process.exit(1); }
+    const { count } = await supabase.from('catalog_items').select('id', { count: 'exact', head: true });
+    console.log(`seeded ${rows.length} items across ${Object.keys(CATALOG).length} categories; catalogue now holds ${count}.`);
+    process.exit(0);
+})();

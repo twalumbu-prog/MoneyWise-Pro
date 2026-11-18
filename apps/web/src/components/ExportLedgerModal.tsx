@@ -62,7 +62,7 @@ const ExportLedgerModal: React.FC<ExportLedgerModalProps> = ({
                             onClick={() => setFormat('csv')}
                             className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${
                                 format === 'csv'
-                                    ? 'border-[#006AFF] bg-blue-50/50 text-[#006AFF]'
+                                    ? 'border-[#0B57D0] bg-blue-50/50 text-[#0B57D0]'
                                     : 'border-gray-100 hover:border-gray-200 text-gray-500'
                             }`}
                         >
@@ -73,7 +73,7 @@ const ExportLedgerModal: React.FC<ExportLedgerModalProps> = ({
                             onClick={() => setFormat('xlsx')}
                             className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${
                                 format === 'xlsx'
-                                    ? 'border-[#006AFF] bg-blue-50/50 text-[#006AFF]'
+                                    ? 'border-[#0B57D0] bg-blue-50/50 text-[#0B57D0]'
                                     : 'border-gray-100 hover:border-gray-200 text-gray-500'
                             }`}
                         >
@@ -84,7 +84,7 @@ const ExportLedgerModal: React.FC<ExportLedgerModalProps> = ({
                             onClick={() => setFormat('pdf')}
                             className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${
                                 format === 'pdf'
-                                    ? 'border-[#006AFF] bg-blue-50/50 text-[#006AFF]'
+                                    ? 'border-[#0B57D0] bg-blue-50/50 text-[#0B57D0]'
                                     : 'border-gray-100 hover:border-gray-200 text-gray-500'
                             }`}
                         >

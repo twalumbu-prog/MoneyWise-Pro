@@ -196,7 +196,7 @@ export const InvoicePaymentModal: React.FC<Props> = ({
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100">
                     <div>
-                        <p className="text-base font-bold text-[#111827]">Pay Invoice</p>
+                        <p className="text-base font-bold text-[#1F1F1F]">Pay Invoice</p>
                         <p className="text-xs text-gray-400 mt-0.5">{invoiceNumber} · ZMW {amountDue.toFixed(2)}</p>
                     </div>
                     <button
@@ -210,14 +210,14 @@ export const InvoicePaymentModal: React.FC<Props> = ({
                 {/* Method toggle */}
                 <div className="px-6 pt-5">
                     <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-3">Payment Method</p>
-                    <div className="flex items-center gap-1 p-1 bg-[#F3F5FC] md:bg-[#F8FAFD] rounded-[10px]">
+                    <div className="flex items-center gap-1 p-1 bg-[#F8FAFD] md:bg-[#F8FAFD] rounded-[10px]">
                         {tabs.map(t => (
                             <button
                                 key={t.id}
                                 onClick={() => { setMethod(t.id); setError(null); setMomoPhase('form'); }}
                                 className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] whitespace-nowrap transition-all ${
                                     method === t.id
-                                        ? 'font-bold bg-white text-[#111827] shadow-sm'
+                                        ? 'font-bold bg-white text-[#1F1F1F] shadow-sm'
                                         : 'font-normal text-gray-500 hover:text-gray-700'
                                 }`}
                             >
@@ -253,18 +253,18 @@ export const InvoicePaymentModal: React.FC<Props> = ({
                                                 onClick={() => setSelectedWalletId(wallet.id)}
                                                 className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all text-left ${
                                                     isSelected
-                                                        ? 'border-[#0058DB] bg-blue-50/50'
+                                                        ? 'border-[#0B57D0] bg-blue-50/50'
                                                         : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50/50'
                                                 }`}
                                             >
                                                 <div className="flex items-center gap-3">
                                                     <div className={`h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                                                        isSelected ? 'bg-[#0058DB]' : 'bg-gray-100'
+                                                        isSelected ? 'bg-[#0B57D0]' : 'bg-gray-100'
                                                     }`}>
                                                         <Wallet size={14} className={isSelected ? 'text-white' : 'text-gray-400'} />
                                                     </div>
                                                     <div>
-                                                        <p className="text-sm font-medium text-[#111827]">
+                                                        <p className="text-sm font-medium text-[#1F1F1F]">
                                                             {wallet.name}
                                                             {wallet.is_main && (
                                                                 <span className="ml-2 text-[9px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full">Main</span>
@@ -276,7 +276,7 @@ export const InvoicePaymentModal: React.FC<Props> = ({
                                                         </p>
                                                     </div>
                                                 </div>
-                                                {isSelected && <CheckCircle2 size={16} className="text-[#0058DB] flex-shrink-0" />}
+                                                {isSelected && <CheckCircle2 size={16} className="text-[#0B57D0] flex-shrink-0" />}
                                             </button>
                                         );
                                     })}
@@ -286,7 +286,7 @@ export const InvoicePaymentModal: React.FC<Props> = ({
                             {selectedWallet && (
                                 <div className="mt-1 px-4 py-3 bg-gray-50 rounded-xl flex items-center justify-between">
                                     <span className="text-xs text-gray-500">Amount to deduct</span>
-                                    <span className="text-sm font-bold text-[#111827]">ZMW {amountDue.toFixed(2)}</span>
+                                    <span className="text-sm font-bold text-[#1F1F1F]">ZMW {amountDue.toFixed(2)}</span>
                                 </div>
                             )}
                         </div>
@@ -310,10 +310,10 @@ export const InvoicePaymentModal: React.FC<Props> = ({
                             {momoPhase === 'waiting' && (
                                 <div className="flex flex-col items-center justify-center py-10 gap-4 text-center">
                                     <div className="h-14 w-14 rounded-2xl bg-blue-50 flex items-center justify-center">
-                                        <Loader2 size={26} className="text-[#0058DB] animate-spin" />
+                                        <Loader2 size={26} className="text-[#0B57D0] animate-spin" />
                                     </div>
                                     <div>
-                                        <p className="text-sm font-bold text-[#111827]">Waiting for payment</p>
+                                        <p className="text-sm font-bold text-[#1F1F1F]">Waiting for payment</p>
                                         <p className="text-xs text-gray-400 mt-1 max-w-[220px]">
                                             A prompt has been sent to <span className="font-semibold">{momoPhone}</span>. Please approve it on your phone.
                                         </p>
@@ -383,7 +383,7 @@ export const InvoicePaymentModal: React.FC<Props> = ({
                                     {momoPhone.length >= 9 && (
                                         <div className="px-4 py-3 rounded-2xl bg-white border border-slate-200 flex items-center gap-3">
                                             {resolvingAccountName ? (
-                                                <Loader2 size={16} className="text-blue-600 animate-spin flex-shrink-0" />
+                                                <Loader2 size={16} className="text-[#0B57D0] animate-spin flex-shrink-0" />
                                             ) : resolvedAccountName ? (
                                                 <Check size={16} className="text-emerald-500 flex-shrink-0" />
                                             ) : (
@@ -403,7 +403,7 @@ export const InvoicePaymentModal: React.FC<Props> = ({
                                     {/* Amount */}
                                     <div className="px-4 py-3 bg-gray-50 rounded-xl flex items-center justify-between">
                                         <span className="text-xs text-gray-500">Amount</span>
-                                        <span className="text-sm font-bold text-[#111827]">ZMW {amountDue.toFixed(2)}</span>
+                                        <span className="text-sm font-bold text-[#1F1F1F]">ZMW {amountDue.toFixed(2)}</span>
                                     </div>
                                 </div>
                             )}
@@ -436,7 +436,7 @@ export const InvoicePaymentModal: React.FC<Props> = ({
                                 (method === 'moneywise' && (!selectedWalletId || !hasEnough)) ||
                                 (method === 'mobile_money' && !canPayMomo)
                             }
-                            className="flex-1 px-4 py-2.5 rounded-xl bg-[#00347C] text-white text-sm font-bold flex items-center justify-center gap-2 hover:bg-[#002460] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="flex-1 px-4 py-2.5 rounded-xl bg-[#0842A0] text-white text-sm font-bold flex items-center justify-center gap-2 hover:bg-[#002460] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {paying ? (
                                 <><Loader2 size={14} className="animate-spin" /> Processing…</>

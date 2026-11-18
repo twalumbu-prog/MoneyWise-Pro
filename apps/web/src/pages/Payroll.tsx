@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { StatutoryPanel } from '../components/payroll/StatutoryPanel';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
@@ -11,7 +12,7 @@ import { BatchImportStaff } from '../components/payroll/BatchImportStaff';
 import { PayrollConfigModal } from '../components/payroll/PayrollConfigModal';
 import { Search, SlidersHorizontal, ArrowDownUp, Plus, X, UserPlus, FileSpreadsheet, Settings } from 'lucide-react';
 
-type MainTab = 'history' | 'staff';
+type MainTab = 'history' | 'staff' | 'statutory';
 type SortDir = 'desc' | 'asc';
 
 const STATUS_CONFIG: Record<string, { label: string; dotColor: string; textColor: string; bgColor: string }> = {
@@ -180,6 +181,16 @@ export const Payroll: React.FC = () => {
                             >
                                 Staff Members
                             </button>
+                            <button
+                                onClick={() => { setMainTab('statutory'); setSearch(''); setSearchOpen(false); }}
+                                className={`px-3.5 h-full rounded-lg text-[10px] font-['DM_Sans'] transition-all ${
+                                    mainTab === 'statutory'
+                                        ? 'bg-white shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)] font-bold text-gray-900'
+                                        : 'font-normal text-gray-900 hover:bg-white/50'
+                                }`}
+                            >
+                                Statutory &amp; Books
+                            </button>
                         </div>
                         
                         {/* Configure Button */}
@@ -194,6 +205,8 @@ export const Payroll: React.FC = () => {
 
                     {/* Inner content */}
                     <div className="flex-1 flex flex-col gap-2 overflow-hidden">
+
+                        {mainTab === 'statutory' && <StatutoryPanel />}
 
                         {mainTab === 'history' && (
                             <>
@@ -403,28 +416,28 @@ export const Payroll: React.FC = () => {
                                                     <Plus size={13} />
                                                 </button>
                                                 {isNewMemberMenuOpen && (
-                                                    <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-72 bg-white rounded-2xl shadow-[0px_8px_24px_0px_rgba(17,24,39,0.12)] outline outline-1 outline-offset-[-1px] outline-[#E8EEF8] overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                                                    <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-72 bg-white rounded-2xl shadow-[0px_8px_24px_0px_rgba(17,24,39,0.12)] outline outline-1 outline-offset-[-1px] outline-[#E9EEF6] overflow-hidden animate-in fade-in zoom-in-95 duration-100">
                                                         <button
                                                             onClick={() => { setIsNewMemberMenuOpen(false); setIsAddStaffOpen(true); }}
-                                                            className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#F3F5FC] transition-colors"
+                                                            className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#F8FAFD] transition-colors"
                                                         >
                                                             <div className="w-9 h-9 flex items-center justify-center flex-shrink-0 text-blue-600">
                                                                 <UserPlus size={18} />
                                                             </div>
                                                             <div className="min-w-0">
-                                                                <div className="text-xs font-bold text-[#111827] truncate">Add Employee</div>
+                                                                <div className="text-xs font-bold text-[#1F1F1F] truncate">Add Employee</div>
                                                                 <div className="text-[11px] text-gray-400 truncate">Add a single staff member manually</div>
                                                             </div>
                                                         </button>
                                                         <button
                                                             onClick={() => { setIsNewMemberMenuOpen(false); setIsBatchImportOpen(true); }}
-                                                            className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#F3F5FC] transition-colors"
+                                                            className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#F8FAFD] transition-colors"
                                                         >
                                                             <div className="w-9 h-9 flex items-center justify-center flex-shrink-0 text-emerald-600">
                                                                 <FileSpreadsheet size={18} />
                                                             </div>
                                                             <div className="min-w-0">
-                                                                <div className="text-xs font-bold text-[#111827] truncate">Import from Excel / CSV</div>
+                                                                <div className="text-xs font-bold text-[#1F1F1F] truncate">Import from Excel / CSV</div>
                                                                 <div className="text-[11px] text-gray-400 truncate">Batch add staff from a spreadsheet file</div>
                                                             </div>
                                                         </button>

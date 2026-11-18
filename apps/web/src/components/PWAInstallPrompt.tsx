@@ -72,7 +72,7 @@ const PWAInstallPrompt: React.FC = () => {
             </div>
             <button 
                 onClick={handleInstallClick}
-                className="w-full mt-4 bg-[#006AFF] hover:bg-blue-600 text-white font-bold py-2.5 rounded-xl shadow-sm transition-colors text-sm flex items-center justify-center space-x-2"
+                className="w-full mt-4 bg-[#0B57D0] hover:bg-blue-600 text-white font-bold py-2.5 rounded-xl shadow-sm transition-colors text-sm flex items-center justify-center space-x-2"
             >
                 <Download size={16} />
                 <span>Install App</span>

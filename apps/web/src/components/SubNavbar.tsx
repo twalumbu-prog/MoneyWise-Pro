@@ -25,7 +25,7 @@ export const SubNavbar: React.FC = () => {
                             to={item.path}
                             className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all whitespace-nowrap
                                 ${isActive 
-                                    ? 'bg-[#F0F7FF] text-[#006AFF] shadow-sm shadow-blue-50' 
+                                    ? 'bg-[#E8F0FE] text-[#0B57D0] shadow-sm shadow-blue-50' 
                                     : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'}`}
                         >
                             {item.path === '/intelligence' && ( // Changed from '/business-intelligence' to '/intelligence' based on menuItems path

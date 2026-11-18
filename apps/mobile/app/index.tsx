@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { onboardingService } from 'core';
 import { useAuth } from '../src/context/AuthContext';
 import { socialOrgPickPending, clearSocialOrgPick } from '../src/lib/socialAuth';
+import { takeTapCode } from '../src/lib/pendingTap';
 import { colors, fonts, radius } from '../src/theme/tokens';
 
 // Orgs whose onboarding is known-finished this session — avoids re-checking on every visit.
@@ -219,6 +220,9 @@ export default function Index() {
 
     if (needsOnboarding) return <Redirect href="/onboarding" />;
 
+    // A tap-to-pay link opened before signing in: go to it now.
+    const pendingTap = takeTapCode();
+    if (pendingTap) return <Redirect href={`/r/${pendingTap}` as any} />;
     return <Redirect href="/(tabs)" />;
 }
 

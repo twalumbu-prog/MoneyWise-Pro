@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { crmService, CampaignAudience, LoyaltyOverview, LoyaltySegment, SendCampaignResult } from '../../services/crm.service';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { crmService, CampaignAudience, EmailDesign, LoyaltyOverview, LoyaltySegment, SendCampaignResult } from '../../services/crm.service';
 import { SEGMENT_STYLE, SegmentBadge } from './loyaltyUi';
-import { X, Loader2, Send, Mail, CheckCircle2, AlertTriangle, Sparkles } from 'lucide-react';
+import { X, Loader2, Send, Mail, CheckCircle2, AlertTriangle, Sparkles, Code2, Upload, Trash2, Save } from 'lucide-react';
 
 interface Props {
     overview?: LoyaltyOverview;
@@ -20,6 +20,22 @@ const TOKENS = [
 ];
 
 type Tab = 'compose' | 'audience' | 'list';
+
+const MAX_HTML_CHARS = 1_500_000;
+
+/** Fills the personalisation tokens with sample values (HTML-escaped) for the in-app preview. */
+const sampleHtml = (html: string, business: string) => {
+    const e = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return html
+        .replace(/\{\{\s*first_name\s*\}\}/gi, 'Alex')
+        .replace(/\{\{\s*name\s*\}\}/gi, 'Alex Sample')
+        .replace(/\{\{\s*business\s*\}\}/gi, e(business));
+};
+
+/** Renders an HTML design in a fully sandboxed frame (no scripts, no same-origin access). */
+const HtmlFrame: React.FC<{ html: string; className?: string; title: string }> = ({ html, className, title }) => (
+    <iframe title={title} sandbox="" srcDoc={html} className={`w-full bg-white border-0 ${className || ''}`} />
+);
 
 const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter(x => x !== v) : [...list, v]);
 
@@ -44,6 +60,22 @@ export const CampaignModal: React.FC<Props> = ({ overview, organizationName, ini
     const [error, setError] = useState('');
     const [notice, setNotice] = useState('');
     const [result, setResult] = useState<SendCampaignResult | null>(null);
+    // Custom HTML design (an ad designed elsewhere). When set, it replaces the written body.
+    const [customHtml, setCustomHtml] = useState<{ name: string; html: string; designId?: string } | null>(null);
+    const [htmlOpen, setHtmlOpen] = useState(false);
+    const [htmlDraft, setHtmlDraft] = useState('');
+    const [htmlName, setHtmlName] = useState('');
+    const [htmlDesignId, setHtmlDesignId] = useState<string | undefined>();
+    const [htmlBusy, setHtmlBusy] = useState(false);
+    const [htmlError, setHtmlError] = useState('');
+    const fileRef = useRef<HTMLInputElement>(null);
+    const queryClient = useQueryClient();
+    const { data: designs, isFetching: designsLoading } = useQuery({
+        queryKey: ['crm-email-designs'],
+        queryFn: () => crmService.listEmailDesigns(),
+        enabled: htmlOpen,
+        staleTime: 30_000,
+    });
 
     // Re-count the audience (debounced) whenever the targeting changes.
     const audienceKey = JSON.stringify(audience);
@@ -61,7 +93,8 @@ export const CampaignModal: React.FC<Props> = ({ overview, organizationName, ini
     const products = useMemo(() => overview?.products.slice(0, 16) || [], [overview]);
     const recipients = preview?.recipients ?? 0;
     const businessName = organizationName || 'Your business';
-    const canSend = !!subject.trim() && !!body.trim() && recipients > 0 && !preview?.over_limit;
+    const hasContent = customHtml ? !!customHtml.html.trim() : !!body.trim();
+    const canSend = !!subject.trim() && hasContent && recipients > 0 && !preview?.over_limit;
 
     const sample = (text: string) =>
         text.replace(/\{\{\s*first_name\s*\}\}/gi, 'Alex').replace(/\{\{\s*name\s*\}\}/gi, 'Alex Sample').replace(/\{\{\s*business\s*\}\}/gi, businessName);
@@ -100,6 +133,76 @@ export const CampaignModal: React.FC<Props> = ({ overview, organizationName, ini
         }
     };
 
+    const openHtml = () => {
+        setHtmlError('');
+        setHtmlDraft(customHtml?.html || '');
+        setHtmlName(customHtml?.name || '');
+        setHtmlDesignId(customHtml?.designId);
+        setHtmlOpen(true);
+    };
+
+    const onHtmlFile = async (file?: File | null) => {
+        if (!file) return;
+        setHtmlError('');
+        if (!/\.(html?|txt)$/i.test(file.name) && !/html|text/.test(file.type)) {
+            setHtmlError('Choose an .html file.');
+            return;
+        }
+        if (file.size > MAX_HTML_CHARS) {
+            setHtmlError('That file is too large (max ~1.5 MB). Host the images online instead of embedding them.');
+            return;
+        }
+        const text = await file.text();
+        setHtmlDraft(text);
+        setHtmlDesignId(undefined);
+        if (!htmlName.trim()) setHtmlName(file.name.replace(/\.(html?|txt)$/i, ''));
+        if (fileRef.current) fileRef.current.value = '';
+    };
+
+    const pickDesign = (d: EmailDesign) => {
+        setHtmlError('');
+        setHtmlDraft(d.html);
+        setHtmlName(d.name);
+        setHtmlDesignId(d.id);
+    };
+
+    const removeDesign = async (d: EmailDesign) => {
+        if (!window.confirm(`Delete the saved design "${d.name}"?`)) return;
+        try {
+            await crmService.deleteEmailDesign(d.id);
+            if (htmlDesignId === d.id) setHtmlDesignId(undefined);
+            queryClient.invalidateQueries({ queryKey: ['crm-email-designs'] });
+        } catch (err: any) {
+            setHtmlError(err?.message || 'Could not delete the design');
+        }
+    };
+
+    const applyHtml = async (save: boolean) => {
+        const html = htmlDraft.trim();
+        if (!html) { setHtmlError('Upload an HTML file or paste the code first.'); return; }
+        if (html.length > MAX_HTML_CHARS) { setHtmlError('The HTML is too large (max ~1.5 MB). Host the images online instead of embedding them.'); return; }
+        const name = htmlName.trim() || 'Custom design';
+        let designId = htmlDesignId;
+        if (save) {
+            setHtmlBusy(true);
+            setHtmlError('');
+            try {
+                const saved = await crmService.saveEmailDesign({ id: htmlDesignId, name, html });
+                designId = saved.id;
+                queryClient.invalidateQueries({ queryKey: ['crm-email-designs'] });
+            } catch (err: any) {
+                setHtmlError(err?.message || 'Could not save the design');
+                setHtmlBusy(false);
+                return;
+            } finally {
+                setHtmlBusy(false);
+            }
+        }
+        setCustomHtml({ name, html, designId });
+        setHtmlOpen(false);
+        setNotice(save ? `Design "${name}" saved — this email will use it.` : `This email will use the "${name}" design.`);
+    };
+
     const insertToken = (token: string) => setBody(b => `${b}${b && !b.endsWith(' ') && !b.endsWith('\n') ? ' ' : ''}${token}`);
 
     const run = async (kind: 'test' | 'send') => {
@@ -111,6 +214,7 @@ export const CampaignModal: React.FC<Props> = ({ overview, organizationName, ini
                 audience,
                 subject: subject.trim(),
                 body: body.trim(),
+                html: customHtml?.html || undefined,
                 cta_label: ctaLabel.trim() || undefined,
                 cta_url: ctaUrl.trim() || undefined,
                 test_only: kind === 'test',
@@ -186,15 +290,40 @@ export const CampaignModal: React.FC<Props> = ({ overview, organizationName, ini
                         <section className="flex flex-col gap-3">
                             <div className="flex items-center justify-between">
                                     <label className={`${LABEL} !mb-0`}>Write your email</label>
-                                    <button
-                                        type="button"
-                                        onClick={() => { setAiError(''); setAiOpen(true); }}
-                                        className="h-7 px-3 rounded-lg bg-violet-50 text-violet-700 border border-violet-100 text-[11px] font-bold flex items-center gap-1.5 hover:bg-violet-100 transition-colors"
-                                    >
-                                        <Sparkles size={12} /> Draft with AI
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => { setAiError(''); setAiOpen(true); }}
+                                            disabled={!!customHtml}
+                                            title={customHtml ? 'Remove the HTML design to write with AI' : undefined}
+                                            className="h-7 px-3 rounded-lg bg-violet-50 text-violet-700 border border-violet-100 text-[11px] font-bold flex items-center gap-1.5 hover:bg-violet-100 transition-colors disabled:opacity-50 disabled:hover:bg-violet-50"
+                                        >
+                                            <Sparkles size={12} /> Draft with AI
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={openHtml}
+                                            className="h-7 px-3 rounded-lg bg-slate-50 text-slate-700 border border-slate-200 text-[11px] font-bold flex items-center gap-1.5 hover:bg-slate-100 transition-colors"
+                                        >
+                                            <Code2 size={12} /> Use HTML
+                                        </button>
+                                    </div>
                                 </div>
                             <input className={INPUT} placeholder="Subject, e.g. A little thank-you from {{business}}" value={subject} maxLength={150} onChange={e => setSubject(e.target.value)} />
+                            {customHtml ? (
+                                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 flex items-start gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-700 flex items-center justify-center flex-shrink-0"><Code2 size={14} /></div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-xs font-bold text-gray-900 truncate">Custom HTML design: {customHtml.name}</p>
+                                        <p className="text-[11px] text-gray-500 mt-0.5">The email is sent exactly as designed. {'{{first_name}}'}, {'{{name}}'} and {'{{business}}'} in the HTML are filled in for each customer; the "why you're receiving this" line is added at the bottom.</p>
+                                        <div className="flex items-center gap-3 mt-2">
+                                            <button type="button" onClick={openHtml} className="text-[11px] font-semibold text-blue-600 hover:underline">Change design</button>
+                                            <button type="button" onClick={() => { setCustomHtml(null); setNotice(''); }} className="text-[11px] font-semibold text-red-600 hover:underline">Remove and write instead</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                            <>
                             <textarea rows={8} className={`${INPUT} resize-y`} value={body} onChange={e => setBody(e.target.value)} placeholder="Write your message…" />
                             <div className="flex items-center gap-2 flex-wrap -mt-1">
                                 <span className="text-[10px] text-gray-400">Insert:</span>
@@ -212,11 +341,20 @@ export const CampaignModal: React.FC<Props> = ({ overview, organizationName, ini
                                     <input className={INPUT} placeholder="https://…" value={ctaUrl} onChange={e => setCtaUrl(e.target.value)} />
                                 </div>
                             </div>
+                            </>
+                            )}
                         </section>
                             </div>
                     {/* Right: live preview */}
                     <div className="flex flex-col gap-2">
                         <label className={LABEL}>Preview</label>
+                        {customHtml ? (
+                        <div className="flex-1 rounded-xl bg-[#EAECEF] p-4 flex flex-col gap-2 min-h-[420px]">
+                            <p className="text-[10px] text-gray-500">Subject: <span className="text-gray-800 font-semibold">{sample(subject) || '—'}</span></p>
+                            <HtmlFrame title="Email preview" html={sampleHtml(customHtml.html, businessName)} className="flex-1 min-h-[380px] rounded-lg border border-gray-200" />
+                            <p className="text-[10px] text-gray-400 text-center">You're receiving this because you're a customer of {businessName}… (added when sent)</p>
+                        </div>
+                        ) : (
                         <div className="flex-1 rounded-xl bg-[#EAECEF] p-4 overflow-y-auto">
                             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden max-w-md mx-auto">
                                 <div className="text-center pt-6 pb-2 px-6"><div className="text-lg font-extrabold tracking-tight text-gray-900">{businessName}</div></div>
@@ -234,6 +372,7 @@ export const CampaignModal: React.FC<Props> = ({ overview, organizationName, ini
                                 </div>
                             </div>
                         </div>
+                        )}
                     </div>
                         </div>
                     )}
@@ -326,7 +465,7 @@ export const CampaignModal: React.FC<Props> = ({ overview, organizationName, ini
                         {notice && !error && <span className="text-emerald-600 font-medium">{notice}</span>}
                     </div>
                     <div className="flex items-center gap-3">
-                        <button type="button" onClick={() => run('test')} disabled={!subject.trim() || !body.trim() || busy !== null}
+                        <button type="button" onClick={() => run('test')} disabled={!subject.trim() || !hasContent || busy !== null}
                             className="h-9 px-4 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 flex items-center gap-2">
                             {busy === 'test' ? <Loader2 size={12} className="animate-spin" /> : null} Send test to me
                         </button>
@@ -348,6 +487,91 @@ export const CampaignModal: React.FC<Props> = ({ overview, organizationName, ini
                     </div>
                 </div>
             </div>
+            {htmlOpen && (
+                <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden">
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center"><Code2 size={15} /></div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-900">Use your own HTML design</h3>
+                                    <p className="text-[11px] text-gray-500">Upload the HTML for an ad or newsletter designed elsewhere, or reuse a saved one.</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setHtmlOpen(false)} disabled={htmlBusy} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100"><X size={16} /></button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <div className="flex flex-col gap-4 min-w-0">
+                                <div>
+                                    <label className={LABEL}>Saved designs</label>
+                                    {designsLoading && !designs ? (
+                                        <div className="text-xs text-gray-400 flex items-center gap-2"><Loader2 size={12} className="animate-spin" /> Loading…</div>
+                                    ) : !designs?.length ? (
+                                        <p className="text-xs text-gray-400">No saved designs yet — designs you save appear here for future emails.</p>
+                                    ) : (
+                                        <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto">
+                                            {designs.map(d => (
+                                                <div key={d.id} className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${htmlDesignId === d.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                                                    <button type="button" onClick={() => pickDesign(d)} className="flex-1 min-w-0 text-left">
+                                                        <span className="block text-xs font-semibold text-gray-900 truncate">{d.name}</span>
+                                                        <span className="block text-[10px] text-gray-400">Updated {new Date(d.updated_at).toLocaleDateString()}</span>
+                                                    </button>
+                                                    <button type="button" onClick={() => removeDesign(d)} title="Delete design" className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50"><Trash2 size={13} /></button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                <div>
+                                    <label className={LABEL}>Design name</label>
+                                    <input className={INPUT} placeholder="e.g. December promo" value={htmlName} maxLength={120} onChange={e => setHtmlName(e.target.value)} />
+                                </div>
+                                <div className="flex flex-col flex-1">
+                                    <div className="flex items-center justify-between mb-1.5">
+                                        <label className={`${LABEL} !mb-0`}>HTML code</label>
+                                        <input ref={fileRef} type="file" accept=".html,.htm,text/html" className="hidden" onChange={e => onHtmlFile(e.target.files?.[0])} />
+                                        <button type="button" onClick={() => fileRef.current?.click()} className="h-7 px-3 rounded-lg border border-gray-200 text-[11px] font-bold text-gray-700 flex items-center gap-1.5 hover:bg-gray-50">
+                                            <Upload size={12} /> Upload .html file
+                                        </button>
+                                    </div>
+                                    <textarea
+                                        rows={14}
+                                        spellCheck={false}
+                                        className={`${INPUT} resize-y font-mono text-[11px] leading-relaxed flex-1`}
+                                        value={htmlDraft}
+                                        onChange={e => { setHtmlDraft(e.target.value); }}
+                                        placeholder={'<!DOCTYPE html>\n<html>\n  <body>…your design…</body>\n</html>'}
+                                    />
+                                    <p className="text-[10px] text-gray-400 mt-1.5">
+                                        Use {'{{first_name}}'}, {'{{name}}'} or {'{{business}}'} anywhere in the HTML to personalise it. Link images from the web (https://…) — most email apps block embedded or local images. Scripts are removed.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex flex-col gap-2 min-h-[420px]">
+                                <label className={LABEL}>Preview</label>
+                                <div className="flex-1 rounded-xl bg-[#EAECEF] p-3 flex">
+                                    {htmlDraft.trim() ? (
+                                        <HtmlFrame title="Design preview" html={sampleHtml(htmlDraft, businessName)} className="flex-1 min-h-[400px] rounded-lg border border-gray-200" />
+                                    ) : (
+                                        <div className="flex-1 flex items-center justify-center text-xs text-gray-400">Upload or paste HTML to see it here.</div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-100 flex-shrink-0">
+                            <div className="text-xs min-h-[16px]">{htmlError && <span className="text-red-600 font-medium">{htmlError}</span>}</div>
+                            <div className="flex items-center gap-3">
+                                <button type="button" onClick={() => setHtmlOpen(false)} disabled={htmlBusy} className="h-9 px-4 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
+                                <button type="button" onClick={() => applyHtml(false)} disabled={htmlBusy || !htmlDraft.trim()} className="h-9 px-4 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">Use without saving</button>
+                                <button type="button" onClick={() => applyHtml(true)} disabled={htmlBusy || !htmlDraft.trim()}
+                                    className="h-9 px-5 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2">
+                                    {htmlBusy ? <><Loader2 size={12} className="animate-spin" /> Saving…</> : <><Save size={12} /> {htmlDesignId ? 'Save changes & use' : 'Save & use'}</>}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
             {aiOpen && (
                 <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">

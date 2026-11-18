@@ -60,7 +60,7 @@ if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
   100% { background-position: 400px 0; }
 }
 .mw-skeleton {
-  background: linear-gradient(90deg, #f1f5f9 0%, #e2e8f0 40px, #f1f5f9 80px);
+  background: linear-gradient(90deg, #F1F3F4 0%, #E8EAED 40px, #F1F3F4 80px);
   background-size: 400px 100%;
   animation: mw-shimmer 1.2s infinite linear;
 }
@@ -112,7 +112,7 @@ export const PrimaryButton: React.FC<React.ButtonHTMLAttributes<HTMLButtonElemen
 }) => (
     <button
         disabled={disabled || loading}
-        className={`inline-flex items-center justify-center gap-2.5 min-h-12 px-6 py-3 rounded-full text-base font-semibold text-white bg-black hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98] ${className || ''}`}
+        className={`inline-flex items-center justify-center gap-2.5 min-h-12 px-6 py-3 rounded-full text-base font-semibold text-white bg-[#0B57D0] hover:bg-[#0842A0] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98] ${className || ''}`}
         {...rest}
     >
         {loading && <Loader2 className="h-4 w-4 animate-spin" />}

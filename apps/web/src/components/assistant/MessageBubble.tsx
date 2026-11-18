@@ -39,14 +39,14 @@ const markdownComponents = {
     ul: (props: any) => <ul className="mb-3 ml-5 list-disc space-y-1.5 last:mb-0" {...props} />,
     ol: (props: any) => <ol className="mb-3 ml-5 list-decimal space-y-1.5 last:mb-0" {...props} />,
     li: (props: any) => <li className="pl-1 leading-[1.65]" {...props} />,
-    h1: (props: any) => <h1 className="mb-3 mt-5 text-[20px] font-black tracking-tight text-brand-navy first:mt-0" {...props} />,
-    h2: (props: any) => <h2 className="mb-2.5 mt-5 text-[17px] font-black tracking-tight text-brand-navy first:mt-0" {...props} />,
-    h3: (props: any) => <h3 className="mb-2 mt-4 text-[15px] font-black text-brand-navy first:mt-0" {...props} />,
-    strong: (props: any) => <strong className="font-black text-brand-navy" {...props} />,
+    h1: (props: any) => <h1 className="mb-3 mt-5 text-[20px] font-black tracking-tight text-[#1F1F1F] first:mt-0" {...props} />,
+    h2: (props: any) => <h2 className="mb-2.5 mt-5 text-[17px] font-black tracking-tight text-[#1F1F1F] first:mt-0" {...props} />,
+    h3: (props: any) => <h3 className="mb-2 mt-4 text-[15px] font-black text-[#1F1F1F] first:mt-0" {...props} />,
+    strong: (props: any) => <strong className="font-black text-[#1F1F1F]" {...props} />,
     code: (props: any) => (
-        <code className="rounded-md bg-gray-100 px-1.5 py-0.5 font-mono text-[12.5px] text-brand-navy" {...props} />
+        <code className="rounded-md bg-gray-100 px-1.5 py-0.5 font-mono text-[12.5px] text-[#1F1F1F]" {...props} />
     ),
-    a: (props: any) => <a className="font-bold text-[#006AFF] underline underline-offset-2" {...props} />,
+    a: (props: any) => <a className="font-bold text-[#0B57D0] underline underline-offset-2" {...props} />,
     hr: () => <hr className="my-4 border-gray-100" />,
     blockquote: (props: any) => (
         <blockquote className="my-3 border-l-2 border-gray-200 pl-3 text-gray-500" {...props} />
@@ -87,7 +87,7 @@ export const MessageBubble: React.FC<{ message: ChatMessage; children?: React.Re
     if (message.role === 'user') {
         return (
             <div className="flex justify-end">
-                <div className="max-w-[85%] whitespace-pre-wrap rounded-[20px] rounded-br-md bg-[#006AFF] px-4 py-3 text-[14.5px] leading-relaxed text-white shadow-lg shadow-blue-500/10">
+                <div className="max-w-[85%] whitespace-pre-wrap rounded-[20px] rounded-br-md bg-[#0B57D0] px-4 py-3 text-[14.5px] leading-relaxed text-white shadow-lg shadow-blue-500/10">
                     {message.content}
                 </div>
             </div>
@@ -125,7 +125,7 @@ export const MessageBubble: React.FC<{ message: ChatMessage; children?: React.Re
                             {message.content}
                         </ReactMarkdown>
                         {message.streaming && (
-                            <span className="ml-0.5 inline-block h-[15px] w-[2px] translate-y-[2px] animate-pulse bg-[#006AFF]" />
+                            <span className="ml-0.5 inline-block h-[15px] w-[2px] translate-y-[2px] animate-pulse bg-[#0B57D0]" />
                         )}
                     </div>
                 )}

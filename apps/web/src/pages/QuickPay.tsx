@@ -124,13 +124,24 @@ export const QuickPay: React.FC = () => {
     const [step, setStep] = useState<'LOADING' | 'ERROR' | 'AMOUNT' | 'PURPOSE' | 'PHONE' | 'PROCESSING'>('LOADING');
     const [org, setOrg] = useState<QuickLinkOrg | null>(null);
     const [wallet, setWallet] = useState<QuickLinkWallet | null>(null);
+    const [cardEnabled, setCardEnabled] = useState(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
     // AMOUNT step — a plain typed digit string, e.g. "1250.5", not a number
     // input, so the on-screen keypad fully controls formatting (matches the
     // Figma calculator-style entry; no native numeric keyboard involved).
     const [amountStr, setAmountStr] = useState('');
-    const amount = parseFloat(amountStr) || 0;
+    // A business that prices in US dollars: the keypad takes dollars and everything below works in the kwacha they come to today.
+    const [usdRate, setUsdRate] = useState<number | null>(null);
+    useEffect(() => {
+        if (!org?.id) return;
+        axios.get(`${API_URL}/lipila/public/pricing`, { params: { organizationId: org.id }, timeout: 15000 })
+            .then((r) => setUsdRate(r.data?.currency === 'USD' && Number(r.data?.rate) > 0 ? Number(r.data.rate) : null))
+            .catch(() => setUsdRate(null));
+    }, [org?.id]);
+    const typedAmount = parseFloat(amountStr) || 0;
+    const amount = usdRate ? Math.round(typedAmount * usdRate * 100) / 100 : typedAmount;
+    const quickAmounts = usdRate ? [10, 25, 50] : QUICK_AMOUNTS;
 
     // PURPOSE step
     const [purposes, setPurposes] = useState<QuickLinkPurpose[]>([]);
@@ -188,6 +199,7 @@ export const QuickPay: React.FC = () => {
                 const res = await axios.get(`${API_URL}/lenco/public-quicklink-context/${username}`, { timeout: 30000 });
                 setOrg(res.data.organization);
                 setWallet(res.data.wallet);
+                setCardEnabled(res.data.card_enabled === true);
 
                 if (!resumedRef.current) {
                     const saved = loadPendingPayment(username);
@@ -505,6 +517,60 @@ export const QuickPay: React.FC = () => {
         }
     };
 
+    // ── Card (Lipila): the customer types their card on Lipila's own page. The sale is recorded first, then the card payment starts, then we wait
+    // for the result exactly as for mobile money. Desktop gets a popup; phones go to the card page in this tab.
+    const CARD_RATE = 0.04;
+    const cardCharged = Math.round((amount / (1 - CARD_RATE)) * 100) / 100;
+    const cardFee = Math.round((cardCharged - amount) * 100) / 100;
+    const onPhoneBrowser = typeof navigator !== 'undefined' && /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
+
+    const handleCardSend = async () => {
+        const purposeLabel = customPurpose.trim() || purposes.find(p => p.id === selectedPurposeId)?.label;
+        if (!purposeLabel) { setStep('PURPOSE'); setPurposeError('Please select or type a reason for this payment.'); return; }
+        if (!wallet || !org || !username) return;
+        // Opened inside the click, before anything is awaited, or the browser blocks the popup.
+        const popup = !onPhoneBrowser ? window.open('about:blank', 'lipila_card', 'width=440,height=760') : null;
+        const ref = `LPL-DEP-${Date.now()}-${org.id.substring(0, 8)}-PUB`;
+        setCurrentReference(ref);
+        setError(null);
+        setSubmitting(true);
+        pollCancelledRef.current = false;
+        setElapsedSeconds(0);
+        setAwaitingApproval(false);
+        setPaymentPhase('initiating');
+        setStep('PROCESSING');
+        const checkoutStartedAt = Date.now();
+        trackEvent('quick_link_checkout', 'payment', 'started', { workflow_id: ref, organization_id: org.id, wallet_id: wallet.id, amount, total_payable: cardCharged, payment_method: 'card' });
+        try {
+            await axios.post(`${API_URL}/lenco/public-quicklink-intent`, {
+                reference: ref, amount, walletId: wallet.id, purpose: purposeLabel, isCustomPurpose: !!customPurpose.trim(),
+                payerPhone: checkoutPhone || undefined, referralCode: new URLSearchParams(window.location.search).get('ref') || undefined,
+            });
+            const init = await axios.post(`${API_URL}/lipila/public/card`, { organizationId: org.id, reference: ref, phone: checkoutPhone || undefined, kind: 'quick_link', token: username, returnUrl: window.location.href });
+            const url: string | undefined = init.data?.redirectUrl;
+            if (!url) throw new Error('The card payment could not be started. Please try again.');
+            savePendingPayment({ reference: ref, contextId: username, orgId: org.id, phone: checkoutPhone || '', amount: cardCharged, businessName: org.name, startedAt: checkoutStartedAt });
+            setResumedPayment(null);
+            setRecheckNote(null);
+            setPaymentPhase('confirm');
+            setAwaitingApproval(true);
+            setElapsedSeconds(0);
+            setSubmitting(false);
+            startCompletionPoll(ref, org.id, checkoutStartedAt);
+            if (onPhoneBrowser || !popup || popup.closed) window.location.href = url;
+            else popup.location.href = url;
+        } catch (err: any) {
+            try { popup?.close(); } catch { /* already closed */ }
+            clearPendingPayment();
+            setSubmitting(false);
+            setAwaitingApproval(false);
+            setPaymentPhase(null);
+            setStep('PHONE');
+            setError(err.response?.data?.error || err.message || 'Failed to start the card payment. Please try again.');
+            trackEvent('quick_link_checkout', 'payment', 'failed', { workflow_id: ref, organization_id: org.id, error_code: err?.response?.status || 'NETWORK_ERROR', error_message: err?.response?.data?.error || err.message, payment_method: 'card', duration_ms: Date.now() - checkoutStartedAt });
+        }
+    };
+
     const handleCancelPayment = async () => {
         setCancelling(true);
         pollCancelledRef.current = true;
@@ -585,7 +651,7 @@ export const QuickPay: React.FC = () => {
         return (
             <PageFrame>
                 <div className="flex-1 flex items-center justify-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+                    <Loader2 className="h-8 w-8 animate-spin text-[#0B57D0]" />
                 </div>
             </PageFrame>
         );
@@ -660,7 +726,7 @@ export const QuickPay: React.FC = () => {
 
                     <div className="w-full max-w-xs mx-auto mt-3">
                         <div className="flex items-center justify-between gap-1.5">
-                            <span className="text-4xl sm:text-5xl font-bold text-black">K</span>
+                            <span className="text-4xl sm:text-5xl font-bold text-black">{usdRate ? '$' : 'K'}</span>
                             <div className="flex items-center gap-1.5">
                                 <span className="text-4xl sm:text-5xl font-bold text-black">{amountStr}</span>
                                 <span className="mw-blink-cursor inline-block w-1 h-9 sm:h-11 bg-black" />
@@ -681,14 +747,14 @@ export const QuickPay: React.FC = () => {
                         fills the extra space on taller screens. */}
                     <div className="w-full flex flex-col" style={{ gap: vhGrow(14, 0.07, 34) }}>
                         <div className="w-full flex gap-3 sm:gap-4">
-                            {QUICK_AMOUNTS.map(a => (
+                            {quickAmounts.map(a => (
                                 <button
                                     key={a}
                                     onClick={() => setAmountStr(String(a))}
                                     className="flex-1 bg-zinc-100 hover:bg-zinc-200 rounded-xl flex items-center justify-center transition-colors"
                                     style={{ height: vhGrow(38, 0.1, 58) }}
                                 >
-                                    <span className="text-xs font-bold text-black">K{a.toLocaleString()}</span>
+                                    <span className="text-xs font-bold text-black">{usdRate ? '$' : 'K'}{a.toLocaleString()}</span>
                                 </button>
                             ))}
                         </div>
@@ -736,7 +802,7 @@ export const QuickPay: React.FC = () => {
                         onClick={handleProceedFromAmount}
                         disabled={amount <= 0}
                         className={`w-full h-14 rounded-xl font-bold text-base transition-all ${
-                            amount > 0 ? 'bg-black hover:bg-slate-800 text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
+                            amount > 0 ? 'bg-[#0B57D0] hover:bg-[#0842A0] text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
                         }`}
                     >
                         Send to {org.name}
@@ -807,7 +873,7 @@ export const QuickPay: React.FC = () => {
                         onClick={handleProceedFromPurpose}
                         disabled={!canProceedFromPurpose}
                         className={`w-full h-14 rounded-xl font-bold text-base transition-all ${
-                            canProceedFromPurpose ? 'bg-black hover:bg-slate-800 text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
+                            canProceedFromPurpose ? 'bg-[#0B57D0] hover:bg-[#0842A0] text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
                         }`}
                     >
                         Continue
@@ -880,7 +946,7 @@ export const QuickPay: React.FC = () => {
                             {checkoutPhone.length >= 9 && (
                                 <div className="mt-3 px-4 py-3 rounded-2xl bg-white border border-slate-200 flex items-center gap-3">
                                     {resolvingAccountName ? (
-                                        <Loader2 size={16} className="text-blue-600 animate-spin flex-shrink-0" />
+                                        <Loader2 size={16} className="text-[#0B57D0] animate-spin flex-shrink-0" />
                                     ) : resolvedAccountName ? (
                                         <Check size={16} className="text-emerald-500 flex-shrink-0" />
                                     ) : (
@@ -904,6 +970,30 @@ export const QuickPay: React.FC = () => {
                                 </div>
                             )}
                         </>
+                    ) : cardEnabled ? (
+                        <div className="px-1">
+                            <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-[#E8F0FE] text-[#0B57D0] flex items-center justify-center"><CreditCard size={20} /></div>
+                                    <div>
+                                        <p className="text-sm font-bold text-gray-800">Pay with a Visa, Mastercard or Amex</p>
+                                        <p className="text-[11px] text-gray-500">You’ll enter your card on a secure page. Your card details never touch this site.</p>
+                                    </div>
+                                </div>
+                                <div className="mt-4 space-y-1 text-xs text-gray-600">
+                                    {usdRate ? <div className="flex justify-between"><span>Priced at</span><span>${typedAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })} (K{usdRate.toFixed(2)} to $1)</span></div> : null}
+                                    <div className="flex justify-between"><span>Amount</span><span>K{amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                    <div className="flex justify-between"><span>Card fee</span><span>K{cardFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                    <div className="flex justify-between border-t border-slate-100 pt-1 font-bold text-gray-800"><span>You pay</span><span>K{cardCharged.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                </div>
+                            </div>
+                            {error && (
+                                <div className="mt-4 p-3.5 bg-rose-50 text-rose-600 rounded-xl flex items-start space-x-2">
+                                    <AlertCircle className="flex-shrink-0 mt-0.5" size={14} />
+                                    <span className="text-[11px] font-semibold leading-normal">{error}</span>
+                                </div>
+                            )}
+                        </div>
                     ) : (
                         <div className="text-center py-10 px-4 bg-white border border-slate-100 rounded-2xl">
                             <div className="mx-auto w-12 h-12 bg-slate-200 text-slate-500 rounded-full flex items-center justify-center mb-3">
@@ -933,11 +1023,20 @@ export const QuickPay: React.FC = () => {
                             onClick={handleSend}
                             disabled={!canSend}
                             className={`w-full h-14 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${
-                                canSend ? 'bg-black hover:bg-slate-800 text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
+                                canSend ? 'bg-[#0B57D0] hover:bg-[#0842A0] text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
                             }`}
                         >
                             {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
                             <span>{submitting ? 'Starting…' : `Send K${totalDisplayed.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}</span>
+                        </button>
+                    ) : cardEnabled ? (
+                        <button
+                            onClick={handleCardSend}
+                            disabled={submitting || amount <= 0}
+                            className={`w-full h-14 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${!submitting && amount > 0 ? 'bg-[#0B57D0] hover:bg-[#0842A0] text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'}`}
+                        >
+                            {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
+                            <span>{submitting ? 'Starting…' : `Pay K${cardCharged.toLocaleString(undefined, { minimumFractionDigits: 2 })} by card`}</span>
                         </button>
                     ) : (
                         <button disabled className="w-full h-14 rounded-xl font-bold text-base bg-neutral-100 text-zinc-400 cursor-not-allowed">
