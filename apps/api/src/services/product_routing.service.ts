@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { consumeVoucherForReference } from './rewards.service';
 import { cashbookService } from './cashbook.service';
 import { ledgerService } from './ledger.service';
 import { confirmAppointment } from './appointment.service';
@@ -87,6 +88,9 @@ export async function markPaymentLinkPaid(orgId: string, reference: string): Pro
  * cleared, we never throw: the row is flagged CONFLICT for the merchant to resolve.
  */
 export async function confirmBookingsForReference(orgId: string, reference: string): Promise<void> {
+    // Every confirmed payment passes through here (card, webhook, sync). A reward voucher held for this checkout is now used; a no-op for any
+    // payment that held none.
+    await consumeVoucherForReference(reference).catch((e) => console.error('[ProductRouting] voucher:', e?.message));
     try {
         // Time-slot appointments confirm through an advisory-locked RPC (capacity-aware).
         const { data: pendingAppts } = await supabase

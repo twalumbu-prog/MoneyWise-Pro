@@ -80,7 +80,7 @@ import pool from './db';
 // each cold Vercel instance otherwise opened a fresh direct connection and reran
 // ~15 sequential DDL statements just to find out they were all no-ops, which is
 // what was exhausting Postgres's connection limit under concurrent traffic.
-const MIGRATION_VERSION = 36;
+const MIGRATION_VERSION = 37;
 
 const runMigration = async () => {
     const directUrl = process.env.DIRECT_DATABASE_URL;
@@ -826,6 +826,11 @@ ALTER TABLE public.ad_campaigns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'ZMW';
 ALTER TABLE public.products DROP CONSTRAINT IF EXISTS products_currency_check;
 ALTER TABLE public.products ADD CONSTRAINT products_currency_check CHECK (currency IN ('ZMW', 'USD'));
+
+-- A voucher held for a checkout being paid (see supabase/migrations/20261119120000_voucher_hold.sql).
+ALTER TABLE public.reward_redemptions ADD COLUMN IF NOT EXISTS reserved_ref TEXT;
+ALTER TABLE public.reward_redemptions ADD COLUMN IF NOT EXISTS reserved_until TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_reward_redemptions_reserved_ref ON public.reward_redemptions (reserved_ref) WHERE reserved_ref IS NOT NULL;
 
 -- Stock for products (see supabase/migrations/20261103100000_product_stock.sql).
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS track_stock BOOLEAN NOT NULL DEFAULT false;

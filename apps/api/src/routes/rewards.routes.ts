@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { requireAuth, requireRole } from '../middleware/auth';
 import {
-    getOverview, getDetail, getInvite, claimReferral, getRedeemables, redeem, getProgram, updateProgram, useVoucher, listRewardItems, previewPurchase, claimPurchase, createRewardItem, updateRewardItem, deleteRewardItem,
+    getOverview, getDetail, getInvite, claimReferral, getRedeemables, redeem, getProgram, updateProgram, useVoucher, checkVoucher, previewVoucherForCart, listRewardItems, previewPurchase, claimPurchase, createRewardItem, updateRewardItem, deleteRewardItem,
 } from '../controllers/rewards.controller';
 
 const router = Router();
 // Public: the store checkout's success screen, before the payer has an account.
 router.get('/public/purchase', previewPurchase);
+router.post('/public/voucher-check', previewVoucherForCart);
 router.use(requireAuth);
 
 // The person's own rewards
@@ -25,6 +26,7 @@ router.get('/items', listRewardItems);
 router.post('/items', requireRole(['ADMIN']), createRewardItem);
 router.put('/items/:id', requireRole(['ADMIN']), updateRewardItem);
 router.delete('/items/:id', requireRole(['ADMIN']), deleteRewardItem);
+router.post('/vouchers/check', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER']), checkVoucher);
 router.post('/vouchers/use', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER']), useVoucher);
 
 export default router;

@@ -17,6 +17,7 @@ import { loadSettings } from './imports.service';
 import { recordUsage } from './usage.service';
 import { trackFlow } from '../lib/moneyFlowTracking';
 import { checkDeposit } from './salon.service';
+import { rewardsService } from './rewards.service';
 
 export class LipilaError extends Error {
     constructor(message: string, public httpStatus = 400, public code = 'LIPILA') { super(message); }
@@ -555,6 +556,15 @@ async function assertAmountIsRight(orgId: string, reference: string, net: number
         const kw = await productPrices(ids as string[], orgId);
         const price = new Map<string, number>((prods ?? []).map((p: any) => { const k = kw.get(p.id); return [p.id, k ? (k.currency === 'USD' ? round2(k.zmw * 0.98) : k.zmw) : Number.POSITIVE_INFINITY]; }));
         const prodById = new Map<string, any>((prods ?? []).map((p: any) => [p.id, p]));
+        // A reward voucher held for this payment: it is accepted for the order's price (from the database) LESS exactly what that voucher takes off,
+        // worked out again here from the voucher's own terms. Anything else is a payment for less than the price.
+        const heldDiscount = await rewardsService.heldDiscountFor(orgId, reference, lines.map((l: any) => ({ product_id: l.product_id, unit_price: kw.get(l.product_id)?.zmw ?? 0, quantity: num(l.quantity) })));
+        if (heldDiscount !== null) {
+            const gross = round2(lines.reduce((s: number, l: any) => s + (kw.get(l.product_id)?.zmw ?? Number.POSITIVE_INFINITY) * num(l.quantity), 0));
+            const rateSlack = lines.some((l: any) => kw.get(l.product_id)?.currency === 'USD') ? gross * 0.02 : 0;
+            if (!Number.isFinite(gross) || sum + 0.01 + rateSlack < round2(gross - heldDiscount)) throw wrong();
+            return;
+        }
         // A product with a price can't be bought for less. (Donations have no price: the payer chooses.)
         for (const l of lines) {
             if (paysBalance) continue;
