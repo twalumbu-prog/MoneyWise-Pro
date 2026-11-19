@@ -80,7 +80,7 @@ import pool from './db';
 // each cold Vercel instance otherwise opened a fresh direct connection and reran
 // ~15 sequential DDL statements just to find out they were all no-ops, which is
 // what was exhausting Postgres's connection limit under concurrent traffic.
-const MIGRATION_VERSION = 37;
+const MIGRATION_VERSION = 38;
 
 const runMigration = async () => {
     const directUrl = process.env.DIRECT_DATABASE_URL;
@@ -1313,6 +1313,17 @@ ALTER TABLE public.accounting_settings ADD COLUMN IF NOT EXISTS tpin TEXT;
 ALTER TABLE public.accounting_settings ADD COLUMN IF NOT EXISTS vat_number TEXT;
 
 ALTER TABLE public.customer_invoices ADD COLUMN IF NOT EXISTS vat_amount NUMERIC(14,2) NOT NULL DEFAULT 0;
+-- Reminders to the customer who owes a business money (see supabase/migrations/20261119140000_customer_payment_reminders.sql).
+CREATE TABLE IF NOT EXISTS public.payment_reminder_settings (
+    organization_id   UUID PRIMARY KEY REFERENCES public.organizations(id) ON DELETE CASCADE,
+    enabled           BOOLEAN NOT NULL DEFAULT false,
+    repeat_every_days INTEGER NOT NULL DEFAULT 7 CHECK (repeat_every_days BETWEEN 2 AND 30),
+    max_reminders     INTEGER NOT NULL DEFAULT 3 CHECK (max_reminders BETWEEN 1 AND 6),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.payment_reminder_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.customer_invoices ADD COLUMN IF NOT EXISTS customer_reminder_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE public.customer_invoices ADD COLUMN IF NOT EXISTS customer_last_reminder_at TIMESTAMPTZ;
 ALTER TABLE public.purchase_bills ADD COLUMN IF NOT EXISTS vat_amount NUMERIC(14,2) NOT NULL DEFAULT 0;
 ALTER TABLE public.purchase_bill_lines ADD COLUMN IF NOT EXISTS tax_code TEXT;
 ALTER TABLE public.purchase_bill_lines ADD COLUMN IF NOT EXISTS vat_amount NUMERIC(14,2) NOT NULL DEFAULT 0;

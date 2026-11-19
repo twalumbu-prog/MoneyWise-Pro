@@ -43,7 +43,20 @@ Item 3, broken down. **Correction:** an earlier note said points can't be redeem
 | Mobile-money amount: the browser still tells the server how much to charge (this was already so, and I did not change it); the server could check it against the recorded sale | todo, worth doing |
 | Apply a voucher at the till (New Sale) | todo, after checkout |
 | MoneyWise platform points (referrals, price reports) have somewhere to be spent, such as a discount on a MoneyWise plan | todo, your decision (it costs us money) |
-| 4 | **Help businesses get paid faster.** Automatic WhatsApp/SMS reminders with the pay link for unpaid invoices. | `todo` | An overdue invoice sends a reminder on a schedule the business sets, and stops when paid. |
+| 4 | **Help businesses get paid faster.** Automatic WhatsApp reminders to the customer, with a pay link for the current balance, for unpaid invoices. | `built` (needs a deploy) | An overdue invoice sends the customer a reminder on a schedule the business sets, and stops when it is paid. |
+
+Item 4, broken down. **What already existed:** reminders to the business's own *finance team* (a weekly email about overdue customer invoices). **What this adds:** reminders to the *customer who owes the money*.
+
+| Part | Status |
+|---|---|
+| Rules and message (`services/paymentReminders.service.ts`): off until the business switches it on; an open or part-paid invoice that has reached its follow-up date; repeat every 2 to 30 days (default 7), at most 1 to 6 (default 3); stops the moment it is paid or voided; the Lusaka date decides "due"; a message that couldn't go out is not counted and is tried again | built, 36 checks pass against real invoices with a stand-in for WhatsApp |
+| Sent by the daily 07:00 UTC (09:00 Lusaka) job that already runs the finance-team reminders (`POST /invoices/tick`), so no new scheduler and nobody is messaged at night | built; **production needs a deploy** |
+| "Remind on WhatsApp now" button on an invoice (any day, at most once a day to the same customer) and the automatic-reminder settings, in the invoice's detail window | built, types check; not seen in a browser (needs a signed-in business with an unpaid invoice) |
+| Database: `payment_reminder_settings` table and two counters on `customer_invoices` (migration 20261119140000, already applied to the live database; startup version 38) | done |
+| Uses the shared WaAPI WhatsApp number (the one pay-link receipts use). **Needs `WAAPI_API_TOKEN` and `WAAPI_INSTANCE_ID` set on the production API**; without them nothing is sent or counted | to check |
+| Reminders for pay links and invoices created at the till that have no follow-up date | todo |
+| Email as a second channel when there's no WhatsApp number; a reminder from the business's own WhatsApp rather than the shared number | todo |
+| Expo app: the button and settings | todo |
 | 5 | **Templates by type of business** (school, salon, retailer, florist): products, categories and settings pre-loaded. | `todo` | A new business of that type is selling in minutes. |
 | 6 | **Finish what is half-built and test it for real.** USD in the store's card checkout, the marketplace in dollars, the mobile app's currency and share-link screens, Invest on real prices, the Master Fees screen. | `todo` | Each one used in a real browser or phone, not only type-checked. |
 | 7 | **Seed the marketplace.** Real prices, a store directory, share kits (QR, WhatsApp text) for store links. | `todo` | A new visitor finds real listings and real prices. |

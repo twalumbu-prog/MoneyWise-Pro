@@ -196,6 +196,7 @@ export type {
     CreateCreditSaleInput,
     EntryAllocation,
     InvoicePayLink,
+    ReminderSettings,
 } from './services/invoice.service';
 export type {
     Customer,
