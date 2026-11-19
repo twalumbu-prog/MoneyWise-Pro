@@ -180,6 +180,9 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     const [banks, setBanks] = useState<any[]>([]);
     const [isFetchingBanks, setIsFetchingBanks] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
+    // The "Funds Disbursed" card of a payout that is still on its way: asking the provider again, and what it said.
+    const [checkingPayout, setCheckingPayout] = useState(false);
+    const [payoutNote, setPayoutNote] = useState<string | null>(null);
     const [isSuccess, setIsSuccess] = useState(false);
     const [disburseError, setDisburseError] = useState<string | null>(null);
     // When the last disbursal failed, so "try again after 10:12" stays fixed across re-renders.
@@ -3361,9 +3364,33 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             // never rewritten once the transfer settles. If it says PROCESSING but the requisition
             // has since moved past PROCESSING (e.g. RECEIVED once Lenco confirms), trust the live
             // requisition status instead of the stale text so the badge doesn't stay stuck forever.
-            const status = (parsedStatus === 'PROCESSING' && requisitionData?.status && requisitionData.status !== 'PROCESSING')
-                ? 'SUCCESS'
-                : (parsedStatus || 'SUCCESS');
+            // Three honest states. The message was written when the payout was sent; what is true now is the requisition:
+            //  - still PROCESSING: the bank has not answered yet;
+            //  - back to AUTHORISED (or earlier): the payout failed, was reversed, and the requisition was reset for a retry;
+            //  - anything later (RECEIVED, COMPLETED...): it went through.
+            const live = String(requisitionData?.status || '');
+            const payoutState: 'waiting' | 'failed' | 'success' = parsedStatus === 'PROCESSING'
+                ? (live === 'PROCESSING' ? 'waiting' : ['AUTHORISED', 'DRAFT', 'PENDING', 'SUBMITTED'].includes(live) ? 'failed' : 'success')
+                : 'success';
+            const status = payoutState === 'waiting' ? 'PROCESSING' : payoutState === 'failed' ? 'FAILED' : (parsedStatus || 'SUCCESS');
+            const tone = payoutState === 'waiting'
+                ? { icon: 'bg-amber-50 text-amber-600', badge: 'bg-amber-50 text-amber-700 border-amber-100', title: 'Payment on its way' }
+                : payoutState === 'failed'
+                    ? { icon: 'bg-rose-50 text-rose-600', badge: 'bg-rose-50 text-rose-600 border-rose-100', title: 'Payment didn’t go through' }
+                    : { icon: 'bg-emerald-50 text-emerald-600', badge: 'bg-emerald-50 text-emerald-600 border-emerald-100', title: 'Funds Disbursed' };
+            const checkPayoutNow = async () => {
+                if (!requisitionData?.id || checkingPayout) return;
+                setCheckingPayout(true); setPayoutNote(null);
+                try {
+                    const r: any = await requisitionService.verifyDisbursement(requisitionData.id);
+                    if (r?.status === 'failed') setPayoutNote(r.message || r.error || 'The bank did not accept it.');
+                    else if (r?.confirmed) setPayoutNote('Confirmed by the bank.');
+                    else setPayoutNote('The bank has not confirmed it yet. We will keep checking.');
+                    onAction?.('REFRESH');
+                } catch (e: any) {
+                    setPayoutNote(e?.message || 'Could not check just now. Try again in a moment.');
+                } finally { setCheckingPayout(false); }
+            };
             const recipientName = disbursement?.recipient_account_name || meta.recipient || null;
             const recipientAccount = disbursement?.recipient_account || null;
             const recipientBank = disbursement?.recipient_bank_code || null;
@@ -3374,15 +3401,32 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                         <div className="px-5 md:px-8 py-5 md:py-6">
                              <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center space-x-3">
-                                    <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
-                                        <CheckCircle size={18} strokeWidth={2.5} />
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${tone.icon}`}>
+                                        {payoutState === 'waiting' ? <Clock size={18} strokeWidth={2.5} /> : payoutState === 'failed' ? <AlertTriangle size={18} strokeWidth={2.5} /> : <CheckCircle size={18} strokeWidth={2.5} />}
                                     </div>
-                                    <span className="text-[14px] font-black text-gray-900 uppercase tracking-tight">Funds Disbursed</span>
+                                    <span className="text-[14px] font-black text-gray-900 uppercase tracking-tight">{tone.title}</span>
                                 </div>
-                                <div className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase tracking-wider border border-emerald-100">
+                                <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${tone.badge}`}>
                                     {status}
                                 </div>
                              </div>
+
+                             {payoutState === 'waiting' && (
+                                <div className="mb-4 rounded-2xl border border-amber-100 bg-amber-50/60 px-4 py-3">
+                                    <p className="text-[12px] font-semibold leading-snug text-amber-900">The bank hasn’t confirmed this payment yet. It updates here by itself, and you don’t need to send it again.</p>
+                                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                                        <button type="button" onClick={checkPayoutNow} disabled={checkingPayout} className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-white px-3 py-1.5 text-[11px] font-bold text-amber-800 hover:bg-amber-50 disabled:opacity-60">
+                                            {checkingPayout ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}{checkingPayout ? 'Checking…' : 'Check now'}
+                                        </button>
+                                        {payoutNote && <span className="text-[11px] font-medium text-amber-800">{payoutNote}</span>}
+                                    </div>
+                                </div>
+                             )}
+                             {payoutState === 'failed' && (
+                                <div className="mb-4 rounded-2xl border border-rose-100 bg-rose-50/60 px-4 py-3">
+                                    <p className="text-[12px] font-semibold leading-snug text-rose-900">The bank didn’t accept this payment. It was reversed, so it isn’t counted as paid, and the money is back in the wallet it came from. You can send it again from this requisition.</p>
+                                </div>
+                             )}
                              
                              <div className="bg-gray-50/50 rounded-2xl p-6 border border-gray-100/50">
                                 <div className="flex items-center justify-between">
