@@ -70,7 +70,22 @@ Item 5, broken down. The onboarding already asked for industries and store categ
 | Templates that also set up fee categories, accounts and settings (for example a school's term fees feeding the fee reports, a salon's opening hours and deposits) | todo |
 | More templates, and real prices from the price desk or marketplace catalogue for hardware and groceries | todo |
 | Ask real businesses of each type what they actually sell, and fix the lists | todo (worth doing: the lists are my best guess) |
-| 6 | **Finish what is half-built and test it for real.** USD in the store's card checkout, the marketplace in dollars, the mobile app's currency and share-link screens, Invest on real prices, the Master Fees screen. | `todo` | Each one used in a real browser or phone, not only type-checked. |
+| 6 | **Finish what is half-built and test it for real.** USD in the store's card checkout, the marketplace in dollars, the mobile app's currency and share-link screens, Invest on real prices, the Master Fees screen. | `in progress` | Each one used in a real browser or phone, not only type-checked. |
+
+Item 6, broken down (19 Nov 2026).
+
+| Part | Status |
+|---|---|
+| USD pay link in a real browser (throwaway business, public page): shows K1,350.00 "Priced at $50.00 - K27.00 to $1 today"; the card tab charges **$52.08 USD** ($50 plus the 4% card fee grossed up); mobile money stays in kwacha | seen working |
+| Store with a dollar product: listed as "K 1,350.00 - $50.00" | seen working |
+| Voucher at the store checkout (real voucher, real browser): K100 cart, K20 off, K2 fee, pays K82. The breakdown did not show the voucher line, so the numbers did not add up on screen; fixed (`-K20.00 Reward voucher` row) | seen working after the fix |
+| The live database was missing `products.currency` (the USD migration had only partly run). Added it; the API's startup SQL does the same on deploy | done |
+| Store card checkout charging **real dollars** for a cart made only of dollar products (no voucher, delivery, booking or donation; the server works it out from the products, not the browser; mixed carts stay in kwacha). The card box and Pay button show dollars | built; 7 checks pass (`test_usd_cart.ts`); not yet seen in a browser with a real store |
+| Marketplace in dollars, location-based currency, converter | todo |
+| Mobile app (Expo) currency and share-link screens | todo |
+| Invest on real prices (needs the price store, see the Invest plan) | todo |
+| Master Fees screen used in a signed-in browser | todo (needs a signed-in business) |
+| Server check of the sale amount (any payment method): a public-store order is refused if an item's price or the total is below the database price (dollar products at today's rate, 2% slack); totals above are fine (delivery). Pay links, till sales, vouchers, bookings and appointments already had their own checks | built; 4 more checks in `test_usd_cart.ts` (11 in all) |
 | 7 | **Seed the marketplace.** Real prices, a store directory, share kits (QR, WhatsApp text) for store links. | `todo` | A new visitor finds real listings and real prices. |
 
 ## B. Weaknesses: work these one by one after A

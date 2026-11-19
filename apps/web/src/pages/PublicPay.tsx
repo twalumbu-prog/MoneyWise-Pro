@@ -1314,8 +1314,14 @@ export const PublicPay: React.FC = () => {
     // recorded first, then the card payment starts, then we wait for the result exactly as for mobile money. Desktop gets a popup; phones go to
     // the card page in this tab. Orders with a delivery charge stay on mobile money for now.
     const CARD_RATE = 0.04;
-    const cardCharged = subtotal > 0 ? Math.round((payableSubtotal / (1 - CARD_RATE)) * 100) / 100 : 0;
-    const cardFee = Math.round((cardCharged - payableSubtotal) * 100) / 100;
+    // A cart of only dollar products is charged to the card in dollars (the server decides the same way, from the products): no voucher,
+    // no delivery, every line a dollar product and not a booking or donation.
+    const cartUsd = (lineItems.length > 0 && voucherDiscount === 0 && effectiveDeliveryCharge === 0 && lineItems.every((li: any) => !li.isBooking && !li.isDonation && Number((li.product as any)?.usd_price) > 0))
+        ? Math.round(lineItems.reduce((s: number, li: any) => s + Number(li.product.usd_price) * li.quantity, 0) * 100) / 100 : 0;
+    const cardInUsd = cartUsd > 0;
+    const cardCharged = cardInUsd ? Math.round((cartUsd / (1 - CARD_RATE)) * 100) / 100 : subtotal > 0 ? Math.round((payableSubtotal / (1 - CARD_RATE)) * 100) / 100 : 0;
+    const cardFee = Math.round((cardCharged - (cardInUsd ? cartUsd : payableSubtotal)) * 100) / 100;
+    const cardMoney = (n: number) => `${cardInUsd ? '$' : 'K'}${n.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
     const cardBlockedByDelivery = effectiveDeliveryCharge > 0;
     const cardDetailsReady = customerName.trim().length > 1 && customerPhone.replace(/\D/g, '').length >= 9 && (!cartHasDigital || emailIsValid);
     const onPhoneBrowser = typeof navigator !== 'undefined' && /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
@@ -3609,6 +3615,14 @@ Status: VERIFIED`;
                                                 K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                             </span>
                                         </div>
+                                        {voucherDiscount > 0 && (
+                                            <div className="flex justify-between text-xs">
+                                                <span className="text-emerald-700">Reward voucher</span>
+                                                <span className="text-emerald-700 font-medium">
+                                                    −K{voucherDiscount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                </span>
+                                            </div>
+                                        )}
                                         <div className="flex justify-between text-xs">
                                             <span className="text-slate-500">Transaction Fee</span>
                                             <span className="text-slate-700 font-medium">
@@ -3930,9 +3944,9 @@ Status: VERIFIED`;
                                             {cartHasDigital && <input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="Email for your download" autoComplete="email" className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0B57D0]" />}
                                         </div>
                                         <div className="mt-4 space-y-1 text-xs text-gray-600">
-                                            <div className="flex justify-between"><span>Order total</span><span>K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
-                                            <div className="flex justify-between"><span>Card fee</span><span>K{cardFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
-                                            <div className="flex justify-between border-t border-slate-100 pt-1 font-bold text-gray-800"><span>You pay</span><span>K{cardCharged.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                            <div className="flex justify-between"><span>Order total</span><span>{cardInUsd ? cardMoney(cartUsd) : `K${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}</span></div>
+                                            <div className="flex justify-between"><span>Card fee</span><span>{cardMoney(cardFee)}</span></div>
+                                            <div className="flex justify-between border-t border-slate-100 pt-1 font-bold text-gray-800"><span>You pay</span><span>{cardMoney(cardCharged)}{cardInUsd ? ' USD' : ''}</span></div>
                                         </div>
                                         {cardBlockedByDelivery && <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">Card isn’t available for orders with a delivery charge yet. Use Mobile Money, or choose pick-up.</p>}
                                     </div>
@@ -3990,7 +4004,7 @@ Status: VERIFIED`;
                                     className={`w-full h-14 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${!submitting && cardDetailsReady && !cardBlockedByDelivery ? 'bg-[#0B57D0] hover:bg-[#0842A0] text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'}`}
                                 >
                                     {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
-                                    <span>{submitting ? 'Starting…' : `Pay K${cardCharged.toLocaleString(undefined, { minimumFractionDigits: 2 })} by card`}</span>
+                                    <span>{submitting ? 'Starting…' : `Pay ${cardMoney(cardCharged)}${cardInUsd ? ' USD' : ''} by card`}</span>
                                 </button>
                             ) : (
                                 <button disabled className="w-full h-14 rounded-xl font-bold text-base bg-neutral-100 text-zinc-400 cursor-not-allowed">

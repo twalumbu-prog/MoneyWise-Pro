@@ -580,11 +580,33 @@ async function assertAmountIsRight(orgId: string, reference: string, net: number
  * The dollar price when this sale is to be charged to the card in real US dollars, else null (kwacha). Read from the payment link on the
  * server, never from the browser. The books still record the kwacha sale (pend.net); only the card is charged in dollars.
  */
-async function usdNetFor(orgId: string, ctx?: Record<string, unknown>): Promise<number | null> {
-    if (ctx?.kind !== 'payment_link' || !ctx?.token) return null;
+async function usdNetFor(orgId: string, ctx?: Record<string, unknown>, reference?: string, net?: number): Promise<number | null> {
+    if (ctx?.kind !== 'payment_link' || !ctx?.token) return reference && net ? usdNetForCart(orgId, reference, net) : null;
     const { data: link } = await supabase.from('payment_links').select('organization_id, currency, foreign_amount').eq('token', String(ctx.token)).maybeSingle();
     if (!link || link.organization_id !== orgId) return null;
     return link.currency === 'USD' && num(link.foreign_amount) > 0 ? round2(num(link.foreign_amount)) : null;
+}
+
+/**
+ * A store cart (no payment link) is charged in real dollars only when every line is a dollar product, the business has dollars switched on, no
+ * voucher or deposit is involved, and the recorded sale matches the dollar prices at today's rate (2% slack). Anything else, including a mixed
+ * cart or a sale with extras like delivery, stays in kwacha, exactly as before. The dollar amount comes from the products, never the browser.
+ */
+export async function usdNetForCart(orgId: string, reference: string, net: number): Promise<number | null> {
+    const { data: lines } = await supabase.from('product_sales').select('product_id, quantity, is_deposit').eq('organization_id', orgId).eq('reference', reference);
+    if (!lines?.length || lines.some((l: any) => l.is_deposit || !l.product_id)) return null;
+    const pricing = await cardPricing(orgId);
+    if (pricing.currency !== 'USD' || !pricing.rate) return null;
+    const prices = await productPrices(lines.map((l: any) => l.product_id), orgId);
+    let usd = 0, zmw = 0;
+    for (const l of lines) {
+        const p = prices.get((l as any).product_id);
+        if (!p || p.currency !== 'USD' || !p.usd) return null;
+        usd += p.usd * num((l as any).quantity); zmw += p.zmw * num((l as any).quantity);
+    }
+    if (await rewardsService.heldDiscountFor(orgId, reference, lines.map((l: any) => ({ product_id: l.product_id, unit_price: prices.get(l.product_id)?.zmw ?? 0, quantity: num(l.quantity) }))) !== null) return null;
+    if (Math.abs(zmw - net) > Math.max(0.5, zmw * 0.02)) return null;
+    return round2(usd);
 }
 
 export async function initiateCard(input: InitiateInput) {
@@ -607,7 +629,7 @@ export async function initiateCard(input: InitiateInput) {
     if (!pend) throw new LipilaError('Start the payment from the checkout page first.', 409, 'NO_INTENT');
     await assertAmountIsRight(orgId, reference, pend.net, input.context);
     // A dollar-priced sale is charged to the card in real dollars (Lipila converts to the wallet's currency); everything else in kwacha.
-    const usdNet = await usdNetFor(orgId, input.context);
+    const usdNet = await usdNetFor(orgId, input.context, reference, pend.net);
     const chargeCurrency: 'ZMW' | 'USD' = usdNet ? 'USD' : 'ZMW';
     const { charged, fee } = grossUp(usdNet ?? pend.net);
 

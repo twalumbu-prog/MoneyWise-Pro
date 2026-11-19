@@ -1393,6 +1393,28 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
             }
         }
 
+        // --- A plain public-store order is never recorded for less than the products cost -----------------------------------
+        // The browser sends the price of each item and the order total; a customer (or a script) could send less than the price and the sale
+        // would be recorded, and the goods released, for that smaller amount. Every plain item (no booking, appointment or voucher, and not a
+        // pay link or till sale) must be at least its database price (a dollar product at today's rate, 2% slack), and the total at least the
+        // sum of those. Items with no fixed price (donations, open quotes) are the payer's choice and are left alone.
+        if (!voucherCode && !paymentLinkToken && !allowPastBooking && Array.isArray(items) && items.length > 0) {
+            const plain = items.filter((it: any) => it?.id && !(it.check_in && it.check_out) && !(it.appointment_date && it.appointment_time));
+            if (plain.length > 0) {
+                const kw = await productPrices([...new Set(plain.map((it: any) => String(it.id)))], wallet.organization_id);
+                let floor = 0;
+                for (const it of plain) {
+                    const k = kw.get(String(it.id));
+                    if (!k || !(k.zmw > 0)) continue;
+                    const slack = k.currency === 'USD' ? 0.98 : 1;
+                    const qty = Math.max(0, Number(it.quantity) || 0);
+                    if ((Number(it.price) || 0) + 0.01 < k.zmw * slack) return res.status(409).json({ error: 'A price in your order has changed. Please refresh the page and try again.' });
+                    floor += k.zmw * slack * qty;
+                }
+                if ((Number(amount) || 0) + 0.01 < Math.round(floor * 100) / 100) return res.status(409).json({ error: 'The order total doesn’t match the prices. Please refresh the page and try again.' });
+            }
+        }
+
         const { error } = await supabase.from('cashbook_entries').insert({
             organization_id: wallet.organization_id,
             entry_type: 'INFLOW',

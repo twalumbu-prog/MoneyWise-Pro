@@ -624,7 +624,7 @@ export const PersonalSend: React.FC = () => {
                             {stage === 2 && (
                                 <div className="flex flex-col gap-4">
                                     <div className="flex items-baseline justify-between">
-                                        <h2 className="text-lg font-bold text-[#1F1F1F]">Item list</h2>
+                                        <h2 className="min-w-0 truncate pr-3 text-lg font-bold text-[#1F1F1F]">{description.trim() || 'Item list'}</h2>
                                         <span className="text-lg font-bold text-[#1F1F1F]">{formatKwacha(total)}</span>
                                     </div>
                                     {lineItems.map((item, idx) => (
@@ -632,10 +632,11 @@ export const PersonalSend: React.FC = () => {
                                             <div className="flex items-center gap-3">
                                                 <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-[#E9EEF6] text-xs font-bold text-[#5F6368]">{idx + 1}</span>
                                                 <input
-                                                    className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-[#1F1F1F] placeholder:text-[#80868B] focus:outline-none focus:ring-0"
+                                                    className="h-10 min-w-0 flex-1 rounded-xl border border-[#0B57D0]/40 bg-[#F4F8FF] px-3 text-sm font-medium text-[#1F1F1F] placeholder:font-normal placeholder:text-[#5F6368] focus:border-[#0B57D0] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#0B57D0]"
                                                     value={item.description}
                                                     onChange={(e) => updateItem(item.id, { description: e.target.value })}
-                                                    placeholder="Item description"
+                                                    placeholder={`Type an item name, e.g. ${idx === 0 ? 'Tomatoes' : 'Onions'}`}
+                                                    aria-label="Item name"
                                                 />
                                                 <span className="text-sm font-semibold text-[#1F1F1F]">{item.estimated_amount > 0 ? formatKwacha(item.estimated_amount) : '-'}</span>
                                                 <button
