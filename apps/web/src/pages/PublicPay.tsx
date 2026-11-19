@@ -49,6 +49,7 @@ import { PaymentWaitingScreen, PaymentPhase } from '../components/PaymentWaiting
 import { savePendingPayment, loadPendingPayment, clearPendingPayment } from '../lib/paymentRecovery';
 import BookingCalendar from '../components/BookingCalendar';
 import { StoreMoneyWisePay } from '../components/StoreMoneyWisePay';
+import { SaveReceiptCard } from '../components/SaveReceiptCard';
 import { StoreRewardsSection } from '../components/rewards/StoreRewardsSection';
 import { BookingRange, isBookingProductType, isAppointmentProductType, formatSlotTime, getBookingTerminology } from '../services/product.service';
 import AppointmentPicker from '../components/AppointmentPicker';
@@ -4123,6 +4124,9 @@ Status: VERIFIED`;
                                     </div>
                                 </div>
                             </div>
+                            {/* Offer a free account to keep this receipt (not shown to someone already signed in) */}
+                            <SaveReceiptCard businessName={org.name} source="store" className="mt-6" />
+
 
                             <p className="text-center text-[10px] font-semibold text-slate-300 mt-4">
                                 Receipt No: {receiptNumber ? `#${receiptNumber}` : currentReference.replace('-PUB', '')}

@@ -690,6 +690,7 @@ export const QuickPay: React.FC = () => {
                     onRetry={handleRetryPayment}
                     onDismiss={handleDismissAfterFailure}
                     onDone={handleDone}
+                    receiptSource="quick_pay"
                     onRecheck={handleRecheckPayment}
                 />
             </PageFrame>

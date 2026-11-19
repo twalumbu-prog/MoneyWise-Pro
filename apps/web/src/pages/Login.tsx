@@ -5,7 +5,10 @@ import { Loader2, Search, Eye, EyeOff, Mail } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 export const Login: React.FC = () => {
-    const [isSignup, setIsSignup] = useState(false);
+    // A link such as /login?signup=1&type=individual (the "keep your receipt" card on a paid page) opens on sign-up for a person, not a business.
+    const startParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+    const [isSignup, setIsSignup] = useState(startParams.get('signup') === '1');
+    const [individual, setIndividual] = useState(startParams.get('type') === 'individual');
     const [signupMode, setSignupMode] = useState<'CREATE' | 'JOIN'>('CREATE');
     const [forgotMode, setForgotMode] = useState(false);
     const [forgotEmail, setForgotEmail] = useState('');
@@ -149,7 +152,7 @@ export const Login: React.FC = () => {
 
         try {
             if (signupMode === 'CREATE') {
-                await signUp(loginIdentifier, password, name, organizationName, username);
+                await signUp(loginIdentifier, password, name, individual ? `${name.trim()}'s Workspace` : organizationName, username);
                 setSuggestion('');
                 // Sign the user straight in — the home redirect then routes new
                 // organizations into the onboarding wizard automatically, so the
@@ -363,7 +366,7 @@ export const Login: React.FC = () => {
                 <div className="flex items-center space-x-3">
                     <img src="/logo.png" alt="MoneyWise" className="h-8 w-8" />
                     <div>
-                        <h1 className="text-xl font-bold text-[#1F1F1F] tracking-tight leading-tight">MoneyWise Pro</h1>
+                        <h1 className="text-xl font-bold text-[#1F1F1F] tracking-tight leading-tight">{individual ? 'MoneyWise' : 'MoneyWise Pro'}</h1>
                     </div>
                 </div>
             </div>
@@ -376,7 +379,7 @@ export const Login: React.FC = () => {
 
             <div className="sm:mx-auto sm:w-full sm:max-w-md">
                 <div className="bg-white py-10 px-6 rounded-2xl border border-gray-100 sm:px-12">
-                    {isSignup && (
+                    {isSignup && !individual && (
                         <div className="flex bg-gray-100 p-1 rounded-xl mb-6">
                             <button
                                 type="button"
@@ -432,7 +435,12 @@ export const Login: React.FC = () => {
                                     </div>
                                 </div>
 
-                                {signupMode === 'CREATE' ? (
+                                {individual ? (
+                                    <p className="rounded-xl bg-[#0B57D0]/5 p-3 text-xs text-gray-600">
+                                        This makes a free personal account to keep your receipts and track your spending.{' '}
+                                        <button type="button" className="font-bold text-[#0B57D0]" onClick={() => setIndividual(false)}>Setting up a business instead?</button>
+                                    </p>
+                                ) : signupMode === 'CREATE' ? (
                                     <div>
                                         <label htmlFor="org-name" className="block text-sm font-bold text-[#1F1F1F] mb-1">
                                             Organization Name

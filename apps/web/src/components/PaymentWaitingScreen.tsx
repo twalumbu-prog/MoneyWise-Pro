@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { Loader2, X } from 'lucide-react';
+import { SaveReceiptCard } from './SaveReceiptCard';
 
 /**
  * Premium payment-processing screen for the own-UX mobile money checkout
@@ -72,6 +73,7 @@ interface PaymentWaitingScreenProps {
     onRetry?: () => void;      // failed: start over
     onDismiss?: () => void;    // failed/cancelled: leave the flow
     onDone?: () => void;       // success: view the receipt
+    receiptSource?: 'payment_link' | 'store' | 'quick_pay'; // success: also offer a free account to keep the receipts (only where the page has no receipt screen of its own)
     onRecheck?: () => void;    // failed/cancelled: re-query whether it actually went through
 }
 
@@ -99,6 +101,7 @@ export const PaymentWaitingScreen: React.FC<PaymentWaitingScreenProps> = ({
     onRetry,
     onDismiss,
     onDone,
+    receiptSource,
     onRecheck,
 }) => {
     const opLabel = operator ? operator.toUpperCase() : 'MOBILE MONEY';
@@ -276,6 +279,7 @@ export const PaymentWaitingScreen: React.FC<PaymentWaitingScreenProps> = ({
                             <div className="flex justify-between py-1.5 text-[13px]" style={{ borderTop: '1px solid #E7EEFA' }}><span style={{ color: '#5F6368' }}>Paid to</span><span className="font-bold" style={{ color: '#0B0F14' }}>{businessName}</span></div>
                             <div className="flex justify-between py-1.5 text-[13px]" style={{ borderTop: '1px solid #E7EEFA' }}><span style={{ color: '#5F6368' }}>Reference</span><span className="font-bold" style={{ color: '#0B0F14', fontFamily: 'ui-monospace, Menlo, monospace' }}>{reference ? `#${reference}` : '—'}</span></div>
                         </div>
+                        {receiptSource && <SaveReceiptCard compact businessName={businessName} source={receiptSource} className="mt-3" />}
                         <button onClick={onDone} className={`mt-3 ${primaryBtnClass}`} style={{ background: ACCENT, boxShadow: `0 10px 22px ${ACCENT}44` }}>
                             View receipt
                         </button>
