@@ -57,7 +57,19 @@ Item 4, broken down. **What already existed:** reminders to the business's own *
 | Reminders for pay links and invoices created at the till that have no follow-up date | todo |
 | Email as a second channel when there's no WhatsApp number; a reminder from the business's own WhatsApp rather than the shared number | todo |
 | Expo app: the button and settings | todo |
-| 5 | **Templates by type of business** (school, salon, retailer, florist): products, categories and settings pre-loaded. | `todo` | A new business of that type is selling in minutes. |
+| 5 | **Templates by type of business** (school, salon, florist, restaurant, shop, hardware, consulting, repairs, church or NGO, lodge, farm): what businesses like yours usually sell, ready to add. | `built` | A new business of that type is selling in minutes. |
+
+Item 5, broken down. The onboarding already asked for industries and store categories, but the Products step started empty: every listing had to be invented from scratch.
+
+| Part | Status |
+|---|---|
+| 12 templates, 82 starter listings (`packages/core/src/onboarding/businessTemplates.ts`). **No prices are suggested** (a made-up price would be wrong for the business): the owner types their own for the items they want; quotes and donations need none. Each listing is the right kind (fixed-price service, per-night or per-day booking, appointment with its length, open-priced quote, donation). Added listings are for the business's own store and pay links, not the marketplace (no photos yet) | built; 22 checks pass, including that the real product creation accepts all 82 across every listing type |
+| The onboarding industry picks suggest the matching template first (Education: school, Beauty: salon, Hotel: lodge, ...); a duplicate by name is skipped | built |
+| "Or start from a template" on the empty onboarding Products step, and "From a template" on Products & Services (web): pick, tick, type prices, add | built, types check; **not seen in a browser** (needs a signed-in business) |
+| Expo app: the same picker | todo |
+| Templates that also set up fee categories, accounts and settings (for example a school's term fees feeding the fee reports, a salon's opening hours and deposits) | todo |
+| More templates, and real prices from the price desk or marketplace catalogue for hardware and groceries | todo |
+| Ask real businesses of each type what they actually sell, and fix the lists | todo (worth doing: the lists are my best guess) |
 | 6 | **Finish what is half-built and test it for real.** USD in the store's card checkout, the marketplace in dollars, the mobile app's currency and share-link screens, Invest on real prices, the Master Fees screen. | `todo` | Each one used in a real browser or phone, not only type-checked. |
 | 7 | **Seed the marketplace.** Real prices, a store directory, share kits (QR, WhatsApp text) for store links. | `todo` | A new visitor finds real listings and real prices. |
 

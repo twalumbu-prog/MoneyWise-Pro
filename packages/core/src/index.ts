@@ -330,3 +330,7 @@ export type {
     GrowFrequency, GrowTargetKey, GrowTarget, GrowPlan, GrowMonthPlan, GrowProjection,
     GrowMonthActuals, GrowTargetStatus, GrowMonthStatus, GrowMonthResult, GrowLedgerRow,
 } from './grow';
+
+// Starter listings by type of business (onboarding and Products & Services).
+export { BUSINESS_TEMPLATES, needsPrice, templatesForIndustries, productFromTemplate } from './onboarding/businessTemplates';
+export type { BusinessTemplate, TemplateItem } from './onboarding/businessTemplates';

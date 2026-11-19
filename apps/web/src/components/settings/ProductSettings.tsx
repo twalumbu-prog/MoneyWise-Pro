@@ -9,6 +9,7 @@ import { StoreAdvancedSettings } from './StoreAdvancedSettings';
 import { ProductList, canAuction } from './ProductList';
 import type { AuctionInfo } from './ProductList';
 import { StartAuctionDialog } from '../marketplace/StartAuctionDialog';
+import { TemplatePickerModal } from '../TemplatePickerModal';
 import { AuctionFields, auctionBody, auctionProblem, defaultAuction } from '../marketplace/AuctionFields';
 import type { AuctionForm } from '../marketplace/AuctionFields';
 import { useQuery } from '@tanstack/react-query';
@@ -76,6 +77,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
     const onMarketplace = React.useMemo(() => new Set((market?.listings ?? []).filter((l) => l.isMine).map((l) => l.id)), [market]);
     const auctionMap = React.useMemo(() => new Map<string, AuctionInfo>((market?.listings ?? []).filter((l) => l.isMine && l.auction).map((l) => [l.id, { id: l.auction!.id, status: l.auction!.status as 'OPEN' | 'SOLD', endsAt: l.auction!.endsAt, serverNow: l.auction!.serverNow, bidCount: l.auction!.bidCount, currentBid: l.auction!.status === 'SOLD' ? l.auction!.winningAmount : l.auction!.currentBid, startPrice: l.auction!.startPrice }])), [market]);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+    const [templateOpen, setTemplateOpen] = useState(false);
     const [formData, setFormData] = useState({
         name: '',
         description: '',
@@ -736,13 +738,21 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                                 )}
                             </div>
                         ) : isAdmin && activeTab !== 'ADVANCED' && (
-                            <button
-                                onClick={handleOpenAddModal}
-                                className="hidden md:flex h-10 pl-5 pr-4 bg-[#0B57D0] rounded-full items-center gap-2 hover:bg-[#0842A0] transition-colors flex-shrink-0"
-                            >
-                                <span className="text-white text-sm font-bold">Add item</span>
-                                <Plus size={14} className="text-white" />
-                            </button>
+                            <div className="hidden md:flex items-center gap-2 flex-shrink-0">
+                                <button
+                                    onClick={() => setTemplateOpen(true)}
+                                    className="h-10 px-4 rounded-full text-sm font-bold text-[#0B57D0] shadow-[inset_0_0_0_1px_#C4C7C5] hover:bg-[#F4F8FF] transition-colors"
+                                >
+                                    From a template
+                                </button>
+                                <button
+                                    onClick={handleOpenAddModal}
+                                    className="h-10 pl-5 pr-4 bg-[#0B57D0] rounded-full flex items-center gap-2 hover:bg-[#0842A0] transition-colors"
+                                >
+                                    <span className="text-white text-sm font-bold">Add item</span>
+                                    <Plus size={14} className="text-white" />
+                                </button>
+                            </div>
                         )}
                     </div>
 
@@ -1603,6 +1613,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                 </div>
             )}
 
+            <TemplatePickerModal open={templateOpen} onClose={() => setTemplateOpen(false)} existingNames={products.map((p) => p.name)} onAdded={() => { void loadProducts(); }} />
             {auctionFor && <StartAuctionDialog listing={{ id: auctionFor.id, name: auctionFor.name, price: Number(auctionFor.price) || 0 }} open onClose={() => setAuctionFor(null)} onStarted={() => { refetchMarket(); loadProducts(); }} />}
 
             <ShareProductLinkModal

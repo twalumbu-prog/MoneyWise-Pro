@@ -7,12 +7,15 @@ import { supabase } from '../../lib/supabase';
 import { productService, Product, ProductType, PRODUCT_TYPE_OPTIONS, isBookingProductType } from '../../services/product.service';
 import { StepFooter, ErrorBanner, PrimaryButton, GhostButton, Toggle, TextField } from './ui';
 import { ProductTypeSelect } from './ProductTypeSelect';
+import { TemplatePickerModal } from '../TemplatePickerModal';
 
 const typeLabel = (t?: ProductType) =>
     PRODUCT_TYPE_OPTIONS.find(o => o.value === (t || 'PRODUCT'))?.label || 'Product';
 
 interface Props {
     organizationId: string;
+    /** The industries chosen earlier, so the matching template is suggested first. */
+    industries?: string[];
     storeCategories: string[];
     onBack: () => void;
     onContinue: (productCount: number) => void;
@@ -20,12 +23,13 @@ interface Props {
 }
 
 /** Step 7 — build the store: add, edit, duplicate and delete listings. */
-export const StepProducts: React.FC<Props> = ({ organizationId, storeCategories, onBack, onContinue, saving }) => {
+export const StepProducts: React.FC<Props> = ({ organizationId, industries = [], storeCategories, onBack, onContinue, saving }) => {
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [modalProduct, setModalProduct] = useState<Partial<Product> | null>(null);
     const [busyId, setBusyId] = useState<string | null>(null);
+    const [templateOpen, setTemplateOpen] = useState(false);
 
     useEffect(() => {
         productService.getProducts()
@@ -83,6 +87,7 @@ export const StepProducts: React.FC<Props> = ({ organizationId, storeCategories,
                     <Loader2 className="h-8 w-8 text-[#0B57D0] animate-spin" />
                 </div>
             ) : products.length === 0 ? (
+                <div>
                 <button
                     type="button"
                     onClick={() => setModalProduct({})}
@@ -100,6 +105,11 @@ export const StepProducts: React.FC<Props> = ({ organizationId, storeCategories,
                         Add your first listing
                     </span>
                 </button>
+                <button type="button" onClick={() => setTemplateOpen(true)} className="mt-4 w-full rounded-2xl border border-[#0B57D0]/40 bg-[#F4F8FF] px-5 py-4 text-left transition-colors hover:bg-[#E8F0FE]">
+                    <span className="block text-sm font-bold text-[#0B57D0]">Or start from a template</span>
+                    <span className="mt-0.5 block text-xs text-gray-500">Pick your kind of business and add what businesses like yours usually sell. You only type your prices.</span>
+                </button>
+                </div>
             ) : (
                 <>
                     <ul className="space-y-3">
@@ -187,6 +197,14 @@ export const StepProducts: React.FC<Props> = ({ organizationId, storeCategories,
                     onSaved={handleSaved}
                 />
             )}
+
+            <TemplatePickerModal
+                open={templateOpen}
+                onClose={() => setTemplateOpen(false)}
+                industries={industries}
+                existingNames={products.map(p => p.name)}
+                onAdded={(created) => setProducts(prev => [...prev, ...created])}
+            />
 
             <StepFooter
                 onBack={onBack}
