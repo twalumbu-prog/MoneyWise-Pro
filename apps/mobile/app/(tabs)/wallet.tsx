@@ -17,6 +17,7 @@ import {
     WalletCard, AddWalletCard, useCardWidth, CARD_GAP, CARD_HEIGHT,
 } from '../../src/components/wallet/WalletCard';
 import { TransactionRow } from '../../src/components/wallet/TransactionRow';
+import { entryLabel } from '../../src/lib/entryLabel';
 import { OfflineNotice } from '../../src/components/OfflineNotice';
 import { AnimatedSegmented, AnimatedTabContent } from '../../src/components/AnimatedTabs';
 import { PiggyBankIcon } from '../../src/components/icons/PiggyBankIcon';
@@ -124,6 +125,7 @@ export default function WalletScreen() {
             inCard(e) && (
                 !q ||
                 e.description?.toLowerCase().includes(q) ||
+                entryLabel(e).toLowerCase().includes(q) ||
                 e.reference_number?.toLowerCase().includes(q)),
         );
         return groupByDate(filtered, (e) => e.date, sortOrder);

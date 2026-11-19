@@ -1,3 +1,4 @@
+import { entryLabel } from '../../../src/lib/entryLabel';
 import { useState, useMemo } from 'react';
 import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Pressable, Alert } from 'react-native';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
@@ -235,7 +236,7 @@ export default function EntryDetailScreen() {
                         <Text style={[styles.amount, isInflow && styles.amountIn]}>
                             {formatKwacha(amount ?? 0)}
                         </Text>
-                        <Text style={styles.description}>{entry.description}</Text>
+                        <Text style={styles.description}>{entryLabel(entry)}</Text>
                         {entry.balance_after != null && (
                             <Text style={styles.balanceAfter}>
                                 Balance after · {formatKwacha(entry.balance_after)}
