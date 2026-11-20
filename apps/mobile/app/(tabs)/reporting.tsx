@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, useCallback } from 'react';
+import { useMemo, useRef, useState, useCallback, useEffect } from 'react';
 import { TourTarget } from '../../src/components/walkthrough/TourTarget';
 import {
     View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator,
@@ -253,8 +253,17 @@ export default function ReportingScreen() {
         },
     });
 
+    // The per-account transaction lists are fetched on first expand; drop them whenever the period or view changes
+    // so a re-expand shows current postings instead of the first copy loaded.
+    useEffect(() => {
+        setAccountItems({});
+        setExpandedAccount(null);
+    }, [organizationId, view, range.start, range.end]);
+
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
+        setAccountItems({});
+        setExpandedAccount(null);
         await refetch();
         queryClient.invalidateQueries({ queryKey: ['report'] });
         queryClient.invalidateQueries({ queryKey: ['accounts'] });
