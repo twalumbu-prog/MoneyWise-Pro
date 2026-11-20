@@ -423,6 +423,49 @@ X-Api-Key: mwp_live_YOUR_API_KEY
 \`\`\`
 - 404 if not found.
 
+#### 13. Link a Sale to its Wallet Deposit
+- Method: POST
+- Path: /v1/transfers
+- Scope Required: write
+- Request Body (JSON):
+\`\`\`json
+{
+  "sale_external_reference": "kaizen:mew3:2026-11-14:r173",
+  "receipt_number": "173"
+}
+\`\`\`
+- Rules:
+  - The sale (from POST /v1/sales) was paid into Airtel Money / cash / bank and booked there. The guest's money then moved into the MoneyWise wallet and arrived as an unclassified deposit. This links the two so they cancel instead of being counted twice.
+  - Name the deposit with deposit_reference (its CR- number), deposit_id, or receipt_number (matches the unclassified wallet deposit whose description is that receipt number). 404 if it hasn't arrived yet — retry later.
+  - gross = the sale amount, net = the deposit amount, fee = the shortfall (the collection fee). A deposit larger than the sale, or a shortfall above 5% of the sale, is rejected with 409 as the wrong pair.
+  - Books on the sale's ledger: a transfer-out of net (offsets the wallet deposit) and a fee expense posted to your transaction-charges account (or fee_account: an EXPENSE account id, code or name). The deposit itself is not modified.
+  - Idempotent per deposit and per sale: repeating the call books nothing and returns 200 with "created": false. Pass "dry_run": true to see the entries that would be booked (planned_entries) without writing.
+- Response (201 Created):
+\`\`\`json
+{
+  "data": {
+    "id": "0c5d7a1e-7b0e-4c55-a6f2-3d1b9a8e2f10",
+    "sale_external_reference": "kaizen:mew3:2026-11-14:r173",
+    "sale_receipt_number": "REC-2026-0080",
+    "deposit": { "id": "82bbaf56-ab24-4225-a540-0e0e4aebe77d", "reference_number": "CR-2026-0068", "date": "2026-11-15", "amount": 1816.6 },
+    "source_account_type": "AIRTEL_MONEY",
+    "date": "2026-11-15",
+    "gross_amount": 1840,
+    "net_amount": 1816.6,
+    "fee_amount": 23.4,
+    "entry_ids": ["…transfer entry…", "…fee entry…"]
+  },
+  "created": true
+}
+\`\`\`
+- Errors: 400 validation; 404 sale/deposit not found; 409 wrong pair or already linked; 503 concurrent (retry after Retry-After).
+
+#### 14. Get a Transfer
+- Method: GET
+- Path: /v1/transfers?sale_external_reference=...
+- Scope Required: read
+- Response: { "data": {...} } or 404.
+
 ---
 
 ### Error Handling & Response Format
@@ -1149,6 +1192,57 @@ const ENDPOINTS: EndpointDoc[] = [
     "entry_ids": ["e7c2a9b4-1d3f-4a8e-b6c5-0f9d2e7a1b34"]
   }
 }`
+    },
+    {
+        id: 'create-transfer',
+        category: 'Sales',
+        method: 'POST',
+        path: '/v1/transfers',
+        title: 'Link a Sale to its Wallet Deposit',
+        scope: 'write',
+        description: 'The sale (from POST /v1/sales) was paid into Airtel Money / cash / bank and booked there. The guest\'s money then moved into the MoneyWise wallet and arrived as an unclassified deposit. This links the two so they cancel instead of being counted twice. Name the deposit with deposit_reference (its CR- number), deposit_id, or receipt_number (matches the unclassified wallet deposit whose description is that receipt number). 404 if it hasn\'t arrived yet — retry later. gross = the sale amount, net = the deposit amount, fee = the shortfall (the collection fee). A deposit larger than the sale, or a shortfall above 5% of the sale, is rejected with 409 as the wrong pair. Books on the sale\'s ledger: a transfer-out of net (offsets the wallet deposit) and a fee expense posted to your transaction-charges account (or fee_account: an EXPENSE account id, code or name). The deposit itself is not modified. Idempotent per deposit and per sale: repeating the call books nothing and returns 200 with "created": false. Pass "dry_run": true to see the entries that would be booked (planned_entries) without writing.',
+        bodyParams: [
+            { name: 'sale_external_reference', type: 'string', required: true, description: 'The external_reference of the sale from POST /v1/sales.' },
+            { name: 'deposit_reference', type: 'string', required: false, description: 'The wallet deposit CR- reference number. Give one of deposit_reference, deposit_id or receipt_number.' },
+            { name: 'deposit_id', type: 'UUID', required: false, description: 'The wallet deposit entry id.' },
+            { name: 'receipt_number', type: 'string', required: false, description: 'Matches the unclassified wallet deposit whose description is this receipt number, e.g. "173".' },
+            { name: 'fee_account', type: 'string', required: false, description: 'EXPENSE account (id, code or name) for the collection fee. Defaults to your transaction-charges account.' },
+            { name: 'dry_run', type: 'boolean', required: false, description: 'true returns planned_entries and writes nothing.' }
+        ],
+        exampleCurl: `curl -X POST "https://moneywise.blueopus.cloud/api/v1/transfers" \\
+  -H "Authorization: Bearer mwp_live_..." \\
+  -H "Content-Type: application/json" \\
+  -d '{ "sale_external_reference": "kaizen:mew3:2026-11-14:r173", "receipt_number": "173" }'`,
+        exampleResponse: `{
+  "data": {
+    "id": "0c5d7a1e-7b0e-4c55-a6f2-3d1b9a8e2f10",
+    "sale_external_reference": "kaizen:mew3:2026-11-14:r173",
+    "sale_receipt_number": "REC-2026-0080",
+    "deposit": { "id": "82bbaf56-ab24-4225-a540-0e0e4aebe77d", "reference_number": "CR-2026-0068", "date": "2026-11-15", "amount": 1816.6 },
+    "source_account_type": "AIRTEL_MONEY",
+    "date": "2026-11-15",
+    "gross_amount": 1840,
+    "net_amount": 1816.6,
+    "fee_amount": 23.4,
+    "entry_ids": ["…transfer entry…", "…fee entry…"]
+  },
+  "created": true
+}`
+    },
+    {
+        id: 'get-transfer',
+        category: 'Sales',
+        method: 'GET',
+        path: '/v1/transfers',
+        title: 'Get a Transfer by Sale',
+        scope: 'read',
+        description: 'Returns the transfer recorded for a sale, or 404 if it has none yet.',
+        queryParams: [
+            { name: 'sale_external_reference', type: 'string', required: true, description: 'The external_reference of the sale.' }
+        ],
+        exampleCurl: `curl -X GET "https://moneywise.blueopus.cloud/api/v1/transfers?sale_external_reference=kaizen:mew3:2026-11-14:r173" \\
+  -H "Authorization: Bearer mwp_live_..."`,
+        exampleResponse: `{ "data": { "sale_external_reference": "kaizen:mew3:2026-11-14:r173", "source_account_type": "AIRTEL_MONEY", "gross_amount": 1840, "net_amount": 1816.6, "fee_amount": 23.4, "transfer_date": "2026-11-15", "entry_ids": ["…", "…"] } }`
     }
 ];
 
