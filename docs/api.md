@@ -230,3 +230,46 @@ X-Api-Key: mwp_live_...
 }
 ```
 - `404` if no sale with that reference exists in your organization.
+
+---
+
+### 9. Transfers (sale paid into Airtel/cash/bank, then deposited to the wallet)
+#### `POST /v1/transfers`
+- **Scope:** `write`
+- **Request Body:**
+```json
+{
+  "sale_external_reference": "kaizen:mew3:2026-11-14:r173",
+  "receipt_number": "173"
+}
+```
+  Fields: `sale_external_reference` *(required)*; one of `deposit_reference` / `deposit_id` / `receipt_number` *(required)*; `fee_account` *(optional)*; `dry_run` *(optional boolean)*.
+- **Rules:**
+  - The sale (from `POST /v1/sales`) was paid into Airtel Money / cash / bank and booked there. The guest's money then moved into the MoneyWise wallet and arrived as an unclassified deposit. This links the two so they cancel instead of being counted twice.
+  - Name the deposit with `deposit_reference` (its CR- number), `deposit_id`, or `receipt_number` (matches the unclassified wallet deposit whose description is that receipt number). `404` if it hasn't arrived yet — retry later.
+  - `gross` = the sale amount, `net` = the deposit amount, `fee` = the shortfall (the collection fee). A deposit larger than the sale, or a shortfall above 5% of the sale, is rejected with `409` as the wrong pair.
+  - Books on the sale's ledger: a transfer-out of `net` (offsets the wallet deposit) and a `fee` expense posted to your transaction-charges account (or `fee_account`: an EXPENSE account id, code or name). The deposit itself is not modified.
+  - Idempotent per deposit and per sale: repeating the call books nothing and returns `200` with `"created": false`. Pass `"dry_run": true` to see the entries that would be booked (`planned_entries`) without writing.
+- **Response (201 Created):**
+```json
+{
+  "data": {
+    "id": "0c5d7a1e-7b0e-4c55-a6f2-3d1b9a8e2f10",
+    "sale_external_reference": "kaizen:mew3:2026-11-14:r173",
+    "sale_receipt_number": "REC-2026-0080",
+    "deposit": { "id": "82bbaf56-ab24-4225-a540-0e0e4aebe77d", "reference_number": "CR-2026-0068", "date": "2026-11-15", "amount": 1816.6 },
+    "source_account_type": "AIRTEL_MONEY",
+    "date": "2026-11-15",
+    "gross_amount": 1840,
+    "net_amount": 1816.6,
+    "fee_amount": 23.4,
+    "entry_ids": ["…transfer entry…", "…fee entry…"]
+  },
+  "created": true
+}
+```
+- **Errors:** `400` validation; `404` sale or deposit not found; `409` wrong pair / already linked to a different deposit or sale / deposit already classified; `503` same transfer being booked concurrently (retry after `Retry-After`).
+
+#### `GET /v1/transfers?sale_external_reference=...`
+- **Scope:** `read`
+- **Response (200 OK):** `{ "data": { ... } }`, or `404` if that sale has no transfer yet.
