@@ -233,7 +233,7 @@ export async function linkDepositTransfer(input: LinkDepositInput): Promise<Link
     }
 
     const row = { id: claimId, ...baseRow, entry_ids: entryIds };
-    const { error: doneErr } = await supabase.from('api_transfers').update({ status: 'COMPLETED', entry_ids: entryIds, completed_at: new Date().toISOString() }).eq('id', claimId);
+    const { error: doneErr } = await supabase.from('api_transfers').update({ status: 'COMPLETED', gross_amount: gross, net_amount: net, fee_amount: fee, transfer_date: deposit.date, entry_ids: entryIds, completed_at: new Date().toISOString() }).eq('id', claimId);
     if (doneErr) console.error('[DepositTransfer] Failed to complete claim', claimId, doneErr.message);
     return done(row, true);
 }
