@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, RefreshCw, Plus, ArrowUpDown, ListFilter, CheckCheck, LucideIcon } from 'lucide-react';
+import { Search, RefreshCw, Plus, ArrowUpDown, ListFilter, CheckCheck, MessageSquare, LucideIcon } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { TabPillGroup } from './AnimatedTabs';
 
 interface TabDef {
@@ -88,6 +89,7 @@ export const InboxCard: React.FC<InboxCardProps> = ({
     leftContent,
     children,
 }) => {
+    const navigate = useNavigate();
     const [isNewMenuOpen, setIsNewMenuOpen] = useState(false);
     const newMenuRef = useRef<HTMLDivElement>(null);
 
@@ -136,6 +138,9 @@ export const InboxCard: React.FC<InboxCardProps> = ({
                         },
                     ]}
                 />
+
+                {/* Customer orders and messages from the connected Gmail, Facebook and Instagram */}
+                <button type="button" onClick={() => navigate('/messages')} className="ml-auto mr-2 inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-[#0B57D0] shadow-[inset_0_0_0_1px_#C4C7C5] hover:bg-[#F1F3F4]"><MessageSquare size={13} /> Orders &amp; messages</button>
 
                 {showNew && (
                     newMenuItems && newMenuItems.length > 0 ? (

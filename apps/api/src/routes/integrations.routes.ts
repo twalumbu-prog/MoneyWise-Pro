@@ -49,6 +49,7 @@ import {
     syncSageNow,
 } from '../controllers/sage.controller';
 import { composioConnect, composioComplete } from '../controllers/composio.controller';
+import { getChannelInbox, getChannelInboxItem } from '../controllers/channelInbox.controller';
 import {
     getGmailStatus,
     getGmailConnectUrl,
@@ -139,6 +140,10 @@ router.post('/gmail/sync', gmailSyncCron);
 router.get('/gmail/status', requireAuth, getGmailStatus);
 router.get('/gmail/connect', requireAuth, getGmailConnectUrl);
 router.delete('/gmail/:id', requireAuth, disconnectGmail);
+
+// ── The connected-channel inbox: emails and customer messages the connections bring in (orders, payments, invoices)
+router.get('/inbox', requireAuth, getChannelInbox);
+router.get('/inbox/:source/:id', requireAuth, getChannelInboxItem);
 
 // ── Quick connect via Composio (Gmail, Facebook, Instagram) — the alternative to the direct connections above ──
 router.post('/composio/:toolkit/connect', requireAuth, composioConnect);

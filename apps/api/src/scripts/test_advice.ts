@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto';
 import { supabase } from '../lib/supabase';
 import { saveItem, savePricePoint, PriceError } from '../services/priceCompare.service';
 import * as adv from '../services/advice.service';
+import { restock as restockStock } from '../services/stockBasic.service';
 
 let failed = 0;
 const check = (name: string, ok: boolean, extra = '') => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${extra ? ` — ${extra}` : ''}`); if (!ok) failed++; };
@@ -86,6 +87,39 @@ const TAG = 'ZZ TEST';
         const again: any = await adv.businessPrices(cem.id);
         check('void, old and repeated purchases don’t distort it, and each business counts once', again?.businesses === 5 && again?.median === 108, JSON.stringify(again));
         check('a business that did not opt in is not counted', again?.businesses === 5);
+
+        // "Add stock" with a price (the everyday Stock tab) counts like a bill, once the business has opted in
+        const { data: user } = await supabase.from('users').select('id').limit(1).single();
+        await supabase.from('products').update({ track_stock: true, stock_quantity: 0 }).eq('id', biz[5].prod);
+        await restockStock(biz[5].org, user!.id, { productId: biz[5].prod, quantity: 3, unitCost: 120, supplier: 'ZZ Supplier Ltd' });
+        check('a business that has not opted in still isn’t counted for a restock', ((await adv.businessPrices(cem.id)) as any)?.businesses === 5);
+        await adv.setSharing(biz[5].org, true);
+        const six: any = await adv.businessPrices(cem.id);
+        check('a restock price counts once that business opted in (six businesses, median K110)', six?.businesses === 6 && six?.median === 110, JSON.stringify(six));
+        check('the figure shows no supplier name', !JSON.stringify(six).includes('ZZ Supplier'));
+        await supabase.from('products').update({ track_stock: true, stock_quantity: 0 }).eq('id', biz[0].prod);
+        await restockStock(biz[0].org, user!.id, { productId: biz[0].prod, quantity: 5 }); // no price given: adds stock, adds no price
+        check('adding stock with no price adds no price', ((await adv.businessPrices(cem.id)) as any)?.median === 110);
+
+        // Naming suppliers is a separate opt-in, and a supplier needs 3 businesses before it is named
+        check('supplier sharing defaults to off', (await adv.getSupplierSharing(biz[0].org)).supplierSharing === false);
+        check('no supplier is named while nobody opted in to naming them (even though prices are shared)', (await adv.supplierOptions(cem.id)) === null);
+        await adv.setSupplierSharing(biz[0].org, true); await adv.setSupplierSharing(biz[1].org, true);
+        check('two businesses are too few to name a supplier', (await adv.supplierOptions(cem.id)) === null);
+        await adv.setSupplierSharing(biz[2].org, true);
+        const sup: any = await adv.supplierOptions(cem.id);
+        check('three businesses name the supplier, with the median they paid', sup?.suppliers?.length === 1 && sup.suppliers[0].name === 'ZZ supplier' && sup.suppliers[0].businesses === 3 && sup.suppliers[0].median === 104, JSON.stringify(sup));
+        check('only the supplier and a figure are shown, no business', !JSON.stringify(sup).match(/org|ZZ TEST/i));
+        await adv.setSupplierSharing(biz[2].org, false);
+        check('turning it off removes that business again', (await adv.supplierOptions(cem.id)) === null);
+
+        // a supplier typed when adding stock is named too, once 3 opted-in businesses used it
+        await adv.setSupplierSharing(biz[0].org, false); await adv.setSupplierSharing(biz[1].org, false);
+        for (const i of [3, 4, 5]) await adv.setSupplierSharing(biz[i].org, true);
+        for (const i of [3, 4]) { await supabase.from('products').update({ track_stock: true, stock_quantity: 0 }).eq('id', biz[i].prod); await restockStock(biz[i].org, user!.id, { productId: biz[i].prod, quantity: 2, unitCost: 100 + i, supplier: i === 3 ? '  zz supplier ltd ' : 'ZZ Supplier Ltd' }); }
+        const viaStock: any = await adv.supplierOptions(cem.id);
+        const named = viaStock?.suppliers?.find((s: any) => /zz supplier ltd/i.test(s.name));
+        check('suppliers typed when adding stock are named once 3 businesses used them (spelling and spacing ignored)', !!named && named.businesses === 3, JSON.stringify(viaStock));
     } catch (e: any) {
         console.log('ERROR:', e?.message ?? JSON.stringify(e)); failed++;
     } finally {
@@ -93,9 +127,10 @@ const TAG = 'ZZ TEST';
             const { data: bills } = await supabase.from('purchase_bills').select('id').in('organization_id', orgIds);
             const bIds = (bills ?? []).map((b: any) => b.id);
             if (bIds.length) { await supabase.from('purchase_bill_lines').delete().in('bill_id', bIds); await supabase.from('purchase_bills').delete().in('id', bIds); }
+            await supabase.from('stock_movements').delete().in('organization_id', orgIds);
             await supabase.from('suppliers').delete().in('organization_id', orgIds);
             await supabase.from('products').delete().in('organization_id', orgIds);
-            await supabase.from('app_settings').delete().in('key', orgIds.map((o) => `price_share:${o}`));
+            await supabase.from('app_settings').delete().in('key', orgIds.flatMap((o) => [`price_share:${o}`, `supplier_share:${o}`]));
             await supabase.from('organizations').delete().in('id', orgIds);
         }
         if (itemIds.length) await supabase.from('catalog_items').delete().in('id', itemIds);

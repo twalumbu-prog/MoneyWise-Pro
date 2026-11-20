@@ -146,14 +146,14 @@ const ctxFor = (organizationId: string, userId: string) => ({ organizationId, us
  * If paying the seller fails, the first instalment is sent straight back so the buyer isn't out of pocket.
  */
 export async function fundOrder(p: {
-    f: Funder; buyerUserId: string; buyerOrgId: string; sellerUsername: string; total: number; first: number; walletId: string; label: string;
+    f: Funder; buyerUserId: string; buyerOrgId: string; sellerUsername?: string | null; sellerOrgId?: string; total: number; first: number; walletId: string; label: string;
 }) {
     const { data: buyerOrg } = await supabase.from('organizations').select('public_username, lenco_subaccount_id').eq('id', p.buyerOrgId).maybeSingle();
     if (!buyerOrg?.public_username || !buyerOrg.lenco_subaccount_id) throw new PayLaterError('Set a MoneyWise username on your account to use Pay in 4.', 409, 'NO_USERNAME');
 
     await payLinkService.payWithWallet(ctxFor(p.buyerOrgId, p.buyerUserId), { username: p.f.username, amount: p.first, purpose: `Pay in 4 · ${p.label} · 1 of ${INSTALMENTS}`, walletId: p.walletId });
     try {
-        return await payLinkService.payWithWallet(ctxFor(p.f.orgId, p.f.userId), { username: p.sellerUsername, amount: p.total, purpose: `${p.label} · Marketplace order (Pay in 4)` });
+        return await payLinkService.payWithWallet(ctxFor(p.f.orgId, p.f.userId), { username: p.sellerUsername ?? '', orgId: p.sellerOrgId, amount: p.total, purpose: `${p.label} · Marketplace order (Pay in 4)` });
     } catch (e) {
         try {
             await payLinkService.payWithWallet(ctxFor(p.f.orgId, p.f.userId), { username: buyerOrg.public_username, amount: p.first, purpose: `Refund · ${p.label}` });

@@ -67,6 +67,22 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
     const [sellAs, setSellAs] = useState<'FIXED' | 'AUCTION'>('FIXED');
     const [auctionForm, setAuctionForm] = useState<AuctionForm>(() => defaultAuction(null));
     const [auctionFor, setAuctionFor] = useState<Product | null>(null);
+    /** Turns a running auction off so the item is a plain fixed-price listing again. With bids it asks first, and the bidders are told. */
+    const endAuction = async (pr: Product) => {
+        const info = auctionMap.get(pr.id);
+        if (!info) return;
+        const bids = info.bidCount;
+        const ok = window.confirm(bids > 0
+            ? `“${pr.name}” has ${bids} ${bids === 1 ? 'bid' : 'bids'}. Turning the auction off cancels ${bids === 1 ? 'it' : 'them'} and tells ${bids === 1 ? 'the bidder' : 'the bidders'}; nobody owes anything. The item stays on sale at its fixed price. Turn it off?`
+            : `Turn off the auction for “${pr.name}”? It stays on sale at its fixed price.`);
+        if (!ok) return;
+        try {
+            await apiJson(`/marketplace/auctions/${info.id}/cancel`, { method: 'POST', body: JSON.stringify({ confirm: true }) });
+            await refetchMarket();
+            await loadProducts();
+            setSuccessMessage('The auction is off. The item is on sale at its fixed price.');
+        } catch (e: any) { setError(e?.message || 'Couldn’t turn off the auction.'); }
+    };
     // Stock: whether to count it, how many, when to warn buyers, and the colours and sizes it comes in (each with its own count).
     const [trackStock, setTrackStock] = useState(false);
     const [stockQty, setStockQty] = useState('');
@@ -75,7 +91,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
     const stockTotal = variantRows.length ? variantRows.reduce((n, v) => n + (Number(v.stock) || 0), 0) : Number(stockQty) || 0;
     const { data: market, refetch: refetchMarket } = useQuery({ queryKey: LISTINGS_KEY, queryFn: () => apiJson<MarketplaceData>('/marketplace/listings'), staleTime: 60_000, enabled: isAdmin });
     const onMarketplace = React.useMemo(() => new Set((market?.listings ?? []).filter((l) => l.isMine).map((l) => l.id)), [market]);
-    const auctionMap = React.useMemo(() => new Map<string, AuctionInfo>((market?.listings ?? []).filter((l) => l.isMine && l.auction).map((l) => [l.id, { id: l.auction!.id, status: l.auction!.status as 'OPEN' | 'SOLD', endsAt: l.auction!.endsAt, serverNow: l.auction!.serverNow, bidCount: l.auction!.bidCount, currentBid: l.auction!.status === 'SOLD' ? l.auction!.winningAmount : l.auction!.currentBid, startPrice: l.auction!.startPrice }])), [market]);
+    const auctionMap = React.useMemo(() => new Map<string, AuctionInfo>((market?.listings ?? []).filter((l) => l.isMine && l.auction).map((l) => [l.id, { id: l.auction!.id, status: l.auction!.status as 'OPEN' | 'SOLD', endsAt: l.auction!.endsAt, serverNow: l.auction!.serverNow, bidCount: l.auction!.bidCount, currentBid: l.auction!.status === 'SOLD' ? l.auction!.winningAmount : l.auction!.currentBid, startPrice: l.auction!.startPrice, currency: l.auction!.currency }])), [market]);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
     const [templateOpen, setTemplateOpen] = useState(false);
     const [formData, setFormData] = useState({
@@ -901,7 +917,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                             }
 
                             return (
-                                <ProductList products={filteredProducts} isAdmin={isAdmin} onMarketplace={onMarketplace} auctions={auctionMap} downloadingId={downloadingId} onEdit={handleOpenEditModal} onShare={setShareProduct} onDelete={(pr) => handleDelete(pr.id, pr.name)} onDownload={(pr) => handleDownloadSalesCSV(pr.id, pr.name)} onAuction={setAuctionFor} onAdd={handleOpenAddModal} onToggleActive={handleToggleActive} />
+                                <ProductList products={filteredProducts} isAdmin={isAdmin} onMarketplace={onMarketplace} auctions={auctionMap} downloadingId={downloadingId} onEdit={handleOpenEditModal} onShare={setShareProduct} onDelete={(pr) => handleDelete(pr.id, pr.name)} onDownload={(pr) => handleDownloadSalesCSV(pr.id, pr.name)} onAuction={setAuctionFor} onEndAuction={(pr) => { void endAuction(pr); }} onAdd={handleOpenAddModal} onToggleActive={handleToggleActive} />
                             );
                         })()}
                     </div>
@@ -948,7 +964,10 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
     <div className="mb-4 rounded-2xl border border-gray-200 bg-white p-4">
         <div className="text-sm font-bold text-gray-900">How do you want to sell it?</div>
         {editingProduct && auctionMap.get(editingProduct.id)?.status === 'OPEN' ? (
-            <p className="mt-2 rounded-xl bg-[#FEF7E0] px-3 py-2.5 text-xs text-[#B06000]">This item is on auction right now. Price changes won’t affect it. You can cancel an auction from the Marketplace listing until the first bid.</p>
+            <div className="mt-2 rounded-xl bg-[#F8FAFD] px-3 py-3 text-xs text-[#3C4043]">
+                <p>This item is on auction right now{auctionMap.get(editingProduct.id)!.bidCount > 0 ? ` with ${auctionMap.get(editingProduct.id)!.bidCount} ${auctionMap.get(editingProduct.id)!.bidCount === 1 ? 'bid' : 'bids'}` : ''}. Changing the price doesn’t change the auction.</p>
+                <button type="button" onClick={() => { void endAuction(editingProduct); }} className="mt-2 inline-flex h-9 items-center rounded-full px-4 text-sm font-semibold text-[#B3261E] shadow-[inset_0_0_0_1px_#E6B8B5] hover:bg-[#FCE8E6]">Turn off auction, sell at the fixed price</button>
+            </div>
         ) : (
             <>
                 <div className="mt-2 grid grid-cols-2 gap-2" role="radiogroup" aria-label="How to sell it">
@@ -960,7 +979,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
                         </button>
                     ))}
                 </div>
-                {sellAs === 'AUCTION' && <div className="mt-4 rounded-2xl bg-[#F8FAFD] p-4"><AuctionFields value={auctionForm} onChange={setAuctionForm} name={formData.name.trim() || undefined} /></div>}
+                {sellAs === 'AUCTION' && <div className="mt-4 rounded-2xl bg-[#F8FAFD] p-4"><AuctionFields value={auctionForm} onChange={setAuctionForm} name={formData.name.trim() || undefined} currency={formData.currency} /></div>}
             </>
         )}
     </div>
@@ -1614,7 +1633,7 @@ export const ProductSettings: React.FC<ProductSettingsProps> = ({ onRequestAdd }
             )}
 
             <TemplatePickerModal open={templateOpen} onClose={() => setTemplateOpen(false)} existingNames={products.map((p) => p.name)} onAdded={() => { void loadProducts(); }} />
-            {auctionFor && <StartAuctionDialog listing={{ id: auctionFor.id, name: auctionFor.name, price: Number(auctionFor.price) || 0 }} open onClose={() => setAuctionFor(null)} onStarted={() => { refetchMarket(); loadProducts(); }} />}
+            {auctionFor && <StartAuctionDialog listing={{ id: auctionFor.id, name: auctionFor.name, price: Number(auctionFor.price) || 0, currency: auctionFor.currency }} open onClose={() => setAuctionFor(null)} onStarted={() => { refetchMarket(); loadProducts(); }} />}
 
             <ShareProductLinkModal
                 isOpen={!!shareProduct}

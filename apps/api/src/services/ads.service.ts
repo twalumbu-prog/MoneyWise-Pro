@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { payLinkService, PayLinkError } from './payLink.service';
+import { creditBalance, spendCredit, restoreCredit, ProgressError } from './progress.service';
 import { notifyUser } from './marketplaceNotify';
 
 /**
@@ -58,6 +59,9 @@ export async function catalog() {
     };
 }
 
+/** An ad is never paid for entirely with credit: at least this much (kwacha) goes through the wallet, as the payment needs a real amount. */
+export const MIN_CASH = 1;
+
 export interface Ctx { userId: string; orgId: string; role: string }
 
 /** Where the campaign is now, from its status and dates. */
@@ -66,7 +70,7 @@ export function phaseOf(c: any, today = isoDay(Date.now())): 'PENDING_REVIEW' | 
     return c.status;
 }
 
-export async function createCampaign(ctx: Ctx, input: { kind: AdKind; productId?: string; days: number; startDate?: string; walletId?: string; idempotencyKey?: string }) {
+export async function createCampaign(ctx: Ctx, input: { kind: AdKind; productId?: string; days: number; startDate?: string; walletId?: string; idempotencyKey?: string; useCredit?: boolean }) {
     if (ctx.role !== 'ADMIN') throw new AdError('Only the account holder can buy ads.', 403, 'FORBIDDEN');
     const ads = await adsOrg();
     if (!ads) throw new AdError('Ads are opening soon.', 409, 'NOT_ENABLED');
@@ -100,23 +104,33 @@ export async function createCampaign(ctx: Ctx, input: { kind: AdKind; productId?
     const wallets = await payLinkService.payerWallets(ctx.orgId);
     const wallet = input.walletId ? wallets.find((w) => w.id === input.walletId) : wallets.find((w) => w.is_main) ?? wallets[0];
     if (!wallet) throw new AdError('Choose one of your wallets to pay from.', 400, 'WALLET');
-    if (wallet.balance + 0.005 < price) throw new AdError(`${wallet.name} has K${wallet.balance.toFixed(2)} but this ad is K${price.toFixed(2)}. Add money or choose another wallet.`, 402, 'INSUFFICIENT');
+    // Fee credit (earned from badges) can pay part of the price; the rest, at least MIN_CASH, comes from the wallet.
+    const credit = input.useCredit ? Math.max(0, Math.min(await creditBalance(ctx.userId), Math.round((price - MIN_CASH) * 100) / 100)) : 0;
+    const cash = Math.round((price - credit) * 100) / 100;
+    if (wallet.balance + 0.005 < cash) throw new AdError(`${wallet.name} has K${wallet.balance.toFixed(2)} but K${cash.toFixed(2)} is to pay${credit > 0 ? ` (after K${credit.toFixed(2)} of fee credit)` : ''}. Add money or choose another wallet.`, 402, 'INSUFFICIENT');
 
     const { data: row, error } = await supabase.from('ad_campaigns').insert({
         organization_id: ctx.orgId, created_by: ctx.userId, kind: input.kind, product_id: product?.id ?? null, days: input.days, start_date: start, end_date: end, price,
-        status: 'PENDING_PAYMENT', idempotency_key: key,
+        status: 'PENDING_PAYMENT', idempotency_key: key, credit_applied: credit,
     }).select('*').single();
     if (error) throw error;
 
+    let creditTaken = false;
     try {
+        if (credit > 0) {
+            await spendCredit(ctx.userId, credit, `ad:${row.id}`, `Fee credit used on a MoneyWise Ads purchase`);
+            creditTaken = true;
+        }
         const paid = await payLinkService.payWithWallet(
             { organizationId: ctx.orgId, userId: ctx.userId, role: ctx.role, today },
-            { username: ads.username, amount: price, purpose: `MoneyWise Ads · ${KINDS[input.kind].label}${product ? ` · ${product.name}` : ''}`.slice(0, 120), walletId: wallet.id },
+            { username: ads.username, amount: cash, purpose: `MoneyWise Ads · ${KINDS[input.kind].label}${product ? ` · ${product.name}` : ''}`.slice(0, 120), walletId: wallet.id },
         );
         const { data: updated } = await supabase.from('ad_campaigns').update({ status: 'PENDING_REVIEW', requisition_id: paid.requisitionId, payment_reference: paid.reference, updated_at: new Date().toISOString() }).eq('id', row.id).select('*').single();
         return updated;
     } catch (e: any) {
         await supabase.from('ad_campaigns').update({ status: 'FAILED', updated_at: new Date().toISOString() }).eq('id', row.id);
+        if (creditTaken) await restoreCredit(ctx.userId, credit, `restore:ad:${row.id}`, 'Fee credit returned: the ad payment failed').catch(() => undefined);
+        if (e instanceof ProgressError) throw new AdError(e.message, e.httpStatus, e.code);
         if (e instanceof PayLinkError) throw new AdError(e.message, e.httpStatus, e.code);
         throw e;
     }
@@ -128,10 +142,18 @@ async function refund(c: any): Promise<string | null> {
     if (!ads) throw new AdError('Refunds are paused: the ads account isn’t set up.', 409, 'NOT_ENABLED');
     const { data: org } = await supabase.from('organizations').select('public_username, lenco_subaccount_id').eq('id', c.organization_id).maybeSingle();
     if (!org?.public_username || !org.lenco_subaccount_id) throw new AdError('The seller’s wallet can’t receive a refund automatically.', 409, 'SELLER_UNREACHABLE');
+    // Only the cash that was paid goes back as cash; the fee credit that paid part of the ad goes back as credit, never as money.
+    const credit = Math.round(Number(c.credit_applied ?? 0) * 100) / 100;
+    const cash = Math.round((Number(c.price) - credit) * 100) / 100;
     const paid = await payLinkService.payWithWallet(
         { organizationId: ads.orgId, userId: ads.userId, role: 'ADMIN', today: isoDay(Date.now()) },
-        { username: org.public_username, amount: Number(c.price), purpose: 'MoneyWise Ads refund' },
+        { username: org.public_username, amount: cash, purpose: 'MoneyWise Ads refund' },
     );
+    // After the cash (the cash refund can't be repeated, so a failure here must not undo it). The ref makes the credit come back once.
+    if (credit > 0 && c.created_by) {
+        try { await restoreCredit(c.created_by, credit, `restore:ad:${c.id}`, 'Fee credit returned: the ad was not shown'); }
+        catch { try { await restoreCredit(c.created_by, credit, `restore:ad:${c.id}`, 'Fee credit returned: the ad was not shown'); } catch (e2) { console.error('[Ads] could not return fee credit for ad', c.id, credit, e2); } }
+    }
     return paid.reference;
 }
 

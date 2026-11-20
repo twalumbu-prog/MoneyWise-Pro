@@ -135,18 +135,94 @@ export async function businessPrices(itemId: string) {
     if (!products?.length) return null;
     const orgOfProduct = new Map<string, string>(products.map((p: any) => [p.id, p.organization_id]));
     const since = new Date(Date.now() - WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10);
-    const { data: lines } = await supabase.from('purchase_bill_lines').select('product_id, unit_cost, bill_id').in('product_id', [...orgOfProduct.keys()]).limit(5000);
-    if (!lines?.length) return null;
-    const { data: bills } = await supabase.from('purchase_bills').select('id, status, bill_date').in('id', [...new Set(lines.map((l: any) => l.bill_id))]).neq('status', 'VOID').gte('bill_date', since);
+    const productIds = [...orgOfProduct.keys()];
+    // Two places a purchase price is recorded: a supplier bill's lines, and "add stock" with what each one cost (the everyday Stock tab).
+    const [{ data: lines }, { data: restocks }] = await Promise.all([
+        supabase.from('purchase_bill_lines').select('product_id, unit_cost, bill_id').in('product_id', productIds).limit(5000),
+        supabase.from('stock_movements').select('product_id, unit_cost').in('product_id', productIds).eq('reason', 'PURCHASE').eq('ref_type', 'RESTOCK').gt('quantity_change', 0).gt('unit_cost', 0).gte('created_at', since).limit(5000),
+    ]);
+    const { data: bills } = (lines ?? []).length ? await supabase.from('purchase_bills').select('id, status, bill_date').in('id', [...new Set((lines ?? []).map((l: any) => l.bill_id))]).neq('status', 'VOID').gte('bill_date', since) : { data: [] as any[] };
     const okBills = new Set((bills ?? []).map((b: any) => b.id));
     const perOrg = new Map<string, number[]>();
-    for (const l of lines) {
+    for (const l of lines ?? []) {
         if (!okBills.has(l.bill_id) || !(num(l.unit_cost) > 0)) continue;
         const org = orgOfProduct.get(l.product_id);
         if (org) perOrg.set(org, [...(perOrg.get(org) ?? []), num(l.unit_cost)]);
+    }
+    for (const m of restocks ?? []) {
+        const org = orgOfProduct.get((m as any).product_id);
+        if (org && num((m as any).unit_cost) > 0) perOrg.set(org, [...(perOrg.get(org) ?? []), num((m as any).unit_cost)]);
     }
     if (perOrg.size < MIN_BUSINESSES) return null;
     // Each business counts once, however many times it bought: its own typical cost is its vote.
     const votes = [...perOrg.values()].map((xs) => median(xs));
     return { businesses: votes.length, median: round2(median(votes)), low: round2(quantile(votes, 0.25)), high: round2(quantile(votes, 0.75)), days: WINDOW_DAYS };
+}
+
+/* ───────────── Where businesses buy it (a second, separate opt-in) ───────────── */
+
+/** A supplier is only named when at least this many different businesses, each opted in, bought the product from it. */
+export const MIN_SUPPLIER_BUSINESSES = 3;
+const supplierKey = (orgId: string) => `supplier_share:${orgId}`;
+const normName = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+
+export async function getSupplierSharing(orgId: string) {
+    const { data } = await supabase.from('app_settings').select('value').eq('key', supplierKey(orgId)).maybeSingle();
+    return { supplierSharing: data?.value?.on === true };
+}
+export async function setSupplierSharing(orgId: string, on: boolean) {
+    const { error } = await supabase.from('app_settings').upsert({ key: supplierKey(orgId), value: { on: on === true }, description: 'Let shoppers see which suppliers this business buys a product from', updated_at: new Date().toISOString() });
+    if (error) throw error;
+    return { supplierSharing: on === true };
+}
+
+/**
+ * Suppliers that businesses buy a catalogue product from, for businesses that opted in to naming them (separately from sharing prices).
+ * A supplier appears only when MIN_SUPPLIER_BUSINESSES different businesses bought from it, so no single business can be picked out; it comes
+ * with the median price those businesses paid. Returns null when nothing qualifies.
+ */
+export async function supplierOptions(itemId: string) {
+    const { data: shared } = await supabase.from('app_settings').select('key, value').like('key', 'supplier_share:%').limit(5000);
+    const orgIds = (shared ?? []).filter((r: any) => r.value?.on === true).map((r: any) => String(r.key).slice('supplier_share:'.length));
+    if (orgIds.length < MIN_SUPPLIER_BUSINESSES) return null;
+    const { data: products } = await supabase.from('products').select('id, organization_id').eq('catalog_item_id', itemId).in('organization_id', orgIds).limit(2000);
+    if (!products?.length) return null;
+    const orgOfProduct = new Map<string, string>(products.map((p: any) => [p.id, p.organization_id]));
+    const productIds = [...orgOfProduct.keys()];
+    const since = new Date(Date.now() - WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10);
+
+    // supplier -> business -> prices (and the spelling most used for the name)
+    const bySupplier = new Map<string, { names: Map<string, number>; perOrg: Map<string, number[]> }>();
+    const add = (org: string | undefined, name: unknown, cost: number) => {
+        const nm = String(name ?? '').replace(/\s+/g, ' ').trim();
+        if (!org || !nm || !(cost > 0)) return;
+        const k = normName(nm);
+        const e = bySupplier.get(k) ?? { names: new Map(), perOrg: new Map() };
+        e.names.set(nm, (e.names.get(nm) ?? 0) + 1);
+        e.perOrg.set(org, [...(e.perOrg.get(org) ?? []), cost]);
+        bySupplier.set(k, e);
+    };
+
+    const { data: lines } = await supabase.from('purchase_bill_lines').select('product_id, unit_cost, bill_id').in('product_id', productIds).limit(5000);
+    if (lines?.length) {
+        const { data: bills } = await supabase.from('purchase_bills').select('id, supplier_id, status, bill_date').in('id', [...new Set(lines.map((l: any) => l.bill_id))]).neq('status', 'VOID').gte('bill_date', since);
+        const sids = [...new Set((bills ?? []).map((b: any) => b.supplier_id).filter(Boolean))];
+        const { data: sups } = sids.length ? await supabase.from('suppliers').select('id, name').in('id', sids) : { data: [] as any[] };
+        const supName = new Map<string, string>((sups ?? []).map((s: any) => [s.id, s.name]));
+        const bill = new Map<string, any>((bills ?? []).map((b: any) => [b.id, b]));
+        for (const l of lines) { const b = bill.get(l.bill_id); if (b) add(orgOfProduct.get(l.product_id), supName.get(b.supplier_id), num(l.unit_cost)); }
+    }
+    // Stock added with a price and a supplier (needs the supplier_name column; without it only supplier bills count).
+    const mv = await supabase.from('stock_movements').select('product_id, unit_cost, supplier_name').in('product_id', productIds).eq('reason', 'PURCHASE').eq('ref_type', 'RESTOCK').gt('quantity_change', 0).gt('unit_cost', 0).gte('created_at', since).limit(5000);
+    if (!mv.error) for (const m of mv.data ?? []) add(orgOfProduct.get((m as any).product_id), (m as any).supplier_name, num((m as any).unit_cost));
+
+    const suppliers = [...bySupplier.values()]
+        .filter((e) => e.perOrg.size >= MIN_SUPPLIER_BUSINESSES)
+        .map((e) => {
+            const votes = [...e.perOrg.values()].map((xs) => median(xs));
+            const name = [...e.names.entries()].sort((a, b) => b[1] - a[1])[0][0];
+            return { name, businesses: e.perOrg.size, median: round2(median(votes)) };
+        })
+        .sort((a, b) => b.businesses - a.businesses || a.median - b.median);
+    return suppliers.length ? { suppliers, days: WINDOW_DAYS } : null;
 }

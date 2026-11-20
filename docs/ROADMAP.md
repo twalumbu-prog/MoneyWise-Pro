@@ -81,12 +81,56 @@ Item 6, broken down (19 Nov 2026).
 | Voucher at the store checkout (real voucher, real browser): K100 cart, K20 off, K2 fee, pays K82. The breakdown did not show the voucher line, so the numbers did not add up on screen; fixed (`-K20.00 Reward voucher` row) | seen working after the fix |
 | The live database was missing `products.currency` (the USD migration had only partly run). Added it; the API's startup SQL does the same on deploy | done |
 | Store card checkout charging **real dollars** for a cart made only of dollar products (no voucher, delivery, booking or donation; the server works it out from the products, not the browser; mixed carts stay in kwacha). The card box and Pay button show dollars | built; 7 checks pass (`test_usd_cart.ts`); not yet seen in a browser with a real store |
-| Marketplace in dollars, location-based currency, converter | todo |
-| Mobile app (Expo) currency and share-link screens | todo |
-| Invest on real prices (needs the price store, see the Invest plan) | todo |
+| Marketplace in dollars: a dollar item is listed in kwacha at today's rate and keeps its dollar price; the browse pages show a **K / $ switch** (remembered; the first time, dollars for someone browsing from outside Zambia by device time zone, else kwacha) and convert other prices with "≈". Checkout and the Marketplace's wallets stay in kwacha, real dollar charging happens in the seller's store or pay link | built; 4 checks (`test_marketplace_usd.ts`); not seen in a browser (needs sign-in). Not done: a true country lookup (time zone is a guess), dollar prices in the filters and sort boxes (they are kwacha) |
+| **Auctions** (20 Nov): an auction runs in the item's own currency, so a dollar item has dollar bids, prices and winning amount (the winner's payment link is a dollar link, and the wallet checkout converts at today's rate; before this a dollar product was charged at its dollar number as kwacha in the marketplace checkout). Changing a product to dollars converts a bid-free auction at today's rate; with bids it is refused until the auction is ended. The seller sees every bidder's full name, number and bid (others see masked names). New **Turn off auction** (in the item's edit screen, in the list, and on the Marketplace listing): the item becomes a normal buy-now listing; with bids it asks first and tells the bidders | built; 23 checks (`test_auction_currency.ts`); not seen in a browser |
+| **Marketplace purchases** (20 Nov): (1) a seller with a payment account but **no public username** can now be bought from in the app (a wallet payment can address a seller by account; before, 4 of 14 blocked items were blocked only for this); (2) the checkout's **Mobile money or card** option, which was a greyed-out "Coming soon", now works: the buyer finishes on the same secure payment page the seller's store uses (MTN, Airtel, Zamtel, Visa, Mastercard; a dollar item is charged to a card in dollars). The order waits (PENDING_PAYMENT), turns PAID when the link is paid, and is cancelled with its stock returned after 2 hours unpaid. Not for rooms and rentals, Pay in 4 or Opus Delivery (these use the wallet). Still in the seller's store: appointments, quotes and digital items (7 listings) and sellers with no payment account (Kanyanta Lending) | built; 14 checks (`test_market_link.ts`); the payment page itself was not run with real money, and the checkout was not seen in a browser |
+| Mobile app (Expo): Kwacha / US dollars chips on the product screen, dollar prices in the product list, and a new "One-Time Payment Link" screen (link icon on each product: customer, phone, currency, amount, copy, share). Easy badges no longer show a Start button | built, types check; not run on a phone |
+| Invest on real prices: the price store, manager upload page, real series and "no sample funds" were already built (8 funds, 334 prices in the database today) | built earlier; this list was out of date. Not seen in a browser today. Still needed: ask each manager for their real fund list and a daily price feed (P4) |
 | Master Fees screen used in a signed-in browser | todo (needs a signed-in business) |
 | Server check of the sale amount (any payment method): a public-store order is refused if an item's price or the total is below the database price (dollar products at today's rate, 2% slack); totals above are fine (delivery). Pay links, till sales, vouchers, bookings and appointments already had their own checks | built; 4 more checks in `test_usd_cart.ts` (11 in all) |
 | 7 | **Seed the marketplace.** Real prices, a store directory, share kits (QR, WhatsApp text) for store links. | `todo` | A new visitor finds real listings and real prices. |
+
+## Badges, streaks and points (added 20 Nov 2026)
+
+Tiered badges (bronze, silver, gold, platinum), a daily-use streak, XP, points and fee credit. The server is the source of truth (`apps/api/src/services/progress.service.ts`).
+
+| Part | Status |
+|---|---|
+| 29 badges in four groups: look around (12 easy "open this page" badges), guided missions (5), consistent use (3, 7, 30, 100 days in a row), money movement (1, 10, 50, 250 confirmed entries; K1,000, K10,000, K100,000, K1,000,000 moved). Only confirmed INFLOW, DISBURSEMENT and EXPENSE entries count, not opening balances or adjustments | built; all checks pass (`test_progress.ts`) |
+| XP is the sum of the badges earned (never stored, so it can't drift); levels 1 to 10 | built |
+| XP to points (20 XP = 1 point, **once a calendar month**, enforced in the database), points to fee credit (10 points = K1, in whole kwacha). So 200 XP is worth K1. Gold badges gift 5 points (K0.50), platinum 25 (K2.50). Done in the database under a per-person lock; two taps at once cannot spend the same XP or points twice (tested) | built |
+| Web: Missions, Badges (tier colours, progress bars toward streak and money badges, gift notes) and Rewards (level, streak, points, credit, convert and redeem) tabs; the celebration shows the tier and the gift | built, types check; **not seen in a browser** (needs sign-in) |
+| Fee credit pays part of a **Marketplace Ads** purchase (tick "Use my fee credit"; at least K1 still comes from the wallet). A cancelled or rejected ad returns the cash paid as cash and the credit as credit, never credit as money. Spending is atomic and once per ad (tested). It **cannot** reduce Lipila or Lenco fees: they take those from the wallet themselves, so crediting them would mean MoneyWise paying real money | built (credit use and return tested; the ad purchase and refund themselves need a live ads account and were not run) |
+| Other MoneyWise-set charges that credit could pay (billing plan upgrade, premium features) | todo |
+| Badges and rewards screens in the Expo app (it still shows the old local list) | todo |
+| Rates are now 20 XP per point and 10 points per K1: the most one person can earn in credit over a lifetime is about K20 (all badges), so it is cheap. Change them in `progress.service.ts` (`XP_PER_POINT`, `POINTS_PER_KWACHA`, `GIFT_POINTS`) | set |
+| Guided-mission badges are reported by the app, so a script could claim them. Each is once per person, so the total is capped, but treat the credit as a marketing cost until fees use it | known |
+
+## Blue Opus share offers (added 22 Nov 2026)
+
+A private, personal agreement to buy shares in Blue Opus (not publicly listed), on the Invest page ("Own a piece of Blue Opus", `/invest/blue-opus`). Post-money valuation K7,500,000 (the investor deck's K1.5M for 20%; the round is capped at K1.5M): ownership = amount / K7,500,000, fixed when the person signs.
+
+| Part | Status |
+|---|---|
+| Page: valuation, amount calculator (percentage), the agreement text with the person's own numbers, risk warning, typed-name signature, "your offers" with withdraw | built, types check; not seen in a browser (needs sign-in) |
+| Rules: minimum K1,000, optional per-person maximum and round cap, at most 3 open offers per person, round can be closed, a signed offer keeps its valuation (all in `app_settings` key `blue_opus_round`) | built; 31 checks (`test_share_round.ts`) |
+| Blue Opus side (platform super-admins only, on the same page): accept (countersign), mark paid, decline, with a note the person sees; the person is notified | built |
+| **No money moves.** The page records the signed offer only; Blue Opus tells the person how to pay. | by design |
+| **Invite-only.** Only people Blue Opus invites can see the offer: a one-time code per named person (`BO-XXXXXXXX`, optional expiry, revocable, optional investor cap, link or typed). Without one the page says only "This is a private offer" and shows no figures; the Invest tile is hidden. Wrong guesses are throttled | built; checks in `test_share_round.ts` |
+| **Lawyer gate.** Nobody can sign until a lawyer's approval of the current wording version is recorded (name and date, super-admin only); a change to the wording blocks offers again until re-approved. Investors tick four declarations (invited, 18+, can afford to lose it, own decision), stored with the offer | built |
+| **The agreement text is still a DRAFT** written by me, not a lawyer. The brief to hand them, with the questions and the full text, is `docs/BLUE_OPUS_LEGAL_BRIEF.md`. A private company inviting the public to buy shares is regulated; the page is now invite-only, but the lawyer must confirm it is lawful, what exemption applies and whether the SEC must be told | **needs a lawyer** |
+| Set the real minimum, per-person maximum and the size of the round; set the share count, price per share and a share register | todo |
+| A share certificate / countersigned PDF for each paid offer; KYC check before accepting | todo |
+
+## Connected inbox and bank statement import (20 Nov 2026)
+
+| Part | Status |
+|---|---|
+| **Orders & messages inbox** (`/messages`, a button on the Inbox and a link on the Gmail card). Gmail, Facebook and Instagram connections already collected and AI-classified emails and customer messages, but **no screen or API listed them**, so a connected inbox looked empty by construction. Now: tabs for Orders (orders, "wants to buy", "asking about an order", "says they paid"), Payments & invoices, Other, Everything; search; connection status and last sync; open a message to read it | built; 11 checks (`test_channel_inbox.ts`) against the 599 real emails already stored; not seen in a browser |
+| Orders tab is empty for the one connected mailbox because none of its 599 emails is an order (they are payment alerts, invoices and notifications). It fills when customers message a connected Facebook Page or Instagram, or send orders by email | explained |
+| **Instagram and Facebook never connected** for this workspace (no connection rows exist): the Quick connect sign-in did not finish registering them. Cause not visible from here (server logs of the `complete` call would say). Reconnect and note the message the card shows | open |
+| Reply from inside the inbox, confirm or dismiss a suggested payment match, and an "ORDER" kind of customer message for Instagram/Facebook comments | todo |
+| **Bank statement import** (`apps/api/src/scripts/import_bank_statement.ts`): reads a Standard Chartered CSV, checks every balance line adds up, matches against the workspace's bank account, categorises, and writes what is missing as ledger entries (dry run by default; re-running adds nothing). Run on Louis Siwale's Workspace: 135 lines, 136 entries (incl. an opening balance of K24.21), 50 to 186 journal entries | done; see the summary in the chat for what needs a category |
 
 ## B. Weaknesses: work these one by one after A
 

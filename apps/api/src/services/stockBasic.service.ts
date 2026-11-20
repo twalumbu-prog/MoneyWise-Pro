@@ -11,7 +11,7 @@
 import { supabase } from '../lib/supabase';
 import { getEntitlements } from './entitlements.service';
 import { alertIfLow } from './stockAlerts.service';
-import { PurchasingError, applyStock, stockOf, variantsOf, ensureAccount, inventoryAcct, postJournal, text, r2, today } from './purchasing.service';
+import { PurchasingError, applyStock, stockOf, variantsOf, ensureAccount, inventoryAcct, adjustmentAcct, lossFields, postJournal, text, r2, today } from './purchasing.service';
 
 const COLS = 'id, name, track_stock, stock_quantity, low_stock_threshold, variants, cost_price';
 
@@ -75,7 +75,10 @@ export async function restock(orgId: string, userId: string, body: any) {
     const p = await loadProduct(orgId, body?.productId);
     const variantId = chosenVariant(p, body?.variantId);
     const qty = wholeQty(body?.quantity);
-    const unitCost = Number(body?.unitCost);
+    // The cost is optional: adding stock without one leaves the average cost as it was.
+    const hasCost = body?.unitCost !== undefined && body?.unitCost !== null && String(body.unitCost).trim() !== '';
+    const oldCostNow = Number(p.cost_price) || 0;
+    const unitCost = hasCost ? Number(body.unitCost) : oldCostNow;
     if (!Number.isFinite(unitCost) || unitCost < 0) throw new PurchasingError('Enter what each one cost (zero if it was free).');
     if (unitCost > 10_000_000) throw new PurchasingError('That cost is too large.');
     const supplier = text(body?.supplier, 80);
@@ -87,12 +90,16 @@ export async function restock(orgId: string, userId: string, body: any) {
     const avg = r2(total > 0 && oldCost > 0 ? (total * oldCost + qty * unitCost) / (total + qty) : unitCost);
     await applyStock(p, variantId, qty);
     await supabase.from('products').update({ cost_price: avg }).eq('id', p.id);
-    const { data: mv, error } = await supabase.from('stock_movements').insert({
-        organization_id: orgId, product_id: p.id, variant_id: variantId, quantity_change: qty, unit_cost: unitCost, reason: 'PURCHASE', ref_type: 'RESTOCK', note,
+    const row = {
+        organization_id: orgId, product_id: p.id, variant_id: variantId, quantity_change: qty, unit_cost: hasCost ? unitCost : null, reason: 'PURCHASE', ref_type: 'RESTOCK', note,
         balance_after: stockOf(p, variantId), created_by: userId,
-    }).select('*').single();
+    };
+    // The supplier is also kept on its own (supplier_name); a database that doesn't have that column yet still saves the purchase without it.
+    let ins = await supabase.from('stock_movements').insert({ ...row, supplier_name: supplier }).select('*').single();
+    if (ins.error && /supplier_name/i.test(ins.error.message)) ins = await supabase.from('stock_movements').insert(row).select('*').single();
+    const { data: mv, error } = ins;
     if (error || !mv) { await applyStock(p, variantId, -qty); throw new PurchasingError(error?.message ?? 'Could not record the purchase.', 500); }
-    return { ...mv, productName: p.name, spent: r2(qty * unitCost) };
+    return { ...mv, productName: p.name, spent: hasCost ? r2(qty * unitCost) : 0 };
 }
 
 /** Every option (or product) that is running low or out, worst first. */
@@ -148,4 +155,70 @@ export async function spending(orgId: string, from?: string, to?: string) {
         byItem: [...byItem.values()].sort((a, b) => b.spent - a.spent),
         purchases,
     };
+}
+
+/**
+ * Stock that was lost, not used: damaged, lost, stolen, expired or miscounted. Takes it out of stock, says why, and records who was in charge of
+ * it, so a shop can see where stock goes missing. Valued at the product's cost; posted to the books as an inventory adjustment when the
+ * business has accounting and the cost is known.
+ */
+export async function writeOff(orgId: string, userId: string, body: any) {
+    const p = await loadProduct(orgId, body?.productId);
+    const variantId = chosenVariant(p, body?.variantId);
+    const qty = wholeQty(body?.quantity);
+    const before = stockOf(p, variantId);
+    if (before < qty) throw new PurchasingError(`Only ${before} in stock, so ${qty} can’t be written off.`);
+    const fields = await lossFields(orgId, body);
+    if (!fields.loss_kind) fields.loss_kind = 'OTHER';
+    const cost = Number(p.cost_price) || 0;
+
+    await applyStock(p, variantId, -qty);
+    const after = before - qty;
+    const { data: mv, error } = await supabase.from('stock_movements').insert({
+        organization_id: orgId, product_id: p.id, variant_id: variantId, quantity_change: -qty, unit_cost: cost || null, reason: 'ADJUSTMENT',
+        note: text(body?.note, 300), balance_after: after, created_by: userId, ...fields,
+    }).select('*').single();
+    if (error || !mv) { await applyStock(p, variantId, qty); throw new PurchasingError(error?.message ?? 'Could not record the loss.', 500); }
+
+    const value = r2(qty * cost);
+    if (value > 0 && (await hasAccounting(orgId))) {
+        try {
+            const inv = await inventoryAcct(orgId), adj = await adjustmentAcct(orgId);
+            await postJournal(orgId, userId, today(), `Stock write-off: ${p.name}`, `STK-${mv.id.slice(0, 8)}`, 'STOCK_ADJUSTMENT', mv.id, [
+                { accountId: adj, debit: value, credit: 0 }, { accountId: inv, debit: 0, credit: value },
+            ]);
+        } catch (e) { console.error('[Stock] write-off not posted to the ledger:', (e as Error).message); }
+    }
+    void alertIfLow(orgId, p, variantId, before, after);
+    return { ...mv, productName: p.name, valuePosted: value };
+}
+
+/** Every recorded loss, newest first, with who was in charge and who recorded it, plus the totals by person and by kind. */
+export async function lossLog(orgId: string) {
+    const { data, error } = await supabase.from('stock_movements').select('id, product_id, variant_id, quantity_change, unit_cost, loss_kind, in_charge_name, in_charge_staff_id, note, created_by, created_at')
+        .eq('organization_id', orgId).not('loss_kind', 'is', null).order('created_at', { ascending: false }).range(0, 999);
+    if (error) throw new PurchasingError(error.message, 500);
+    const rows = (data ?? []) as any[];
+    const pids = [...new Set(rows.map((r) => r.product_id))], uids = [...new Set(rows.map((r) => r.created_by).filter(Boolean))];
+    const [{ data: prods }, { data: users }] = await Promise.all([
+        pids.length ? supabase.from('products').select('id, name, variants').in('id', pids) : Promise.resolve({ data: [] as any[] }),
+        uids.length ? supabase.from('users').select('id, name').in('id', uids) : Promise.resolve({ data: [] as any[] }),
+    ]);
+    const pm = new Map<string, any>((prods ?? []).map((p: any) => [p.id, p])), um = new Map<string, string>((users ?? []).map((u: any) => [u.id, u.name]));
+    const items = rows.map((r) => {
+        const p = pm.get(r.product_id);
+        const units = Math.abs(Number(r.quantity_change) || 0);
+        return {
+            id: r.id as string, at: r.created_at as string, product: p?.name ?? 'Product', option: r.variant_id ? (variantsOf(p ?? {}).find((v: any) => v.id === r.variant_id)?.name ?? null) : null,
+            units, kind: r.loss_kind as string, inCharge: (r.in_charge_name as string | null) ?? null, inChargeStaffId: (r.in_charge_staff_id as string | null) ?? null,
+            recordedBy: um.get(r.created_by) ?? null, note: (r.note as string | null) ?? null, value: r2(units * (Number(r.unit_cost) || 0)),
+        };
+    });
+    const byPerson = new Map<string, { name: string; count: number; units: number; value: number }>();
+    for (const i of items) {
+        const k = i.inCharge ?? 'Nobody named';
+        const e = byPerson.get(k) ?? { name: k, count: 0, units: 0, value: 0 };
+        e.count++; e.units += i.units; e.value = r2(e.value + i.value); byPerson.set(k, e);
+    }
+    return { items, totalUnits: items.reduce((s, i) => s + i.units, 0), totalValue: r2(items.reduce((s, i) => s + i.value, 0)), byPerson: [...byPerson.values()].sort((a, b) => b.units - a.units) };
 }

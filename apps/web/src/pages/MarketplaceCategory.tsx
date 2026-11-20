@@ -5,7 +5,7 @@ import { BadgeCheck, ChevronRight, Heart, LayoutGrid, List, Search, Store, Truck
 import { apiJson } from 'core';
 import { PagePanel } from '../components/ui/PagePanel';
 import { PrimaryButton } from '../components/ui/Dialog';
-import { LISTINGS_KEY, ListingCard, LocationText, SellerAvatar, SponsoredTag, Stars, Thumb, VerifiedBadge, priceText } from '../components/marketplace/parts';
+import { LISTINGS_KEY, ListingCard, LocationText, SellerAvatar, SponsoredTag, Stars, Thumb, VerifiedBadge, PriceText } from '../components/marketplace/parts';
 import { MarketplaceTabs } from '../components/marketplace/MarketplaceTabs';
 import { ShopByCategory } from '../components/marketplace/CategoryNav';
 import { TREE, categorize, categoryPath, countCategories, mainById, subById } from '../components/marketplace/taxonomy';
@@ -67,7 +67,7 @@ export const MarketplaceCategory: React.FC = () => {
             <div className="min-w-0 flex-1">
                 <button type="button" onClick={() => open(l)} className="block text-left"><span className="line-clamp-2 text-lg font-medium text-[#1F1F1F] hover:underline">{l.name}</span></button>
                 {l.description && <p className="mt-0.5 line-clamp-2 text-sm text-[#5F6368]">{l.description}</p>}
-                <p className="mt-2 text-2xl font-bold tabular-nums text-[#1F1F1F]">{priceText(l)}</p>
+                <p className="mt-2 text-2xl font-bold tabular-nums text-[#1F1F1F]"><PriceText l={l} /></p>
                 {l.auction?.status === 'OPEN' && <p className="text-sm text-[#B31412]">Auction · {l.auction.bidCount} {l.auction.bidCount === 1 ? 'bid' : 'bids'}</p>}
                 {l.requiresDelivery && <p className="mt-1 inline-flex items-center gap-1.5 text-sm text-[#5F6368]"><Truck size={14} /> Delivery available</p>}
                 <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#5F6368]">

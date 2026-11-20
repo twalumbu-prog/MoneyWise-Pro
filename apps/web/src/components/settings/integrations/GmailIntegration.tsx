@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiJson } from 'core';
+import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, AlertCircle, CheckCircle2, Trash2 } from 'lucide-react';
 import { startQuickConnect, completeQuickConnect, takeQuickConnectReturn } from './quickConnect';
 
@@ -38,6 +39,7 @@ const timeAgo = (iso?: string | null) => {
 };
 
 export const GmailIntegration: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+    const navigate = useNavigate();
     const [status, setStatus] = useState<GmailStatus | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -167,6 +169,7 @@ export const GmailIntegration: React.FC<{ onBack: () => void }> = ({ onBack }) =
                     Quick connect signs you in to Google through our connection partner, Composio, and is the fastest way to get started.
                     Connect directly signs you in with Google ourselves. Both only read your email.
                 </p>
+                {conns.length > 0 && <button type="button" onClick={() => navigate('/messages')} className="mt-3 text-sm font-semibold text-brand-navy hover:underline">See your emails in Orders &amp; messages →</button>}
                 {conns.map(c => (
                     <div key={c.id} className="mt-3 flex items-center justify-between gap-3 text-sm bg-gray-50 rounded-xl px-3 py-2">
                         <div className="min-w-0">

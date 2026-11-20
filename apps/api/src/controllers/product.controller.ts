@@ -1,4 +1,5 @@
 import { cleanVariants } from '../services/stock';
+import { followProductCurrency } from '../services/marketplace.service';
 import { catalogItemExists } from '../services/priceCompare.service';
 import { Response } from 'express';
 import { supabase } from '../lib/supabase';
@@ -237,7 +238,12 @@ export const updateProduct = async (req: any, res: Response): Promise<any> => {
             if (cur !== 'ZMW' && cur !== 'USD') return res.status(400).json({ error: 'Currency must be ZMW (kwacha) or USD (US dollars).' });
             // Only a real change is written (the current value is asked for on its own), so saving a product works before the currency column exists.
             const { data: was } = await supabase.from('products').select('currency').eq('id', id).maybeSingle();
-            if (cur !== String((was as any)?.currency ?? 'ZMW').toUpperCase()) updateData.currency = cur;
+            if (cur !== String((was as any)?.currency ?? 'ZMW').toUpperCase()) {
+                // A running auction follows the new currency (converted at today's rate) while it has no bids; with bids it must be ended first.
+                const followed = await followProductCurrency(id, cur as 'ZMW' | 'USD');
+                if (followed === 'BLOCKED') return res.status(409).json({ error: 'This item is on auction and already has bids, so its currency can’t change. End the auction first (the bidders are told), then change the currency.' });
+                updateData.currency = cur;
+            }
         }
         if (catalog_item_id !== undefined) {
             if (catalog_item_id === null || catalog_item_id === '') updateData.catalog_item_id = null;

@@ -7,7 +7,7 @@ import { AuctionFields, auctionBody, auctionProblem, defaultAuction } from './Au
 import type { AuctionForm } from './AuctionFields';
 
 /** The seller turns one of their items into a timed auction: starting price, optional reserve and Buy it now, and how long it runs. */
-export const StartAuctionDialog: React.FC<{ listing: { id: string; name: string; price: number }; open: boolean; onClose: () => void; onStarted?: () => void }> = ({ listing, open, onClose, onStarted }) => {
+export const StartAuctionDialog: React.FC<{ listing: { id: string; name: string; price: number; currency?: string | null }; open: boolean; onClose: () => void; onStarted?: () => void }> = ({ listing, open, onClose, onStarted }) => {
     const qc = useQueryClient();
     const [form, setForm] = useState<AuctionForm>(() => defaultAuction(listing.price));
     const [busy, setBusy] = useState(false);
@@ -31,7 +31,7 @@ export const StartAuctionDialog: React.FC<{ listing: { id: string; name: string;
         <Dialog open={open} title="Start an auction" onClose={onClose}>
             <ErrorNote text={error} />
             <p className="mb-4 text-sm text-[#5F6368]">Put “{listing.name}” up for bids. It will also appear on the Marketplace while the auction runs.</p>
-            <div className="mb-5"><AuctionFields value={form} onChange={(a) => { setForm(a); setError(null); }} name={listing.name} /></div>
+            <div className="mb-5"><AuctionFields value={form} onChange={(a) => { setForm(a); setError(null); }} name={listing.name} currency={listing.currency} /></div>
             <PrimaryButton onClick={submit} busy={busy} className="w-full">Start auction</PrimaryButton>
         </Dialog>
     );

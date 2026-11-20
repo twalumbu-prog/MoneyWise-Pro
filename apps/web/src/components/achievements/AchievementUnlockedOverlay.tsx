@@ -1,12 +1,14 @@
 import React from 'react';
 import { useAchievements } from '../../context/AchievementsContext';
 import Confetti from '../Confetti';
-import { Award, CheckCircle2, Zap, ArrowRight, X } from 'lucide-react';
+import { Award, CheckCircle2, Zap, ArrowRight, X, Gift } from 'lucide-react';
+import { TIER_STYLE } from 'core';
 
 export const AchievementUnlockedOverlay: React.FC = () => {
     const { recentlyUnlocked, dismissCelebration, startNextAvailableMission } = useAchievements();
 
     if (!recentlyUnlocked) return null;
+    const tier = recentlyUnlocked.tier ? TIER_STYLE[recentlyUnlocked.tier] : null;
 
     return (
         <>
@@ -30,7 +32,7 @@ export const AchievementUnlockedOverlay: React.FC = () => {
                         <div
                             className="w-24 h-24 rounded-3xl flex items-center justify-center shadow-xl animate-pulse"
                             style={{
-                                backgroundColor: recentlyUnlocked.badgeColor,
+                                backgroundColor: tier?.color ?? recentlyUnlocked.badgeColor,
                                 color: '#FFF',
                             }}
                         >
@@ -44,7 +46,7 @@ export const AchievementUnlockedOverlay: React.FC = () => {
                     {/* Celebration Header */}
                     <div className="inline-flex items-center gap-1.5 text-xs font-black text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full mb-2">
                         <Zap size={14} className="fill-emerald-500 text-emerald-500" />
-                        MISSION COMPLETE • +{recentlyUnlocked.xp} XP
+                        {tier ? `${tier.label.toUpperCase()} BADGE` : 'MISSION COMPLETE'} • +{recentlyUnlocked.xp} XP
                     </div>
 
                     <h2 className="text-2xl font-black text-[#1F1F1F] tracking-tight mb-1">
@@ -56,6 +58,12 @@ export const AchievementUnlockedOverlay: React.FC = () => {
                     <p className="text-xs text-gray-500 leading-relaxed px-4 mb-6">
                         {recentlyUnlocked.description}
                     </p>
+
+                    {!!recentlyUnlocked.giftPoints && (
+                        <div className="mb-3 flex items-center justify-center gap-2 rounded-2xl bg-amber-50 border border-amber-100 p-3 text-xs font-black text-amber-800">
+                            <Gift size={16} /> A gift for you: +{recentlyUnlocked.giftPoints} points
+                        </div>
+                    )}
 
                     {/* Unlocked Badge Pill */}
                     <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-2xl p-3 mb-6 flex items-center justify-center gap-2">

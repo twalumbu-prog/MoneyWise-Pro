@@ -4,20 +4,27 @@ import { apiJson, formatKwacha } from 'core';
 import { CheckCircle2, Clock, Pencil, Plus, UserRound } from 'lucide-react';
 import { Dialog, ErrorNote, PrimaryButton, fieldClass, labelClass } from '../ui/Dialog';
 
-interface Staff { id: string; name: string; isBookable: boolean; isActive: boolean; workStart: string; workEnd: string; workingDays: number[]; userId: string | null; serviceIds: string[] }
-interface Service { id: string; name: string; duration_minutes: number | null }
+interface Staff { id: string; name: string; role?: 'HAIRDRESSER' | 'NAIL_TECH'; isBookable: boolean; isActive: boolean; workStart: string; workEnd: string; workingDays: number[]; userId: string | null; serviceIds: string[] }
+interface Service { id: string; name: string; duration_minutes: number | null; category?: string | null }
+type Role = 'HAIRDRESSER' | 'NAIL_TECH';
+const isNailService = (s: Service) => String(s.category ?? '').toLowerCase() === 'nails';
 interface Booking { id: string; service: string; staffId: string | null; staff: string | null; customerName: string; customerPhone: string; start: string; end: string; bookedUntil: string; status: 'CONFIRMED' | 'COMPLETED' | 'NO_SHOW'; finishedAt: string | null; amount: number; paid: number; balance: number; deposit: number | null; noShow: boolean }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const todayStr = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lusaka' });
 const fmt = (t: string) => { const [h, m] = t.split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`; };
 
-function StaffDialog({ staff, services, onClose, onSaved }: { staff: Staff | null; services: Service[]; onClose: () => void; onSaved: () => void }) {
+function StaffDialog({ staff, services, newRole, onClose, onSaved }: { staff: Staff | null; services: Service[]; newRole: Role; onClose: () => void; onSaved: () => void }) {
+    const [role, setRole] = useState<Role>(staff?.role ?? newRole);
+    // A new staff member starts with every service of their category ticked (they can untick any).
     const [name, setName] = useState(staff?.name ?? '');
     const [workStart, setWorkStart] = useState(staff?.workStart ?? '08:00');
     const [workEnd, setWorkEnd] = useState(staff?.workEnd ?? '18:00');
     const [days, setDays] = useState<number[]>(staff?.workingDays ?? [1, 2, 3, 4, 5, 6]);
-    const [serviceIds, setServiceIds] = useState<string[]>(staff?.serviceIds ?? []);
+    const [serviceIds, setServiceIds] = useState<string[]>(staff?.serviceIds ?? services.filter((s) => isNailService(s) === (newRole === 'NAIL_TECH')).map((s) => s.id));
+    const noun = role === 'NAIL_TECH' ? 'nail technician' : 'hairdresser';
+    // Show the services that belong to this category first.
+    const shown = [...services].sort((a, b) => Number(isNailService(b) === (role === 'NAIL_TECH')) - Number(isNailService(a) === (role === 'NAIL_TECH')));
     const [bookable, setBookable] = useState(staff?.isBookable ?? true);
     const [busy, setBusy] = useState(false);
     const [err, setErr] = useState<string | null>(null);
@@ -25,13 +32,15 @@ function StaffDialog({ staff, services, onClose, onSaved }: { staff: Staff | nul
     const save = async () => {
         setBusy(true); setErr(null);
         try {
-            await apiJson(staff ? `/salon/staff/${staff.id}` : '/salon/staff', { method: staff ? 'PUT' : 'POST', body: JSON.stringify({ name, workStart, workEnd, workingDays: days, serviceIds, isBookable: bookable, isActive: true }) });
+            await apiJson(staff ? `/salon/staff/${staff.id}` : '/salon/staff', { method: staff ? 'PUT' : 'POST', body: JSON.stringify({ name, role, workStart, workEnd, workingDays: days, serviceIds, isBookable: bookable, isActive: true }) });
             onSaved(); onClose();
         } catch (e: any) { setErr(e?.message || 'Could not save.'); } finally { setBusy(false); }
     };
     return (
-        <Dialog open title={staff ? `Edit ${staff.name}` : 'Add a hairdresser'} onClose={onClose}>
+        <Dialog open title={staff ? `Edit ${staff.name}` : `Add a ${noun}`} onClose={onClose}>
             <ErrorNote text={err} />
+            <label className={labelClass}>Category</label>
+            <div className="mb-3 flex gap-2">{([['HAIRDRESSER', 'Hairdresser'], ['NAIL_TECH', 'Nail technician']] as const).map(([r, label]) => <button key={r} type="button" onClick={() => setRole(r)} className={`rounded-full border px-3 py-1.5 text-xs font-bold ${role === r ? 'border-[#0B57D0] bg-[#D3E3FD] text-[#041E49]' : 'border-[#C4C7C5] bg-white text-[#5F6368]'}`}>{label}</button>)}</div>
             <label className={labelClass}>Name</label>
             <input className={`${fieldClass} mb-3`} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Siba" />
             <div className="mb-3 grid grid-cols-2 gap-3">
@@ -43,11 +52,11 @@ function StaffDialog({ staff, services, onClose, onSaved }: { staff: Staff | nul
             <label className={labelClass}>Services they do</label>
             <div className="mb-3 flex max-h-44 flex-col gap-1.5 overflow-y-auto rounded-xl bg-white p-3">
                 {services.length === 0 && <p className="text-xs text-[#5F6368]">Add appointment services under Products first.</p>}
-                {services.map((s) => (
+                {shown.map((s) => (
                     <label key={s.id} className="flex items-center gap-2 text-sm text-[#1F1F1F]"><input type="checkbox" checked={serviceIds.includes(s.id)} onChange={() => setServiceIds(toggle(serviceIds, s.id))} /> {s.name}{s.duration_minutes ? <span className="text-[11px] text-[#5F6368]">· {s.duration_minutes} min</span> : null}</label>
                 ))}
             </div>
-            <label className="mb-4 flex items-center gap-2 text-sm text-[#1F1F1F]"><input type="checkbox" checked={bookable} onChange={(e) => setBookable(e.target.checked)} /> Clients can book this hairdresser</label>
+            <label className="mb-4 flex items-center gap-2 text-sm text-[#1F1F1F]"><input type="checkbox" checked={bookable} onChange={(e) => setBookable(e.target.checked)} /> Clients can book this {noun}</label>
             <PrimaryButton busy={busy} onClick={save} disabled={!name.trim() || days.length === 0} className="w-full">Save</PrimaryButton>
         </Dialog>
     );
@@ -58,6 +67,7 @@ export const SalonPanel: React.FC = () => {
     const qc = useQueryClient();
     const [date, setDate] = useState(todayStr());
     const [staffFilter, setStaffFilter] = useState('');
+    const [staffTab, setStaffTab] = useState<'HAIRDRESSER' | 'NAIL_TECH'>('HAIRDRESSER');
     const [editing, setEditing] = useState<Staff | 'new' | null>(null);
     const [note, setNote] = useState<string | null>(null);
     const [err, setErr] = useState<string | null>(null);
@@ -150,14 +160,25 @@ export const SalonPanel: React.FC = () => {
                 ))}
             </section>
 
-            <section className="rounded-2xl bg-white p-4">
+            {([[staffTab, staffTab === 'NAIL_TECH' ? 'Nail technicians' : 'Hairdressers']] as const).map(([role, heading]) => {
+                const all = team.data?.staff ?? [];
+                const list = all.filter((s) => (s.role ?? 'HAIRDRESSER') === role);
+                const count = (r: string) => all.filter((s) => (s.role ?? 'HAIRDRESSER') === r).length;
+                return (
+            <section key={role} className="rounded-2xl bg-white p-4">
+                <div className="mb-3 flex gap-2" role="tablist">
+                    {([['HAIRDRESSER', 'Hairdressers'], ['NAIL_TECH', 'Nail technicians']] as const).map(([r, label]) => (
+                        <button key={r} type="button" role="tab" aria-selected={staffTab === r} onClick={() => setStaffTab(r)} className={`rounded-full border px-4 py-1.5 text-xs font-bold ${staffTab === r ? 'border-[#0B57D0] bg-[#D3E3FD] text-[#041E49]' : 'border-[#C4C7C5] bg-white text-[#5F6368] hover:bg-[#F8FAFD]'}`}>{label} <span className="font-medium">({count(r)})</span></button>
+                    ))}
+                </div>
                 <div className="mb-2 flex items-center justify-between">
-                    <h3 className="flex items-center gap-2 text-sm font-bold text-[#1F1F1F]"><UserRound size={15} className="text-[#0B57D0]" /> Hairdressers</h3>
-                    <button type="button" onClick={() => setEditing('new')} className="inline-flex items-center gap-1.5 rounded-full bg-[#0B57D0] px-4 py-1.5 text-xs font-bold text-white hover:bg-[#0842A0]"><Plus size={13} /> Add</button>
+                    <h3 className="flex items-center gap-2 text-sm font-bold text-[#1F1F1F]"><UserRound size={15} className="text-[#0B57D0]" /> {heading}</h3>
+                    <button type="button" onClick={() => setEditing('new')} className="inline-flex items-center gap-1.5 rounded-full bg-[#0B57D0] px-4 py-1.5 text-xs font-bold text-white hover:bg-[#0842A0]"><Plus size={13} /> {role === 'NAIL_TECH' ? 'Add nail technician' : 'Add hairdresser'}</button>
                 </div>
                 <ErrorNote text={(team.error as any)?.message} />
+                {list.length === 0 && <p className="py-2 text-sm text-[#5F6368]">{role === 'NAIL_TECH' ? 'No nail technicians yet. Use “Add nail technician”.' : 'No hairdressers yet.'}</p>}
                 <ul className="divide-y divide-[rgba(116,119,117,0.15)]">
-                    {(team.data?.staff ?? []).map((s) => (
+                    {list.map((s) => (
                         <li key={s.id} className="flex items-center justify-between gap-3 py-2.5">
                             <div className="min-w-0">
                                 <p className="text-sm font-semibold text-[#1F1F1F]">{s.name}{!s.isBookable ? <span className="ml-2 rounded-full bg-[#F1F3F4] px-2 py-0.5 text-[10px] font-bold text-[#5F6368]">Not bookable</span> : null}</p>
@@ -169,8 +190,10 @@ export const SalonPanel: React.FC = () => {
                 </ul>
                 <p className="mt-3 text-[11px] text-[#5F6368]">Clients choose from the bookable hairdressers who do a service (or leave it on any available). A service with no hairdresser assigned keeps the old rules.</p>
             </section>
+                );
+            })}
 
-            {editing && <StaffDialog staff={editing === 'new' ? null : editing} services={team.data?.services ?? []} onClose={() => setEditing(null)} onSaved={refresh} />}
+            {editing && <StaffDialog key={editing === 'new' ? `new-${staffTab}` : editing.id} staff={editing === 'new' ? null : editing} newRole={staffTab} services={team.data?.services ?? []} onClose={() => setEditing(null)} onSaved={refresh} />}
         </div>
     );
 };

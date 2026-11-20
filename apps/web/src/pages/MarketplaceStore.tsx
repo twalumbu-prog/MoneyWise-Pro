@@ -5,9 +5,10 @@ import { Clock, Gavel, Globe, Heart, Mail, MessageCircle, Palette, Phone, Search
 import { apiJson } from 'core';
 import { PagePanel } from '../components/ui/PagePanel';
 import { PrimaryButton } from '../components/ui/Dialog';
-import { LISTINGS_KEY, LocationText, SellerAvatar, Stars, Thumb, VerifiedBadge, priceText } from '../components/marketplace/parts';
+import { LISTINGS_KEY, LocationText, SellerAvatar, Stars, Thumb, VerifiedBadge, PriceText } from '../components/marketplace/parts';
 import { SellerReviews } from '../components/marketplace/SellerReviews';
 import { StoreThemeDialog } from '../components/marketplace/StoreThemeDialog';
+import { StoreShowcase } from '../components/marketplace/StoreShowcase';
 import { DEFAULT_THEME, cleanTheme, headingClass, themeVars } from '../components/marketplace/storeTheme';
 import { buildFeed } from '../components/marketplace/feed';
 import { actionOf, storeKindOf } from '../components/marketplace/kinds';
@@ -92,7 +93,7 @@ export const MarketplaceStore: React.FC = () => {
                     <Thumb listing={l} eager={i < 4} width={big ? 640 : 400} className="group-hover:scale-105 transition" />
                 </div>
                 <div className="px-0.5 pt-2.5">
-                    <p className={`${big ? 'text-xl' : 'text-base'} font-bold tabular-nums`} style={{ color: 'var(--s-accent-text)' }}>{priceText(l)}</p>
+                    <p className={`${big ? 'text-xl' : 'text-base'} font-bold tabular-nums`} style={{ color: 'var(--s-accent-text)' }}><PriceText l={l} /></p>
                     <p className="line-clamp-2 text-sm leading-snug">{l.name}</p>
                 </div>
             </button>
@@ -109,7 +110,7 @@ export const MarketplaceStore: React.FC = () => {
                 <span className="mt-1.5 line-clamp-4 flex-1 text-sm leading-relaxed" style={{ color: 'var(--s-muted)' }}>{l.description || 'Get in touch to find out how this works.'}</span>
             </button>
             <div className="mt-4 flex items-center justify-between gap-3 border-t border-[var(--s-line)] pt-3">
-                <span><span className="block text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--s-muted)' }}>From</span><span className="text-lg font-bold tabular-nums">{priceText(l)}</span></span>
+                <span><span className="block text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--s-muted)' }}>From</span><span className="text-lg font-bold tabular-nums"><PriceText l={l} /></span></span>
                 <button type="button" onClick={() => order(l)} className="h-10 px-6 text-sm font-bold rounded-[var(--s-control)]" style={accentBtn}>{actionOf(l).short}</button>
             </div>
         </div>
@@ -121,7 +122,7 @@ export const MarketplaceStore: React.FC = () => {
             <button type="button" onClick={() => open(l)} className="min-w-0 flex-1 text-left">
                 <p className="truncate text-base font-bold">{l.name}</p>
                 {l.description && <p className="line-clamp-1 text-xs" style={{ color: 'var(--s-muted)' }}>{l.description}</p>}
-                <p className="mt-0.5 text-sm font-bold tabular-nums" style={{ color: 'var(--s-accent-text)' }}>{priceText(l)}</p>
+                <p className="mt-0.5 text-sm font-bold tabular-nums" style={{ color: 'var(--s-accent-text)' }}><PriceText l={l} /></p>
             </button>
             <button type="button" onClick={() => toggle(l.id)} aria-pressed={isSaved(l.id)} aria-label={isSaved(l.id) ? 'Remove from watchlist' : 'Add to watchlist'} className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-[var(--s-surface)]">
                 <Heart size={17} className={isSaved(l.id) ? 'fill-[#EA4335] text-[#EA4335]' : ''} style={isSaved(l.id) ? undefined : { color: 'var(--s-muted)' }} />
@@ -226,11 +227,13 @@ export const MarketplaceStore: React.FC = () => {
                                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">{shown.map((l) => serviceCard(l))}</div>
                             ) : theme.layout === 'menu' ? (
                                 <ul>{shown.map((l, i) => row(l, i))}</ul>
-                            ) : theme.layout === 'showcase' && shown.length > 2 ? (
-                                <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-4">
-                                    {card(shown[0], 0, true)}
-                                    {shown.slice(1).map((l, i) => card(l, i + 1))}
-                                </div>
+                            ) : theme.layout === 'showcase' ? (
+                                <>
+                                    {/* The stage for the best items, then everything in a grid */}
+                                    <StoreShowcase items={shown} dark={theme.mode === 'dark'} headingClass={head} onOpen={open} onOrder={order} />
+                                    {shown.length > 1 && <h3 className={`mb-4 text-lg ${head}`}>All items</h3>}
+                                    <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">{shown.map((l, i) => card(l, i))}</div>
+                                </>
                             ) : (
                                 <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">{shown.map((l, i) => card(l, i))}</div>
                             )}

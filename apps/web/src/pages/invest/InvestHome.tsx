@@ -6,6 +6,7 @@ import { SegmentedControl, AnimatedTabContent } from '../../components/AnimatedT
 import { useInvestProviders } from './investData';
 import { useQuery } from '@tanstack/react-query';
 import { apiJson } from 'core';
+import { REVENUE_EXPECTED } from './blueOpusData';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export type ProductType = 'UNIT_TRUST' | 'FIXED_DEPOSIT' | 'BOND';
@@ -70,6 +71,7 @@ export const InvestHome: React.FC = () => {
 
     // Filter products per tab and search
     const { providers: allProviders } = useInvestProviders();
+    const blueOpus = useQuery({ queryKey: ['blue-opus', 'terms'], queryFn: () => apiJson<{ access: boolean; round?: { enabled: boolean; postMoney: number; minAmount: number }; logoUrl?: string | null }>('/investments/blue-opus'), retry: false, staleTime: 5 * 60_000 });
     const myCompany = useQuery({ queryKey: ['invest', 'funds', 'mine'], queryFn: () => apiJson<{ isTarget: boolean }>('/investments/funds/mine'), retry: false, staleTime: 5 * 60_000 });
     const mobileProviders = allProviders.flatMap(provider => {
         let products = provider.products;
@@ -95,6 +97,49 @@ export const InvestHome: React.FC = () => {
         p.name.toLowerCase().includes(search.toLowerCase()) ||
         p.products.some(pr => pr.name.toLowerCase().includes(search.toLowerCase()))
     );
+
+
+    // Blue Opus: not a listed fund but a private, personal agreement. Shown like the other providers (same header, same card) so it sits in the list naturally.
+    const blueOpusGroup = blueOpus.data?.access && blueOpus.data.round?.enabled && (!search || 'blue opus shares private offer'.includes(search.toLowerCase())) ? (
+        <div className="flex flex-col gap-3">
+            <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-md border border-violet-100 shadow-sm flex items-center justify-center overflow-hidden p-0.5 flex-shrink-0 bg-white"><img src="/invest-logos/blue-opus.png" alt="Blue Opus" className="w-full h-full object-contain" /></div>
+                    <span className="text-sm font-semibold text-gray-900 font-['DM_Sans'] truncate">Blue Opus Software</span>
+                    <span className="ml-1.5 flex-shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-800">Private offer</span>
+                    <div className="w-4 h-4 flex items-center justify-center text-blue-600 flex-shrink-0"><VerifiedIcon /></div>
+                </div>
+                <Link to="/invest/blue-opus" className="text-[#0B57D0] text-xs font-semibold flex-shrink-0 ml-2">See all →</Link>
+            </div>
+            <div className="flex gap-3 overflow-x-auto pb-2 md:flex-wrap">
+                <Link to="/invest/blue-opus" className="min-w-[224px] p-4 bg-white rounded-xl shadow-sm border border-[rgba(116,119,117,0.22)] flex flex-col justify-between active:shadow-md transition-shadow">
+                    <div className="flex flex-col gap-2.5">
+                        <div>
+                            <div className="text-gray-900 text-sm font-semibold font-['DM_Sans'] leading-tight">Blue Opus Shares</div>
+                            <div className="text-gray-400 text-[10px] mt-0.5">Blue Opus Software · not publicly listed</div>
+                        </div>
+                        <div>
+                            <div className="text-gray-900 text-base font-bold"><span className="text-xs font-semibold text-gray-500">From</span> K{(blueOpus.data!.round?.minAmount ?? 1000).toLocaleString('en-US')} <span className="text-xs font-semibold text-gray-500">and you're in</span></div>
+                            <div className="text-green-600 text-xs font-bold flex items-center gap-1 mt-0.5">
+                                <TrendingUpIcon /> Revenue projected {Math.round(REVENUE_EXPECTED[REVENUE_EXPECTED.length - 1] / REVENUE_EXPECTED[0])}x by 2031
+                            </div>
+                        </div>
+                        {/* The company's projected revenue, 2027 to 2031: a small trend so the tile reads like the funds beside it */}
+                        <svg viewBox="0 0 100 26" className="h-6 w-full" aria-hidden="true">
+                            {REVENUE_EXPECTED.map((v, i) => {
+                                const h = Math.max(3, (v / Math.max(...REVENUE_EXPECTED)) * 24);
+                                return <rect key={i} x={i * 20 + 2} y={26 - h} width="16" height={h} rx="2.5" fill="#16A34A" opacity={0.35 + i * 0.16} />;
+                            })}
+                        </svg>
+                        <div className="flex justify-between items-center mt-1">
+                            <span className="text-[10px] font-semibold text-gray-400">Company projection · personal agreement</span>
+                            <div className="w-7 h-7 bg-neutral-100 rounded-full flex items-center justify-center text-xs">→</div>
+                        </div>
+                    </div>
+                </Link>
+            </div>
+        </div>
+    ) : null;
 
     const TABS: { id: InvestTab; label: string; icon: React.ReactNode }[] = [
         { id: 'HOME',        label: 'Home',        icon: <HomeIcon /> },
@@ -162,9 +207,11 @@ export const InvestHome: React.FC = () => {
                 {/* ── Scrollable content ───────────────────────────────────── */}
                 <div className="flex-1 overflow-y-auto">
 
+
                     {/* ── MOBILE: provider list ──────────────────────────────── */}
                     <div className="md:hidden bg-gray-50 min-h-full">
                     <AnimatedTabContent tabKey={activeTab} index={activeTabIndex} className="px-4 py-4 space-y-8">
+                        {activeTab === 'HOME' && blueOpusGroup && <div className="px-6">{blueOpusGroup}</div>}
                         {mobileProviders.length === 0 ? (
                             <div className="py-16 text-center text-sm text-gray-400">
                                 No results{search ? ` for "${search}"` : ''}
@@ -230,6 +277,7 @@ export const InvestHome: React.FC = () => {
                     {/* ── DESKTOP: white card ─────────────────────────────────── */}
                     <div className="hidden md:block px-6 pb-6">
                         <div className="bg-white rounded-[20px] p-6 shadow-sm flex flex-col gap-8 md:border md:border-gray-200">
+                            {blueOpusGroup}
                             {desktopFiltered.length === 0 ? (
                                 <div className="py-12 text-center text-sm text-gray-400">{search ? <>No results for “{search}”</> : 'No funds to show yet. Investment companies appear here once their real prices are in.'}</div>
                             ) : desktopFiltered.map(provider => (

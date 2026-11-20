@@ -78,8 +78,8 @@ export type {
     Achievement,
 } from './services/highlights.service';
 
-export { loadAchievementsState, saveAchievementsState, INITIAL_ACHIEVEMENTS } from './achievements';
-export type { OnboardingAchievement, MissionStep } from './achievements';
+export { loadAchievementsState, saveAchievementsState, badgesUnlockedByVisit, INITIAL_ACHIEVEMENTS, TIER_STYLE } from './achievements';
+export type { OnboardingAchievement, MissionStep, BadgeTier } from './achievements';
 
 export { reportService } from './services/report.service';
 export type {

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { BadgeCheck, ChevronLeft, ChevronRight, Gavel, Heart, MapPin, Star, Truck } from 'lucide-react';
 import { formatKwacha } from 'core';
 import { resized, resizedSet } from '../../lib/images';
+import { auctionMoney, moneyText, setMarketDisplay, useMarketCurrency } from '../../lib/marketCurrency';
 import { CategoryArt } from './CategoryArt';
 import { folderLabel } from './feed';
 import { actionOf, kindOf, storeKindOf } from './kinds';
@@ -11,6 +12,8 @@ import type { StockInfo } from './stockUi';
 export interface AuctionView {
     id: string;
     status: 'OPEN' | 'SOLD' | 'NO_SALE' | 'CANCELLED';
+    /** What every amount on the auction is in (the item's currency). */
+    currency?: 'ZMW' | 'USD';
     startPrice: number;
     currentBid: number | null;
     bidCount: number;
@@ -32,7 +35,10 @@ export interface Listing {
     id: string;
     name: string;
     description: string | null;
+    /** In kwacha (a dollar item is converted at today's rate). */
     price: number;
+    /** The item's own dollar price when it is priced in dollars. */
+    usdPrice?: number | null;
     imageUrl: string | null;
     images: string[];
     category: string | null;
@@ -53,7 +59,7 @@ export interface Listing {
 }
 /** Paid placements running today (MoneyWise Ads). */
 export interface RunningAds { featuredItems: { campaignId: string; productId: string }[]; boostedItems: { campaignId: string; productId: string }[]; featuredStores: { campaignId: string; orgId: string }[] }
-export interface MarketplaceData { listings: Listing[]; categories: { name: string; count: number }[]; needsMigration?: boolean; ads?: RunningAds }
+export interface MarketplaceData { listings: Listing[]; categories: { name: string; count: number }[]; needsMigration?: boolean; ads?: RunningAds; dollarRate?: number | null }
 
 /** The small label every paid placement carries. */
 export const SponsoredTag: React.FC<{ className?: string }> = ({ className = '' }) => (
@@ -69,10 +75,25 @@ export const TYPE_LABEL: Record<TypeGroup, string> = { PRODUCT: 'Product', SERVI
 export const initials = (name: string) => name.split(' ').map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
 export const priceText = (l: Listing) => {
     const a = l.auction;
-    if (a?.status === 'OPEN') return formatKwacha(a.currentBid ?? a.startPrice);
-    if (a?.status === 'SOLD' && a.winningAmount) return formatKwacha(a.winningAmount);
-    return l.price > 0 ? formatKwacha(l.price) : l.productType === 'DONATION' ? 'Any amount' : 'Ask for price';
+    if (a?.status === 'OPEN') return auctionMoney(a.currentBid ?? a.startPrice, a.currency);
+    if (a?.status === 'SOLD' && a.winningAmount) return auctionMoney(a.winningAmount, a.currency);
+    return l.price > 0 ? moneyText(l.price, l.usdPrice) : l.productType === 'DONATION' ? 'Any amount' : 'Ask for price';
 };
+/** Kwacha / US dollars switch for the prices on the page (hidden when there is no dollar rate to convert with). Remembered on this device. */
+export const MarketCurrencyToggle: React.FC<{ className?: string }> = ({ className = '' }) => {
+    const { display, rate, canUsd } = useMarketCurrency();
+    if (!canUsd) return null;
+    return (
+        <div role="radiogroup" aria-label="Show prices in" title={`About K${rate!.toFixed(2)} to $1`} className={`inline-flex h-12 flex-shrink-0 items-center rounded-full bg-[#F1F3F4] p-1 text-sm font-semibold ${className}`}>
+            {([['ZMW', 'K'], ['USD', '$']] as const).map(([code, label]) => (
+                <button key={code} type="button" role="radio" aria-checked={display === code} onClick={() => setMarketDisplay(code)}
+                    className={`h-10 min-w-[2.5rem] rounded-full px-3 transition ${display === code ? 'bg-white text-[#0B57D0] shadow-sm' : 'text-[#5F6368] hover:text-[#1F1F1F]'}`}>{label}</button>
+            ))}
+        </div>
+    );
+};
+/** The same text as a component, so the price redraws when the shopper switches between kwacha and dollars. */
+export const PriceText: React.FC<{ l: Listing }> = ({ l }) => { useMarketCurrency(); return <>{priceText(l)}</>; };
 
 /** "2d 3h", "4h 12m", "9m 30s", or "Ended". */
 export function timeLeft(endsAt: string, now = Date.now()): string {
@@ -227,7 +248,7 @@ const GoodsCard: React.FC<CardProps> = ({ listing, saved, eager, onToggleSave, o
                     )}
                 </div>
                 <CardMeta
-                    head={<>{priceText(listing)}{sponsored && <SponsoredTag />}{listing.auction?.status === 'OPEN' && <span className="truncate text-xs font-normal text-[#5F6368]">{listing.auction.bidCount === 0 ? 'No bids yet' : `${listing.auction.bidCount} ${listing.auction.bidCount === 1 ? 'bid' : 'bids'}`}</span>}</>}
+                    head={<><PriceText l={listing} />{sponsored && <SponsoredTag />}{listing.auction?.status === 'OPEN' && <span className="truncate text-xs font-normal text-[#5F6368]">{listing.auction.bidCount === 0 ? 'No bids yet' : `${listing.auction.bidCount} ${listing.auction.bidCount === 1 ? 'bid' : 'bids'}`}</span>}</>}
                     title={listing.name}
                     byline={<><SellerAvatar seller={listing.seller} /><span className="truncate">{listing.seller.name}</span>{listing.seller.verified && <VerifiedBadge size={13} />}</>}
                     foot={<>{listing.seller.rating.count > 0 && <span className="inline-flex flex-shrink-0 items-center gap-1"><Star size={11} className="fill-[#FBBC04] text-[#FBBC04]" />{listing.seller.rating.average.toFixed(1)} <span>({listing.seller.rating.count})</span></span>}<LocationText location={listing.seller.location} className="min-w-0" /></>}
@@ -255,7 +276,7 @@ const FoodCard: React.FC<CardProps> = ({ listing, saved, eager, onToggleSave, on
                 <StockChip stock={listing.stock} className="absolute bottom-2.5 left-2.5" />
             </div>
             <CardMeta
-                head={<><span className="text-[#B06000]">{priceText(listing)}</span>{sponsored && <SponsoredTag />}</>}
+                head={<><span className="text-[#B06000]"><PriceText l={listing} /></span>{sponsored && <SponsoredTag />}</>}
                 title={listing.name}
                 byline={<><SellerAvatar seller={listing.seller} /><span className="truncate">{listing.seller.name}</span>{listing.seller.verified && <VerifiedBadge size={13} />}{listing.seller.rating.count > 0 && <span className="inline-flex flex-shrink-0 items-center gap-0.5 text-[#B06000]"><Star size={11} className="fill-[#FBBC04] text-[#FBBC04]" />{listing.seller.rating.average.toFixed(1)}</span>}</>}
                 foot={<><LocationText location={listing.seller.location} className="min-w-0" />{listing.requiresDelivery && <span className="inline-flex flex-shrink-0 items-center gap-1 font-semibold text-[#3C4043]"><Truck size={11} /> Delivery</span>}</>}
@@ -283,7 +304,7 @@ const ServiceCard: React.FC<CardProps> = ({ listing, saved, onToggleSave, onOpen
             <span className="mt-4 flex items-center justify-between gap-2 border-t border-[rgba(116,119,117,0.16)] pt-3">
                 <span>
                     <span className="block text-[10px] font-semibold uppercase tracking-wider text-[#80868B]">From</span>
-                    <span className="text-base font-bold tabular-nums text-[#1F1F1F]">{priceText(listing)}</span>
+                    <span className="text-base font-bold tabular-nums text-[#1F1F1F]"><PriceText l={listing} /></span>
                 </span>
                 <span className="inline-flex h-9 items-center rounded-full bg-[#0B57D0] px-4 text-sm font-semibold text-white group-hover:bg-[#0842A0]">{actionOf(listing).short}</span>
             </span>
@@ -325,7 +346,7 @@ export const StoreCard: React.FC<{ seller: Listing['seller']; items: Listing[]; 
                         <SellerAvatar seller={seller} size={compact ? 32 : 44} />
                         <ul className="space-y-1.5">
                             {items.slice(0, compact ? 2 : 3).map((i) => (
-                                <li key={i.id} className="flex items-baseline justify-between gap-2 text-xs"><span className="truncate font-semibold text-[#1F1F1F]">{i.name}</span><span className="flex-shrink-0 tabular-nums text-[#5F6368]">{priceText(i)}</span></li>
+                                <li key={i.id} className="flex items-baseline justify-between gap-2 text-xs"><span className="truncate font-semibold text-[#1F1F1F]">{i.name}</span><span className="flex-shrink-0 tabular-nums text-[#5F6368]"><PriceText l={i} /></span></li>
                             ))}
                         </ul>
                     </div>

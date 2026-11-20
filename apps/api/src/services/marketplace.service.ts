@@ -1,6 +1,7 @@
 import { randomBytes } from 'crypto';
 import { supabase } from '../lib/supabase';
 import { notifySeller, notifyUser } from './marketplaceNotify';
+import { dollarRate, usdToZmw } from './lipila.service';
 
 /** Everything the Marketplace does beyond listing products: closing auctions, paying their winners, trust signals. */
 
@@ -15,6 +16,8 @@ export interface AuctionRow {
     starts_at: string;
     ends_at: string;
     status: 'OPEN' | 'SOLD' | 'NO_SALE' | 'CANCELLED';
+    /** What every amount on the auction is in (the product's currency): 'ZMW' or 'USD'. */
+    currency?: 'ZMW' | 'USD' | null;
     winner_user_id: string | null;
     winner_org_id: string | null;
     winner_name: string | null;
@@ -32,7 +35,9 @@ export const num = (v: unknown): number => Number(v) || 0;
 
 /** How long a winner has to pay: after this the win is marked unpaid and the winner gets a strike. */
 export const PAYMENT_WINDOW_HOURS = 72;
-const money = (n: unknown) => `K${num(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+/** An amount in the auction's own currency: K1,350.00 or $50.00. */
+export const moneyIn = (n: unknown, currency?: string | null) => `${String(currency).toUpperCase() === 'USD' ? '$' : 'K'}${num(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const money = (n: unknown, currency?: string | null) => moneyIn(n, currency);
 const checkoutPath = (a: { product_id: string; id: string }) => `/marketplace/checkout/${a.product_id}?auction=${a.id}`;
 
 /** Tells the winner they won and the seller they sold. */
@@ -40,8 +45,8 @@ export async function announceWin(a: AuctionRow): Promise<void> {
     const { data: p } = await supabase.from('products').select('name').eq('id', a.product_id).maybeSingle();
     const name = p?.name ?? 'your item';
     await Promise.all([
-        a.winner_user_id ? notifyUser(a.winner_user_id, { title: 'You won the auction', path: checkoutPath(a), body: `you won ${name} for ${money(a.winning_amount)}. Pay within ${PAYMENT_WINDOW_HOURS} hours to claim it.` }) : null,
-        notifySeller(a.organization_id, { title: 'Your auction sold', path: '/marketplace/orders?tab=sold', body: `${name} sold for ${money(a.winning_amount)}. The winner has ${PAYMENT_WINDOW_HOURS} hours to pay.` }),
+        a.winner_user_id ? notifyUser(a.winner_user_id, { title: 'You won the auction', path: checkoutPath(a), body: `you won ${name} for ${money(a.winning_amount, a.currency)}. Pay within ${PAYMENT_WINDOW_HOURS} hours to claim it.` }) : null,
+        notifySeller(a.organization_id, { title: 'Your auction sold', path: '/marketplace/orders?tab=sold', body: `${name} sold for ${money(a.winning_amount, a.currency)}. The winner has ${PAYMENT_WINDOW_HOURS} hours to pay.` }),
     ]);
 }
 
@@ -77,6 +82,14 @@ async function ensurePaymentLink(a: AuctionRow): Promise<string | null> {
         walletId = main?.id ?? null;
     }
 
+    // A dollar auction is paid through a dollar link: the card is charged in dollars, mobile money pays the kwacha equivalent at today's rate.
+    const usd = String(a.currency).toUpperCase() === 'USD';
+    let kwacha = num(a.winning_amount);
+    if (usd) {
+        const rate = await dollarRate().catch(() => 0);
+        if (!(rate > 0)) { console.error('[Marketplace] no dollar rate: the dollar auction winner link waits'); return null; }
+        kwacha = usdToZmw(num(a.winning_amount), rate);
+    }
     const token = newToken();
     const { error } = await supabase.from('payment_links').insert({
         organization_id: a.organization_id,
@@ -84,7 +97,8 @@ async function ensurePaymentLink(a: AuctionRow): Promise<string | null> {
         token,
         customer_name: a.winner_name,
         customer_phone: a.winner_phone,
-        amount: num(a.winning_amount),
+        ...(usd ? { currency: 'USD', foreign_amount: num(a.winning_amount) } : {}),
+        amount: kwacha,
         wallet_id: walletId,
         status: 'ACTIVE',
         created_by: a.created_by,
@@ -123,6 +137,37 @@ export async function settleDueAuctions(): Promise<void> {
         }).eq('id', a.id).eq('status', 'OPEN').select('*').maybeSingle();
         if (claimed) { await ensurePaymentLink(claimed as AuctionRow); await announceWin(claimed as AuctionRow); }
     }
+}
+
+/**
+ * The product's currency changed (kwacha <-> dollars) while it has an open auction. With no bids yet the auction follows: its amounts are converted at
+ * today's rate and it carries on in the new currency. With bids it can't, because bidders bid in the old currency: the seller must end it first.
+ * Returns what happened so the caller can tell the seller.
+ */
+export async function followProductCurrency(productId: string, to: 'ZMW' | 'USD'): Promise<'NONE' | 'CONVERTED' | 'BLOCKED'> {
+    const { data: a } = await supabase.from('marketplace_auctions').select('*').eq('product_id', productId).eq('status', 'OPEN').maybeSingle();
+    if (!a) return 'NONE';
+    const from = String(a.currency ?? 'ZMW').toUpperCase() === 'USD' ? 'USD' : 'ZMW';
+    if (from === to) return 'NONE';
+    const { count } = await supabase.from('marketplace_bids').select('id', { count: 'exact', head: true }).eq('auction_id', a.id);
+    if ((count ?? 0) > 0) return 'BLOCKED';
+    const rate = await dollarRate().catch(() => 0);
+    if (!(rate > 0)) return 'BLOCKED';
+    const conv = (v: unknown) => (v == null ? null : Math.round((to === 'USD' ? num(v) / rate : num(v) * rate) * 100) / 100);
+    const step = Math.max(to === 'USD' ? 0.5 : 1, conv(a.bid_increment) ?? 1);
+    const { error } = await supabase.from('marketplace_auctions').update({ currency: to, start_price: conv(a.start_price), reserve_price: conv(a.reserve_price), buy_now_price: conv(a.buy_now_price), bid_increment: step }).eq('id', a.id).eq('status', 'OPEN');
+    if (error) throw error;
+    return 'CONVERTED';
+}
+
+/** Ends an auction without a sale and tells everyone who had bid that their bid no longer counts and they owe nothing. */
+export async function endAuctionAndNotify(a: AuctionRow, productName: string): Promise<{ bidders: number }> {
+    const { data: claimed } = await supabase.from('marketplace_auctions').update({ status: 'CANCELLED', settled_at: new Date().toISOString() }).eq('id', a.id).eq('status', 'OPEN').select('id').maybeSingle();
+    if (!claimed) return { bidders: 0 };
+    const { data: bids } = await supabase.from('marketplace_bids').select('bidder_user_id').eq('auction_id', a.id);
+    const ids = [...new Set((bids ?? []).map((b: any) => b.bidder_user_id).filter(Boolean))] as string[];
+    for (const uid of ids) void notifyUser(uid, { title: 'The auction was ended', path: `/marketplace/${a.product_id}`, body: `The seller ended the auction for ${productName}. Your bid no longer counts and you don’t owe anything. It may be available to buy now.` });
+    return { bidders: ids.length };
 }
 
 /** A sold auction whose payment link failed to create is retried the next time it is looked at. */

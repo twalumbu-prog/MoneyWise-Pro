@@ -31,7 +31,7 @@ export const placeOrder = async (req: any, res: Response) => {
         const b = req.body ?? {};
         const result = await createOrder(await ctxOf(req), {
             productId: b.productId, checkIn: b.checkIn, checkOut: b.checkOut, variantId: b.variantId, quantity: b.quantity, area: b.area, size: b.size, weightKg: b.weightKg, speed: b.speed, auctionId: b.auctionId, deliveryMethod: b.deliveryMethod,
-            address: b.address, notes: b.notes, phone: b.phone, walletId: b.walletId, idempotencyKey: b.idempotencyKey, payLater: !!b.payLater,
+            address: b.address, notes: b.notes, phone: b.phone, walletId: b.walletId, idempotencyKey: b.idempotencyKey, payLater: !!b.payLater, payVia: b.payVia === 'LINK' ? 'LINK' : 'WALLET',
         });
         res.status(result.repeated ? 200 : 201).json(result);
     } catch (e) { fail(res, e, 'complete the order'); }

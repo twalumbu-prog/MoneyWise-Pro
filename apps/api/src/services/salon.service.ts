@@ -149,22 +149,29 @@ export async function listStaff(orgId: string) {
     const [{ data: staff }, { data: links }, { data: services }] = await Promise.all([
         supabase.from('salon_staff_profiles').select('*').eq('organization_id', orgId).order('display_name'),
         supabase.from('salon_staff_services').select('staff_profile_id, product_id').eq('organization_id', orgId),
-        supabase.from('products').select('id, name, duration_minutes').eq('organization_id', orgId).eq('product_type', 'SERVICE_APPOINTMENT').eq('is_active', true).order('name'),
+        supabase.from('products').select('id, name, duration_minutes, category').eq('organization_id', orgId).eq('product_type', 'SERVICE_APPOINTMENT').eq('is_active', true).order('name'),
     ]);
+    const isNail = new Set((services ?? []).filter((p: any) => String(p.category ?? '').toLowerCase() === 'nails').map((p: any) => p.id));
     return {
-        staff: (staff ?? []).map((s: any) => ({ id: s.id, name: s.display_name, isBookable: s.is_bookable, isActive: s.is_active, workStart: hhmm(s.work_start), workEnd: hhmm(s.work_end), workingDays: (s.working_days ?? []).map(Number), userId: s.user_id ?? null, serviceIds: (links ?? []).filter((l: any) => l.staff_profile_id === s.id).map((l: any) => l.product_id) })),
+        staff: (staff ?? []).map((s: any) => {
+            const serviceIds = (links ?? []).filter((l: any) => l.staff_profile_id === s.id).map((l: any) => l.product_id);
+            // The saved category; before it existed, anyone who only does nail services counted as a nail technician.
+            const role = s.role === 'NAIL_TECH' || s.role === 'HAIRDRESSER' ? s.role : serviceIds.length > 0 && serviceIds.every((pid: string) => isNail.has(pid)) ? 'NAIL_TECH' : 'HAIRDRESSER';
+            return { id: s.id, name: s.display_name, role, isBookable: s.is_bookable, isActive: s.is_active, workStart: hhmm(s.work_start), workEnd: hhmm(s.work_end), workingDays: (s.working_days ?? []).map(Number), userId: s.user_id ?? null, serviceIds };
+        }),
         services: services ?? [],
     };
 }
 
 export async function saveStaff(orgId: string, body: any, id?: string) {
     const name = String(body?.name ?? '').trim().slice(0, 60);
-    if (!name) throw new SalonError('Enter the hairdresser’s name.');
+    if (!name) throw new SalonError('Enter the staff member’s name.');
     const workStart = String(body?.workStart ?? '08:00'), workEnd = String(body?.workEnd ?? '18:00');
     if (!TIME_RE.test(workStart) || !TIME_RE.test(workEnd) || toMin(workEnd) <= toMin(workStart)) throw new SalonError('The finishing time must be after the starting time.');
     const days = [...new Set((Array.isArray(body?.workingDays) ? body.workingDays : []).map(Number).filter((d: number) => Number.isInteger(d) && d >= 0 && d <= 6))] as number[];
     if (!days.length) throw new SalonError('Choose at least one working day.');
-    const row = { organization_id: orgId, display_name: name, work_start: workStart, work_end: workEnd, working_days: days, is_bookable: body?.isBookable !== false, is_active: body?.isActive !== false, updated_at: new Date().toISOString() };
+    const row = { organization_id: orgId, display_name: name, work_start: workStart, work_end: workEnd, working_days: days, is_bookable: body?.isBookable !== false, is_active: body?.isActive !== false, updated_at: new Date().toISOString(),
+        ...(body?.role === 'NAIL_TECH' || body?.role === 'HAIRDRESSER' ? { role: body.role } : {}) };
     let staffId = id;
     if (id) {
         const { data, error } = await supabase.from('salon_staff_profiles').update(row).eq('id', id).eq('organization_id', orgId).select('id').maybeSingle();

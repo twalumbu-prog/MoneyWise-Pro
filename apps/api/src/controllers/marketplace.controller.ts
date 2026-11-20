@@ -4,6 +4,8 @@ import { isValidZambiaMobile, normalizeZambiaPhone, INVALID_PHONE_MESSAGE } from
 import { notifyUser } from '../services/marketplaceNotify';
 import { isSuspended } from '../services/marketplaceOrders.service';
 import { runningAds } from '../services/ads.service';
+import { moneyIn, endAuctionAndNotify } from '../services/marketplace.service';
+import { productPrices, dollarRate } from '../services/lipila.service';
 import { STOCK_COLUMNS, stockView } from '../services/stock';
 import {
     AuctionRow, buyNow, isVerifiedStore, locationText, maskName, num, repairSoldAuction, settleDueAuctions, shortName,
@@ -12,6 +14,8 @@ import {
 interface AuctionView {
     id: string;
     status: 'OPEN' | 'SOLD' | 'NO_SALE' | 'CANCELLED';
+    /** What every amount on this auction is in: 'ZMW' (kwacha) or 'USD' (US dollars). */
+    currency: 'ZMW' | 'USD';
     startPrice: number;
     currentBid: number | null;
     bidCount: number;
@@ -35,7 +39,10 @@ interface Listing {
     id: string;
     name: string;
     description: string | null;
+    /** In kwacha. A dollar-priced item is converted at today's rate (so filters, sorting and checkout all work in kwacha). */
     price: number;
+    /** The item's own dollar price when it is priced in dollars, else null. */
+    usdPrice: number | null;
     imageUrl: string | null;
     images: string[];
     category: string | null;
@@ -86,6 +93,8 @@ async function whoAmI(req: any): Promise<{ userId: string; orgId: string | null;
     const { data } = await supabase.from('users').select('name').eq('id', userId).maybeSingle();
     return { userId, orgId: req.user?.organization_id ?? null, name: data?.name || req.user?.email || 'MoneyWise user' };
 }
+
+const auctionCurrencyOf = (a: { currency?: string | null }): 'ZMW' | 'USD' => (String(a.currency ?? 'ZMW').toUpperCase() === 'USD' ? 'USD' : 'ZMW');
 
 /**
  * GET /marketplace/listings
@@ -161,7 +170,7 @@ export const getMarketplaceListings = async (req: any, res: Response): Promise<a
                 const mine = bids.filter((b) => b.user === me);
                 const increment = num(a.bid_increment) || 1;
                 return {
-                    id: a.id, status: 'OPEN', startPrice: num(a.start_price), currentBid: current, bidCount: bids.length, endsAt: a.ends_at, bidIncrement: increment,
+                    id: a.id, status: 'OPEN', currency: auctionCurrencyOf(a), startPrice: num(a.start_price), currentBid: current, bidCount: bids.length, endsAt: a.ends_at, bidIncrement: increment,
                     minNextBid: current === null ? num(a.start_price) : current + increment,
                     buyNowPrice: a.buy_now_price ? num(a.buy_now_price) : null,
                     hasReserve: !!a.reserve_price, reserveMet: !a.reserve_price || (current !== null && current >= num(a.reserve_price)),
@@ -172,7 +181,7 @@ export const getMarketplaceListings = async (req: any, res: Response): Promise<a
             if (a.status === 'SOLD') {
                 const won = !!me && a.winner_user_id === me;
                 return {
-                    id: a.id, status: 'SOLD', startPrice: num(a.start_price), currentBid: num(a.winning_amount), bidCount: 0, endsAt: a.ends_at, bidIncrement: num(a.bid_increment) || 1,
+                    id: a.id, status: 'SOLD', currency: auctionCurrencyOf(a), startPrice: num(a.start_price), currentBid: num(a.winning_amount), bidCount: 0, endsAt: a.ends_at, bidIncrement: num(a.bid_increment) || 1,
                     minNextBid: 0, buyNowPrice: null, hasReserve: !!a.reserve_price, reserveMet: true, iAmHighBidder: false, iHaveBid: won, iWon: won,
                     winningAmount: num(a.winning_amount), paymentLinkToken: won || isSeller ? a.payment_link_token : null, serverNow,
                 };
@@ -180,8 +189,14 @@ export const getMarketplaceListings = async (req: any, res: Response): Promise<a
             return null; // no sale / cancelled: the product is a plain listing again
         };
 
+        // Prices in kwacha: a dollar item is converted at today's rate and keeps its dollar price; with no rate it can't be priced, so it isn't shown.
+        const kw = await productPrices(productIds);
+        const rate: number | null = await dollarRate().then((r) => (r > 0 ? r : null)).catch(() => null);
+
         const listings: Listing[] = [];
         for (const p of rows) {
+            const priced = kw.get(p.id);
+            if (!priced) continue;
             const isSeller = !!myOrg && p.organization_id === myOrg;
             const auction = latestAuction.get(p.id);
             // A sold auction disappears for everyone except the seller and the winner, who still need to pay or collect.
@@ -207,7 +222,8 @@ export const getMarketplaceListings = async (req: any, res: Response): Promise<a
                 id: p.id,
                 name: p.name,
                 description: p.description ?? null,
-                price: Number(p.price) || 0,
+                price: priced.zmw || 0,
+                usdPrice: priced.currency === 'USD' ? priced.usd : null,
                 imageUrl: currentStorageUrl(p.image_url) ?? images[0] ?? null,
                 images,
                 category: p.category ? String(p.category).trim() : null,
@@ -222,7 +238,7 @@ export const getMarketplaceListings = async (req: any, res: Response): Promise<a
                 storePath,
                 isMine: isSeller,
                 auction: auctionView(auction, isSeller),
-                inAppCheckout: ['PRODUCT', 'SERVICE_FIXED', 'SERVICE_BOOKING', 'SERVICE_BOOKING_DAILY'].includes(p.product_type) && !!org?.public_username && !!org?.lenco_subaccount_id,
+                inAppCheckout: ['PRODUCT', 'SERVICE_FIXED', 'SERVICE_BOOKING', 'SERVICE_BOOKING_DAILY'].includes(p.product_type) && !!org?.lenco_subaccount_id,
                 stock: (({ tracked, available, low, soldOut, variants }) => ({ tracked, available, low, soldOut, variants }))(stockView(p)),
             });
         }
@@ -243,7 +259,7 @@ export const getMarketplaceListings = async (req: any, res: Response): Promise<a
             featuredStores: running.featuredStores.filter((a) => shownSellers.has(a.orgId)),
         };
 
-        res.json({ listings: visible, categories, ads });
+        res.json({ listings: visible, categories, ads, dollarRate: rate });
     } catch (error: any) {
         console.error('[Marketplace] listings error:', error);
         res.status(500).json({ error: 'Failed to load the Marketplace', details: error.message });
@@ -274,6 +290,10 @@ export const createAuction = async (req: any, res: Response): Promise<any> => {
         if (buy !== null && (!Number.isFinite(buy) || buy <= Math.max(start, reserve ?? 0))) return res.status(400).json({ error: 'Buy it now must be higher than the starting and reserve prices.' });
 
         const { data: product } = await supabase.from('products').select('id, organization_id, is_active').eq('id', productId).maybeSingle();
+        // The auction runs in the product's own currency: a dollar product is auctioned in dollars.
+        const cur = await supabase.from('products').select('currency').eq('id', productId).maybeSingle();
+        const auctionCurrency: 'ZMW' | 'USD' = String((cur.data as any)?.currency ?? 'ZMW').toUpperCase() === 'USD' ? 'USD' : 'ZMW';
+        if (auctionCurrency === 'USD' && !(await dollarRate().catch(() => 0))) return res.status(503).json({ error: 'Dollar auctions need a dollar rate, and none is set right now. Please try again later.' });
         if (!product) return res.status(404).json({ error: 'Product not found' });
         if (product.organization_id !== orgId) return res.status(403).json({ error: 'That product belongs to another organisation.' });
         if (!product.is_active) return res.status(400).json({ error: 'Activate the product before auctioning it.' });
@@ -281,7 +301,7 @@ export const createAuction = async (req: any, res: Response): Promise<any> => {
         const endsAt = new Date(Date.now() + hours * 3_600_000).toISOString();
         const { data, error } = await supabase.from('marketplace_auctions').insert({
             product_id: productId, organization_id: orgId, start_price: start, reserve_price: reserve, buy_now_price: buy, bid_increment: step,
-            ends_at: endsAt, created_by: req.user.id,
+            ends_at: endsAt, created_by: req.user.id, ...(auctionCurrency === 'USD' ? { currency: 'USD' } : {}),
         }).select('*').single();
         if (error) {
             if (/uq_marketplace_auction_open_product|duplicate key/i.test(error.message)) return res.status(409).json({ error: 'This product is already on auction.' });
@@ -289,14 +309,14 @@ export const createAuction = async (req: any, res: Response): Promise<any> => {
             throw error;
         }
         await supabase.from('products').update({ marketplace_listed: true }).eq('id', productId);
-        res.status(201).json({ id: data.id, endsAt });
+        res.status(201).json({ id: data.id, endsAt, currency: auctionCurrency });
     } catch (error: any) {
         console.error('[Marketplace] create auction error:', error);
         res.status(500).json({ error: 'Failed to start the auction', details: error.message });
     }
 };
 
-/** POST /marketplace/auctions/:id/cancel  (the seller, before anyone has bid) */
+/** POST /marketplace/auctions/:id/cancel  { confirm? }  The seller turns the auction off. With bids it needs confirm: true, and every bidder is told. */
 export const cancelAuction = async (req: any, res: Response): Promise<any> => {
     try {
         const { data: a } = await supabase.from('marketplace_auctions').select('*').eq('id', req.params.id).maybeSingle();
@@ -304,9 +324,10 @@ export const cancelAuction = async (req: any, res: Response): Promise<any> => {
         if (a.organization_id !== req.user.organization_id || req.user.role !== 'ADMIN') return res.status(403).json({ error: 'Only the seller can cancel this auction.' });
         if (a.status !== 'OPEN') return res.status(400).json({ error: 'This auction has already ended.' });
         const { count } = await supabase.from('marketplace_bids').select('id', { count: 'exact', head: true }).eq('auction_id', a.id);
-        if ((count ?? 0) > 0) return res.status(400).json({ error: 'You can’t cancel an auction that already has bids.' });
-        await supabase.from('marketplace_auctions').update({ status: 'CANCELLED', settled_at: new Date().toISOString() }).eq('id', a.id).eq('status', 'OPEN');
-        res.json({ cancelled: true });
+        if ((count ?? 0) > 0 && req.body?.confirm !== true) return res.status(409).json({ error: `This auction has ${count} ${count === 1 ? 'bid' : 'bids'}. Ending it cancels them and tells the bidders. Confirm to go ahead.`, bids: count, needsConfirm: true });
+        const { data: prod } = await supabase.from('products').select('name').eq('id', a.product_id).maybeSingle();
+        const ended = await endAuctionAndNotify(a as AuctionRow, prod?.name ?? 'an item');
+        res.json({ cancelled: true, notified: ended.bidders });
     } catch (error: any) {
         res.status(500).json({ error: 'Failed to cancel the auction', details: error.message });
     }
@@ -333,14 +354,15 @@ export const placeBid = async (req: any, res: Response): Promise<any> => {
             if (/BID_CLOSED/.test(m)) return res.status(409).json({ error: 'This auction has ended.' });
             if (/OWN_AUCTION/.test(m)) return res.status(403).json({ error: 'You can’t bid on your own item.' });
             const low = /BID_TOO_LOW:([0-9.]+)/.exec(m);
-            if (low) return res.status(409).json({ error: `Your bid must be at least K${Number(low[1]).toLocaleString()}.`, minimum: Number(low[1]) });
+            if (low) { const { data: au } = await supabase.from('marketplace_auctions').select('currency').eq('id', req.params.id).maybeSingle(); return res.status(409).json({ error: `Your bid must be at least ${moneyIn(Number(low[1]), (au as any)?.currency)}.`, minimum: Number(low[1]) }); }
             throw error;
         }
         const previous = before?.[0];
         if (previous && previous.bidder_user_id !== who.userId) {
-            const { data: a } = await supabase.from('marketplace_auctions').select('product_id').eq('id', req.params.id).maybeSingle();
+            const { data: a } = await supabase.from('marketplace_auctions').select('product_id, currency').eq('id', req.params.id).maybeSingle();
+            const aCur = (a as any)?.currency;
             const { data: p } = a ? await supabase.from('products').select('name').eq('id', a.product_id).maybeSingle() : { data: null as any };
-            void notifyUser(previous.bidder_user_id, { title: 'You’ve been outbid', path: a ? `/marketplace/${a.product_id}` : '/marketplace', body: `someone bid K${amount.toLocaleString()} on ${p?.name ?? 'an item'}. Bid again to stay in the lead.` });
+            void notifyUser(previous.bidder_user_id, { title: 'You’ve been outbid', path: a ? `/marketplace/${a.product_id}` : '/marketplace', body: `someone bid ${moneyIn(amount, (data as any)?.currency ?? aCur)} on ${p?.name ?? 'an item'}. Bid again to stay in the lead.` });
         }
         res.status(201).json(data);
     } catch (error: any) {
@@ -378,8 +400,16 @@ export const getAuctionBids = async (req: any, res: Response): Promise<any> => {
         const token = a.status === 'SOLD' ? await repairSoldAuction(a as AuctionRow) : null;
         const isWinner = a.winner_user_id && a.winner_user_id === req.user?.id;
         const isSeller = a.organization_id === req.user?.organization_id;
+        // The seller sees who bid (full name and the number the winner would pay with); everyone else sees masked names.
+        const sellerPhones = isSeller ? await supabase.from('marketplace_bids').select('amount, bidder_name, bidder_phone, created_at').eq('auction_id', a.id).order('amount', { ascending: false }).order('created_at', { ascending: true }).limit(30) : null;
         res.json({
-            bids: (bids ?? []).map((b: any) => ({ bidder: b.bidder_user_id === req.user?.id ? 'You' : maskName(b.bidder_name), amount: num(b.amount), at: b.created_at })),
+            currency: auctionCurrencyOf(a),
+            isSeller,
+            bids: (bids ?? []).map((b: any, i: number) => ({
+                bidder: isSeller ? (b.bidder_name || 'Bidder') : b.bidder_user_id === req.user?.id ? 'You' : maskName(b.bidder_name),
+                ...(isSeller ? { phone: sellerPhones?.data?.[i]?.bidder_phone ?? null } : {}),
+                amount: num(b.amount), at: b.created_at,
+            })),
             paymentLinkToken: isWinner || isSeller ? token : null,
         });
     } catch (error: any) {

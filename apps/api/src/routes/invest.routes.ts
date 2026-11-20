@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { requireAuth, requireRole } from '../middleware/auth';
+import { requireSuperAdmin } from '../middleware/superAdmin';
+import { getTerms, redeem, createOffer, myOffers, withdrawOffer, adminOffers, adminDecide, adminInvites, adminCreateInvite, adminRevokeInvite, adminLegal } from '../controllers/shareRound.controller';
 import {
     listInvestmentTargets, walletTransferToInvestmentTarget, recordInvestmentIntent, confirmInvestment,
     listMyInvestorAccounts, connectInvestorAccount, applyForInvestorAccount, extractInvestorId,
@@ -28,6 +30,19 @@ router.post('/funds', requireRole(['ACCOUNTANT', 'ADMIN']), saveFund);
 router.post('/funds/:id/prices', requireRole(['ACCOUNTANT', 'ADMIN']), addFundPrices);
 router.delete('/funds/:id/prices/:date', requireRole(['ACCOUNTANT', 'ADMIN']), deleteFundPrice);
 router.get('/funds/:id/series', fundSeries);
+
+// Blue Opus share offers: a private, personal agreement (the company is not publicly listed). The admin routes are for Blue Opus itself.
+router.get('/blue-opus', getTerms);
+router.post('/blue-opus/redeem', redeem);
+router.post('/blue-opus/offers', createOffer);
+router.get('/blue-opus/offers/mine', myOffers);
+router.post('/blue-opus/offers/:id/withdraw', withdrawOffer);
+router.get('/blue-opus/admin/offers', requireSuperAdmin, adminOffers);
+router.post('/blue-opus/admin/offers/:id', requireSuperAdmin, adminDecide);
+router.get('/blue-opus/admin/invites', requireSuperAdmin, adminInvites);
+router.post('/blue-opus/admin/invites', requireSuperAdmin, adminCreateInvite);
+router.post('/blue-opus/admin/invites/:id/revoke', requireSuperAdmin, adminRevokeInvite);
+router.post('/blue-opus/admin/legal', requireSuperAdmin, adminLegal);
 router.put('/portfolio/:targetId/value', requireRole(['ADMIN', 'ACCOUNTANT']), setHoldingValue);
 router.post('/accounts/connect', connectInvestorAccount);
 router.post('/accounts/apply', applyForInvestorAccount);

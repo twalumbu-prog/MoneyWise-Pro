@@ -1,3 +1,12 @@
+export type BadgeTier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
+/** How each tier looks. Bronze, silver, gold and platinum read at a glance and stay readable on white. */
+export const TIER_STYLE: Record<BadgeTier, { label: string; color: string; soft: string; ink: string }> = {
+    BRONZE: { label: 'Bronze', color: '#B87333', soft: '#FBEFE3', ink: '#7A4A1E' },
+    SILVER: { label: 'Silver', color: '#8A94A6', soft: '#EEF1F6', ink: '#4B5565' },
+    GOLD: { label: 'Gold', color: '#E0A100', soft: '#FFF6D6', ink: '#7A5900' },
+    PLATINUM: { label: 'Platinum', color: '#5B6BD6', soft: '#E9ECFF', ink: '#2F3A91' },
+};
+
 export interface MissionStep {
     id: string;
     title: string;
@@ -18,17 +27,181 @@ export interface OnboardingAchievement {
     id: string;
     title: string;
     description: string;
-    category: 'ONBOARDING' | 'EXPLORER' | 'POWER_USER';
+    category: 'FIRST_STEPS' | 'ONBOARDING' | 'EXPLORER' | 'POWER_USER';
     icon: string;
     badgeName: string;
     badgeColor: string;
     xp: number;
     steps: MissionStep[];
+    /**
+     * Easy badges: unlocked simply by opening one of these pages while signed in, no guided tour. A path matches itself and anything under
+     * it ('/' matches only the home page). Someone can earn these by accident, which is the point: a first win that feels good.
+     */
+    autoVisit?: string[];
+    /** Set when the badge comes from the server's catalogue: its tier and the points it gifted. */
+    tier?: BadgeTier;
+    giftPoints?: number;
     completed: boolean;
     completedAt?: string;
 }
 
 export const INITIAL_ACHIEVEMENTS: OnboardingAchievement[] = [
+    {
+        id: 'visit_home',
+        title: 'Say Hello',
+        description: 'You opened MoneyWise Pro. Welcome aboard!',
+        category: 'FIRST_STEPS',
+        icon: 'Sparkles',
+        badgeName: 'Welcome Aboard',
+        badgeColor: '#F5A623',
+        xp: 10,
+        completed: false,
+        autoVisit: ['/', '/requisitions'],
+        steps: [],
+    },
+    {
+        id: 'visit_settings',
+        title: 'Look Around Settings',
+        description: 'Open Settings to see everything you can set up.',
+        category: 'FIRST_STEPS',
+        icon: 'Settings',
+        badgeName: 'Settings Explorer',
+        badgeColor: '#F5A623',
+        xp: 10,
+        completed: false,
+        autoVisit: ['/settings'],
+        steps: [],
+    },
+    {
+        id: 'visit_bi',
+        title: 'Peek at Your Numbers',
+        description: 'Open Business Intelligence and see how your money is moving.',
+        category: 'FIRST_STEPS',
+        icon: 'BarChart3',
+        badgeName: 'Curious Mind',
+        badgeColor: '#F5A623',
+        xp: 15,
+        completed: false,
+        autoVisit: ['/intelligence'],
+        steps: [],
+    },
+    {
+        id: 'visit_schedules',
+        title: 'Open the Calendar',
+        description: 'Open Schedules to see upcoming payments and reminders.',
+        category: 'FIRST_STEPS',
+        icon: 'Calendar',
+        badgeName: 'Calendar Peeker',
+        badgeColor: '#F5A623',
+        xp: 10,
+        completed: false,
+        autoVisit: ['/schedules'],
+        steps: [],
+    },
+    {
+        id: 'visit_budgets',
+        title: 'Visit Budgets',
+        description: 'Open Budgets, where you plan what to spend.',
+        category: 'FIRST_STEPS',
+        icon: 'PieChart',
+        badgeName: 'Budget Watcher',
+        badgeColor: '#F5A623',
+        xp: 15,
+        completed: false,
+        autoVisit: ['/budgets'],
+        steps: [],
+    },
+    {
+        id: 'visit_savings',
+        title: 'Visit Savings',
+        description: 'Open Savings and take a look at your goals.',
+        category: 'FIRST_STEPS',
+        icon: 'PiggyBank',
+        badgeName: 'Piggy Bank',
+        badgeColor: '#F5A623',
+        xp: 15,
+        completed: false,
+        autoVisit: ['/savings'],
+        steps: [],
+    },
+    {
+        id: 'visit_marketplace',
+        title: 'Go Window Shopping',
+        description: 'Browse the Marketplace and see what is on offer.',
+        category: 'FIRST_STEPS',
+        icon: 'ShoppingBag',
+        badgeName: 'Window Shopper',
+        badgeColor: '#F5A623',
+        xp: 15,
+        completed: false,
+        autoVisit: ['/marketplace'],
+        steps: [],
+    },
+    {
+        id: 'visit_new_sale',
+        title: 'Start a Sale',
+        description: 'Open New Sale. You do not have to finish it.',
+        category: 'FIRST_STEPS',
+        icon: 'Receipt',
+        badgeName: 'Sale Starter',
+        badgeColor: '#F5A623',
+        xp: 15,
+        completed: false,
+        autoVisit: ['/sales/new'],
+        steps: [],
+    },
+    {
+        id: 'visit_send',
+        title: 'Open Send',
+        description: 'Open the Send screen, ready for when you need it.',
+        category: 'FIRST_STEPS',
+        icon: 'Send',
+        badgeName: 'Ready to Send',
+        badgeColor: '#F5A623',
+        xp: 10,
+        completed: false,
+        autoVisit: ['/send'],
+        steps: [],
+    },
+    {
+        id: 'visit_approvals',
+        title: 'Check Approvals',
+        description: 'Open Approvals to see what is waiting for a decision.',
+        category: 'FIRST_STEPS',
+        icon: 'CheckCircle2',
+        badgeName: 'Approver',
+        badgeColor: '#F5A623',
+        xp: 10,
+        completed: false,
+        autoVisit: ['/approvals'],
+        steps: [],
+    },
+    {
+        id: 'visit_rewards',
+        title: 'Look at Rewards',
+        description: 'Open Rewards and see how customers can earn.',
+        category: 'FIRST_STEPS',
+        icon: 'Gift',
+        badgeName: 'Reward Curious',
+        badgeColor: '#F5A623',
+        xp: 15,
+        completed: false,
+        autoVisit: ['/rewards/manage'],
+        steps: [],
+    },
+    {
+        id: 'visit_invest',
+        title: 'Peek at Investing',
+        description: 'Open Invest and see the fund prices.',
+        category: 'FIRST_STEPS',
+        icon: 'TrendingUp',
+        badgeName: 'Investor in Waiting',
+        badgeColor: '#F5A623',
+        xp: 15,
+        completed: false,
+        autoVisit: ['/invest/accounts', '/invest/prices'],
+        steps: [],
+    },
     {
         id: 'add_team_member',
         title: 'Build Your Team',
@@ -237,4 +410,10 @@ export function saveAchievementsState(achievements: OnboardingAchievement[]): vo
     } catch (e) {
         console.error('Failed to save achievements state:', e);
     }
+}
+
+/** The easy badges that open pages earn: which of these a visit to `pathname` unlocks (only the ones not already done). */
+export function badgesUnlockedByVisit(achievements: OnboardingAchievement[], pathname: string): OnboardingAchievement[] {
+    const p = (pathname.replace(/\/+$/, '') || '/');
+    return achievements.filter((a) => !a.completed && (a.autoVisit ?? []).some((v) => (v === '/' ? p === '/' : p === v || p.startsWith(v + '/'))));
 }
