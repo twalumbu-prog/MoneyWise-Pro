@@ -45,6 +45,16 @@ export interface MomoBalanceCheck {
     status: 'OPEN' | 'IN_SYNC' | 'ADJUSTED' | 'DISMISSED' | 'SUPERSEDED' | 'NO_ACCOUNT';
 }
 
+/** A capture plus where it landed in the ledger (booked ones only). */
+export interface MomoCaptureActivity extends MomoCapture {
+    entry: { reference_number: string | null; status: string | null; date: string | null; account: string | null; category: { id: string; code: string; name: string } | null } | null;
+}
+export interface MomoIgnoredMessage { id: string; source: MomoCaptureSource; raw_text: string; reason: string; created_at: string }
+export type MomoDiagnosis =
+    | { kind: 'TRANSACTION'; parsed: { provider: string; direction: 'IN' | 'OUT'; amount: number; fee: number | null; balanceAfter: number | null; counterparty: string | null; reference: string | null } }
+    | { kind: 'BALANCE'; balance: { provider: string; balance: number } }
+    | { kind: 'IGNORED'; reason: string; sensitive: boolean };
+
 export const momoCaptureService = {
     getSettings(): Promise<MomoCaptureSettings> {
         return apiJson('/momo-capture/settings');
@@ -70,6 +80,18 @@ export const momoCaptureService = {
     },
     dismiss(id: string): Promise<MomoCapture> {
         return apiJson(`/momo-capture/${id}/dismiss`, { method: 'POST' });
+    },
+    activity(status?: MomoCaptureStatus): Promise<MomoCaptureActivity[]> {
+        return apiJson(`/momo-capture/activity${status ? `?status=${status}` : ''}`);
+    },
+    allBalanceChecks(): Promise<MomoBalanceCheck[]> {
+        return apiJson('/momo-capture/balance-checks/all');
+    },
+    ignored(): Promise<MomoIgnoredMessage[]> {
+        return apiJson('/momo-capture/ignored');
+    },
+    testParse(text: string): Promise<MomoDiagnosis> {
+        return apiJson('/momo-capture/test-parse', { method: 'POST', body: JSON.stringify({ text }) });
     },
     balanceChecks(): Promise<MomoBalanceCheck[]> {
         return apiJson('/momo-capture/balance-checks');

@@ -132,6 +132,35 @@ export function parseBalanceMessage(rawText: string, sender?: string | null): Pa
     return { provider, balance: Math.round(balances[0].value * 100) / 100 };
 }
 
+export type Diagnosis =
+    | { kind: 'TRANSACTION'; parsed: ParsedMomoMessage }
+    | { kind: 'BALANCE'; balance: ParsedBalanceCheck }
+    | { kind: 'IGNORED'; reason: string; sensitive: boolean };
+
+/** What the server makes of a message and, when it ignores it, why — used by the ignored-messages log and the web tester. */
+export function diagnoseMessage(rawText: string, sender?: string | null): Diagnosis {
+    const parsed = parseMomoMessage(rawText, sender);
+    if (parsed) return { kind: 'TRANSACTION', parsed };
+    const balance = parseBalanceMessage(rawText, sender);
+    if (balance) return { kind: 'BALANCE', balance };
+
+    const text = clean(rawText || '');
+    if (text.length < 12) return { kind: 'IGNORED', reason: 'Too short to be a transaction message', sensitive: false };
+    if (text.length > 1200) return { kind: 'IGNORED', reason: 'Too long to be a transaction message', sensitive: false };
+    const bad = NOT_A_TRANSACTION.exec(text);
+    if (bad) {
+        const sensitive = /otp|one[- ]time|verification code/i.test(bad[0]);
+        return { kind: 'IGNORED', reason: `Looks like a failure, a code or a request (matched "${bad[0].trim()}")`, sensitive };
+    }
+    const hits = moneyHits(text);
+    if (hits.length === 0) return { kind: 'IGNORED', reason: 'No amount found (needs ZMW, K or an "Amt:" figure)', sensitive: false };
+    if (NOT_MONEY_BALANCE.test(text)) return { kind: 'IGNORED', reason: 'An airtime, data or bundle balance, not the money account', sensitive: false };
+    if (!hits.some((h) => !isBalance(h.before) && !isFee(h.before))) {
+        return { kind: 'IGNORED', reason: hits.filter((h) => isBalance(h.before)).length > 1 ? 'Several balances in one message, so it is unclear which to compare' : 'Only a fee or balance amount, no money movement', sensitive: false };
+    }
+    return { kind: 'IGNORED', reason: 'No "received" or "sent/paid" wording found next to the amount', sensitive: false };
+}
+
 /** Same balance reply arriving by SMS and by notification collapses; a later check of the same figure does not. */
 export function balanceDedupeKey(provider: MomoProvider, balance: number, observedAt: string): string {
     const bucket = Math.floor(new Date(observedAt).getTime() / (5 * 60 * 1000));

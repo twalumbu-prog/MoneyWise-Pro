@@ -14,7 +14,7 @@ import crypto from 'crypto';
 import { supabase } from '../../lib/supabase';
 import { recordManualEntry, ensureCashWallet, listExternalWallets, ManualEntryError } from '../manualEntry.service';
 import { cashbookService } from '../cashbook.service';
-import { parseMomoMessage, parseBalanceMessage, balanceDedupeKey, dedupeKey, describe, type MomoProvider, type ParsedMomoMessage } from './parser';
+import { parseMomoMessage, parseBalanceMessage, diagnoseMessage, balanceDedupeKey, dedupeKey, describe, type MomoProvider, type ParsedMomoMessage } from './parser';
 
 export class MomoCaptureError extends Error {
     constructor(message: string, public httpStatus = 400) { super(message); }
@@ -123,6 +123,7 @@ export async function ingest(input: IngestInput) {
         // Not a money movement — it may be a balance enquiry reply, which is compared with the ledger instead.
         const bal = parseBalanceMessage(text, sender);
         if (bal) return { accepted: true as const, balanceCheck: await recordBalanceCheck(input.userId, input.orgId, source, text, bal.provider, bal.balance, occurredAt) };
+        await logIgnored(input.userId, input.orgId, source, text, sender);
         return { accepted: false as const, reason: 'NOT_A_TRANSACTION' };
     }
 
@@ -156,6 +157,64 @@ export async function list(userId: string, orgId: string, status?: unknown) {
     const { data, error } = await q;
     if (error) throw new MomoCaptureError(error.message, 500);
     return data ?? [];
+}
+
+/** Every capture with where it ended up in the ledger (account, category, status) — for the web review page. */
+export async function listWithEntries(userId: string, orgId: string, status?: unknown) {
+    const rows = await list(userId, orgId, status);
+    const ids = rows.map((r: any) => r.cashbook_entry_id).filter(Boolean);
+    const entries = new Map<string, any>();
+    if (ids.length) {
+        const { data } = await supabase.from('cashbook_entries').select('id, reference_number, status, account_id, account_type, date, description').in('id', ids);
+        const accountIds = [...new Set((data ?? []).map((e: any) => e.account_id).filter(Boolean))];
+        const accounts = new Map<string, any>();
+        if (accountIds.length) {
+            const { data: acc } = await supabase.from('accounts').select('id, code, name').in('id', accountIds);
+            (acc ?? []).forEach((a: any) => accounts.set(a.id, a));
+        }
+        const walletIds = [...new Set((data ?? []).map((e: any) => e.account_type).filter(Boolean))];
+        const wallets = new Map<string, string>();
+        if (walletIds.length) {
+            const { data: w } = await supabase.from('external_wallets').select('id, name').in('id', walletIds);
+            (w ?? []).forEach((x: any) => wallets.set(x.id, x.name));
+        }
+        (data ?? []).forEach((e: any) => entries.set(e.id, {
+            reference_number: e.reference_number, status: e.status, date: e.date,
+            category: e.account_id ? accounts.get(e.account_id) ?? null : null,
+            account: wallets.get(e.account_type) ?? null,
+        }));
+    }
+    return rows.map((r: any) => ({ ...r, entry: r.cashbook_entry_id ? entries.get(r.cashbook_entry_id) ?? null : null }));
+}
+
+const IGNORED_KEEP_DAYS = 30;
+
+/** Remembers a message the parser ignored, and why. Never allowed to break ingest. */
+async function logIgnored(userId: string, orgId: string, source: CaptureSource, text: string, sender: string | null) {
+    try {
+        const d = diagnoseMessage(text, sender);
+        if (d.kind !== 'IGNORED') return;
+        await supabase.from('momo_ignored_messages').insert({
+            organization_id: orgId, user_id: userId, source, reason: d.reason,
+            raw_text: d.sensitive ? '[hidden: looks like a one-time code]' : text.slice(0, 300),
+        });
+        await supabase.from('momo_ignored_messages').delete().eq('user_id', userId)
+            .lt('created_at', new Date(Date.now() - IGNORED_KEEP_DAYS * 24 * 3600 * 1000).toISOString());
+    } catch (e: any) { console.error('[MoMo capture] could not log ignored message:', e?.message); }
+}
+
+export async function listIgnored(userId: string, orgId: string) {
+    const { data, error } = await supabase.from('momo_ignored_messages').select('*')
+        .eq('user_id', userId).eq('organization_id', orgId).order('created_at', { ascending: false }).limit(100);
+    if (error) throw new MomoCaptureError(error.message, 500);
+    return data ?? [];
+}
+
+/** Dry run for the web tester: how a pasted message would be read, nothing saved. */
+export function testParse(text: unknown) {
+    const t = typeof text === 'string' ? text : '';
+    if (!t.trim()) throw new MomoCaptureError('Paste a message to test');
+    return diagnoseMessage(t, null);
 }
 
 async function walletFor(orgId: string, provider: MomoProvider, destination: string) {
@@ -272,6 +331,13 @@ async function recordBalanceCheck(userId: string, orgId: string, source: Capture
 }
 
 /** Open balance differences, re-compared with the ledger as it is now (a capture booked since may have closed the gap). */
+export async function listAllBalanceChecks(userId: string, orgId: string) {
+    const { data, error } = await supabase.from('momo_balance_checks').select('*')
+        .eq('user_id', userId).eq('organization_id', orgId).order('observed_at', { ascending: false }).limit(100);
+    if (error) throw new MomoCaptureError(error.message, 500);
+    return data ?? [];
+}
+
 export async function listBalanceChecks(userId: string, orgId: string) {
     const { data, error } = await supabase.from('momo_balance_checks').select('*')
         .eq('user_id', userId).eq('organization_id', orgId).eq('status', 'OPEN').order('observed_at', { ascending: false }).limit(10);
