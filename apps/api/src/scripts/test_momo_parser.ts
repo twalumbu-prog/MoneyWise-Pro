@@ -33,6 +33,11 @@ const cases: { text: string; sender?: string; expect: Expect }[] = [
         expect: { provider: 'ZAMTEL', direction: 'OUT', amount: 500, balanceAfter: 20, reference: '99887766' },
     },
     { text: 'BANDA JOHN has sent you ZMW 40.00. Ref ABC123456', sender: 'MoMo', expect: { direction: 'IN', amount: 40 } },
+    // Real Airtel receipt (2026-11-21): "Dial *115#" is a footer here, and the sender is not named.
+    {
+        text: 'Money received ZMW 14.00 from 0245972 NFS SETTLEMENT ACCOUNT. Dial *115# to check balance. Deposits are free. TID: CI261121.0928.Z14917',
+        expect: { provider: 'AIRTEL', direction: 'IN', amount: 14, counterparty: '0245972 NFS SETTLEMENT ACCOUNT', reference: 'CI261121.0928.Z14917' },
+    },
     // Not transactions — must be ignored.
     { text: 'Your MoMo OTP is 482911. Do not share it with anyone.', expect: null },
     { text: 'Transaction of ZMW 300.00 to MARY PHIRI failed due to insufficient funds.', expect: null },

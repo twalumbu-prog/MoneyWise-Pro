@@ -21,11 +21,12 @@ export interface ParsedMomoMessage {
 }
 
 const clean = (s: string) => s.replace(/\s+/g, ' ').trim();
+const stripDialFooter = (s: string) => s.replace(/\bdial\s+\*\S*/gi, '');
 
 export function detectProvider(text: string, sender?: string | null): MomoProvider {
     const hay = `${sender ?? ''} ${text}`.toLowerCase();
     if (/\bmtn\b|momo/.test(hay)) return 'MTN';
-    if (/airtel/.test(hay)) return 'AIRTEL';
+    if (/airtel/.test(hay) || /\bTID:?\s*(?:CI|PP)\d{6}\./i.test(text)) return 'AIRTEL';
     if (/zamtel|kwacha\b/.test(hay)) return 'ZAMTEL';
     return 'OTHER';
 }
@@ -76,7 +77,9 @@ const REFERENCE = /\b(?:financial transaction id|transaction id|trans(?:action)?
 export function parseMomoMessage(rawText: string, sender?: string | null): ParsedMomoMessage | null {
     const text = clean(rawText || '');
     if (text.length < 12 || text.length > 1200) return null;
-    if (NOT_A_TRANSACTION.test(text)) return null;
+    // Receipts often end "Dial *115# to check balance". That's a footer, not an approval prompt, so it must not
+    // trip the filter ("has requested … Dial *115# to approve" is still caught by its own words).
+    if (NOT_A_TRANSACTION.test(stripDialFooter(text))) return null;
 
     const hits = moneyHits(text);
     const main = hits.find((h) => !isBalance(h.before) && !isFee(h.before));
@@ -123,7 +126,7 @@ export function parseBalanceMessage(rawText: string, sender?: string | null): Pa
     const text = clean(rawText || '');
     if (text.length < 10 || text.length > 600) return null;
     // Balance replies routinely end "Dial *115# for more", which the transaction filter reads as an approval prompt.
-    const withoutDial = text.replace(/\bdial\s+\*\S*/gi, '');
+    const withoutDial = stripDialFooter(text);
     if (NOT_A_TRANSACTION.test(withoutDial) || NOT_MONEY_BALANCE.test(withoutDial)) return null;
     const hits = moneyHits(text);
     const balances = hits.filter((h) => isBalance(h.before));
@@ -147,7 +150,7 @@ export function diagnoseMessage(rawText: string, sender?: string | null): Diagno
     const text = clean(rawText || '');
     if (text.length < 12) return { kind: 'IGNORED', reason: 'Too short to be a transaction message', sensitive: false };
     if (text.length > 1200) return { kind: 'IGNORED', reason: 'Too long to be a transaction message', sensitive: false };
-    const bad = NOT_A_TRANSACTION.exec(text);
+    const bad = NOT_A_TRANSACTION.exec(stripDialFooter(text));
     if (bad) {
         const sensitive = /otp|one[- ]time|verification code/i.test(bad[0]);
         return { kind: 'IGNORED', reason: `Looks like a failure, a code or a request (matched "${bad[0].trim()}")`, sensitive };
