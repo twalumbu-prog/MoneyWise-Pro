@@ -52,14 +52,16 @@ export async function getSettings(userId: string, orgId: string) {
         lastCaptureAt: row.last_capture_at ?? null,
         lastCaptureSource: row.last_capture_source ?? null,
         pendingCount: (count ?? 0) + (openChecks ?? 0),
+        defaultProvider: (row.default_provider ?? null) as 'MTN' | 'AIRTEL' | 'ZAMTEL' | null,
     };
 }
 
-export async function updateSettings(userId: string, orgId: string, patch: { autoPost?: unknown; destination?: unknown }) {
+export async function updateSettings(userId: string, orgId: string, patch: { autoPost?: unknown; destination?: unknown; defaultProvider?: unknown }) {
     await settingsRow(userId, orgId);
     const update: Record<string, any> = { updated_at: new Date().toISOString() };
     if (typeof patch.autoPost === 'boolean') update.auto_post = patch.autoPost;
     if (patch.destination === 'PROVIDER' || patch.destination === 'CASH') update.destination = patch.destination;
+    if (patch.defaultProvider === null || ['MTN', 'AIRTEL', 'ZAMTEL'].includes(patch.defaultProvider as string)) update.default_provider = patch.defaultProvider;
     await supabase.from('momo_capture_settings').update(update).eq('user_id', userId);
     return getSettings(userId, orgId);
 }
@@ -119,10 +121,14 @@ export async function ingest(input: IngestInput) {
     const parsed = parseMomoMessage(text, sender);
     await supabase.from('momo_capture_settings')
         .update({ last_capture_at: new Date().toISOString(), last_capture_source: source }).eq('user_id', input.userId);
+    // A message that doesn't name its provider is filed under the one this phone number is on.
+    const fallbackProvider = async (found: MomoProvider): Promise<MomoProvider> =>
+        found !== 'OTHER' ? found : (((await settingsRow(input.userId, input.orgId)).default_provider as MomoProvider | null) ?? 'OTHER');
+    if (parsed) parsed.provider = await fallbackProvider(parsed.provider);
     if (!parsed) {
         // Not a money movement — it may be a balance enquiry reply, which is compared with the ledger instead.
         const bal = parseBalanceMessage(text, sender);
-        if (bal) return { accepted: true as const, balanceCheck: await recordBalanceCheck(input.userId, input.orgId, source, text, bal.provider, bal.balance, occurredAt) };
+        if (bal) return { accepted: true as const, balanceCheck: await recordBalanceCheck(input.userId, input.orgId, source, text, await fallbackProvider(bal.provider), bal.balance, occurredAt) };
         await logIgnored(input.userId, input.orgId, source, text, sender);
         return { accepted: false as const, reason: 'NOT_A_TRANSACTION' };
     }

@@ -49,6 +49,11 @@ export const MomoCaptureIntegration: React.FC<{ onBack: () => void }> = ({ onBac
     });
 
     const s = settings.data;
+    const setProvider = useMutation({
+        mutationFn: (p: 'MTN' | 'AIRTEL' | 'ZAMTEL' | null) => momoCaptureService.updateSettings({ defaultProvider: p }),
+        onSuccess: refresh,
+        onError: (e: Error) => window.alert(e.message),
+    });
     return (
         <div className="space-y-6">
             <button onClick={onBack} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800">
@@ -64,6 +69,21 @@ export const MomoCaptureIntegration: React.FC<{ onBack: () => void }> = ({ onBac
                 <Stat label="Last message" value={s?.lastCaptureAt ? when(s.lastCaptureAt) : 'None yet'} sub={s?.lastCaptureSource ? SOURCE[s.lastCaptureSource] : undefined} />
                 <Stat label="Waiting for you" value={s ? String(s.pendingCount) : '…'} />
                 <Stat label="Booking" value={s ? (s.autoPost ? 'Automatic' : 'After review') : '…'} sub={s ? (s.destination === 'CASH' ? 'to Cash' : 'to provider account') : undefined} />
+            </div>
+
+            <div className="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-xl">
+                <div className="flex-1">
+                    <p className="text-sm font-semibold text-gray-900">This phone's mobile money provider</p>
+                    <p className="text-xs text-gray-500">Used for messages that don't name a provider, such as "Your balance is ZMW 10.00", so they file under the right account.</p>
+                </div>
+                <select value={s?.defaultProvider ?? ''} disabled={!s || setProvider.isPending}
+                    onChange={(e) => setProvider.mutate(e.target.value === '' ? null : (e.target.value as 'MTN' | 'AIRTEL' | 'ZAMTEL'))}
+                    className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white">
+                    <option value="">Not set</option>
+                    <option value="MTN">MTN MoMo</option>
+                    <option value="AIRTEL">Airtel Money</option>
+                    <option value="ZAMTEL">Zamtel Kwacha</option>
+                </select>
             </div>
 
             <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">

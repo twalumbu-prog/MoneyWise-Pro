@@ -12,6 +12,8 @@ export interface MomoCaptureSettings {
     lastCaptureAt: string | null;
     lastCaptureSource: MomoCaptureSource | null;
     pendingCount: number;
+    /** The provider this phone number is on; used when a message doesn't name one. */
+    defaultProvider: 'MTN' | 'AIRTEL' | 'ZAMTEL' | null;
 }
 
 export interface MomoCapture {
@@ -59,7 +61,7 @@ export const momoCaptureService = {
     getSettings(): Promise<MomoCaptureSettings> {
         return apiJson('/momo-capture/settings');
     },
-    updateSettings(patch: Partial<Pick<MomoCaptureSettings, 'autoPost' | 'destination'>>): Promise<MomoCaptureSettings> {
+    updateSettings(patch: Partial<Pick<MomoCaptureSettings, 'autoPost' | 'destination' | 'defaultProvider'>>): Promise<MomoCaptureSettings> {
         return apiJson('/momo-capture/settings', { method: 'PUT', body: JSON.stringify(patch) });
     },
     /** A new capture key; the previous one stops working. Shown/handed over once — the server keeps only its hash. */
