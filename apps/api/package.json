@@ -13,6 +13,7 @@
         "test:ai": "tsc && node dist/scripts/sanity_ai.js",
         "oauth:create-client": "ts-node --transpile-only src/scripts/create_oauth_client.ts",
         "test:momo": "tsc && node dist/scripts/test_momo_parser.js",
+        "test:onboarding": "tsc && node dist/scripts/test_personal_onboarding.js",
         "test:sales": "tsc && node dist/scripts/test_public_sales.js",
         "test:transfers": "tsc && node dist/scripts/test_deposit_transfer.js"
     },

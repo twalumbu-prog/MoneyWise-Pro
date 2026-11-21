@@ -1,3 +1,4 @@
+import { onboardingSeedRow } from '../services/personalOnboarding/steps';
 /**
  * Social sign-in (Google / Apple) support.
  *
@@ -127,7 +128,7 @@ export const completeSocialSignup = async (req: any, res: any): Promise<any> => 
         }
         const walletSeed = await supabase.from('organization_wallets').insert({ organization_id: org.id, name: 'Main Wallet', is_main: true });
         if (walletSeed.error) console.error('[SocialAuth] Main Wallet seed failed:', walletSeed.error.message);
-        const progressSeed = await supabase.from('onboarding_progress').insert({ organization_id: org.id, current_step: 1, completed_steps: [], status: 'IN_PROGRESS' });
+        const progressSeed = await supabase.from('onboarding_progress').insert(onboardingSeedRow(org.id, isPersonal));
         if (progressSeed.error) console.error('[SocialAuth] onboarding seed failed:', progressSeed.error.message);
 
         captureEvent('social_signup_completed', {

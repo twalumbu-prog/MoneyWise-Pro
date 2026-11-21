@@ -8,6 +8,9 @@ import { isComposioConfigured, disconnectComposioConnection, syncAllComposio } f
 const frontend = () => process.env.FRONTEND_URL || 'https://moneywise.pro';
 const backToSettings = (params: Record<string, string>) =>
     `${frontend()}/settings?tab=integrations&integration=gmail&${new URLSearchParams(params)}`;
+/** The mobile app opens the consent screen in an auth session that closes when it sees this scheme. */
+const APP_RETURN = process.env.MOBILE_APP_SCHEME ? `${process.env.MOBILE_APP_SCHEME}://integrations-return` : 'moneywise://integrations-return';
+const backTo = (app: boolean, params: Record<string, string>) => (app ? `${APP_RETURN}?${new URLSearchParams(params)}` : backToSettings(params));
 
 /** Connecting a mailbox exposes the business's email to the AI: owners/admins/accountants only. */
 const CAN_CONNECT = ['OWNER', 'ADMIN', 'ACCOUNTANT', 'SUPER_ADMIN'];
@@ -30,26 +33,26 @@ export const getGmailConnectUrl = async (req: Request, res: Response) => {
     if (!user?.organization_id) return res.status(400).json({ error: 'User does not belong to an organization' });
     const role = String(user.role || '').toUpperCase();
     if (role && !CAN_CONNECT.includes(role)) return res.status(403).json({ error: 'Only an owner, admin or accountant can connect a mailbox' });
-    res.json({ url: buildAuthUrl(user.organization_id, user.id) });
+    res.json({ url: buildAuthUrl(user.organization_id, user.id, req.query.app === '1') });
 };
 
 /** GET /integrations/gmail/callback — Google redirects here; no session, identity comes from the signed state. */
 export const gmailOAuthCallback = async (req: Request, res: Response) => {
     const { code, state, error } = req.query as Record<string, string | undefined>;
+    const who = readState(String(state || ''));
     if (error) {
         const msg = error === 'access_denied' ? 'Gmail connection was cancelled.' : `Google returned: ${error}`;
-        return res.redirect(backToSettings({ gmail: 'error', gmail_message: msg }));
+        return res.redirect(backTo(!!who?.app, { gmail: who?.app && error === 'access_denied' ? 'cancelled' : 'error', gmail_message: msg }));
     }
-    const who = readState(String(state || ''));
     if (!who) return res.redirect(backToSettings({ gmail: 'error', gmail_message: 'The connection link expired. Please try again.' }));
-    if (!code) return res.redirect(backToSettings({ gmail: 'error', gmail_message: 'Google did not return an authorisation code.' }));
+    if (!code) return res.redirect(backTo(who.app, { gmail: 'error', gmail_message: 'Google did not return an authorisation code.' }));
     try {
         const { email } = await completeConnection(String(code), who.organizationId, who.userId);
-        res.redirect(backToSettings({ gmail: 'connected', gmail_email: email }));
+        res.redirect(backTo(who.app, { gmail: 'connected', gmail_email: email }));
     } catch (e: any) {
         const msg = e?.response?.data?.error_description || e?.message || 'Could not connect Gmail';
         console.error('[Gmail] callback failed:', msg);
-        res.redirect(backToSettings({ gmail: 'error', gmail_message: String(msg).slice(0, 200) }));
+        res.redirect(backTo(who.app, { gmail: 'error', gmail_message: String(msg).slice(0, 200) }));
     }
 };
 

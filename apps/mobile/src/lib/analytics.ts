@@ -148,3 +148,9 @@ export function trackSignedOut() {
         backgroundedAt = null;
     });
 }
+
+/** A one-off product event (onboarding funnel and the like), with the usual platform/account props attached. */
+export function track(event: string, props: Record<string, unknown> = {}) {
+    if (!client) return;
+    safe(() => client!.capture(event, { ...baseProps(), ...props } as any));
+}

@@ -18,6 +18,16 @@ export const PROVIDER_BANKS: Provider[] = [
     { code: 'ABSA', name: 'Absa Bank' },
     { code: 'ECOBANK', name: 'Ecobank' },
     { code: 'STANDARD_CHARTERED', name: 'Standard Chartered' },
+    { code: 'ACCESS', name: 'Access Bank' },
+    { code: 'INDO_ZAMBIA', name: 'Indo Zambia Bank' },
+    { code: 'FIRST_CAPITAL', name: 'First Capital Bank' },
+    { code: 'AB_BANK', name: 'AB Bank' },
+    { code: 'ZNBS', name: 'ZNBS' },
+    { code: 'NATSAVE', name: 'Natsave' },
+    { code: 'FIRST_ALLIANCE', name: 'First Alliance Bank' },
+    { code: 'BANK_OF_CHINA', name: 'Bank of China' },
+    { code: 'CITI', name: 'Citibank' },
+    { code: 'UBA', name: 'UBA' },
     { code: 'OTHER', name: 'Other Bank' },
 ];
 

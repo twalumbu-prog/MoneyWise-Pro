@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, KeyboardAvoidingView, ScrollView } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { User, Building2, Check } from 'lucide-react-native';
 import { apiJson } from 'core';
 import { useAuth } from '../src/context/AuthContext';
+import { AccountTypeChooser } from '../src/components/auth/AccountTypeChooser';
+import { track } from '../src/lib/analytics';
 import { colors, fonts, radius } from '../src/theme/tokens';
 
 /**
@@ -27,6 +28,7 @@ export default function CompleteProfileScreen() {
 
     const submit = async (nameOverride?: string) => {
         setBusy(true); setError(''); setSuggestion('');
+        track('account_type_chosen', { account_choice: type, via: 'social' });
         try {
             const res = await apiJson<{ organizationId: string }>('/auth/complete-social-signup', {
                 method: 'POST',
@@ -48,23 +50,9 @@ export default function CompleteProfileScreen() {
             <Stack.Screen options={{ headerShown: false }} />
             <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 24 }]} keyboardShouldPersistTaps="handled">
                 <Text style={styles.title}>{first ? `Welcome, ${first}` : 'Welcome to MoneyWise'}</Text>
-                <Text style={styles.sub}>How will you use MoneyWise? You can add more later.</Text>
+                <Text style={styles.sub}>How will you use MoneyWise? Pick one to start. You can add the other later.</Text>
 
-                {([
-                    { value: 'INDIVIDUAL', title: 'Personal', body: 'Track your own money, savings and goals.', Icon: User },
-                    { value: 'BUSINESS', title: 'Business', body: 'Run payments, requests and reporting for a business.', Icon: Building2 },
-                ] as const).map(({ value, title, body, Icon }) => (
-                    <Pressable key={value} onPress={() => { setType(value); setError(''); setSuggestion(''); }} style={[styles.card, type === value && styles.cardOn]}>
-                        <View style={[styles.iconWrap, type === value && { backgroundColor: colors.blue }]}>
-                            <Icon size={20} color={type === value ? '#FFFFFF' : colors.blue} />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                            <Text style={styles.cardTitle}>{title}</Text>
-                            <Text style={styles.cardBody}>{body}</Text>
-                        </View>
-                        {type === value && <Check size={18} color={colors.blue} />}
-                    </Pressable>
-                ))}
+                <AccountTypeChooser value={type} onChange={(v) => { setType(v); setError(''); setSuggestion(''); }} />
 
                 {type === 'BUSINESS' && (
                     <View style={{ marginTop: 6 }}>

@@ -226,7 +226,11 @@ export function testParse(text: unknown) {
 async function walletFor(orgId: string, provider: MomoProvider, destination: string) {
     if (destination === 'CASH') return ensureCashWallet(orgId);
     const name = PROVIDER_WALLET[provider];
-    const existing = (await listExternalWallets(orgId)).find((w) => w.name.toLowerCase() === name.toLowerCase());
+    const wallets = await listExternalWallets(orgId);
+    // By name first; else the one mobile money account of this provider, whatever it was nicknamed (onboarding lets
+    // people call their MTN line "Work line"). Two of the same provider and none named after it → the default name.
+    const sameProvider = wallets.filter((w) => w.provider_type === 'MOBILE_MONEY' && (w.provider_name ?? '').toLowerCase() === name.toLowerCase());
+    const existing = wallets.find((w) => w.name.toLowerCase() === name.toLowerCase()) ?? (sameProvider.length === 1 ? sameProvider[0] : undefined);
     if (existing) return existing;
     const { data, error } = await supabase.from('external_wallets')
         .insert({ organization_id: orgId, name, provider_type: 'MOBILE_MONEY', provider_name: name })

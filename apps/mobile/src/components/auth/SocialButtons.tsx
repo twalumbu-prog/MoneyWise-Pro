@@ -20,7 +20,7 @@ const GoogleLogo: React.FC<{ size?: number }> = ({ size = 20 }) => (
     </Svg>
 );
 
-export const SocialButtons: React.FC<{ onError: (message: string) => void }> = ({ onError }) => {
+export const SocialButtons: React.FC<{ onError: (message: string) => void; showDivider?: boolean }> = ({ onError, showDivider = true }) => {
     const router = useRouter();
     const [busy, setBusy] = useState<SocialProvider | null>(null);
     const [showApple, setShowApple] = useState(false);
@@ -45,10 +45,12 @@ export const SocialButtons: React.FC<{ onError: (message: string) => void }> = (
     };
 
     return (
-        <View style={styles.wrap}>
-            <View style={styles.dividerRow}>
-                <View style={styles.line} /><Text style={styles.dividerText}>or continue with</Text><View style={styles.line} />
-            </View>
+        <View style={[styles.wrap, !showDivider && { marginTop: 0 }]}>
+            {showDivider && (
+                <View style={styles.dividerRow}>
+                    <View style={styles.line} /><Text style={styles.dividerText}>or continue with</Text><View style={styles.line} />
+                </View>
+            )}
 
             {showApple && (
                 <Pressable style={({ pressed }) => [styles.btn, styles.apple, pressed && { opacity: 0.85 }]} onPress={() => go('apple')} disabled={!!busy} accessibilityLabel="Continue with Apple">

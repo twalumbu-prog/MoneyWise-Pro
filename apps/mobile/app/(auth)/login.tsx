@@ -4,7 +4,7 @@ import {
     KeyboardAvoidingView, ActivityIndicator, ScrollView, Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
     User, Lock, Eye, EyeOff, Building2,
     ChevronRight, Mail, Search,
@@ -25,8 +25,10 @@ export default function LoginScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
 
-    const [mode, setMode] = useState<Mode>('login');
-    const [accountType, setAccountType] = useState<AccountType>('INDIVIDUAL');
+    // /(auth)/choose sends ?mode=signup&type=INDIVIDUAL|BUSINESS; the welcome screen's "I already have an account" sends nothing.
+    const params = useLocalSearchParams<{ mode?: string; type?: string }>();
+    const [mode, setMode] = useState<Mode>(params.mode === 'signup' ? 'signup' : 'login');
+    const [accountType, setAccountType] = useState<AccountType>(params.type === 'BUSINESS' ? 'BUSINESS' : 'INDIVIDUAL');
     const [signupOrgMode, setSignupOrgMode] = useState<SignupOrgMode>('CREATE');
     const [showPassword, setShowPassword] = useState(false);
 
@@ -107,7 +109,7 @@ export default function LoginScreen() {
         try {
             const orgToCreate = accountType === 'BUSINESS' ? organizationName : `${name}'s Workspace`;
             if (accountType === 'INDIVIDUAL' || signupOrgMode === 'CREATE') {
-                await signUp(identifier, password, name, orgToCreate, username);
+                await signUp(identifier, password, name, orgToCreate, username, accountType);
                 setSuggestion('');
                 setMessage('Account created! Setting up your workspace…');
                 await signInWithPassword(identifier, password, accountType);
