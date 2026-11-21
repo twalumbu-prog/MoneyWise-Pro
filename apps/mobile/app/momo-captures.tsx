@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { View, Text, Pressable, FlatList, StyleSheet, Alert, TextInput, ActivityIndicator, KeyboardAvoidingView, RefreshControl } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDownLeft, ArrowUpRight, ClipboardPaste, X } from 'lucide-react-native';
+import { ArrowDownLeft, ArrowUpRight, ClipboardPaste, Scale, X } from 'lucide-react-native';
 import { momoCaptureService, formatKwacha } from 'core';
-import type { MomoCapture, MomoCaptureStatus } from 'core';
+import type { MomoBalanceCheck, MomoCapture, MomoCaptureStatus } from 'core';
 import { ScreenHeader } from '../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../src/theme/tokens';
 import { MOMO_CAPTURES_KEY, MOMO_SETTINGS_KEY } from '../src/lib/momoCapture';
@@ -33,6 +33,16 @@ export default function MomoCapturesScreen() {
         void qc.invalidateQueries({ queryKey: MOMO_CAPTURES_KEY });
         void qc.invalidateQueries({ queryKey: MOMO_SETTINGS_KEY });
     };
+
+    const checks = useQuery({ queryKey: [...MOMO_CAPTURES_KEY, 'balance-checks'], queryFn: () => momoCaptureService.balanceChecks(), enabled: tab === 'PENDING' });
+    const balanceAct = useMutation({
+        mutationFn: ({ id, action }: { id: string; action: 'adjust' | 'dismiss' }) => action === 'adjust' ? momoCaptureService.adjustBalance(id) : momoCaptureService.dismissBalanceCheck(id),
+        onSuccess: (_d, v) => {
+            refresh();
+            if (v.action === 'adjust') { void qc.invalidateQueries({ queryKey: ['cashbook-entries'] }); void qc.invalidateQueries({ queryKey: ['external-balances'] }); }
+        },
+        onError: (e: Error) => { Alert.alert('Could not update', e.message); refresh(); },
+    });
 
     const act = useMutation({
         mutationFn: ({ id, action }: { id: string; action: 'post' | 'dismiss' }) => action === 'post' ? momoCaptureService.post(id) : momoCaptureService.dismiss(id),
@@ -88,6 +98,15 @@ export default function MomoCapturesScreen() {
                 data={list.data ?? []}
                 keyExtractor={(c) => c.id}
                 contentContainerStyle={styles.list}
+                ListHeaderComponent={tab === 'PENDING' && (checks.data?.length ?? 0) > 0 ? (
+                    <View style={{ gap: 10 }}>
+                        {checks.data!.map((b) => (
+                            <BalanceCard key={b.id} b={b} busy={balanceAct.isPending && balanceAct.variables?.id === b.id}
+                                onAdjust={() => balanceAct.mutate({ id: b.id, action: 'adjust' })}
+                                onDismiss={() => balanceAct.mutate({ id: b.id, action: 'dismiss' })} />
+                        ))}
+                    </View>
+                ) : null}
                 refreshControl={<RefreshControl refreshing={list.isRefetching} onRefresh={() => list.refetch()} />}
                 ListEmptyComponent={list.isLoading ? <ActivityIndicator style={{ marginTop: 40 }} color={colors.blue} /> : (
                     <Text style={styles.empty}>
@@ -110,6 +129,37 @@ export default function MomoCapturesScreen() {
         </KeyboardAvoidingView>
     );
 }
+
+const BalanceCard: React.FC<{ b: MomoBalanceCheck; busy: boolean; onAdjust: () => void; onDismiss: () => void }> = ({ b, busy, onAdjust, onDismiss }) => {
+    const diff = Number(b.difference ?? 0);
+    const pending = Number(b.pending_net ?? 0);
+    const when = new Date(b.observed_at);
+    return (
+        <View style={[styles.card, styles.balanceCard]}>
+            <View style={styles.cardTop}>
+                <View style={[styles.dirIcon, { backgroundColor: '#FFF7E6' }]}><Scale size={18} color={colors.warn} /></View>
+                <View style={{ flex: 1 }}>
+                    <Text style={styles.cp}>{PROVIDER[b.provider]} balance differs by {formatKwacha(Math.abs(diff))}</Text>
+                    <Text style={styles.meta}>Checked {when.toLocaleDateString()} {when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+                </View>
+            </View>
+            <Text style={styles.raw}>
+                Your phone says {formatKwacha(Number(b.balance))}. MoneyWise has {formatKwacha(Number(b.ledger_balance ?? 0))}
+                {pending !== 0 ? `, plus ${formatKwacha(Math.abs(pending))} ${pending > 0 ? 'received' : 'spent'} that is waiting below` : ''}.
+                {diff > 0 ? ' A payment may be missing from MoneyWise.' : ' MoneyWise may have something the provider never charged.'}
+                {' '}Review any waiting messages first. Adjusting books the {formatKwacha(Math.abs(diff))} difference as {diff > 0 ? 'money in' : 'money out'}.
+            </Text>
+            <View style={styles.actions}>
+                {busy ? <ActivityIndicator color={colors.blue} /> : (
+                    <>
+                        <Pressable onPress={onDismiss} style={({ pressed }) => [styles.secondary, pressed && { opacity: 0.6 }]}><Text style={styles.secondaryText}>Ignore</Text></Pressable>
+                        <Pressable onPress={onAdjust} style={({ pressed }) => [styles.primary, pressed && { opacity: 0.8 }]}><Text style={styles.primaryText}>Adjust to match</Text></Pressable>
+                    </>
+                )}
+            </View>
+        </View>
+    );
+};
 
 const CaptureCard: React.FC<{ c: MomoCapture; busy: boolean; onPost?: () => void; onDismiss?: () => void }> = ({ c, busy, onPost, onDismiss }) => {
     const [open, setOpen] = useState(false);
@@ -154,6 +204,7 @@ const styles = StyleSheet.create({
     tabTextOn: { color: '#FFFFFF' },
     list: { padding: 20, paddingTop: 8, gap: 10, paddingBottom: 48 },
     empty: { fontFamily: fonts.body, fontSize: 14, color: colors.textFaint, textAlign: 'center', marginTop: 40, paddingHorizontal: 20, lineHeight: 20 },
+    balanceCard: { borderColor: colors.warn },
     card: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 10 },
     cardTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
     dirIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },

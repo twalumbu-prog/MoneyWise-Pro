@@ -39,6 +39,9 @@ router.post('/token', handle('token', async (req) => ({ token: await momo.rotate
 router.delete('/token', handle('token', async (req) => { await momo.revokeToken(req.user.id); return { ok: true }; }));
 router.get('/', handle('list', (req) => momo.list(req.user.id, req.user.organization_id, req.query.status)));
 router.post('/paste', handle('paste', (req) => momo.ingest({ userId: req.user.id, orgId: req.user.organization_id, source: 'PASTE', text: req.body?.text })));
+router.get('/balance-checks', handle('balance-checks', (req) => momo.listBalanceChecks(req.user.id, req.user.organization_id)));
+router.post('/balance-checks/:id/adjust', handle('balance-adjust', (req) => momo.adjustToBalance(req.user.id, req.user.organization_id, req.params.id)));
+router.post('/balance-checks/:id/dismiss', handle('balance-dismiss', (req) => momo.dismissBalanceCheck(req.user.id, req.user.organization_id, req.params.id)));
 router.post('/:id/post', handle('post', (req) => momo.post(req.user.id, req.user.organization_id, req.params.id, req.body ?? {})));
 router.post('/:id/dismiss', handle('dismiss', (req) => momo.dismiss(req.user.id, req.user.organization_id, req.params.id)));
 

@@ -5,7 +5,7 @@
  * add it here (with names/numbers changed) before adjusting the parser.
  */
 import assert from 'assert';
-import { parseMomoMessage } from '../services/momoCapture/parser';
+import { parseMomoMessage, parseBalanceMessage } from '../services/momoCapture/parser';
 
 type Expect = Partial<ReturnType<typeof parseMomoMessage> & {}> | null;
 const cases: { text: string; sender?: string; expect: Expect }[] = [
@@ -54,6 +54,25 @@ for (const c of cases) {
         failed++;
         console.log(`✗ ${c.text.slice(0, 60)}\n    ${e.message}\n    got: ${JSON.stringify(got)}`);
     }
+}
+const balanceCases: { text: string; sender?: string; expect: { provider: string; balance: number } | null }[] = [
+    { text: 'Your MTN MoMo balance is ZMW 105.00. Dial *115# for more.', expect: { provider: 'MTN', balance: 105 } },
+    { text: 'Airtel Money: Your available balance is K1,250.50', expect: { provider: 'AIRTEL', balance: 1250.5 } },
+    { text: 'Zamtel Kwacha balance: ZMW 20.00', expect: { provider: 'ZAMTEL', balance: 20 } },
+    { text: 'Your airtime balance is K5.00', expect: null },
+    { text: 'Your data balance is 500MB. Bal ZMW 3.00', expect: null },
+    { text: 'You have received ZMW 250.00 from JOHN BANDA. New balance: ZMW 1,320.50.', expect: null },
+    { text: 'Your MoMo OTP is 482911. Balance ZMW 5.00', expect: null },
+    { text: 'Hi, are we still meeting at 5?', expect: null },
+];
+for (const c of balanceCases) {
+    const got = parseBalanceMessage(c.text, c.sender);
+    // a message the transaction parser takes must never also look like a balance check
+    try {
+        if (c.expect === null) assert.strictEqual(got, null);
+        else { assert.ok(got); assert.strictEqual(got!.provider, c.expect.provider); assert.strictEqual(got!.balance, c.expect.balance); }
+        console.log(`✓ balance: ${c.text.slice(0, 55)}`);
+    } catch (e: any) { failed++; console.log(`✗ balance: ${c.text.slice(0, 55)}\n    ${e.message}\n    got: ${JSON.stringify(got)}`); }
 }
 console.log(failed ? `\n${failed} failing` : '\nall passed');
 process.exit(failed ? 1 : 0);

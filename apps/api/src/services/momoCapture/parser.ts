@@ -106,6 +106,38 @@ export function parseMomoMessage(rawText: string, sender?: string | null): Parse
     };
 }
 
+export interface ParsedBalanceCheck {
+    provider: MomoProvider;
+    balance: number;
+}
+
+// Balances of things that are not the money account: airtime, data, bundles, minutes, loyalty points.
+const NOT_MONEY_BALANCE = /\b(airtime|data|bundle|bundles|mb|gb|minutes|mins|sms|points|bonus|loan|credit limit|overdraft)\b/i;
+
+/**
+ * "Your MTN MoMo balance is ZMW 105.00" — a balance enquiry reply. Only called after parseMomoMessage() returned null,
+ * so anything that moved money has already been handled. Needs a balance word right before exactly one amount, so a
+ * mini-statement or an airtime/data balance is ignored rather than misread.
+ */
+export function parseBalanceMessage(rawText: string, sender?: string | null): ParsedBalanceCheck | null {
+    const text = clean(rawText || '');
+    if (text.length < 10 || text.length > 600) return null;
+    // Balance replies routinely end "Dial *115# for more", which the transaction filter reads as an approval prompt.
+    const withoutDial = text.replace(/\bdial\s+\*\S*/gi, '');
+    if (NOT_A_TRANSACTION.test(withoutDial) || NOT_MONEY_BALANCE.test(withoutDial)) return null;
+    const hits = moneyHits(text);
+    const balances = hits.filter((h) => isBalance(h.before));
+    if (balances.length !== 1 || hits.length !== 1) return null;
+    const provider = detectProvider(text, sender);
+    return { provider, balance: Math.round(balances[0].value * 100) / 100 };
+}
+
+/** Same balance reply arriving by SMS and by notification collapses; a later check of the same figure does not. */
+export function balanceDedupeKey(provider: MomoProvider, balance: number, observedAt: string): string {
+    const bucket = Math.floor(new Date(observedAt).getTime() / (5 * 60 * 1000));
+    return `${provider}:BAL:${balance.toFixed(2)}:${bucket}`;
+}
+
 /** Same message arriving by SMS, by notification, or twice from the Shortcut must collapse to one row. */
 export function dedupeKey(parsed: ParsedMomoMessage, rawText: string): string {
     if (parsed.reference) return `${parsed.provider}:REF:${parsed.reference.toUpperCase()}`;

@@ -32,6 +32,19 @@ export interface MomoCapture {
     matched_entry_id: string | null;
 }
 
+/** A balance enquiry reply that differs from the provider account in MoneyWise. */
+export interface MomoBalanceCheck {
+    id: string;
+    provider: 'MTN' | 'AIRTEL' | 'ZAMTEL' | 'OTHER';
+    balance: number;
+    observed_at: string;
+    ledger_balance: number | null;
+    pending_net: number | null;
+    /** phone balance − (MoneyWise balance + captured-but-unbooked). Positive = MoneyWise is short. */
+    difference: number | null;
+    status: 'OPEN' | 'IN_SYNC' | 'ADJUSTED' | 'DISMISSED' | 'SUPERSEDED' | 'NO_ACCOUNT';
+}
+
 export const momoCaptureService = {
     getSettings(): Promise<MomoCaptureSettings> {
         return apiJson('/momo-capture/settings');
@@ -57,5 +70,14 @@ export const momoCaptureService = {
     },
     dismiss(id: string): Promise<MomoCapture> {
         return apiJson(`/momo-capture/${id}/dismiss`, { method: 'POST' });
+    },
+    balanceChecks(): Promise<MomoBalanceCheck[]> {
+        return apiJson('/momo-capture/balance-checks');
+    },
+    adjustBalance(id: string): Promise<MomoBalanceCheck> {
+        return apiJson(`/momo-capture/balance-checks/${id}/adjust`, { method: 'POST' });
+    },
+    dismissBalanceCheck(id: string): Promise<MomoBalanceCheck> {
+        return apiJson(`/momo-capture/balance-checks/${id}/dismiss`, { method: 'POST' });
     },
 };
