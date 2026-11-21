@@ -8,6 +8,11 @@ import { useAuth } from '../src/context/AuthContext';
 import { socialOrgPickPending, clearSocialOrgPick } from '../src/lib/socialAuth';
 import { takeTapCode } from '../src/lib/pendingTap';
 import { colors, fonts, radius } from '../src/theme/tokens';
+import { cacheStoreSync } from '../src/platform/storage';
+
+/** Set once anyone has signed in on this device: from then on a signed-out start goes to Log in, not the welcome carousel. */
+const SIGNED_IN_BEFORE_KEY = 'device-has-signed-in';
+const signedInBefore = () => { try { return cacheStoreSync.getItem(SIGNED_IN_BEFORE_KEY) === '1'; } catch { return true; } };
 
 // Orgs whose onboarding is known-finished this session — avoids re-checking on every visit.
 const onboardingDoneCache = new Set<string>();
@@ -31,6 +36,7 @@ export default function Index() {
     const [switchError, setSwitchError] = useState<string | null>(null);
 
     const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null);
+    const [onboardingFlow, setOnboardingFlow] = useState<'LEGACY' | 'PERSONAL_V2'>('LEGACY');
 
     const activeOrgs = useMemo(
         () => userOrganizations.filter((uo) => uo.status === 'ACTIVE' || !uo.status),
@@ -103,6 +109,7 @@ export default function Index() {
         ])
             .then(s => {
                 if (cancelled) return;
+                setOnboardingFlow(s.flow === 'PERSONAL_V2' ? 'PERSONAL_V2' : 'LEGACY');
                 if (s.progress?.status === 'COMPLETED') {
                     onboardingDoneCache.add(organizationId);
                     setNeedsOnboarding(false);
@@ -127,7 +134,8 @@ export default function Index() {
         return <BrandSplash />;
     }
 
-    if (!session) return <Redirect href="/(auth)/login" />;
+    if (!session) return <Redirect href={signedInBefore() ? '/(auth)/login' : '/(auth)/welcome'} />;
+    try { cacheStoreSync.setItem(SIGNED_IN_BEFORE_KEY, '1'); } catch { /* the carousel may show again; harmless */ }
 
     if (userStatus === 'PENDING_APPROVAL') {
         return (
@@ -218,7 +226,7 @@ export default function Index() {
         );
     }
 
-    if (needsOnboarding) return <Redirect href="/onboarding" />;
+    if (needsOnboarding) return <Redirect href={onboardingFlow === 'PERSONAL_V2' ? '/personal-onboarding' : '/onboarding'} />;
 
     // A tap-to-pay link opened before signing in: go to it now.
     const pendingTap = takeTapCode();

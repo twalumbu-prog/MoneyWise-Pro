@@ -28,7 +28,11 @@ export const composioConnect = async (req: Request, res: Response) => {
     const g = guard(req, res);
     if (!g) return;
     try {
-        const callbackUrl = `${frontend()}/settings?tab=integrations&composio=${g.toolkit}`;
+        // The mobile app passes { returnTo: 'app' }: its auth session closes when the browser reaches the app scheme.
+        const appScheme = process.env.MOBILE_APP_SCHEME || 'moneywise';
+        const callbackUrl = req.body?.returnTo === 'app'
+            ? `${appScheme}://integrations-return?composio=${g.toolkit}`
+            : `${frontend()}/settings?tab=integrations&composio=${g.toolkit}`;
         const redirectUrl = await startConnect(g.orgId, g.toolkit, callbackUrl);
         if (!redirectUrl) return res.status(500).json({ error: 'Composio did not return a sign-in link' });
         res.json({ redirectUrl });

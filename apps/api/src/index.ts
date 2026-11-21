@@ -1946,6 +1946,8 @@ app.use('/requisitions/scan-invoice', express.json({ limit: '15mb' }));
 // Uploaded HTML email designs (CRM campaigns) are bigger than the default 100kb JSON limit.
 // express.json skips bodies that are already parsed, so this runs instead of the global parser here.
 app.use(['/crm/campaigns/send', '/crm/email-designs'], express.json({ limit: '2mb' }));
+// Onboarding avatar: a compressed square picture as base64 (≤ 600 KB decoded).
+app.use('/onboarding/personal/avatar', express.json({ limit: '1mb' }));
 
 app.use(express.json({
     verify: (req: any, res, buf) => {

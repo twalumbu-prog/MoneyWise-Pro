@@ -18,6 +18,7 @@ import { ReceiveMoneySheet } from '../components/home/ReceiveMoneySheet';
 import { cardShadow } from '../components/home/HomeCard';
 import { AccountMenuSheet } from '../components/requisitions/AccountMenuSheet';
 import { WalkthroughCard } from '../components/walkthrough/WalkthroughCard';
+import { FinishSetupCard } from '../components/onboarding/personal/FinishSetupCard';
 import { useAttentionCount } from '../hooks/useBadgeSync';
 import { queueAssistantPrompt } from '../lib/assistantHandoff';
 import { colors, fonts, radius } from '../theme/tokens';
@@ -138,6 +139,7 @@ export function HomeScreen() {
                 keyboardShouldPersistTaps="handled"
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.blue} />}
             >
+                <FinishSetupCard />
                 <WalkthroughCard />
                 <AccountsCard />
 

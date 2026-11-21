@@ -99,6 +99,8 @@ export const getOnboardingState = async (req: any, res: Response): Promise<any> 
         };
 
         return res.json({
+            // LEGACY = this numbered wizard; PERSONAL_V2 = /onboarding/personal/* (the app routes there instead).
+            flow: (progress as any).flow || 'LEGACY',
             progress: {
                 currentStep: progress.current_step,
                 completedSteps: progress.completed_steps || [],
