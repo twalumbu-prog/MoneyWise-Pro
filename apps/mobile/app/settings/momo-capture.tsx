@@ -8,7 +8,7 @@ import type { MomoCaptureSettings } from 'core';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 import {
-    androidCaptureAvailable, iosShortcutAvailable, getAndroidStatus, setAndroidSources, isIosShortcutSetUp, disconnectCapture, MOMO_SETTINGS_KEY,
+    androidCaptureAvailable, iosCaptureAvailable, iosIntentAvailable, getIosStatus, getAndroidStatus, setAndroidSources, isIosShortcutSetUp, disconnectCapture, MOMO_SETTINGS_KEY,
 } from '../../src/lib/momoCapture';
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -37,7 +37,8 @@ export default function MomoCaptureSettingsScreen() {
 
     const refreshDevice = useCallback(() => {
         setAndroid(getAndroidStatus());
-        void isIosShortcutSetUp().then(setIosDone);
+        // With the built-in action, "set up" also needs the key still on this phone (a 401 drops it).
+        void isIosShortcutSetUp().then((done) => setIosDone(done && (!iosIntentAvailable || !!getIosStatus()?.hasToken)));
         void qc.invalidateQueries({ queryKey: MOMO_SETTINGS_KEY });
     }, [qc]);
 
@@ -115,11 +116,11 @@ export default function MomoCaptureSettingsScreen() {
                     ) : (
                         <Row
                             icon={<Workflow size={18} color={colors.blue} />} label="Shortcuts automation"
-                            sub={iosShortcutAvailable
-                                ? (iosDone ? 'Set up. Your iPhone sends mobile money messages to MoneyWise.' : 'iPhone needs a one-time automation in the Shortcuts app.')
-                                : 'Coming soon on iPhone. You can paste messages for now.'}
+                            sub={iosCaptureAvailable
+                                ? (iosDone ? 'Set up. Your iPhone sends mobile money messages to MoneyWise.' : 'Takes about a minute: one automation in the Shortcuts app.')
+                                : 'Update MoneyWise to capture on iPhone. You can paste messages for now.'}
                             right={iosDone ? <Check size={18} color={colors.positiveInk} /> : <ChevronRight size={18} color={colors.textFaint} />}
-                            onPress={iosShortcutAvailable ? () => router.push({ pathname: '/settings/momo-capture-setup', params: { mode: 'ios' } }) : undefined}
+                            onPress={iosCaptureAvailable ? () => router.push({ pathname: '/settings/momo-capture-setup', params: { mode: 'ios' } }) : undefined}
                         />
                     )}
                 </View>

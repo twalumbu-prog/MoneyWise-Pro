@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, Alert, AppState, ActivityIndicator 
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
-import { Bell, MessageSquare, Workflow, ShieldCheck, CheckCircle2, History } from 'lucide-react-native';
+import { Bell, MessageSquare, Workflow, ShieldCheck, CheckCircle2, History, Smartphone, Plus, Zap, Search, MousePointerClick } from 'lucide-react-native';
 import { momoCaptureService } from 'core';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { PrimaryButton, GhostButton } from '../../src/components/onboarding/ui';
@@ -12,6 +12,7 @@ import { useGoBack } from '../../src/hooks/useGoBack';
 import {
     getAndroidStatus, setAndroidSources, requestSmsPermission, openNotificationAccessSettings, openAppSettings,
     importSmsHistory, installIosShortcut, openShortcutsApp, markIosShortcutSetUp, MOMO_SETTINGS_KEY,
+    iosIntentAvailable, connectIphone, getIosStatus,
 } from '../../src/lib/momoCapture';
 
 type Mode = 'notifications' | 'sms' | 'ios';
@@ -30,7 +31,7 @@ export default function MomoCaptureSetupScreen() {
             <Stack.Screen options={{ headerShown: false }} />
             <ScreenHeader title={mode === 'ios' ? 'Set up on iPhone' : mode === 'sms' ? 'SMS capture' : 'Notification capture'} />
             <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 32 }]}>
-                {mode === 'ios' ? <IosFlow /> : mode === 'sms' ? <SmsFlow /> : <NotificationsFlow />}
+                {mode === 'ios' ? (iosIntentAvailable ? <IosFlow /> : <LegacyIosFlow />) : mode === 'sms' ? <SmsFlow /> : <NotificationsFlow />}
             </ScrollView>
         </View>
     );
@@ -166,9 +167,106 @@ function SmsFlow() {
     );
 }
 
-// ── iOS: Shortcuts automation ───────────────────────────────────────────────
+// ── iOS: built-in Shortcuts action (0.6.0+) ─────────────────────────────────
+
+/** One automation step, drawn the way it looks in Shortcuts: what to tap, and the label to look for. */
+const AUTOMATION_STEPS: { icon: React.ReactNode; title: string; look: string; detail?: string }[] = [
+    { icon: <Plus size={18} color={colors.blue} />, title: 'Tap Automation at the bottom, then New Automation (or + at the top right)', look: 'New Automation' },
+    { icon: <MessageSquare size={18} color={colors.blue} />, title: 'Choose Message. Tap Choose next to Message Contains, type ZMW and tap Done', look: 'Message Contains: ZMW', detail: 'Leave Sender as Any Sender.' },
+    { icon: <Zap size={18} color={colors.blue} />, title: 'Choose Run Immediately, then tap Next', look: 'Run Immediately', detail: 'Otherwise iPhone asks you every time a message arrives.' },
+    { icon: <Search size={18} color={colors.blue} />, title: 'Tap Create New Shortcut, search MoneyWise and tap Capture mobile money message', look: 'Capture mobile money message' },
+    { icon: <MousePointerClick size={18} color={colors.blue} />, title: 'Tap the word Message, then Select Variable, then Shortcut Input. Tap ✓ at the top.', look: 'Send Shortcut Input to MoneyWise' },
+];
 
 function IosFlow() {
+    const back = useGoBack();
+    const qc = useQueryClient();
+    const [step, setStep] = useState<'intro' | 'automation' | 'verify' | 'done'>('intro');
+    const [busy, setBusy] = useState(false);
+    const [heard, setHeard] = useState(false);
+    const startedAt = useRef(Date.now());
+
+    // Last step: the action reports each successful send locally, and the server records it too.
+    useEffect(() => {
+        if (step !== 'verify') return;
+        const t = setInterval(async () => {
+            const local = getIosStatus();
+            if (local?.lastSentAt && local.lastSentAt > startedAt.current) { setHeard(true); return; }
+            try {
+                const s = await momoCaptureService.getSettings();
+                if (s.lastCaptureSource === 'IOS_SHORTCUT' && s.lastCaptureAt && new Date(s.lastCaptureAt).getTime() > startedAt.current) setHeard(true);
+            } catch { /* keep waiting */ }
+        }, 4000);
+        return () => clearInterval(t);
+    }, [step]);
+
+    const connect = async () => {
+        setBusy(true);
+        try { await connectIphone(); startedAt.current = Date.now(); setStep('automation'); }
+        catch (e: any) { Alert.alert('Could not connect this iPhone', e.message); }
+        finally { setBusy(false); }
+    };
+
+    const finish = async () => {
+        await markIosShortcutSetUp(true);
+        void qc.invalidateQueries({ queryKey: MOMO_SETTINGS_KEY });
+        setStep('done');
+    };
+
+    if (step === 'done') return (
+        <Done title="You’re all set" body="Mobile money messages on this iPhone now go to Review captured automatically. If you change phones, run this setup again." onDone={back} />
+    );
+
+    if (step === 'intro') return (
+        <>
+            <Hero icon={<Smartphone size={28} color={colors.blue} />} title="Capture on iPhone" body="MoneyWise adds a “Capture mobile money message” action to the Shortcuts app. You tell iPhone to run it when a mobile money message arrives. It takes about a minute, once." />
+            <Disclosure points={[
+                'It only runs on messages containing “ZMW”, and MoneyWise ignores anything that isn’t a mobile money transaction or balance.',
+                'It uses a private key kept on this iPhone. The key can only add messages to your account. Turning capture off cancels it.',
+            ]} />
+            <PrimaryButton loading={busy} onPress={connect}>Connect this iPhone</PrimaryButton>
+        </>
+    );
+
+    if (step === 'automation') return (
+        <>
+            <StepHeader n={1} of={2} title="Add one automation in Shortcuts" />
+            <View style={styles.steps}>
+                {AUTOMATION_STEPS.map((a, i) => (
+                    <View key={a.title} style={styles.stepRow}>
+                        <View style={styles.stepNum}><Text style={styles.stepNumText}>{i + 1}</Text></View>
+                        <View style={{ flex: 1, gap: 6 }}>
+                            <Text style={styles.stepText}>{a.title}</Text>
+                            <View style={styles.lookChip}>{a.icon}<Text style={styles.lookText}>{a.look}</Text></View>
+                            {!!a.detail && <Text style={styles.tip}>{a.detail}</Text>}
+                        </View>
+                    </View>
+                ))}
+            </View>
+            <Text style={styles.tip}>Tip: if your provider writes amounts as “K 50” instead of “ZMW 50”, add a second automation the same way with Message Contains set to Bal.</Text>
+            <PrimaryButton onPress={openShortcutsApp}>Open Shortcuts</PrimaryButton>
+            <GhostButton onPress={() => { startedAt.current = Date.now(); setStep('verify'); }}>I’ve added it</GhostButton>
+        </>
+    );
+
+    return (
+        <>
+            <StepHeader n={2} of={2} title="Check it works" />
+            <View style={styles.verifyCard}>
+                {heard ? <CheckCircle2 size={28} color={colors.positiveInk} /> : <ActivityIndicator color={colors.blue} />}
+                <Text style={styles.verifyText}>
+                    {heard ? 'Message received. Capture is working.' : 'Check your mobile money balance, or wait for your next mobile money message. You can leave this screen. It will still work.'}
+                </Text>
+            </View>
+            <PrimaryButton onPress={finish}>{heard ? 'Finish' : 'Finish without testing'}</PrimaryButton>
+            <GhostButton onPress={() => setStep('automation')}>Show the steps again</GhostButton>
+        </>
+    );
+}
+
+// ── iOS before 0.6.0: hand-made iCloud shortcut + pasted key ────────────────
+
+function LegacyIosFlow() {
     const back = useGoBack();
     const qc = useQueryClient();
     const [step, setStep] = useState<'intro' | 'install' | 'automation' | 'verify' | 'done'>('intro');
@@ -330,6 +428,8 @@ const styles = StyleSheet.create({
     stepText: { flex: 1, fontFamily: fonts.body, fontSize: 14, color: colors.text, lineHeight: 20 },
     stepOf: { fontFamily: fonts.bodyBold, fontSize: 11, letterSpacing: 0.8, color: colors.blue, textAlign: 'center', marginBottom: 4 },
     waiting: { fontFamily: fonts.body, fontSize: 13, color: colors.warn, textAlign: 'center' },
+    lookChip: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: colors.canvas, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 6 },
+    lookText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.text },
     tip: { fontFamily: fonts.body, fontSize: 12, color: colors.textMuted, lineHeight: 17, marginHorizontal: 4 },
     verifyCard: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: 20, alignItems: 'center', gap: 12 },
     verifyText: { fontFamily: fonts.body, fontSize: 14, color: colors.textMuted, textAlign: 'center', lineHeight: 20 },

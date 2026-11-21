@@ -25,20 +25,15 @@ Books MTN MoMo / Airtel Money / Zamtel Kwacha transactions from the confirmation
 - Unsent messages queue in app-private storage and go with the next message or when the app comes to the foreground.
 - Needs a new native build (version bumped to 0.3.0). An OTA update to an older binary just shows "Update needed".
 
-## iOS: building the shortcut (one-time, by hand)
+## iOS (0.6.0+): built-in Shortcuts action
 
-Apple offers no API for this, so the shortcut has to be made in the Shortcuts app and shared as an iCloud link:
+Apple lets no app read SMS or create Shortcuts automations, so iPhone capture is "one automation the person adds, running an action MoneyWise provides":
 
-1. Create a new shortcut named **MoneyWise MoMo Capture**. In its settings, turn on *Show in Share Sheet* so it accepts **Text** input.
-2. Add a **Text** action containing a placeholder, e.g. `PASTE-KEY`.
-3. Add **Get Contents of URL**:
-   - URL: `https://moneywise.blueopus.cloud/api/momo-capture/ingest`
-   - Method: POST. Headers: `X-Capture-Token` = *Text* (the variable from step 2).
-   - Request Body: JSON, with `source` = `IOS_SHORTCUT` and `text` = *Shortcut Input*.
-4. Share → **Copy iCloud Link**. In the share options, set up an **Import Question** on the Text action: "Paste your MoneyWise capture key".
-5. Put the link in the EAS env var `EXPO_PUBLIC_MOMO_SHORTCUT_URL`. Until it is set, the app shows "Coming soon on iPhone" and offers paste only.
-
-The in-app walkthrough copies a fresh key to the clipboard, opens the link, and then guides the user through creating the *Message contains "ZMW" → Run Immediately* automation.
+- **App Intent** `Capture mobile money message` (`modules/momo-capture/app-target/MoneyWiseCaptureIntent.swift`) plus an `AppShortcutsProvider`, so Shortcuts lists it as soon as the app is installed. It must be compiled into the app target (Shortcuts doesn't discover intents in pods), so `modules/momo-capture/plugin/withMomoCaptureIntents.js` copies it in at prebuild.
+- **MomoCapture pod** (`modules/momo-capture/ios`): `MomoCaptureStore` keeps the capture key in the Keychain (`AfterFirstUnlockThisDeviceOnly`, so locked-phone messages still send), posts to `/momo-capture/ingest`, queues on no signal (flushed with the next message or on app foreground), and drops the key on a 401. The RN module also exposes clipboard checks (`changeCount`, `detectPatterns`) that never trigger the paste banner.
+- **Setup** (`app/settings/momo-capture-setup.tsx`, `mode=ios`): *Connect this iPhone* issues a key straight into the Keychain (nothing to paste), then five illustrated taps: Automation → New Automation → Message, contains `ZMW` → Run Immediately → Create New Shortcut, search MoneyWise → *Capture mobile money message* → Message → Select Variable → *Shortcut Input*. (Checked on the iOS 26.5 Simulator: the action is listed after install, Run Immediately is offered, but the automation's quick-pick list doesn't show it and the Message parameter isn't filled automatically.) A verify step watches for the first send.
+- **Zero-setup fallback**: `ClipboardCapturePrompt` offers "Copied a mobile money message? Capture" when the app opens after a likely SMS was copied; the text is only read after the tap.
+- Binaries before 0.6.0 fall back to the hand-made iCloud shortcut (`EXPO_PUBLIC_MOMO_SHORTCUT_URL` + pasted key).
 
 ## Before going live
 

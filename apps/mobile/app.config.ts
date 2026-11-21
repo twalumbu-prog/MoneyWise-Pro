@@ -79,6 +79,8 @@ const PLUGINS: ExpoConfig['plugins'] = [
     // Sign in with Apple (App Store guideline 4.8 requires it whenever another social login is offered).
     'expo-apple-authentication',
     'expo-web-browser',
+    // Puts the "Capture mobile money message" App Intent into the app target so Shortcuts lists it after install.
+    './modules/momo-capture/plugin/withMomoCaptureIntents',
     // App PIN with Face ID / fingerprint unlock (Settings → Security).
     ['expo-local-authentication', { faceIDPermission: 'MoneyWise uses Face ID to unlock the app.' }],
     [
@@ -112,7 +114,8 @@ const config: ExpoConfig = {
     // 0.3.0: adds the local momo-capture native module (SMS receiver + notification listener).
     // 0.5.0: adds @shopify/react-native-skia (the Grow chart draws on the GPU). Native, so 0.4.0 binaries never get it.
     // 0.4.0: adds the local tap-nfc native module (Android shares a payment request by NFC tap).
-    version: '0.5.0',
+    // 0.6.0: momo-capture gets an iOS side (App Intent "Capture mobile money message", Keychain key, clipboard checks).
+    version: '0.6.0',
     orientation: 'portrait',
     scheme: 'moneywise',
     userInterfaceStyle: 'light',
@@ -190,10 +193,10 @@ const config: ExpoConfig = {
         supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? '',
         supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '',
         webOrigin: WEB_ORIGIN,
-        // iCloud link to the "MoneyWise MoMo Capture" shortcut (see docs/momo-capture.md). Empty until it's published.
         // PostHog (usage analytics). Unset → analytics are simply off. Public project key, safe to ship in the app.
         posthogKey: process.env.EXPO_PUBLIC_POSTHOG_KEY ?? '',
         posthogHost: process.env.EXPO_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com',
+        // iCloud link to the hand-made "MoneyWise MoMo Capture" shortcut — only used by binaries older than 0.6.0's App Intent.
         momoShortcutUrl: process.env.EXPO_PUBLIC_MOMO_SHORTCUT_URL ?? '',
         eas: { projectId: 'd844c494-6997-4b34-aad1-194ddb3e6362' },
     },

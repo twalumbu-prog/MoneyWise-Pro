@@ -74,7 +74,7 @@ export const momoCaptureService = {
     list(status?: MomoCaptureStatus): Promise<MomoCapture[]> {
         return apiJson(`/momo-capture${status ? `?status=${status}` : ''}`);
     },
-    paste(text: string): Promise<{ accepted: boolean; duplicate?: boolean; reason?: string; capture?: MomoCapture }> {
+    paste(text: string): Promise<{ accepted: boolean; duplicate?: boolean; reason?: string; capture?: MomoCapture; balanceCheck?: MomoBalanceCheck | { duplicate: true } }> {
         return apiJson('/momo-capture/paste', { method: 'POST', body: JSON.stringify({ text }) });
     },
     post(id: string, overrides: { direction?: 'IN' | 'OUT'; amount?: number; accountId?: string; description?: string } = {}): Promise<MomoCapture> {
