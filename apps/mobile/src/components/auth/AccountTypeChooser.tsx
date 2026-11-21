@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Modal, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { User, Building2, Check, X, Minus } from 'lucide-react-native';
+import { Check, X, Minus } from 'lucide-react-native';
+import { AnimatedCheck } from './AnimatedCheck';
+import { hapticTick } from '../../lib/haptics';
+import { PersonalArt, ProArt } from './AccountIllustrations';
 import { colors, fonts, radius } from '../../theme/tokens';
 
 /**
@@ -10,14 +13,14 @@ import { colors, fonts, radius } from '../../theme/tokens';
  */
 export type AccountType = 'INDIVIDUAL' | 'BUSINESS';
 
-const OPTIONS: { value: AccountType; title: string; tagline: string; bullets: string[]; Icon: typeof User }[] = [
+const OPTIONS: { value: AccountType; title: string; description: string; Art: typeof PersonalArt }[] = [
     {
-        value: 'INDIVIDUAL', title: 'MoneyWise Personal', tagline: 'Your own money', Icon: User,
-        bullets: ['Mobile money, bank and cash in one place', 'Transactions captured from SMS and email', 'Bills, savings goals and your net worth'],
+        value: 'INDIVIDUAL', title: 'MoneyWise Personal', Art: PersonalArt,
+        description: 'Track your income, expenses, savings and investments automatically, and watch your net worth grow.',
     },
     {
-        value: 'BUSINESS', title: 'MoneyWise Pro', tagline: 'Run a business', Icon: Building2,
-        bullets: ['Sales, payment links and products', 'Payroll, requests and approvals for a team', 'Accounting and reports for your books'],
+        value: 'BUSINESS', title: 'MoneyWise Pro', Art: ProArt,
+        description: 'Run your business easily, with AI to help. Sell, get paid, invoice, run payroll and keep your books.',
     },
 ];
 
@@ -43,35 +46,29 @@ export function AccountTypeChooser({ value, onChange, owned }: {
     const [compareOpen, setCompareOpen] = useState(false);
     return (
         <View style={{ gap: 12 }}>
-            {OPTIONS.map(({ value: v, title, tagline, bullets, Icon }) => {
+            {OPTIONS.map(({ value: v, title, description, Art }) => {
                 const on = value === v;
                 const have = owned?.includes(v);
                 return (
                     <Pressable
                         key={v}
                         disabled={have}
-                        onPress={() => onChange(v)}
+                        // A light selection tap when a different option is chosen; tapping the one already chosen does nothing.
+                        onPress={() => { if (!on) { hapticTick(); onChange(v); } }}
                         style={[styles.card, on && styles.cardOn, have && { opacity: 0.55 }]}
                         accessibilityRole="radio"
                         accessibilityState={{ selected: on, disabled: have }}
-                        accessibilityLabel={`${title}. ${tagline}. ${bullets.join('. ')}`}
+                        accessibilityLabel={`${title}. ${description}`}
                     >
                         <View style={styles.cardHead}>
-                            <View style={[styles.iconWrap, on && { backgroundColor: colors.blue }]}>
-                                <Icon size={20} color={on ? '#FFFFFF' : colors.blue} />
-                            </View>
+                            <Art size={64} />
                             <View style={{ flex: 1 }}>
                                 <Text style={styles.cardTitle}>{title}</Text>
-                                <Text style={styles.tagline}>{have ? 'You have this' : tagline}</Text>
+                                {have && <Text style={styles.tagline}>You have this</Text>}
+                                <Text style={styles.description}>{description}</Text>
                             </View>
-                            <View style={[styles.radio, on && styles.radioOn]}>{on && <Check size={14} color="#FFFFFF" />}</View>
+                            <AnimatedCheck checked={on} />
                         </View>
-                        {bullets.map((b) => (
-                            <View key={b} style={styles.bulletRow}>
-                                <View style={styles.bulletDot} />
-                                <Text style={styles.bullet}>{b}</Text>
-                            </View>
-                        ))}
                     </Pressable>
                 );
             })}
@@ -108,17 +105,14 @@ export function AccountTypeChooser({ value, onChange, owned }: {
 }
 
 const styles = StyleSheet.create({
-    card: { padding: 16, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.borderStrong, gap: 6 },
-    cardOn: { borderColor: colors.blue, backgroundColor: '#F4F8FF' },
-    cardHead: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 4 },
+    card: { padding: 16, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: '#ECEDF1', gap: 6 },
+    // Selected: still white, with a grey outline and a soft drop shadow (no colour fill)
+    cardOn: { backgroundColor: '#FFFFFF', borderColor: '#C4C8D2', shadowColor: '#1F2547', shadowOpacity: 0.12, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 4 },
+    cardHead: { flexDirection: 'row', alignItems: 'center', gap: 14 },
     iconWrap: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#EAF1FF', alignItems: 'center', justifyContent: 'center' },
     cardTitle: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.text },
     tagline: { fontFamily: fonts.body, fontSize: 13, color: colors.textMuted, marginTop: 1 },
-    radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
-    radioOn: { backgroundColor: colors.blue, borderColor: colors.blue },
-    bulletRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingLeft: 54 },
-    bulletDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: colors.textFaint, marginTop: 7 },
-    bullet: { flex: 1, fontFamily: fonts.body, fontSize: 13, lineHeight: 18, color: colors.text },
+    description: { fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: '#6B7280', marginTop: 3 },
     compare: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.blue },
     scrim: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
     sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: 22 },

@@ -68,7 +68,7 @@ export const PERSONAL_STEPS: PersonalStepDef[] = [
         checklistLabel: 'Add your date of birth',
     },
     {
-        key: 'phone', chapter: 'about', required: false, built: true,
+        key: 'phone', chapter: 'about', required: false, built: false, // off for now: no WhatsApp code verification in onboarding
         title: 'Phone number',
         subtitle: 'We’ll send a one-time code on WhatsApp to confirm it.',
         help: 'Your number is a second way to secure your account. It also helps match mobile money messages to you and is where payment confirmations go. The code comes as a WhatsApp message.',
@@ -194,8 +194,9 @@ export function personalProgress(currentKey: PersonalStepKey | null): number {
 
 /** Step "intents": what people come to MoneyWise for. Keys match the API whitelist. */
 export const PERSONAL_INTENTS: { key: string; label: string }[] = [
-    { key: 'track_spending', label: 'Track my spending' },
+    { key: 'track_spending', label: 'Track my finances' },
     { key: 'save', label: 'Save for something' },
+    { key: 'invest', label: 'Investing' },
     { key: 'pay_bills', label: 'Pay bills on time' },
     { key: 'grow_net_worth', label: 'Grow my net worth' },
     { key: 'family', label: 'Manage money with family' },

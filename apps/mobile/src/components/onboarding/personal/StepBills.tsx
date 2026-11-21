@@ -58,7 +58,7 @@ export function StepBills({ ctx }: { ctx: StepContext }) {
         <PersonalStepShell
             def={ctx.def} progress={ctx.progress} onBack={ctx.onBack} onSkip={ctx.skip}
             onContinue={() => ctx.done({ count: bills?.length ?? 0, monthly })} saving={ctx.saving} error={ctx.error ?? loadErr}
-            continueLabel={ctx.single ? 'Done' : bills?.length ? 'Continue' : 'No regular bills, continue'}
+            continueLabel={ctx.single ? 'Done' : 'Continue'}
             stickyAbove={(
                 <View style={styles.sticky}>
                     <Text style={m.totalLabel}>About a month</Text>

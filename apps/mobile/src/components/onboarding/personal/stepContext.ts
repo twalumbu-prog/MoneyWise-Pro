@@ -56,6 +56,8 @@ export interface StepContext {
     /** Accounts, holdings and totals (loaded once by the wizard, refreshed after every change). */
     money: PersonalMoney | null;
     refreshMoney: () => Promise<PersonalMoney | null>;
+    /** The "great start" page before Grow: carry on to the Grow step. */
+    leaveCheer?: () => void;
     /** Open another step (e.g. the wallet step sending someone to identity first); Back returns here. */
     goTo: (key: import('core').PersonalStepKey) => void;
 }

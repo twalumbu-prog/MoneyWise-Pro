@@ -1,9 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
+import { SlideContext } from './slide';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, useReducedMotion } from 'react-native-reanimated';
 import { View, Text, Pressable, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Modal, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft, HelpCircle, X, AlertCircle } from 'lucide-react-native';
 import { PERSONAL_CHAPTERS, type PersonalStepDef } from 'core';
 import { colors, fonts, radius } from '../../../theme/tokens';
+
+/** Where the bar stood on the previous step, so the next step's bar springs on from there instead of starting over. */
+let lastProgress: number | null = null;
+
+function ProgressFill({ progress }: { progress: number }) {
+    const reduced = useReducedMotion();
+    const target = Math.max(0.04, progress);
+    const w = useSharedValue(lastProgress ?? target);
+    useEffect(() => {
+        // Animate UI's progress spring: stiffness 300, damping 35, no overshoot
+        w.value = reduced ? target : withSpring(target, { stiffness: 300, damping: 35, mass: 1, overshootClamping: true });
+        lastProgress = target;
+    }, [target, reduced, w]);
+    const style = useAnimatedStyle(() => ({ width: `${w.value * 100}%` }));
+    return <Animated.View style={[styles.fill, style]} />;
+}
 
 /**
  * The frame every Personal onboarding step uses (docs/personal-onboarding-plan.md §4): back top-left, help top-right,
@@ -31,6 +49,8 @@ export function PersonalStepShell({
     const insets = useSafeAreaInsets();
     const [helpOpen, setHelpOpen] = useState(false);
     const busy = !!saving;
+    const slideX = useContext(SlideContext);
+    const slideStyle = useAnimatedStyle(() => ({ transform: [{ translateX: slideX ? slideX.value : 0 }] }));
 
     return (
         <KeyboardAvoidingView style={[styles.root, { paddingTop: insets.top + 8 }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -50,14 +70,19 @@ export function PersonalStepShell({
 
             {/* Edge to edge, directly above the step's title. */}
             <View style={styles.track} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: Math.round(progress * 100) }}>
-                <View style={[styles.fill, { width: `${Math.max(4, Math.round(progress * 100))}%` }]} />
+                <ProgressFill progress={progress} />
             </View>
 
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-                <Text style={styles.title} accessibilityRole="header">{def.title}</Text>
-                <Text style={styles.subtitle}>{def.subtitle}</Text>
-                <View style={{ marginTop: 28 }}>{children}</View>
-            </ScrollView>
+            {/* Only this middle part slides between steps. */}
+            <View style={{ flex: 1, overflow: 'hidden' }}>
+                <Animated.View style={[{ flex: 1 }, slideStyle]}>
+                    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+                        <Text style={styles.title} accessibilityRole="header">{def.title}</Text>
+                        <Text style={styles.subtitle}>{def.subtitle}</Text>
+                        <View style={{ marginTop: 28 }}>{children}</View>
+                    </ScrollView>
+                </Animated.View>
+            </View>
 
             {/* Outside the scroll area so a failed save is always visible, however long the screen is. */}
             {!!error && (
@@ -80,7 +105,7 @@ export function PersonalStepShell({
                     disabled={busy || continueDisabled}
                     accessibilityRole="button"
                     accessibilityState={{ disabled: busy || !!continueDisabled }}
-                    style={({ pressed }) => [styles.btn, styles.primary, (busy || continueDisabled) && styles.primaryDisabled, { opacity: pressed ? 0.9 : 1 }]}
+                    style={({ pressed }) => [styles.btn, styles.primary, (busy || continueDisabled) && styles.primaryDisabled, { opacity: (busy || continueDisabled) ? 0.3 : pressed ? 0.85 : 1 }]}
                 >
                     {saving === 'continue' ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryText}>{continueLabel}</Text>}
                 </Pressable>
@@ -112,19 +137,20 @@ const styles = StyleSheet.create({
     circleSpacer: { width: 44, height: 44 },
     chapter: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.textMuted, letterSpacing: 0.3, textAlign: 'center' },
     track: { alignSelf: 'stretch', height: 4, marginTop: 16, backgroundColor: colors.borderStrong, overflow: 'hidden' },
-    fill: { height: 4, backgroundColor: colors.blue },
+    fill: { height: 4, backgroundColor: '#000000' },
     body: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: 24 },
     title: { fontFamily: fonts.display, fontSize: 30, lineHeight: 36, color: colors.text },
-    subtitle: { fontFamily: fonts.body, fontSize: 15, lineHeight: 21, color: colors.textMuted, marginTop: 8 },
+    subtitle: { fontFamily: fonts.body, fontSize: 13, lineHeight: 18, color: colors.textMuted, marginTop: 6 },
     errorBox: { flexDirection: 'row', gap: 8, alignItems: 'center', backgroundColor: '#FEF2F2', borderRadius: radius.sm, padding: 12, marginTop: 20 },
     errorText: { flex: 1, fontFamily: fonts.body, fontSize: 14, color: '#B91C1C' },
     footer: { flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingTop: 12, backgroundColor: colors.surface },
-    btn: { flex: 1, minHeight: 54, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
+    // The same pair as the Personal / Pro screen: black Continue, soft grey Skip, 46 high, 14 pt.
+    btn: { flex: 1, minHeight: 46, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
     skip: { backgroundColor: colors.chipActiveBg },
-    skipText: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.text },
-    primary: { backgroundColor: colors.blue },
-    primaryDisabled: { backgroundColor: '#B3D2FF' },
-    primaryText: { fontFamily: fonts.bodyBold, fontSize: 16, color: '#FFFFFF' },
+    skipText: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.text },
+    primary: { backgroundColor: '#000000' },
+    primaryDisabled: { opacity: 0.3 },
+    primaryText: { fontFamily: fonts.bodyMedium, fontSize: 14, color: '#FFFFFF' },
     scrim: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
     sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: 24 },
     sheetHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },

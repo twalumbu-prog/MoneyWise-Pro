@@ -1,7 +1,9 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { WalletCards, CheckCircle2, Link2, Send, PiggyBank } from 'lucide-react-native';
+import { WalletCards, CheckCircle2, Link2, Send, PiggyBank, Wifi, TrendingUp } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { MoneywiseMark } from '../../icons/MoneywiseMark';
 import { PersonalStepError, type WalletStatus, type KycProfile } from 'core';
 import { PersonalStepShell } from './PersonalStepShell';
 import type { StepContext } from './stepContext';
@@ -61,6 +63,8 @@ export function StepWallet({ ctx }: { ctx: StepContext }) {
         } finally { setBusy(false); }
     };
 
+    const holder = [ctx.state.profile.firstName, ctx.state.profile.lastName].filter(Boolean).join(' ') || 'Your name';
+
     const blockedBy = minor ? 'minor' : !kyc?.complete ? 'kyc' : status && !status.linked && !status.poolAvailable ? 'pool' : null;
 
     return (
@@ -71,10 +75,33 @@ export function StepWallet({ ctx }: { ctx: StepContext }) {
         >
             {!status ? <ActivityIndicator color={colors.blue} /> : (
                 <>
+                    {/* A sample of the wallet: a dark card with a made-up balance, so it's clear what you're getting. */}
+                    <View style={styles.cardShadow}>
+                        <LinearGradient colors={['#1E2A55', '#0B1020', '#000000']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.walletCard}>
+                            <View style={styles.cardTop}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                    <MoneywiseMark height={15} color="#FFFFFF" />
+                                    <Text style={styles.cardBrand}>MoneyWise</Text>
+                                </View>
+                                <Wifi size={20} color="rgba(255,255,255,0.7)" style={{ transform: [{ rotate: '90deg' }] }} />
+                            </View>
+                            <View>
+                                <Text style={styles.cardLabel}>Available balance</Text>
+                                <Text style={styles.cardAmount}>K12,480.00</Text>
+                            </View>
+                            <View style={styles.cardBottom}>
+                                <Text style={styles.cardHandle} numberOfLines={1}>{holder}</Text>
+                                <Text style={styles.cardSample}>SAMPLE</Text>
+                            </View>
+                        </LinearGradient>
+                    </View>
+
+                    <Text style={styles.whyTitle}>Why get a wallet</Text>
                     <View style={styles.perks}>
-                        <Perk icon={<Link2 size={18} color={colors.blue} />} text="Receive money with a link or your @username" />
-                        <Perk icon={<Send size={18} color={colors.blue} />} text="Pay mobile money and bank accounts" />
-                        <Perk icon={<PiggyBank size={18} color={colors.blue} />} text="Save on your own or in a group" />
+                        <Perk icon={<Link2 size={17} color={colors.text} />} title="Get paid anywhere" text="Share a payment link or your @username and money lands in your wallet." />
+                        <Perk icon={<Send size={17} color={colors.text} />} title="Pay anyone" text="Send to mobile money and bank accounts in a few taps." />
+                        <Perk icon={<PiggyBank size={17} color={colors.text} />} title="Save, alone or together" text="Set money aside for goals, or save in a group." />
+                        <Perk icon={<TrendingUp size={17} color={colors.text} />} title="Invest" text="Put your money to work and watch it grow from the same wallet." />
                     </View>
 
                     {activated ? (
@@ -108,15 +135,29 @@ export function StepWallet({ ctx }: { ctx: StepContext }) {
     );
 }
 
-const Perk = ({ icon, text }: { icon: React.ReactNode; text: string }) => (
-    <View style={styles.perk}><View style={styles.perkIcon}>{icon}</View><Text style={styles.perkText}>{text}</Text></View>
+const Perk = ({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) => (
+    <View style={styles.perk}>
+        <View style={styles.perkIcon}>{icon}</View>
+        <View style={{ flex: 1 }}><Text style={styles.perkTitle}>{title}</Text><Text style={styles.perkText}>{text}</Text></View>
+    </View>
 );
 
 const styles = StyleSheet.create({
-    perks: { gap: 12 },
-    perk: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-    perkIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#EAF1FF', alignItems: 'center', justifyContent: 'center' },
-    perkText: { flex: 1, fontFamily: fonts.body, fontSize: 15, color: colors.text },
+    cardShadow: { shadowColor: '#0B1020', shadowOpacity: 0.28, shadowRadius: 22, shadowOffset: { width: 0, height: 12 }, elevation: 10 },
+    walletCard: { height: 168, borderRadius: 20, padding: 18, justifyContent: 'space-between', overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
+    cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    cardBrand: { fontFamily: fonts.display, fontSize: 17, color: '#FFFFFF' },
+    cardLabel: { fontFamily: fonts.body, fontSize: 12, color: 'rgba(255,255,255,0.65)' },
+    cardAmount: { fontFamily: fonts.display, fontSize: 28, lineHeight: 33, color: '#FFFFFF', marginTop: 2 },
+    cardBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    cardHandle: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 14, color: 'rgba(255,255,255,0.85)' },
+    cardSample: { fontFamily: fonts.bodyMedium, fontSize: 10, letterSpacing: 1.5, color: 'rgba(255,255,255,0.5)' },
+    whyTitle: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text, marginTop: 20, marginBottom: 10 },
+    perks: { gap: 11 },
+    perk: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+    perkIcon: { width: 30, height: 30, borderRadius: 15, borderWidth: 1, borderColor: '#E3E5EB', alignItems: 'center', justifyContent: 'center' },
+    perkTitle: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text },
+    perkText: { fontFamily: fonts.body, fontSize: 12, lineHeight: 16, color: colors.textMuted, marginTop: 1 },
     card: { marginTop: 24, padding: 18, borderRadius: radius.md, backgroundColor: colors.canvas, gap: 8 },
     cardTitle: { fontFamily: fonts.bodyBold, fontSize: 17, color: colors.text },
     cardBody: { fontFamily: fonts.body, fontSize: 14, lineHeight: 19, color: colors.textMuted },

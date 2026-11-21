@@ -94,7 +94,7 @@ const styles = StyleSheet.create({
     error: { fontFamily: fonts.bodyMedium, fontSize: 13, color: '#B91C1C', lineHeight: 18 },
     suggest: { alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 14, borderRadius: radius.pill, backgroundColor: '#EAF1FF' },
     suggestText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.blue },
-    cta: { marginTop: 12, height: 54, borderRadius: radius.pill, backgroundColor: colors.blue, alignItems: 'center', justifyContent: 'center' },
-    ctaText: { fontFamily: fonts.bodyBold, fontSize: 16, color: '#FFFFFF' },
+    cta: { marginTop: 12, height: 46, borderRadius: radius.pill, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' },
+    ctaText: { fontFamily: fonts.bodyMedium, fontSize: 14, color: '#FFFFFF' },
     signOut: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.textMuted },
 });

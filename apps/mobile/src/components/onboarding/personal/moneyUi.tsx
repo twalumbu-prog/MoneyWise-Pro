@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet, Modal, KeyboardAvoidingView, Platfor
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X, AlertCircle } from 'lucide-react-native';
 import { BankAvatar } from '../../BankAvatar';
+import { MtnLogo, AirtelLogo, ZamtelLogo } from './ProviderLogos';
 import { getLocalLogoKey, getBankColor, getBankInitials } from '../../../data/bankLogos';
 import { colors, fonts, radius } from '../../../theme/tokens';
 
@@ -73,7 +74,7 @@ export function Sheet({ visible, title, onClose, children, primary, secondary, b
                             </Pressable>
                         )}
                         {primary && (
-                            <Pressable onPress={primary.onPress} disabled={busy || primary.disabled} style={[styles.btn, styles.btnPrimary, (busy || primary.disabled) && { backgroundColor: '#B3D2FF' }]} accessibilityRole="button">
+                            <Pressable onPress={primary.onPress} disabled={busy || primary.disabled} style={[styles.btn, styles.btnPrimary, (busy || primary.disabled) && { opacity: 0.3 }]} accessibilityRole="button">
                                 {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.btnPrimaryText}>{primary.label}</Text>}
                             </Pressable>
                         )}
@@ -84,21 +85,10 @@ export function Sheet({ visible, title, onClose, children, primary, secondary, b
     );
 }
 
-const MOMO_COLORS: Record<string, { bg: string; fg: string; label: string }> = {
-    MTN: { bg: '#FFCB05', fg: '#1F2937', label: 'MTN' },
-    AIRTEL: { bg: '#E40000', fg: '#FFFFFF', label: 'airtel' },
-    ZAMTEL: { bg: '#00A651', fg: '#FFFFFF', label: 'Zamtel' },
-};
-
 export function ProviderLogo({ type, code, name, size = 40 }: { type: string; code: string | null; name: string; size?: number }) {
-    if (type === 'MOBILE_MONEY' && code && MOMO_COLORS[code]) {
-        const c = MOMO_COLORS[code];
-        return (
-            <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontFamily: fonts.bodyBold, fontSize: size * 0.26, color: c.fg }}>{c.label}</Text>
-            </View>
-        );
-    }
+    if (type === 'MOBILE_MONEY' && code === 'MTN') return <MtnLogo size={size} />;
+    if (type === 'MOBILE_MONEY' && code === 'AIRTEL') return <AirtelLogo size={size} />;
+    if (type === 'MOBILE_MONEY' && code === 'ZAMTEL') return <ZamtelLogo size={size} />;
     if (type === 'BANK') {
         // Bundled logo when we have one; otherwise coloured initials straight away (the remote logo lookups can come
         // back blank, which looks broken in a grid of choices).
@@ -159,9 +149,9 @@ export const moneyStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
     label: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.textMuted, marginBottom: 6 },
-    moneyWrap: { flexDirection: 'row', alignItems: 'center', minHeight: 58, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderStrong, paddingHorizontal: 16, gap: 8 },
-    moneyPrefix: { fontFamily: fonts.bodyBold, fontSize: 20, color: colors.textMuted },
-    moneyInput: { flex: 1, fontFamily: fonts.bodyBold, fontSize: 22, color: colors.text, paddingVertical: 12 },
+    moneyWrap: { flexDirection: 'row', alignItems: 'center', minHeight: 50, borderBottomWidth: 1, borderColor: '#D9DCE3', gap: 8 },
+    moneyPrefix: { fontFamily: fonts.bodyMedium, fontSize: 18, color: colors.textMuted },
+    moneyInput: { flex: 1, fontFamily: fonts.bodyBold, fontSize: 20, color: colors.text, paddingVertical: 10 },
     hint: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint, marginTop: 6 },
     error: { fontFamily: fonts.body, fontSize: 13, color: colors.danger, marginTop: 6 },
     scrim: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
@@ -169,11 +159,11 @@ const styles = StyleSheet.create({
     sheetHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
     sheetTitle: { fontFamily: fonts.display, fontSize: 20, color: colors.text, flex: 1, paddingRight: 12 },
     sheetFooter: { flexDirection: 'row', gap: 12, paddingTop: 12 },
-    btn: { flex: 1, minHeight: 52, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
-    btnPrimary: { backgroundColor: colors.blue },
-    btnPrimaryText: { fontFamily: fonts.bodyBold, fontSize: 16, color: '#FFFFFF' },
+    btn: { flex: 1, minHeight: 46, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
+    btnPrimary: { backgroundColor: '#000000' },
+    btnPrimaryText: { fontFamily: fonts.bodyMedium, fontSize: 14, color: '#FFFFFF' },
     btnSecondary: { backgroundColor: colors.chipActiveBg },
-    btnSecondaryText: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.text },
+    btnSecondaryText: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.text },
     errorBox: { flexDirection: 'row', gap: 8, alignItems: 'center', backgroundColor: '#FEF2F2', borderRadius: radius.sm, padding: 12 },
     errorText: { flex: 1, fontFamily: fonts.body, fontSize: 14, color: '#B91C1C' },
 });

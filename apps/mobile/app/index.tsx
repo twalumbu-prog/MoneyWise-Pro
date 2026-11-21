@@ -32,6 +32,9 @@ export default function Index() {
     const insets = useSafeAreaInsets();
     const { session, loading, userStatus, userRole, organizationId, userOrganizations, organizationsLoaded, switchOrganization, signOut } = useAuth();
     const [orgPicked, setOrgPicked] = useState(false);
+    // a failed workspace fetch must not hold the splash forever
+    const [loadGaveUp, setLoadGaveUp] = useState(false);
+    useEffect(() => { const t = setTimeout(() => setLoadGaveUp(true), 6000); return () => clearTimeout(t); }, []);
     const [switchingId, setSwitchingId] = useState<string | null>(null);
     const [switchError, setSwitchError] = useState<string | null>(null);
 
@@ -130,7 +133,9 @@ export default function Index() {
         return <Redirect href="/complete-profile" />;
     }
 
-    if (loading || (session && userRole && needsOnboarding === null && userStatus !== 'PENDING_APPROVAL')) {
+    // Also hold on the splash while a fresh sign-in's workspaces are still loading; without this the gate fell through to
+    // the tabs for a moment after sign-up, then jumped to onboarding.
+    if (loading || (session && !organizationsLoaded && !loadGaveUp) || (session && userRole && needsOnboarding === null && userStatus !== 'PENDING_APPROVAL')) {
         return <BrandSplash />;
     }
 

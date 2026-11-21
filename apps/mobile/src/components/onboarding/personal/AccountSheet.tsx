@@ -23,7 +23,6 @@ export function AccountSheet({ target, service, onClose, onSaved }: {
     onClose: () => void;
     onSaved: () => void;
 }) {
-    const [nickname, setNickname] = useState('');
     const [customName, setCustomName] = useState('');
     const [balance, setBalance] = useState('');
     const [busy, setBusy] = useState(false);
@@ -33,8 +32,6 @@ export function AccountSheet({ target, service, onClose, onSaved }: {
     useEffect(() => {
         if (!target) return;
         const ex = target.existing;
-        const isDefaultName = ex && ex.name === target.providerName;
-        setNickname(ex && !isDefaultName && target.providerType !== 'CUSTOM' ? ex.name : '');
         setCustomName(target.providerType === 'CUSTOM' ? ex?.name ?? (target.providerName === 'Other' ? '' : target.providerName) : '');
         setBalance(ex ? formatTyped(String(ex.openingBalance)) : '');
         setError(null); setFieldErrors({});
@@ -50,7 +47,7 @@ export function AccountSheet({ target, service, onClose, onSaved }: {
                 walletId: target.existing?.walletId,
                 providerType: target.providerType,
                 providerCode: target.providerCode,
-                nickname: isCustom ? undefined : nickname,
+                nickname: isCustom ? undefined : (target.existing && target.existing.name !== target.providerName ? target.existing.name : undefined),
                 customName: isCustom ? customName : undefined,
                 balance: parseTyped(balance),
             });
@@ -85,10 +82,8 @@ export function AccountSheet({ target, service, onClose, onSaved }: {
                 <ProviderLogo type={target.providerType} code={target.providerCode} name={target.providerName} size={44} />
                 <Text style={{ fontFamily: fonts.bodyMedium, fontSize: 16, color: colors.text, flex: 1 }}>{isCustom ? 'Cash, a savings club or anything else' : target.providerName}</Text>
             </View>
-            {isCustom ? (
+            {isCustom && (
                 <Field label="Name" value={customName} onChangeText={setCustomName} placeholder="e.g. Cash at hand, Chilimba" autoCapitalize="sentences" error={fieldErrors.customName} autoFocus={!customName} />
-            ) : (
-                <Field label="Nickname (optional)" value={nickname} onChangeText={setNickname} placeholder={target.providerName} autoCapitalize="sentences" error={fieldErrors.nickname} />
             )}
             <MoneyField
                 label="Balance today"

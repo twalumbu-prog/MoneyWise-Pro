@@ -80,7 +80,7 @@ export const otpMessage = (code: string) =>
     `${code} is your MoneyWise verification code. It expires in 10 minutes. Don't share it with anyone, MoneyWise will never ask you for it.`;
 
 /** Things people come to MoneyWise for (step "intents"). */
-export const PERSONAL_INTENTS = ['track_spending', 'save', 'pay_bills', 'grow_net_worth', 'family', 'loan'] as const;
+export const PERSONAL_INTENTS = ['track_spending', 'save', 'invest', 'pay_bills', 'grow_net_worth', 'family', 'loan'] as const;
 export type PersonalIntent = typeof PERSONAL_INTENTS[number];
 export const cleanIntents = (raw: unknown): PersonalIntent[] =>
     Array.isArray(raw) ? [...new Set(raw.filter((x): x is PersonalIntent => (PERSONAL_INTENTS as readonly string[]).includes(x)))] : [];

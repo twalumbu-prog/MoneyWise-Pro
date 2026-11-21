@@ -1,15 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Platform, AppState, TextInput, ActivityIndicator, Switch } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Platform, AppState, ActivityIndicator, Switch } from 'react-native';
 import { useRouter } from 'expo-router';
-import { CheckCircle2, Circle, MessageSquareText, ShieldCheck, Zap } from 'lucide-react-native';
-import { momoCaptureService, type MomoDiagnosis } from 'core';
+import { CheckCircle2, Circle, ShieldCheck } from 'lucide-react-native';
+import { momoCaptureService } from 'core';
 import { PersonalStepShell } from './PersonalStepShell';
 import type { StepContext } from './stepContext';
 import {
     androidCaptureAvailable, iosIntentAvailable, iosCaptureAvailable, getAndroidStatus, getIosStatus, setAndroidSources,
     requestSmsPermission, openNotificationAccessSettings, connectIphone,
 } from '../../../lib/momoCapture';
-import { fmtK } from './moneyUi';
 import { colors, fonts, radius } from '../../../theme/tokens';
 
 /**
@@ -34,9 +33,6 @@ export function StepCapture({ ctx }: { ctx: StepContext }) {
     const [err, setErr] = useState<string | null>(null);
     const [guideOpened, setGuideOpened] = useState(false);
     const [autoPost, setAutoPost] = useState(false);
-    const [testText, setTestText] = useState('');
-    const [test, setTest] = useState<MomoDiagnosis | null>(null);
-    const [testing, setTesting] = useState(false);
 
     const reread = useCallback(() => {
         if (ctx.preview) return;
@@ -80,23 +76,6 @@ export function StepCapture({ ctx }: { ctx: StepContext }) {
         if (!ctx.preview) router.push('/settings/momo-capture-setup?mode=ios');
     };
 
-    const runTest = async () => {
-        setTesting(true); setTest(null);
-        try {
-            if (ctx.preview) {
-                await new Promise((r) => setTimeout(r, 400));
-                const amt = Number(/(?:ZMW|K)\s?([\d,]+(?:\.\d{1,2})?)/i.exec(testText)?.[1]?.replace(/,/g, '') ?? 0);
-                setTest(amt ? { kind: 'TRANSACTION', parsed: { provider: /airtel/i.test(testText) ? 'AIRTEL' : 'MTN', direction: /received/i.test(testText) ? 'IN' : 'OUT', amount: amt, fee: null, balanceAfter: null, counterparty: null, reference: null } } : { kind: 'IGNORED', reason: 'No amount found', sensitive: false });
-            } else {
-                setTest(await momoCaptureService.testParse(testText));
-            }
-        } catch (e: any) {
-            setTest({ kind: 'IGNORED', reason: e?.message || 'Could not read it', sensitive: false });
-        } finally {
-            setTesting(false);
-        }
-    };
-
     const finish = () => void ctx.run('continue', async () => {
         if (!ctx.preview && autoPost) await momoCaptureService.updateSettings({ autoPost: true }).catch(() => undefined);
         return ctx.service.saveStep('capture', 'done', { platform: Platform.OS, autoPost });
@@ -109,7 +88,7 @@ export function StepCapture({ ctx }: { ctx: StepContext }) {
             continueLabel={ctx.single ? 'Done' : 'Continue'}
         >
             <View style={styles.privacy}>
-                <ShieldCheck size={20} color={colors.positiveInk} />
+                <ShieldCheck size={20} color={colors.textMuted} />
                 <Text style={styles.privacyText}>Only messages from MTN, Airtel and Zamtel are read. Nothing else leaves your phone.</Text>
             </View>
 
@@ -122,7 +101,7 @@ export function StepCapture({ ctx }: { ctx: StepContext }) {
                 </View>
             ) : (
                 <View style={{ gap: 12, marginTop: 20 }}>
-                    <Item done={connected} title="Connect this iPhone" body="Gives the MoneyWise Shortcuts action a private key. Nothing to copy or paste." action="Connect" onPress={iphoneConnect} busy={busy} />
+                    <Item done={connected} title="Connect this iPhone" body="So MoneyWise can read your mobile money messages and keep your balance up to date." action="Connect" onPress={iphoneConnect} busy={busy} />
                     {(iosIntentAvailable || ctx.preview) && (
                         <Item done={guideOpened} disabled={!connected} title="Add the automation in Shortcuts" body="5 taps: when a message contains “ZMW”, run “Capture mobile money message”. Takes about a minute." action="Show me" onPress={openGuide} busy={false} />
                     )}
@@ -136,40 +115,6 @@ export function StepCapture({ ctx }: { ctx: StepContext }) {
                         <Text style={styles.itemBody}>Off: captured messages wait for you in Review captured.</Text>
                     </View>
                     <Switch value={autoPost} onValueChange={setAutoPost} accessibilityLabel="Book automatically" />
-                </View>
-            )}
-
-            <Text style={styles.section}>Try it with a message</Text>
-            <View style={styles.testBox}>
-                <MessageSquareText size={18} color={colors.textMuted} />
-                <TextInput
-                    value={testText}
-                    onChangeText={(t) => { setTestText(t); setTest(null); }}
-                    placeholder="Paste any MoMo or Airtel Money message"
-                    placeholderTextColor={colors.textFaint}
-                    multiline
-                    style={styles.testInput}
-                    accessibilityLabel="Message to test"
-                />
-            </View>
-            <Pressable onPress={() => void runTest()} disabled={!testText.trim() || testing} style={[styles.testBtn, !testText.trim() && { opacity: 0.5 }]} accessibilityRole="button">
-                {testing ? <ActivityIndicator color={colors.blue} /> : <Text style={styles.testBtnText}>Test</Text>}
-            </Pressable>
-            {test && (
-                <View style={styles.result} accessibilityLiveRegion="polite">
-                    {test.kind === 'TRANSACTION' ? (
-                        <>
-                            <Zap size={18} color={colors.blue} />
-                            <Text style={styles.resultText}>
-                                {test.parsed.direction === 'IN' ? 'Money in' : 'Money out'} {fmtK(test.parsed.amount)} · {PROVIDER_LABEL[test.parsed.provider] ?? test.parsed.provider}
-                                {test.parsed.counterparty ? ` · ${test.parsed.counterparty}` : ''}. Nothing was booked.
-                            </Text>
-                        </>
-                    ) : test.kind === 'BALANCE' ? (
-                        <Text style={styles.resultText}>A balance message: {fmtK(test.balance.balance)}. MoneyWise compares these with your account.</Text>
-                    ) : (
-                        <Text style={styles.resultText}>MoneyWise would ignore this: {test.reason}.</Text>
-                    )}
                 </View>
             )}
         </PersonalStepShell>
@@ -194,7 +139,7 @@ function Item({ done, title, body, action, onPress, busy, disabled }: { done: bo
 }
 
 const styles = StyleSheet.create({
-    privacy: { flexDirection: 'row', gap: 10, alignItems: 'center', padding: 14, borderRadius: radius.md, backgroundColor: '#ECFDF5' },
+    privacy: { flexDirection: 'row', gap: 10, alignItems: 'center', padding: 14, borderRadius: radius.md, backgroundColor: '#F3F4F6' },
     privacyText: { flex: 1, fontFamily: fonts.body, fontSize: 13, lineHeight: 18, color: colors.text },
     muted: { fontFamily: fonts.body, fontSize: 14, color: colors.textMuted, marginTop: 20 },
     item: { flexDirection: 'row', gap: 12, alignItems: 'center', padding: 14, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderStrong },
@@ -203,11 +148,4 @@ const styles = StyleSheet.create({
     itemBtn: { minHeight: 38, paddingHorizontal: 14, borderRadius: radius.pill, backgroundColor: colors.blue, alignItems: 'center', justifyContent: 'center' },
     itemBtnText: { fontFamily: fonts.bodyBold, fontSize: 13, color: '#FFFFFF' },
     autoRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 16 },
-    section: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.textMuted, marginTop: 28, marginBottom: 10 },
-    testBox: { flexDirection: 'row', gap: 10, alignItems: 'flex-start', padding: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderStrong },
-    testInput: { flex: 1, minHeight: 60, fontFamily: fonts.body, fontSize: 14, color: colors.text, textAlignVertical: 'top' },
-    testBtn: { alignSelf: 'flex-start', marginTop: 10, minHeight: 40, paddingHorizontal: 20, borderRadius: radius.pill, backgroundColor: '#EAF1FF', alignItems: 'center', justifyContent: 'center' },
-    testBtnText: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.blue },
-    result: { flexDirection: 'row', gap: 10, alignItems: 'center', marginTop: 12, padding: 12, borderRadius: radius.md, backgroundColor: '#F4F8FF' },
-    resultText: { flex: 1, fontFamily: fonts.body, fontSize: 14, lineHeight: 19, color: colors.text },
 });

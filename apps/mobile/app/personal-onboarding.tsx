@@ -1,5 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator, BackHandler, LogBox } from 'react-native';
+import { useSharedValue, withTiming } from 'react-native-reanimated';
+import { PUSH_EASE, PUSH_MS, SCREEN_W } from '../src/lib/pagePush';
+import { SlideContext } from '../src/components/onboarding/personal/slide';
+import { StepCheer } from '../src/components/onboarding/personal/StepCheer';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import {
     personalOnboardingService, PersonalStepError, builtPersonalSteps, firstOpenPersonalStep, personalStepDef, personalProgress,
@@ -38,6 +42,30 @@ const emptyDrafts = (): PersonalDrafts => ({
     billsMonthly: null,
 });
 
+// Steps whose "continue" is just a save: the next page opens at once and the save finishes behind it.
+const OPTIMISTIC = new Set<string>(['name', 'dob', 'intents']);
+
+type LeavingLayer = { id: number; key: string; ctx: StepContext; dir: 1 | -1 };
+
+/**
+ * One page of the wizard. Its offset goes to the step shell through SlideContext, which moves only the middle content;
+ * the top bar and bottom buttons never move. `enter` slides in from the side you are heading, `leave` slides out the
+ * other way, `rest` just sits there (the first page).
+ */
+function SlideLayer({ mode, dir, children }: { mode: 'enter' | 'leave' | 'rest'; dir: 1 | -1; children: React.ReactNode }) {
+    const x = useSharedValue(mode === 'enter' ? SCREEN_W * dir : 0);
+    useEffect(() => {
+        if (mode === 'enter') x.value = withTiming(0, { duration: PUSH_MS, easing: PUSH_EASE });
+        else if (mode === 'leave') x.value = withTiming(-SCREEN_W * dir, { duration: PUSH_MS, easing: PUSH_EASE });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    return (
+        <SlideContext.Provider value={x}>
+            <View style={StyleSheet.absoluteFill} pointerEvents={mode === 'leave' ? 'none' : 'auto'}>{children}</View>
+        </SlideContext.Provider>
+    );
+}
+
 export default function PersonalOnboardingScreen() {
     const router = useRouter();
     const queryClient = useQueryClient();
@@ -57,6 +85,16 @@ export default function PersonalOnboardingScreen() {
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
     const [finishing, setFinishing] = useState(false);
     // Drafts live here, not in the steps, so going Back and forward never loses what was typed.
+    const keepError = useRef(false);   // set when a background save failed and we came back to show why
+    const inFlight = useRef(false);
+    const dirSV = useSharedValue(1);   // which way pages push: forward (1) or back (-1)
+    const dirRef = { get current() { return dirSV.value as 1 | -1; }, set current(v: 1 | -1) { dirSV.value = v; } };
+    const [cheer, setCheer] = useState(false);          // the "great start" page shown between net worth and Grow
+    const [leaving, setLeaving] = useState<LeavingLayer[]>([]);
+    const stash = useRef<{ key: string | null; ctx: StepContext | null } | null>(null);
+    const renderedKey = useRef<string | null>(null);
+    const lastCtx = useRef<StepContext | null>(null);
+    const layerId = useRef(0);
     const [drafts, setDrafts] = useState<PersonalDrafts>(emptyDrafts);
     const [money, setMoney] = useState<PersonalMoney | null>(null);
     const refreshMoney = useCallback(async () => {
@@ -94,6 +132,7 @@ export default function PersonalOnboardingScreen() {
     useEffect(() => {
         if (!cursor || cursor === 'done') return;
         viewedAt.current = Date.now();
+        if (keepError.current) { keepError.current = false; return; }
         track('onboarding_step_viewed', { flow: 'PERSONAL_V2', step_key: cursor, chapter: personalStepDef(cursor)!.chapter, single });
         setError(null);
         setFieldErrors({});
@@ -106,11 +145,13 @@ export default function PersonalOnboardingScreen() {
     const index = cursor && cursor !== 'done' ? built.findIndex((s) => s.key === cursor) : built.length;
 
     const goBack = useCallback(() => {
+        dirRef.current = -1;
         if (single) { exitSingle(); return true; }
         if (cursor === 'done') { setCursor(built[built.length - 1].key); return true; }
+        if (cheer) { setCheer(false); setCursor(built[index - 1].key); return true; }
         if (index > 0) { setCursor(built[index - 1].key); return true; }
         return false;
-    }, [single, cursor, index, built, exitSingle]);
+    }, [single, cursor, index, built, exitSingle, cheer]);
 
     // Android back follows the wizard's Back instead of leaving the app mid-setup.
     useEffect(() => {
@@ -118,36 +159,55 @@ export default function PersonalOnboardingScreen() {
         return () => sub.remove();
     }, [goBack]);
 
-    const advanceFrom = useCallback((key: PersonalStepKey, steps: PersonalStepsMap) => {
+    // Moves forward from `key`; going into Grow, the "great start" page comes first.
+    const goNext = useCallback((key: PersonalStepKey) => {
+        dirRef.current = 1;
+        const next = built[built.findIndex((s) => s.key === key) + 1]?.key ?? 'done';
+        if (next === 'grow') setCheer(true);
+        setCursor(next);
+    }, [built]);
+
+    const advanceFrom = useCallback((key: PersonalStepKey, steps: PersonalStepsMap, navigate = true) => {
         setState((s) => (s ? { ...s, steps } : s));
         void queryClient.invalidateQueries({ queryKey: PERSONAL_ONBOARDING_QUERY_KEY });
         // The workspace may have been renamed after the first name.
         if (key === 'name' && !preview) void refreshUserOrganizations().catch(() => undefined);
+        if (!navigate) return;
         if (single) { exitSingle(); return; }
-        setCursor(built[built.findIndex((s) => s.key === key) + 1]?.key ?? 'done');
-    }, [queryClient, preview, refreshUserOrganizations, single, exitSingle, built]);
+        goNext(key);
+    }, [queryClient, preview, refreshUserOrganizations, single, exitSingle, goNext]);
 
-    const run = useCallback(async (key: PersonalStepKey, how: 'continue' | 'skip', fn: () => Promise<{ steps: PersonalStepsMap } | null>) => {
-        if (saving) return;
-        setSaving(how);
+    const run = useCallback(async (key: PersonalStepKey, how: 'continue' | 'skip', fn: () => Promise<{ steps: PersonalStepsMap } | null>, optimistic = false) => {
+        if (saving || inFlight.current) return;
+        // Optimistic: plain "save this step" calls move on at once and finish saving in the background; a failure brings
+        // the person back to the step with the reason. Not used where the call decides whether to move on (phone code, etc.).
+        const instant = optimistic && !single;
+        inFlight.current = true;
+        if (!instant) setSaving(how);
         setError(null);
         setFieldErrors({});
+        if (instant) goNext(key);
         const def = personalStepDef(key)!;
         const props = { flow: 'PERSONAL_V2', step_key: key, chapter: def.chapter, single, ms_on_step: Date.now() - viewedAt.current };
         try {
             const res = await fn();
             if (res) {
                 track(how === 'continue' ? 'onboarding_step_completed' : 'onboarding_step_skipped', props);
-                advanceFrom(key, res.steps);
+                advanceFrom(key, res.steps, !instant);
             }
         } catch (e: any) {
+            if (instant) { keepError.current = true; dirRef.current = -1; setCursor(key); }
             track('onboarding_step_error', { ...props, status: e?.status ?? null, message: e?.message ?? null });
+            if (__DEV__) console.warn(`[PersonalOnboarding] step "${key}" (${how}) failed:`, e?.status ?? '(no status)', e?.message ?? e);
             if (e instanceof PersonalStepError && e.field) setFieldErrors({ [e.field]: e.message });
-            else setError(e instanceof PersonalStepError && e.status && e.status < 500 ? e.message : 'Couldn’t save. Check your connection and try again.');
+            // A server rejection (4xx) carries its own reason (PersonalStepError from the onboarding calls, ApiError from the
+            // shared ones such as bills): show it. Only a network failure or a 5xx gets the generic line.
+            else setError(typeof e?.status === 'number' && e.status < 500 && e?.message ? e.message : 'Couldn’t save. Check your connection and try again.');
         } finally {
+            inFlight.current = false;
             setSaving(null);
         }
-    }, [saving, single, advanceFrom]);
+    }, [saving, single, advanceFrom, built, goNext]);
 
     const finish = async () => {
         setFinishing(true);
@@ -163,6 +223,19 @@ export default function PersonalOnboardingScreen() {
             setFinishing(false);
         }
     };
+
+    const stepKey = cheer ? 'cheer' : cursor;
+    // When the page changes, keep the old one mounted for a moment so it can slide out.
+    useEffect(() => {
+        const st = stash.current;
+        if (!st || !st.key || st.key === 'done' || !st.ctx) return;
+        stash.current = null;
+        const id = ++layerId.current;
+        const entry: LeavingLayer = { id, key: st.key, ctx: st.ctx, dir: dirSV.value as 1 | -1 };
+        setLeaving((l) => [...l, entry]);
+        const t = setTimeout(() => setLeaving((l) => l.filter((x) => x.id !== id)), PUSH_MS + 80);
+        return () => clearTimeout(t);
+    }, [stepKey]);
 
     if (loadError) {
         return (
@@ -202,8 +275,9 @@ export default function PersonalOnboardingScreen() {
     }
 
     const def = personalStepDef(cursor)!;
-    const Step = STEP_COMPONENTS[cursor];
+    const Step = cheer && !single ? StepCheer : STEP_COMPONENTS[cursor];
     const ctx: StepContext = {
+        leaveCheer: () => { dirRef.current = 1; setCheer(false); },
         def,
         progress: single ? 1 : personalProgress(cursor),
         single,
@@ -216,9 +290,9 @@ export default function PersonalOnboardingScreen() {
         saving,
         error,
         fieldErrors,
-        run: (how, fn) => run(cursor, how, fn),
-        skip: def.required ? undefined : () => void run(cursor, 'skip', () => service.saveStep(cursor, 'skipped')),
-        done: (data) => void run(cursor, 'continue', () => service.saveStep(cursor, 'done', data)),
+        run: (how, fn) => run(cursor, how, fn, OPTIMISTIC.has(cursor)),
+        skip: def.required ? undefined : () => void run(cursor, 'skip', () => service.saveStep(cursor, 'skipped'), true),
+        done: (data) => void run(cursor, 'continue', () => service.saveStep(cursor, 'done', data), cursor !== 'wallet' && cursor !== 'phone' && cursor !== 'kyc'),
         patchProfile: (patch) => setState((s) => (s ? { ...s, profile: { ...s.profile, ...patch } } : s)),
         money,
         refreshMoney,
@@ -228,10 +302,28 @@ export default function PersonalOnboardingScreen() {
         },
     };
 
+    const liveKey = cheer && !single ? 'cheer' : cursor;
+    let animateIn = false;
+    if (renderedKey.current !== liveKey) {
+        if (renderedKey.current) { stash.current = { key: renderedKey.current, ctx: lastCtx.current }; animateIn = true; }
+        renderedKey.current = liveKey;
+    }
+    lastCtx.current = ctx;
+
     return (
         <>
             <Stack.Screen options={{ headerShown: false, gestureEnabled: single }} />
-            {Step ? <Step key={cursor} ctx={ctx} /> : null}
+            <View style={{ flex: 1, backgroundColor: colors.surface, overflow: 'hidden' }}>
+                {leaving.map((l) => {
+                    const Old = l.key === 'cheer' ? StepCheer : STEP_COMPONENTS[l.key as PersonalStepKey];
+                    return Old ? <SlideLayer key={`out${l.id}`} mode="leave" dir={l.dir}><Old ctx={l.ctx} /></SlideLayer> : null;
+                })}
+                {Step ? (
+                    <SlideLayer key={liveKey} mode={animateIn ? 'enter' : 'rest'} dir={dirSV.value as 1 | -1}>
+                        <Step ctx={ctx} />
+                    </SlideLayer>
+                ) : null}
+            </View>
         </>
     );
 }

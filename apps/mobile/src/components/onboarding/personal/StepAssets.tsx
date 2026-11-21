@@ -37,7 +37,7 @@ export function StepAssets({ ctx }: { ctx: StepContext }) {
         <PersonalStepShell
             def={ctx.def} progress={ctx.progress} onBack={ctx.onBack} onSkip={ctx.skip}
             onContinue={() => ctx.done({ count: holdings.length })} saving={ctx.saving} error={ctx.error}
-            continueLabel={ctx.single ? 'Done' : holdings.length ? 'Continue' : 'Nothing else, continue'}
+            continueLabel={ctx.single ? 'Done' : 'Continue'}
         >
             <Text style={[m.sectionTitle, { marginTop: 0 }]}>What you own</Text>
             <Tiles kinds={KINDS.filter((k) => !k.debt)} onPick={(kind) => setEditing({ kind })} />

@@ -94,7 +94,7 @@ function Card({ icon, title, body, done, action, onPress, busy }: { icon: React.
 
 const styles = StyleSheet.create({
     card: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderStrong },
-    icon: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#EAF1FF', alignItems: 'center', justifyContent: 'center' },
+    icon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
     title: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.text },
     body: { fontFamily: fonts.body, fontSize: 13, lineHeight: 18, color: colors.textMuted, marginTop: 2 },
     btn: { minHeight: 38, paddingHorizontal: 14, borderRadius: radius.pill, backgroundColor: colors.blue, alignItems: 'center', justifyContent: 'center' },

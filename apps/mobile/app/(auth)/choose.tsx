@@ -57,6 +57,6 @@ const styles = StyleSheet.create({
     title: { fontFamily: fonts.display, fontSize: 28, lineHeight: 34, color: colors.text },
     sub: { fontFamily: fonts.body, fontSize: 15, color: colors.textMuted, marginTop: 8 },
     footer: { paddingHorizontal: 20, paddingTop: 12 },
-    cta: { height: 54, borderRadius: radius.pill, backgroundColor: colors.blue, alignItems: 'center', justifyContent: 'center' },
-    ctaText: { fontFamily: fonts.bodyBold, fontSize: 16, color: '#FFFFFF' },
+    cta: { height: 46, borderRadius: radius.pill, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' },
+    ctaText: { fontFamily: fonts.bodyMedium, fontSize: 14, color: '#FFFFFF' },
 });

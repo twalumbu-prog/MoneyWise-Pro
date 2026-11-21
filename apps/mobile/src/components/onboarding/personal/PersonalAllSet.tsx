@@ -63,6 +63,6 @@ const styles = StyleSheet.create({
     rowLink: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.blue },
     errorBox: { flexDirection: 'row', gap: 8, alignItems: 'center', backgroundColor: '#FEF2F2', borderRadius: radius.sm, padding: 12, marginTop: 20 },
     errorText: { flex: 1, fontFamily: fonts.body, fontSize: 14, color: '#B91C1C' },
-    primary: { minHeight: 54, borderRadius: radius.pill, backgroundColor: colors.blue, alignItems: 'center', justifyContent: 'center' },
-    primaryText: { fontFamily: fonts.bodyBold, fontSize: 16, color: '#FFFFFF' },
+    primary: { minHeight: 46, borderRadius: radius.pill, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' },
+    primaryText: { fontFamily: fonts.bodyMedium, fontSize: 14, color: '#FFFFFF' },
 });
