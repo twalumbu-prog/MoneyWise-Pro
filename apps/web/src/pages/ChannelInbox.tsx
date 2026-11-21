@@ -1,24 +1,28 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { Facebook, Instagram, Mail, MessageCircle, Paperclip, Plug, Search } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { CheckCircle2, Clock, Facebook, Instagram, Loader2, Mail, MessageCircle, Paperclip, Plug, RefreshCw, Search, ShoppingBag, Wallet, X } from 'lucide-react';
 import { apiJson, formatKwacha } from 'core';
-import { PagePanel } from '../components/ui/PagePanel';
-import { Dialog, PrimaryButton } from '../components/ui/Dialog';
+import { PrimaryButton } from '../components/ui/Dialog';
+import { GmailMark } from '../components/settings/integrations/GmailIntegration';
 
 type View = 'orders' | 'money' | 'other' | 'all';
-interface Item { id: string; source: 'email' | 'message'; channel: string; who: string; title: string; preview: string; at: string; intent: string; intentLabel: string; kind: 'orders' | 'money' | 'other'; amount: number | null; currency: string | null; direction: string | null; hasAttachments: boolean; match: string | null }
+interface Item { id: string; source: 'email' | 'message'; channel: string; who: string; title: string; preview: string; at: string; intent: string; intentLabel: string; kind: 'orders' | 'money' | 'other'; amount: number | null; currency: string | null; direction: string | null; hasAttachments: boolean; match: string | null; unread?: boolean }
 interface Conn { id: string; channel: string; name: string; status: string; lastSyncedAt: string | null; lastError: string | null }
-interface Inbox { view: View; counts: Record<View, number>; items: Item[]; connections: Conn[]; filteredOut: number }
+interface Inbox { view: View; counts: Record<View, number>; unread?: Record<View, number>; items: Item[]; connections: Conn[]; filteredOut: number }
 interface Detail { from: string | null; to: string | null; subject: string | null; body: string; at: string; attachments: { name: string }[]; summary: string | null; intentLabel?: string }
 
 const CHANNEL: Record<string, { label: string; icon: React.ReactNode; tint: string }> = {
-    GMAIL: { label: 'Gmail', icon: <Mail size={15} />, tint: 'bg-[#FCE8E6] text-[#C5221F]' },
-    FACEBOOK: { label: 'Facebook', icon: <Facebook size={15} />, tint: 'bg-[#E8F0FE] text-[#1A73E8]' },
-    INSTAGRAM: { label: 'Instagram', icon: <Instagram size={15} />, tint: 'bg-[#FCE4EC] text-[#C2185B]' },
-    WHATSAPP: { label: 'WhatsApp', icon: <MessageCircle size={15} />, tint: 'bg-[#E6F4EA] text-[#137333]' },
+    GMAIL: { label: 'Gmail', icon: <GmailMark size={17} />, tint: 'bg-white shadow-[inset_0_0_0_1px_#E3E5E8]' },
+    FACEBOOK: { label: 'Facebook', icon: <Facebook size={14} />, tint: 'bg-[#E8F0FE] text-[#1A73E8]' },
+    INSTAGRAM: { label: 'Instagram', icon: <Instagram size={14} />, tint: 'bg-[#FCE4EC] text-[#C2185B]' },
+    WHATSAPP: { label: 'WhatsApp', icon: <MessageCircle size={14} />, tint: 'bg-[#E6F4EA] text-[#137333]' },
 };
-const INTENT_TINT: Record<Item['kind'], string> = { orders: 'bg-[#E6F4EA] text-[#137333]', money: 'bg-[#E8F0FE] text-[#0B57D0]', other: 'bg-[#F1F3F4] text-[#5F6368]' };
+const KIND_ICON: Record<Item['kind'], React.ReactNode> = {
+    orders: <ShoppingBag size={11} className="text-[#137333]" />,
+    money: <Wallet size={11} className="text-[#0B57D0]" />,
+    other: <Clock size={11} className="text-[#80868B]" />,
+};
 
 const ago = (iso: string | null): string => {
     if (!iso) return 'never';
@@ -26,17 +30,41 @@ const ago = (iso: string | null): string => {
     if (s < 90) return 'just now';
     if (s < 3600) return `${Math.round(s / 60)} min ago`;
     if (s < 86400) return `${Math.round(s / 3600)} h ago`;
-    return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    return new Date(iso).toLocaleDateString('en-GB');
 };
 
 const TABS: { id: View; label: string }[] = [{ id: 'orders', label: 'Orders' }, { id: 'money', label: 'Payments & invoices' }, { id: 'other', label: 'Other' }, { id: 'all', label: 'Everything' }];
+const ctl = 'p-2 rounded-lg border border-[rgba(116,119,117,0.22)] text-gray-400 hover:text-[#0842A0] hover:bg-[#F8FAFD] transition-all';
+
+/** What is connected (Gmail, Facebook, Instagram) and how fresh it is, on the right of the inbox tab row; shares the inbox query, so it costs nothing extra. */
+export const ChannelConnections: React.FC = () => {
+    const navigate = useNavigate();
+    const { data, isPending } = useQuery({ queryKey: ['channel-inbox', 'orders', ''], queryFn: () => apiJson<Inbox>('/integrations/inbox?view=orders'), refetchInterval: 30_000, staleTime: 10_000, retry: false });
+    const on = new Set((data?.connections ?? []).map((c) => c.channel));
+    const socialOff = !on.has('FACEBOOK') && !on.has('INSTAGRAM');
+    return (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+            {(data?.connections ?? []).map((c) => (
+                <span key={c.id} className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[11px] font-semibold text-[#3C4043] shadow-[inset_0_0_0_1px_#C4C7C5]" title={c.lastError ?? undefined}>
+                    <span className={(CHANNEL[c.channel]?.tint ?? '').split(' ').find((x) => x.startsWith('text-')) ?? 'text-[#5F6368]'}>{CHANNEL[c.channel]?.icon}</span> {c.name || CHANNEL[c.channel]?.label}
+                    <span className={`font-normal ${c.status === 'ACTIVE' ? 'text-[#5F6368]' : 'text-[#C5221F]'}`}>· {c.status === 'ACTIVE' ? `synced ${ago(c.lastSyncedAt)}` : c.status.toLowerCase()}</span>
+                </span>
+            ))}
+            {!isPending && socialOff && (
+                <button type="button" onClick={() => navigate('/settings?tab=integrations')} className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-[#0B57D0] shadow-[inset_0_0_0_1px_#C4C7C5] hover:bg-[#F1F3F4]"><Plug size={13} /> Connect Facebook or Instagram to get customer orders</button>
+            )}
+        </div>
+    );
+};
 
 /**
- * The inbox for the channels a business connects (Gmail, Facebook Pages, Instagram): customer messages and emails, with what the AI read from each,
- * so a sales order, a "I have paid" or an invoice is found without opening every email. Orders come first because that is what it is for.
+ * The inbox for the channels a business connects (Gmail, Facebook Pages, Instagram), in the same card, tabs and rows as the requisitions inbox:
+ * customer messages and emails with what the AI read from each, so a sales order, a "I have paid" or an invoice is found without opening every
+ * email. Orders come first because that is what it is for. Opening it clears the new-orders badge on its tab. Shown inside the inbox card as the
+ * Orders & messages tab, beside Outflows and Inflows.
  */
-export const ChannelInbox: React.FC = () => {
-    const navigate = useNavigate();
+export const ChannelInboxBody: React.FC = () => {
+    const qc = useQueryClient();
     const [view, setView] = useState<View>('orders');
     const [q, setQ] = useState('');
     const [openItem, setOpenItem] = useState<Item | null>(null);
@@ -47,91 +75,153 @@ export const ChannelInbox: React.FC = () => {
     });
     const detail = useQuery({ queryKey: ['channel-inbox', 'item', openItem?.source, openItem?.id], queryFn: () => apiJson<Detail>(`/integrations/inbox/${openItem!.source}/${openItem!.id}`), enabled: !!openItem, retry: false });
 
+    // Looking at the inbox counts as seeing what is in it: the badge on the inbox button clears (the new dots stay for this visit).
+    const marked = useRef(false);
+    useEffect(() => {
+        if (!data || marked.current) return;
+        marked.current = true;
+        apiJson('/integrations/inbox/seen', { method: 'POST' }).then(() => qc.invalidateQueries({ queryKey: ['channel-inbox', 'unread'] })).catch(() => { marked.current = false; });
+    }, [data, qc]);
+
     const channelsOn = new Set((data?.connections ?? []).map((c) => c.channel));
     const socialOff = !channelsOn.has('FACEBOOK') && !channelsOn.has('INSTAGRAM');
 
     return (
-        <PagePanel title="Orders & messages" subtitle="Customer messages and emails from the channels you connected, sorted by what they are" back="/requisitions">
-            <div className="mx-auto max-w-4xl">
-                {/* what is connected, and how fresh it is */}
-                <div className="mb-4 flex flex-wrap items-center gap-2">
-                    {(data?.connections ?? []).map((c) => (
-                        <span key={c.id} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${CHANNEL[c.channel]?.tint ?? 'bg-[#F1F3F4] text-[#5F6368]'}`} title={c.lastError ?? undefined}>
-                            {CHANNEL[c.channel]?.icon} {c.name || CHANNEL[c.channel]?.label}
-                            <span className="font-normal opacity-80">· {c.status === 'ACTIVE' ? `synced ${ago(c.lastSyncedAt)}` : c.status.toLowerCase()}</span>
-                        </span>
-                    ))}
-                    {!isPending && socialOff && (
-                        <button type="button" onClick={() => navigate('/settings?tab=integrations')} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-[#0B57D0] shadow-[inset_0_0_0_1px_#C4C7C5] hover:bg-[#F1F3F4]"><Plug size={13} /> Connect Facebook or Instagram to get customer orders</button>
-                    )}
-                    <button type="button" onClick={() => navigate('/settings?tab=integrations')} className="ml-auto text-xs font-semibold text-[#5F6368] hover:underline">Manage connections</button>
-                </div>
-
-                <div className="mb-3 flex flex-wrap items-center gap-2">
-                    <div role="tablist" className="flex flex-wrap gap-1.5">
-                        {TABS.map((t) => (
-                            <button key={t.id} role="tab" aria-selected={view === t.id} type="button" onClick={() => setView(t.id)} className={`inline-flex h-9 items-center gap-2 rounded-full px-4 text-sm font-semibold transition ${view === t.id ? 'bg-[#D3E3FD] text-[#041E49]' : 'text-[#5F6368] shadow-[inset_0_0_0_1px_#C4C7C5] hover:bg-[#F1F3F4]'}`}>
-                                {t.label}<span className="rounded-full bg-white/80 px-1.5 text-[11px] tabular-nums">{data?.counts?.[t.id] ?? '·'}</span>
-                            </button>
-                        ))}
+        <>
+            <div className="flex flex-col gap-3">
+                {/* tabs + search / refresh, the same as the requisitions inbox */}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div role="tablist" className="no-scrollbar flex items-center gap-1 overflow-x-auto rounded-[10px] bg-[#F8FAFD] p-1">
+                        {TABS.map((t) => {
+                            const active = view === t.id;
+                            const n = data?.counts?.[t.id] ?? 0;
+                            const fresh = data?.unread?.[t.id] ?? 0;
+                            return (
+                                <button key={t.id} role="tab" aria-selected={active} type="button" onClick={() => setView(t.id)} className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-1.5 text-[11px] transition-all ${active ? 'bg-white font-bold text-[#1F1F1F] shadow-sm' : 'font-normal text-gray-500 hover:text-gray-700'}`}>
+                                    {t.label}
+                                    {n > 0 && <span className={`rounded px-1 text-[9px] ${fresh > 0 && t.id === 'orders' ? 'bg-[#C3010A] text-white' : active ? 'bg-[#E9EEF6] text-[#0B57D0]' : 'bg-gray-200 text-gray-500'}`}>{n}</span>}
+                                </button>
+                            );
+                        })}
                     </div>
-                    <div className="relative ml-auto w-full sm:w-64">
-                        <Search size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#80868B]" />
-                        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" aria-label="Search messages" className="h-9 w-full rounded-full bg-[#F1F3F4] pl-9 pr-4 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0B57D0]" />
+                    <div className="flex flex-shrink-0 items-center gap-2">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" size={14} />
+                            <input type="text" placeholder="Search..." value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search messages" className="w-48 rounded-lg border border-[rgba(116,119,117,0.22)] bg-[#F8FAFD] py-2 pl-8 pr-3 text-xs font-medium text-[#1F1F1F] transition-all placeholder:text-gray-300 focus:bg-white focus:ring-2 focus:ring-[#0B57D0]/10" />
+                        </div>
+                        <button type="button" onClick={() => refetch()} className={ctl} title="Refresh"><RefreshCw size={14} /></button>
                     </div>
                 </div>
 
-                {isPending ? <div className="space-y-2">{[0, 1, 2, 3].map((i) => <div key={i} className="h-[72px] animate-pulse rounded-2xl bg-[#F1F3F4]" />)}</div>
+                {isPending ? <div className="space-y-px">{[0, 1, 2, 3, 4].map((i) => <div key={i} className="h-16 animate-pulse rounded-lg bg-[#F8FAFD]" />)}</div>
                     : isError ? <div className="py-14 text-center"><p className="text-sm text-[#5F6368]">Couldn’t load your messages.</p><PrimaryButton onClick={() => refetch()} className="mt-3 h-10 px-5">Try again</PrimaryButton></div>
                     : data!.items.length === 0 ? (
-                        <div className="flex flex-col items-center py-16 text-center">
-                            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#E8F0FE] text-[#0B57D0]"><Mail size={24} /></span>
-                            <p className="mt-3 text-base font-bold text-[#1F1F1F]">{q ? 'Nothing matches that' : view === 'orders' ? 'No customer orders yet' : 'Nothing here yet'}</p>
-                            <p className="mt-1 max-w-md text-sm text-[#5F6368]">
+                        <div className="flex flex-col items-center justify-center py-24 text-center">
+                            <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full border border-[rgba(116,119,117,0.22)] bg-gray-50 text-gray-300"><Mail size={32} /></div>
+                            <h3 className="text-xl font-bold text-[#1F1F1F]">{q ? 'Nothing matches that' : view === 'orders' ? 'No customer orders yet' : 'Nothing here yet'}</h3>
+                            <p className="mx-auto mt-2 max-w-sm text-sm font-medium text-gray-400">
                                 {q ? 'Try another word.' : view === 'orders'
-                                    ? `When a customer messages your Facebook Page or Instagram wanting to buy, or an order arrives by email, it appears here with the amount and who sent it.${socialOff ? ' Connect Facebook or Instagram above to start receiving them.' : ''}${(data!.counts.money + data!.counts.other) > 0 ? ' Your payments and other emails are in the other tabs.' : ''}`
+                                    ? `When a customer messages your Facebook Page or Instagram wanting to buy, or an order arrives by email, it appears here with the amount and who sent it.${socialOff ? ' Connect Facebook or Instagram above to start receiving them.' : ''}`
                                     : 'New messages show up here by themselves.'}
                             </p>
-                            {view === 'orders' && (data!.counts.money + data!.counts.other) > 0 && <button type="button" onClick={() => setView('money')} className="mt-4 h-10 rounded-full px-5 text-sm font-semibold text-[#0B57D0] shadow-[inset_0_0_0_1px_#0B57D0] hover:bg-[#E8F0FE]">See payments and invoices ({data!.counts.money})</button>}
+                            {view === 'orders' && (data!.counts.money + data!.counts.other) > 0 && <button type="button" onClick={() => setView('money')} className="mt-4 h-9 rounded-lg px-4 text-xs font-semibold text-[#0B57D0] shadow-[inset_0_0_0_1px_#0B57D0] hover:bg-[#E8F0FE]">See payments and invoices ({data!.counts.money})</button>}
                         </div>
                     ) : (
-                        <ul className="space-y-2">
+                        <div className="divide-y divide-gray-100">
                             {data!.items.map((i) => {
                                 const ch = CHANNEL[i.channel] ?? CHANNEL.GMAIL;
                                 return (
-                                    <li key={`${i.source}-${i.id}`}>
-                                        <button type="button" onClick={() => setOpenItem(i)} className="flex w-full items-start gap-3 rounded-2xl border border-[rgba(116,119,117,0.22)] bg-white p-3.5 text-left transition hover:border-[#0B57D0]/40 hover:shadow-sm">
-                                            <span className={`mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ${ch.tint}`}>{ch.icon}</span>
-                                            <span className="min-w-0 flex-1">
-                                                <span className="flex items-baseline justify-between gap-3"><span className="truncate text-sm font-bold text-[#1F1F1F]">{i.who}</span><span className="flex-shrink-0 text-[11px] text-[#80868B]">{ago(i.at)}</span></span>
-                                                <span className="block truncate text-sm text-[#3C4043]">{i.title}</span>
-                                                {i.preview && i.preview !== i.title && <span className="block truncate text-xs text-[#80868B]">{i.preview}</span>}
-                                                <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                                                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${INTENT_TINT[i.kind]}`}>{i.intentLabel}{i.direction === 'IN' && i.kind === 'money' ? ' · in' : i.direction === 'OUT' && i.kind === 'money' ? ' · out' : ''}</span>
-                                                    {i.amount != null && <span className="rounded-full bg-[#F8FAFD] px-2 py-0.5 text-[10px] font-bold tabular-nums text-[#1F1F1F] shadow-[inset_0_0_0_1px_#E3E5E8]">{i.currency && i.currency !== 'ZMW' ? `${i.currency} ${i.amount.toLocaleString()}` : formatKwacha(i.amount)}</span>}
-                                                    {i.match === 'SUGGESTED' && <span className="rounded-full bg-[#FEF7E0] px-2 py-0.5 text-[10px] font-bold text-[#B06000]">Matches a payment received</span>}
-                                                    {i.hasAttachments && <Paperclip size={12} className="text-[#80868B]" />}
-                                                </span>
-                                            </span>
-                                        </button>
-                                    </li>
+                                    <div key={`${i.source}-${i.id}`} role="button" tabIndex={0} onClick={() => setOpenItem(i)} onKeyDown={(e) => { if (e.key === 'Enter') setOpenItem(i); }} className="group flex cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors hover:bg-gray-50/70">
+                                        <span className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${ch.tint}`} title={ch.label}>{ch.icon}</span>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex items-center justify-between gap-4">
+                                                <span className={`truncate text-sm text-gray-700 ${i.unread ? 'font-bold' : 'font-medium'}`}>{i.title}</span>
+                                                {i.amount != null && <span className="whitespace-nowrap text-sm font-semibold text-[#1F1F1F]">{i.currency && i.currency !== 'ZMW' ? `${i.currency} ${i.amount.toLocaleString()}` : formatKwacha(i.amount)}</span>}
+                                            </div>
+                                            <div className="mt-px flex items-center justify-between">
+                                                <span className="truncate text-[10px] font-normal text-[#5F6368]">{i.who} · {ch.label}</span>
+                                                <span className="text-[10px] font-normal text-neutral-500">{ago(i.at)}</span>
+                                            </div>
+                                            <div className="mt-1 flex items-center gap-1.5">
+                                                {KIND_ICON[i.kind]}
+                                                <span className="text-[10px] font-normal capitalize text-[#5F6368]">{i.intentLabel}{i.direction === 'IN' && i.kind === 'money' ? ' · in' : i.direction === 'OUT' && i.kind === 'money' ? ' · out' : ''}</span>
+                                                {i.match === 'SUGGESTED' && <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#B06000]"><CheckCircle2 size={10} /> Matches a payment received</span>}
+                                                {i.hasAttachments && <Paperclip size={11} className="text-[#80868B]" />}
+                                            </div>
+                                        </div>
+                                        <div className="flex w-4 flex-shrink-0 items-center justify-center">{i.unread && <span className="h-1.5 w-1.5 rounded-full bg-[#0B57D0] shadow-sm shadow-blue-200" />}</div>
+                                    </div>
                                 );
                             })}
-                        </ul>
+                        </div>
                     )}
-                {!isPending && !isError && (data?.filteredOut ?? 0) > 0 && <p className="mt-4 text-center text-[11px] text-[#80868B]">{data!.filteredOut} promotional and automated emails were left out.</p>}
+                {!isPending && !isError && (data?.filteredOut ?? 0) > 0 && <p className="mt-1 text-center text-[11px] text-[#80868B]">{data!.filteredOut} promotional and automated emails were left out.</p>}
             </div>
 
-            <Dialog open={!!openItem} title={detail.data?.subject || openItem?.title || 'Message'} onClose={() => setOpenItem(null)}>
-                {detail.isPending ? <div className="h-32 animate-pulse rounded-xl bg-[#F1F3F4]" /> : detail.isError ? <p className="text-sm text-[#C5221F]">Couldn’t open this message.</p> : (
-                    <div className="max-h-[60vh] overflow-y-auto">
-                        <p className="text-xs text-[#5F6368]">From <span className="font-semibold text-[#1F1F1F]">{detail.data?.from ?? openItem?.who}</span>{detail.data?.to ? <> to {detail.data.to}</> : null} · {new Date(detail.data?.at ?? openItem!.at).toLocaleString()}</p>
-                        {detail.data?.summary && <p className="mt-3 rounded-xl bg-[#F8FAFD] px-3 py-2 text-sm text-[#3C4043]"><span className="font-semibold">What this is:</span> {detail.data.summary}</p>}
-                        <pre className="mt-3 whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-[#1F1F1F]">{detail.data?.body}</pre>
-                        {!!detail.data?.attachments?.length && <p className="mt-3 text-xs text-[#5F6368]">Attachments: {detail.data.attachments.map((a) => a.name).filter(Boolean).join(', ')}</p>}
+            {openItem && (
+                /* The message opens in the same chat window as a requisition: header, a tinted conversation area, and bubbles. */
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-0 md:p-10">
+                    <div className="absolute inset-0 bg-black/30 backdrop-blur-md" onClick={() => setOpenItem(null)} />
+                    <div className="relative flex h-full w-full flex-col bg-white shadow-2xl md:h-full md:max-h-[850px] md:max-w-4xl md:rounded-3xl" role="dialog" aria-label={detail.data?.subject || openItem.title}>
+                        <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-100 bg-white px-6 py-4 md:items-start md:px-8 md:py-3">
+                            <div className="flex min-w-0 items-center">
+                                <button type="button" onClick={() => setOpenItem(null)} className="mr-4 rounded-full p-1 transition-colors hover:bg-gray-100 md:hidden" aria-label="Close"><X size={22} className="text-gray-900" /></button>
+                                <div className="min-w-0">
+                                    <h2 className="mb-0.5 truncate text-base font-normal leading-tight tracking-tight text-gray-900 md:mb-1 md:text-lg md:font-bold md:leading-none">{detail.data?.subject || openItem.title}</h2>
+                                    <div className="flex items-center space-x-2">
+                                        <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{(CHANNEL[openItem.channel] ?? CHANNEL.GMAIL).label}</span>
+                                        <span className="hidden h-1 w-1 rounded-full bg-gray-300 md:inline" />
+                                        <span className="hidden truncate text-[10px] font-medium text-gray-500 md:inline">From {detail.data?.from ?? openItem.who}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="button" onClick={() => setOpenItem(null)} className="hidden rounded-full p-1.5 transition-colors hover:bg-gray-100 md:block" aria-label="Close"><X size={20} className="text-gray-400 hover:text-black" /></button>
+                        </div>
+
+                        <div className="relative flex-1 overflow-y-auto bg-[#E6F2FE] px-4 py-6 md:px-8">
+                            {detail.isPending ? <div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-[#0B57D0]" /></div>
+                                : detail.isError ? <p className="text-center text-sm text-[#C5221F]">Couldn’t open this message.</p> : (
+                                    <div className="mx-auto max-w-4xl space-y-4">
+                                        {/* the message itself, from the sender */}
+                                        <div className="group mb-4 flex w-full justify-start animate-in fade-in slide-in-from-bottom-2 duration-400">
+                                            <div className="flex max-w-[85%] flex-col items-start md:max-w-[75%]">
+                                                <div className="rounded-[16px] rounded-tl-none border border-gray-100 bg-white px-4 py-2.5 text-[13px] font-medium leading-relaxed text-gray-800 shadow-sm">
+                                                    <p className="mb-1.5 text-[11px] font-bold text-gray-500">{detail.data?.from ?? openItem.who}{detail.data?.to ? <span className="font-medium"> to {detail.data.to}</span> : null}</p>
+                                                    <p className="whitespace-pre-wrap break-words">{detail.data?.body}</p>
+                                                    {!!detail.data?.attachments?.length && (
+                                                        <div className="mt-2.5 flex flex-wrap gap-1.5">
+                                                            {detail.data.attachments.map((x) => x.name).filter(Boolean).map((n) => <span key={n} className="inline-flex items-center gap-1 rounded-lg bg-[#F8FAFD] px-2 py-1 text-[11px] font-semibold text-[#5F6368]"><Paperclip size={11} /> {n}</span>)}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <span className="mx-2 mt-1.5 text-[9px] font-medium uppercase tracking-widest text-gray-900 opacity-60">{new Date(detail.data?.at ?? openItem.at).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                                            </div>
+                                        </div>
+
+                                        {/* what MoneyWise read from it */}
+                                        {(detail.data?.summary || openItem.amount != null) && (
+                                            <div className="group mb-4 flex w-full justify-start animate-in fade-in slide-in-from-bottom-2 duration-400">
+                                                <div className="flex max-w-[85%] flex-col items-start md:max-w-[75%]">
+                                                    <div className="overflow-hidden rounded-[16px] rounded-tl-none border border-gray-100 bg-white shadow-[0_4px_16px_-4px_rgba(0,0,0,0.04)]">
+                                                        <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-2">
+                                                            {KIND_ICON[openItem.kind]}
+                                                            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">What MoneyWise read · {openItem.intentLabel}</span>
+                                                        </div>
+                                                        <div className="px-4 py-2.5 text-[13px] font-medium leading-relaxed text-gray-800">
+                                                            {detail.data?.summary && <p>{detail.data.summary}</p>}
+                                                            {openItem.amount != null && <p className="mt-1 font-semibold text-[#1F1F1F]">{openItem.currency && openItem.currency !== 'ZMW' ? `${openItem.currency} ${openItem.amount.toLocaleString()}` : formatKwacha(openItem.amount)}</p>}
+                                                            {openItem.match === 'SUGGESTED' && <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-[#B06000]"><CheckCircle2 size={12} /> Matches a payment you received</p>}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                        </div>
                     </div>
-                )}
-            </Dialog>
-        </PagePanel>
+                </div>
+            )}
+        </>
     );
 };

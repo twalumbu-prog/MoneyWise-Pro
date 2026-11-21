@@ -3,7 +3,8 @@
  * using the one workspace that has a connected Gmail (and a throwaway workspace for isolation).
  * Run: npx tsx src/scripts/test_channel_inbox.ts
  */
-import { getChannelInbox, getChannelInboxItem } from '../controllers/channelInbox.controller';
+import { getChannelInbox, getChannelInboxItem, getInboxUnread, markInboxSeen } from '../controllers/channelInbox.controller';
+import { supabase } from '../lib/supabase';
 
 let failed = 0;
 const check = (name: string, ok: boolean, extra = '') => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${extra ? ` - ${extra}` : ''}`); if (!ok) failed++; };
@@ -30,6 +31,21 @@ const ORG = '8b9476c0-a79a-4678-a9cd-63aeeb04d70f';
     check('one message opens with its text', item.code === 200 && typeof item.body.body === 'string' && item.body.body.length > 0);
     const wrong = await call(getChannelInboxItem, { user: { organization_id: '00000000-0000-0000-0000-000000000000' }, params: { source: one.source, id: one.id } });
     check('another organisation cannot open it', wrong.code === 404);
+
+    // the badge: what arrived since this person last opened the inbox
+    const U = { id: `zz-test-user-${Date.now()}`, organization_id: ORG };
+    try {
+        const fresh = await call(getChannelInbox, { user: U, query: { view: 'all' } });
+        check('before opening it, everything counts as new for that person', fresh.body.unread.all === fresh.body.counts.all && fresh.body.items.every((i: any) => i.unread === true));
+        const before = await call(getInboxUnread, { user: U });
+        check('the badge counts the orders not yet seen', before.code === 200 && before.body.orders === all.body.counts.orders, JSON.stringify(before.body));
+        const seen = await call(markInboxSeen, { user: U });
+        check('opening the inbox marks it seen', seen.code === 200 && seen.body.ok === true);
+        const after = await call(getChannelInbox, { user: U, query: { view: 'all' } });
+        check('afterwards nothing is new, and the badge is empty', after.body.unread.all === 0 && after.body.items.every((i: any) => i.unread === false) && (await call(getInboxUnread, { user: U })).body.orders === 0);
+        const other = await call(getChannelInbox, { user: { id: 'zz-someone-else', organization_id: ORG }, query: { view: 'all' } });
+        check('another person still sees them as new', other.body.unread.all === other.body.counts.all);
+    } finally { await supabase.from('app_settings').delete().like('key', 'channel_inbox_seen:%:zz-%'); }
     console.log(failed ? `\n${failed} FAILED` : '\nall passed');
     process.exit(failed ? 1 : 0);
 })();

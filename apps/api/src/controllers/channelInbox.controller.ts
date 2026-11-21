@@ -16,6 +16,13 @@ const INTENT_LABEL: Record<string, string> = {
     PAYMENT_CONFIRMATION: 'Payment', INVOICE: 'Invoice', RECEIPT: 'Receipt', OTHER: 'Other',
 };
 
+/** When this person last opened the inbox. Kept per person in app_settings, so a badge can count what arrived since. */
+const seenKey = (orgId: string, userId: string) => `channel_inbox_seen:${orgId}:${userId}`;
+async function lastSeen(orgId: string, userId: string): Promise<string | null> {
+    const { data } = await supabase.from("app_settings").select("value").eq("key", seenKey(orgId, userId)).maybeSingle();
+    return (data?.value?.at as string | undefined) ?? null;
+}
+
 const clean = (s: unknown, n: number) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 
 /** GET /integrations/inbox?view=orders|money|other|all&channel=ALL|GMAIL|FACEBOOK|INSTAGRAM|WHATSAPP&q=&limit=60 */
@@ -28,6 +35,7 @@ export const getChannelInbox = async (req: any, res: Response) => {
         const q = String(req.query.q ?? '').trim().toLowerCase();
         const limit = Math.max(10, Math.min(150, Number(req.query.limit) || 60));
 
+        const seenAt = req.user?.id ? await lastSeen(orgId, req.user.id) : null;
         const [emailsRes, msgsRes, emailConns, msgConns, noise] = await Promise.all([
             channel === 'ALL' || channel === 'GMAIL'
                 ? supabase.from('inbound_emails').select('id, from_address, subject, snippet, received_at, has_attachments, intent, direction, intent_amount, intent_currency, counterparty, intent_confidence, intent_summary')
@@ -45,17 +53,18 @@ export const getChannelInbox = async (req: any, res: Response) => {
         const emails = (emailsRes.data ?? []).map((e: any) => ({
             id: e.id as string, source: 'email' as const, channel: 'GMAIL', who: clean(e.counterparty || e.from_address, 80), title: clean(e.subject, 140) || '(no subject)',
             preview: clean(e.intent_summary || e.snippet, 200), at: e.received_at as string, intent: (e.intent as string | null) ?? 'OTHER', amount: e.intent_amount != null ? Number(e.intent_amount) : null,
-            currency: (e.intent_currency as string | null) ?? null, direction: (e.direction as string | null) ?? null, hasAttachments: !!e.has_attachments, match: null as string | null, matchedEntryId: null as string | null,
+            currency: (e.intent_currency as string | null) ?? null, direction: (e.direction as string | null) ?? null, hasAttachments: !!e.has_attachments, match: null as string | null, matchedEntryId: null as string | null, unread: !seenAt || Date.parse(e.received_at) > Date.parse(seenAt),
         }));
         const messages = (msgsRes.data ?? []).map((m: any) => ({
             id: m.id as string, source: 'message' as const, channel: String(m.platform ?? '').toUpperCase(), who: clean(m.contact_name || m.contact_phone, 80) || 'Customer', title: clean(m.intent_summary || m.body, 140) || '(message)',
             preview: clean(m.body, 200), at: m.sent_at as string, intent: (m.intent as string | null) ?? 'OTHER', amount: m.intent_amount != null ? Number(m.intent_amount) : null,
-            currency: m.intent_amount != null ? 'ZMW' : null, direction: 'IN', hasAttachments: false, match: (m.match_status as string | null) ?? null, matchedEntryId: (m.matched_cashbook_entry_id as string | null) ?? null,
+            currency: m.intent_amount != null ? 'ZMW' : null, direction: 'IN', hasAttachments: false, match: (m.match_status as string | null) ?? null, matchedEntryId: (m.matched_cashbook_entry_id as string | null) ?? null, unread: !seenAt || Date.parse(m.sent_at) > Date.parse(seenAt),
         }));
         const all = [...emails, ...messages].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
 
         const counts = { orders: 0, money: 0, other: 0, all: all.length };
-        for (const i of all) counts[kindOf(i.intent)]++;
+        const unread = { orders: 0, money: 0, other: 0, all: 0 };
+        for (const i of all) { counts[kindOf(i.intent)]++; if (i.unread) { unread[kindOf(i.intent)]++; unread.all++; } }
         const shown = all
             .filter((i) => (view === 'all' || kindOf(i.intent) === view) && (!q || `${i.who} ${i.title} ${i.preview}`.toLowerCase().includes(q)))
             .slice(0, limit)
@@ -65,7 +74,7 @@ export const getChannelInbox = async (req: any, res: Response) => {
             ...(emailConns.data ?? []).map((c: any) => ({ id: c.id, channel: 'GMAIL', name: c.email_address, status: c.status, lastSyncedAt: c.last_synced_at ?? null, lastError: c.last_error ?? null })),
             ...(msgConns.data ?? []).map((c: any) => ({ id: c.id, channel: String(c.platform).toUpperCase(), name: c.display_name, status: c.status, lastSyncedAt: c.last_synced_at ?? null, lastError: c.last_error ?? null })),
         ];
-        res.json({ view, counts, items: shown, connections, filteredOut: (noise as any).count ?? 0 });
+        res.json({ view, counts, unread, items: shown, connections, filteredOut: (noise as any).count ?? 0 });
     } catch (e: any) {
         console.error('[ChannelInbox] list failed:', e?.message ?? e);
         res.status(500).json({ error: 'Couldn’t load your messages.' });
@@ -92,5 +101,36 @@ export const getChannelInboxItem = async (req: any, res: Response) => {
     } catch (e: any) {
         console.error('[ChannelInbox] item failed:', e?.message ?? e);
         res.status(500).json({ error: 'Couldn’t open that message.' });
+    }
+};
+
+/** GET /integrations/inbox/unread  How many customer orders arrived since this person last opened the inbox (for the badge). */
+export const getInboxUnread = async (req: any, res: Response) => {
+    try {
+        const orgId: string | undefined = req.user?.organization_id;
+        if (!orgId || !req.user?.id) return res.json({ orders: 0 });
+        const seenAt = await lastSeen(orgId, req.user.id);
+        let e = supabase.from("inbound_emails").select("id", { count: "exact", head: true }).eq("organization_id", orgId).eq("prefilter_passed", true).eq("intent", "ORDER");
+        let m = supabase.from("messaging_messages").select("id", { count: "exact", head: true }).eq("organization_id", orgId).eq("direction", "IN").in("intent", ORDER_INTENTS);
+        if (seenAt) { e = e.gt("received_at", seenAt); m = m.gt("sent_at", seenAt); }
+        const [er, mr] = await Promise.all([e, m]);
+        res.json({ orders: (er.count ?? 0) + (mr.count ?? 0) });
+    } catch (err: any) {
+        console.error("[ChannelInbox] unread failed:", err?.message ?? err);
+        res.json({ orders: 0 });
+    }
+};
+
+/** POST /integrations/inbox/seen  The person has looked at the inbox: the badge clears and what arrives next counts as new. */
+export const markInboxSeen = async (req: any, res: Response) => {
+    try {
+        const orgId: string | undefined = req.user?.organization_id;
+        if (!orgId || !req.user?.id) return res.status(400).json({ error: "No organisation" });
+        const { error } = await supabase.from("app_settings").upsert({ key: seenKey(orgId, req.user.id), value: { at: new Date().toISOString() }, description: "When this person last opened Orders & messages", updated_at: new Date().toISOString() });
+        if (error) throw error;
+        res.json({ ok: true });
+    } catch (err: any) {
+        console.error("[ChannelInbox] mark seen failed:", err?.message ?? err);
+        res.status(500).json({ error: "Couldn’t save that." });
     }
 };

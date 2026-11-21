@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, RefreshCw, Plus, ArrowUpDown, ListFilter, CheckCheck, MessageSquare, LucideIcon } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Search, RefreshCw, Plus, ArrowUpDown, ListFilter, CheckCheck, LucideIcon } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { apiJson } from 'core';
 import { TabPillGroup } from './AnimatedTabs';
 
 interface TabDef {
@@ -17,8 +18,8 @@ export interface NewMenuItem {
 }
 
 interface InboxCardProps {
-    mode: 'outflows' | 'inflows';
-    onModeChange: (mode: 'outflows' | 'inflows') => void;
+    mode: 'outflows' | 'inflows' | 'messages';
+    onModeChange: (mode: 'outflows' | 'inflows' | 'messages') => void;
     outflowCount: number;
     inflowCount: number;
 
@@ -43,6 +44,8 @@ interface InboxCardProps {
     onRefresh: () => void;
     hasActiveFilters?: boolean;
     /** When given, a "Mark all read" button is shown (outflows only; the page decides when). */
+    /** Shown at the right of the top row on the Orders & messages tab, where the New button is on the other tabs. */
+    rightContent?: React.ReactNode;
     onMarkAllRead?: () => void;
     markAllReadBusy?: boolean;
 
@@ -85,11 +88,13 @@ export const InboxCard: React.FC<InboxCardProps> = ({
     onRefresh,
     hasActiveFilters,
     onMarkAllRead,
+    rightContent,
     markAllReadBusy,
     leftContent,
     children,
 }) => {
-    const navigate = useNavigate();
+    // Customer orders that arrived (by email, Facebook or Instagram) since this person last opened Orders & messages.
+    const unreadOrders = useQuery({ queryKey: ['channel-inbox', 'unread'], queryFn: () => apiJson<{ orders: number }>('/integrations/inbox/unread'), refetchInterval: 60_000, staleTime: 30_000, retry: false }).data?.orders ?? 0;
     const [isNewMenuOpen, setIsNewMenuOpen] = useState(false);
     const newMenuRef = useRef<HTMLDivElement>(null);
 
@@ -109,7 +114,7 @@ export const InboxCard: React.FC<InboxCardProps> = ({
             <div className="flex items-center justify-between">
                 <TabPillGroup
                     value={mode}
-                    onChange={(v) => onModeChange(v as 'outflows' | 'inflows')}
+                    onChange={(v) => onModeChange(v as 'outflows' | 'inflows' | 'messages')}
                     trackClassName="h-8 px-1 bg-white rounded-lg outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E9EEF6] flex items-center"
                     indicatorClassName="bg-transparent rounded-md"
                     separator={<div className="w-[1px] h-4 bg-[#E9EEF6] shrink-0" />}
@@ -136,13 +141,23 @@ export const InboxCard: React.FC<InboxCardProps> = ({
                                 </div>
                             ),
                         },
+                        {
+                            value: 'messages',
+                            buttonClassName: 'flex items-center gap-2 px-3 h-8',
+                            label: (
+                                <div data-tour-target="inbox-mode-messages" className="flex items-center gap-2">
+                                    {mode === 'messages' && <span className="w-1 h-1 rounded-full bg-[#0B57D0] md:bg-[#0B57D0]" />}
+                                    <span className={`text-sm ${mode === 'messages' ? 'font-bold text-[#1F1F1F]' : 'font-normal text-gray-400'}`}>Orders &amp; messages</span>
+                                    {unreadOrders > 0 && <span className="min-w-[18px] rounded-full bg-[#C3010A] px-1 text-center text-[10px] font-bold leading-[18px] text-white" aria-label={`${unreadOrders} new orders`}>{unreadOrders > 99 ? '99+' : unreadOrders}</span>}
+                                </div>
+                            ),
+                        },
                     ]}
                 />
 
-                {/* Customer orders and messages from the connected Gmail, Facebook and Instagram */}
-                <button type="button" onClick={() => navigate('/messages')} className="ml-auto mr-2 inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-[#0B57D0] shadow-[inset_0_0_0_1px_#C4C7C5] hover:bg-[#F1F3F4]"><MessageSquare size={13} /> Orders &amp; messages</button>
+                {mode === 'messages' && rightContent}
 
-                {showNew && (
+                {showNew && mode !== 'messages' && (
                     newMenuItems && newMenuItems.length > 0 ? (
                         <div className="relative" ref={newMenuRef} data-tour-target="new-request-btn">
                             <button
@@ -192,8 +207,8 @@ export const InboxCard: React.FC<InboxCardProps> = ({
                 )}
             </div>
 
-            {/* Row 2: status tab pills + search / sort / filter / refresh */}
-            <div className="flex items-center justify-between gap-4">
+            {/* Row 2: status tab pills + search / sort / filter / refresh (the Orders & messages tab brings its own) */}
+            {mode !== 'messages' && <div className="flex items-center justify-between gap-4">
                 {showTabs ? (
                     <div className="flex items-center gap-1 p-1 bg-[#F8FAFD] md:bg-[#F8FAFD] rounded-[10px] overflow-x-auto no-scrollbar">
                         {tabs.map(tab => {
@@ -264,7 +279,7 @@ export const InboxCard: React.FC<InboxCardProps> = ({
                         <RefreshCw size={14} />
                     </button>
                 </div>
-            </div>
+            </div>}
 
             {children}
         </div>

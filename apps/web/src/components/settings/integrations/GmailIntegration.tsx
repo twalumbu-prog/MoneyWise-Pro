@@ -16,16 +16,21 @@ interface EmailConnection {
 /** configured = our own Google connection is set up server-side; composio = Quick connect is. */
 interface GmailStatus { configured: boolean; composio?: boolean; connections: EmailConnection[] }
 
+/** Gmail's multicolour "M" on its own, to sit in a circle or a chip. */
+export const GmailMark: React.FC<{ size?: number }> = ({ size = 16 }) => (
+    <svg viewBox="52 42 88 66" width={size} height={size * 0.75} aria-label="Gmail">
+        <path fill="#4285f4" d="M58 108h14V74L52 59v43c0 3.32 2.69 6 6 6" />
+        <path fill="#34a853" d="M120 108h14c3.32 0 6-2.69 6-6V59l-20 15" />
+        <path fill="#fbbc04" d="M120 48v26l20-15v-8c0-7.42-8.47-11.65-14.4-7.2" />
+        <path fill="#ea4335" d="M72 74V48l24 18 24-18v26L96 92" />
+        <path fill="#c5221f" d="M52 51v8l20 15V48l-5.6-4.2c-5.94-4.45-14.4-.22-14.4 7.2" />
+    </svg>
+);
+
 /** Gmail's multicolour "M" on a white tile — same footprint as IntegrationLogo. */
 export const GmailLogo: React.FC<{ size?: number; className?: string }> = ({ size = 40, className = '' }) => (
     <div className={`rounded-xl bg-white border border-gray-100 flex items-center justify-center shrink-0 shadow-sm ${className}`} style={{ height: size, width: size }}>
-        <svg viewBox="52 42 88 66" width={size * 0.58} height={size * 0.58} aria-label="Gmail">
-            <path fill="#4285f4" d="M58 108h14V74L52 59v43c0 3.32 2.69 6 6 6" />
-            <path fill="#34a853" d="M120 108h14c3.32 0 6-2.69 6-6V59l-20 15" />
-            <path fill="#fbbc04" d="M120 48v26l20-15v-8c0-7.42-8.47-11.65-14.4-7.2" />
-            <path fill="#ea4335" d="M72 74V48l24 18 24-18v26L96 92" />
-            <path fill="#c5221f" d="M52 51v8l20 15V48l-5.6-4.2c-5.94-4.45-14.4-.22-14.4 7.2" />
-        </svg>
+        <GmailMark size={size * 0.58} />
     </div>
 );
 

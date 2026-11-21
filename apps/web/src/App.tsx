@@ -24,7 +24,6 @@ const ImportsDesk = React.lazy(() => import('./pages/ImportsDesk').then(m => ({ 
 const Loans = React.lazy(() => import('./pages/Loans').then(m => ({ default: m.Loans })));
 const LoansDemo = React.lazy(() => import('./pages/LoansDemo').then(m => ({ default: m.LoansDemo })));
 const FundPrices = React.lazy(() => import('./pages/invest/FundPrices').then(m => ({ default: m.FundPrices })));
-const ChannelInbox = React.lazy(() => import('./pages/ChannelInbox').then(m => ({ default: m.ChannelInbox })));
 const BlueOpusShares = React.lazy(() => import('./pages/invest/BlueOpusShares').then(m => ({ default: m.BlueOpusShares })));
 const MarketplaceAds = React.lazy(() => import('./pages/MarketplaceAds').then(m => ({ default: m.MarketplaceAds })));
 const MarketplacePayLater = React.lazy(() => import('./pages/MarketplacePayLater').then(m => ({ default: m.MarketplacePayLater })));
@@ -320,7 +319,7 @@ function App() {
                         <Route path="/marketplace/requests/:id" element={<ProtectedRoute><MarketplaceRequests /></ProtectedRoute>} />
                         <Route path="/marketplace/price-desk" element={<ProtectedRoute><MarketplacePriceDesk /></ProtectedRoute>} />
                         <Route path="/marketplace/import-desk" element={<ProtectedRoute><ImportsDesk /></ProtectedRoute>} />
-                        <Route path="/messages" element={<ProtectedRoute><ChannelInbox /></ProtectedRoute>} />
+                        <Route path="/messages" element={<Navigate to="/requisitions?inbox=messages" replace />} />
                         <Route path="/invest/prices" element={<ProtectedRoute><FundPrices /></ProtectedRoute>} />
                         <Route path="/invest/blue-opus" element={<ProtectedRoute><BlueOpusShares /></ProtectedRoute>} />
                         <Route path="/loans" element={<ProtectedRoute><Loans /></ProtectedRoute>} />
