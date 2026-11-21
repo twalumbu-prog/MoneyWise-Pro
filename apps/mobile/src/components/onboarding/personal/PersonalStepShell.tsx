@@ -11,7 +11,7 @@ import { colors, fonts, radius } from '../../../theme/tokens';
  * steps only) and Continue. The bottom bar rides above the keyboard.
  */
 export function PersonalStepShell({
-    def, progress, onBack, onSkip, onContinue, continueDisabled, saving, error, continueLabel = 'Continue', children,
+    def, progress, onBack, onSkip, onContinue, continueDisabled, saving, error, continueLabel = 'Continue', stickyAbove, children,
 }: {
     def: PersonalStepDef;
     /** 0–1 through the whole flow. */
@@ -24,6 +24,8 @@ export function PersonalStepShell({
     saving?: 'continue' | 'skip' | null;
     error?: string | null;
     continueLabel?: string;
+    /** Pinned right above the Skip/Continue bar, outside the scroll area (a running total, say). */
+    stickyAbove?: React.ReactNode;
     children: React.ReactNode;
 }) {
     const insets = useSafeAreaInsets();
@@ -38,28 +40,34 @@ export function PersonalStepShell({
                         <ChevronLeft size={24} color={colors.text} />
                     </Pressable>
                 ) : <View style={styles.circleSpacer} />}
-                <View style={styles.headerMid}>
+                <View style={{ flex: 1 }}>
                     <Text style={styles.chapter}>{PERSONAL_CHAPTERS[def.chapter]}</Text>
-                    <View style={styles.track} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: Math.round(progress * 100) }}>
-                        <View style={[styles.fill, { width: `${Math.max(4, Math.round(progress * 100))}%` }]} />
-                    </View>
                 </View>
                 <Pressable onPress={() => setHelpOpen(true)} hitSlop={12} accessibilityRole="button" accessibilityLabel="Help with this step" style={styles.circleBtn}>
                     <HelpCircle size={22} color={colors.text} />
                 </Pressable>
             </View>
 
+            {/* Edge to edge, directly above the step's title. */}
+            <View style={styles.track} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: Math.round(progress * 100) }}>
+                <View style={[styles.fill, { width: `${Math.max(4, Math.round(progress * 100))}%` }]} />
+            </View>
+
             <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
                 <Text style={styles.title} accessibilityRole="header">{def.title}</Text>
                 <Text style={styles.subtitle}>{def.subtitle}</Text>
                 <View style={{ marginTop: 28 }}>{children}</View>
-                {!!error && (
-                    <View style={styles.errorBox} accessibilityLiveRegion="polite">
-                        <AlertCircle size={18} color="#B91C1C" />
-                        <Text style={styles.errorText}>{error}</Text>
-                    </View>
-                )}
             </ScrollView>
+
+            {/* Outside the scroll area so a failed save is always visible, however long the screen is. */}
+            {!!error && (
+                <View style={[styles.errorBox, { marginHorizontal: 20, marginTop: 8 }]} accessibilityLiveRegion="polite">
+                    <AlertCircle size={18} color="#B91C1C" />
+                    <Text style={styles.errorText}>{error}</Text>
+                </View>
+            )}
+
+            {stickyAbove}
 
             <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
                 {onSkip && (
@@ -102,11 +110,10 @@ const styles = StyleSheet.create({
         shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 2,
     },
     circleSpacer: { width: 44, height: 44 },
-    headerMid: { flex: 1, alignItems: 'center', gap: 6 },
-    chapter: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.textMuted, letterSpacing: 0.3 },
-    track: { width: '100%', height: 4, borderRadius: 2, backgroundColor: colors.borderStrong, overflow: 'hidden' },
-    fill: { height: 4, borderRadius: 2, backgroundColor: colors.blue },
-    body: { paddingHorizontal: 24, paddingTop: 36, paddingBottom: 24 },
+    chapter: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.textMuted, letterSpacing: 0.3, textAlign: 'center' },
+    track: { alignSelf: 'stretch', height: 4, marginTop: 16, backgroundColor: colors.borderStrong, overflow: 'hidden' },
+    fill: { height: 4, backgroundColor: colors.blue },
+    body: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: 24 },
     title: { fontFamily: fonts.display, fontSize: 30, lineHeight: 36, color: colors.text },
     subtitle: { fontFamily: fonts.body, fontSize: 15, lineHeight: 21, color: colors.textMuted, marginTop: 8 },
     errorBox: { flexDirection: 'row', gap: 8, alignItems: 'center', backgroundColor: '#FEF2F2', borderRadius: radius.sm, padding: 12, marginTop: 20 },

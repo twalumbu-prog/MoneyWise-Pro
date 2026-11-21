@@ -46,7 +46,7 @@ export function MoneyField({ label, value, onChange, error, autoFocus, hint }: {
 
 export function Sheet({ visible, title, onClose, children, primary, secondary, busy, error }: {
     visible: boolean; title: string; onClose: () => void; children: React.ReactNode;
-    primary: { label: string; onPress: () => void; disabled?: boolean };
+    primary?: { label: string; onPress: () => void; disabled?: boolean };
     secondary?: { label: string; onPress: () => void; danger?: boolean };
     busy?: boolean; error?: string | null;
 }) {
@@ -66,16 +66,18 @@ export function Sheet({ visible, title, onClose, children, primary, secondary, b
                             <View style={styles.errorBox}><AlertCircle size={18} color="#B91C1C" /><Text style={styles.errorText}>{error}</Text></View>
                         )}
                     </ScrollView>
-                    <View style={styles.sheetFooter}>
+                    {(primary || secondary) && <View style={styles.sheetFooter}>
                         {secondary && (
                             <Pressable onPress={secondary.onPress} disabled={busy} style={[styles.btn, styles.btnSecondary]} accessibilityRole="button">
                                 <Text style={[styles.btnSecondaryText, secondary.danger && { color: colors.danger }]}>{secondary.label}</Text>
                             </Pressable>
                         )}
-                        <Pressable onPress={primary.onPress} disabled={busy || primary.disabled} style={[styles.btn, styles.btnPrimary, (busy || primary.disabled) && { backgroundColor: '#B3D2FF' }]} accessibilityRole="button">
-                            {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.btnPrimaryText}>{primary.label}</Text>}
-                        </Pressable>
-                    </View>
+                        {primary && (
+                            <Pressable onPress={primary.onPress} disabled={busy || primary.disabled} style={[styles.btn, styles.btnPrimary, (busy || primary.disabled) && { backgroundColor: '#B3D2FF' }]} accessibilityRole="button">
+                                {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.btnPrimaryText}>{primary.label}</Text>}
+                            </Pressable>
+                        )}
+                    </View>}
                 </View>
             </KeyboardAvoidingView>
         </Modal>

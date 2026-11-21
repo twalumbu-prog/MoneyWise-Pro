@@ -84,7 +84,7 @@ export default function PersonalOnboardingScreen() {
             setCursor(single ? (params.step as PersonalStepKey) : firstOpenPersonalStep(s.steps)?.key ?? 'done');
             void refreshMoney();
         } catch (e: any) {
-            setLoadError(e?.message || 'Could not load your setup.');
+            setLoadError(e?.status === 404 ? 'The server doesn’t have the new setup yet. Try again after the next update.' : e?.message || 'Could not load your setup.');
         }
     }, [router, single, params.step, service, refreshMoney]);
 
@@ -99,14 +99,18 @@ export default function PersonalOnboardingScreen() {
         setFieldErrors({});
     }, [cursor, single]);
 
+    // Leaves a single-step screen. With nothing behind it (opened straight from a link on a fresh launch) "back" does
+    // nothing, which looked like a dead Done button, so go home instead.
+    const exitSingle = useCallback(() => { if (router.canGoBack()) router.back(); else router.replace('/'); }, [router]);
+
     const index = cursor && cursor !== 'done' ? built.findIndex((s) => s.key === cursor) : built.length;
 
     const goBack = useCallback(() => {
-        if (single) { router.back(); return true; }
+        if (single) { exitSingle(); return true; }
         if (cursor === 'done') { setCursor(built[built.length - 1].key); return true; }
         if (index > 0) { setCursor(built[index - 1].key); return true; }
         return false;
-    }, [single, cursor, index, built, router]);
+    }, [single, cursor, index, built, exitSingle]);
 
     // Android back follows the wizard's Back instead of leaving the app mid-setup.
     useEffect(() => {
@@ -119,9 +123,9 @@ export default function PersonalOnboardingScreen() {
         void queryClient.invalidateQueries({ queryKey: PERSONAL_ONBOARDING_QUERY_KEY });
         // The workspace may have been renamed after the first name.
         if (key === 'name' && !preview) void refreshUserOrganizations().catch(() => undefined);
-        if (single) { router.back(); return; }
+        if (single) { exitSingle(); return; }
         setCursor(built[built.findIndex((s) => s.key === key) + 1]?.key ?? 'done');
-    }, [queryClient, preview, refreshUserOrganizations, single, router, built]);
+    }, [queryClient, preview, refreshUserOrganizations, single, exitSingle, built]);
 
     const run = useCallback(async (key: PersonalStepKey, how: 'continue' | 'skip', fn: () => Promise<{ steps: PersonalStepsMap } | null>) => {
         if (saving) return;
