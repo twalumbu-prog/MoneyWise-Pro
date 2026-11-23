@@ -461,8 +461,27 @@ function NetWorthGrowth({ active }: { active: boolean }) {
     );
 }
 
+const DESIGN_HERO_H = 380; // the height every illustration is drawn for
+
+/** Draws the illustration at its design size and shrinks it, as a whole, to fit short screens, so nothing overlaps. */
+function FitHero({ children }: { children: React.ReactNode }) {
+    const [h, setH] = useState(0);
+    const k = h > 0 ? Math.min(1, h / DESIGN_HERO_H) : 1;
+    return (
+        <View style={{ flex: 1 }} onLayout={(e) => setH(e.nativeEvent.layout.height)}>
+            {h > 0 && (
+                <View style={{ position: 'absolute', left: 0, right: 0, top: (h - DESIGN_HERO_H) / 2, height: DESIGN_HERO_H, transform: [{ scale: k }] }}>
+                    {children}
+                </View>
+            )}
+        </View>
+    );
+}
+
 export function WelcomeHero({ slide, active = true }: { slide: WelcomeSlideKey; active?: boolean }) {
-    if (slide === 'accounts') return <AccountsStack active={active} />;
-    if (slide === 'capture') return <CaptureStack active={active} />;
-    return <NetWorthGrowth active={active} />;
+    return (
+        <FitHero>
+            {slide === 'accounts' ? <AccountsStack active={active} /> : slide === 'capture' ? <CaptureStack active={active} /> : <NetWorthGrowth active={active} />}
+        </FitHero>
+    );
 }
