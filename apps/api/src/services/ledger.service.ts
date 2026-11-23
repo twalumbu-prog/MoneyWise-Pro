@@ -33,6 +33,8 @@ const suspenseCache = new Map<string, string>(); // org → suspense account id
 // System account codes used for contra routing.
 const CODE_MAIN_WALLET = 'QB-1150040000';
 const CODE_UNCATEGORISED_ASSET = 'QB-1';
+/** An org's own Airtel Money / mobile-money asset account. Only orgs that have created it use it; the rest keep the Uncategorised Asset fallback. */
+const CODE_AIRTEL_MONEY = 'AIRTEL-MONEY';
 // Master Fees payments collected into a Lenco account separate from the
 // MoneyWise wallet (see services/masterfees.service.ts) land here.
 const CODE_MASTERFEES_COLLECTIONS = 'QB-MF-CASH';
@@ -361,6 +363,11 @@ async function resolveCashAccountInner(ce: CashbookRow, create = true): Promise<
             .limit(1)
             .maybeSingle();
         return cashAcct?.id ?? (await getAssetAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
+    }
+
+    if (ce.account_type === 'AIRTEL_MONEY') {
+        const airtel = await getAssetAccountIdByCode(orgId, CODE_AIRTEL_MONEY);
+        if (airtel) return airtel;
     }
 
     return getAssetAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET);
