@@ -118,6 +118,8 @@ async function upsertProductRows(rows: CustomerRow[], source: CrmProduct) {
         }
         // A hand-edited email/phone in the CRM wins over the synced one.
         const patch: any = { ...body, email: prior.email ?? body.email, phone: prior.phone ?? body.phone };
+        // A [TEST]/[DUPLICATE] tag set in the CRM (metadata.crm_tag) survives re-syncs.
+        if (withMeta && prior.metadata?.crm_tag && body.notes) patch.notes = `[${prior.metadata.crm_tag}] ${body.notes}`;
         if (withMeta) patch.metadata = { ...(prior.metadata ?? {}), ...(body.metadata ?? {}) };
         const same = ['name', 'email', 'phone', 'notes', 'status'].every(k => (prior[k] ?? null) === (patch[k] ?? null))
             && (!withMeta || JSON.stringify(prior.metadata ?? {}) === JSON.stringify(patch.metadata ?? {}));
