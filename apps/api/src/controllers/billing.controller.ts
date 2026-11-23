@@ -128,6 +128,41 @@ async function ensureCurrentInvoice(sub: any): Promise<void> {
         });
 }
 
+/**
+ * Close every elapsed billing period of a premium subscription: issue its invoice,
+ * then start the next period. Without this a period that ends is never replaced
+ * (paying an invoice does not move the period), so no new invoice ever appears.
+ * Called from the cron tick AND the billing page so it never depends on cron alone.
+ */
+export async function rollElapsedPeriods(original: any): Promise<{ sub: any; closed: number }> {
+    let sub: any = original;
+    let closed = 0;
+    if (sub.plan_id !== 'premium' || sub.status === 'cancelled') return { sub, closed };
+    // Cap guards against runaway loops on bad data.
+    for (let i = 0; i < 24 && sub.current_period_end <= todayStr(); i++) {
+        await ensureCurrentInvoice(sub);
+        const nextStart = sub.current_period_end;
+        const { data: advanced, error: advErr } = await supabase
+            .from('organization_subscriptions')
+            .update({
+                current_period_start: nextStart,
+                current_period_end: addOneMonth(nextStart),
+                fee_credits_zmw: 0,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', sub.id)
+            .eq('current_period_end', sub.current_period_end) // optimistic: a concurrent roll wins, we stop
+            .select()
+            .maybeSingle();
+        if (advErr) throw new Error(advErr.message);
+        if (!advanced) break;
+        sub = advanced;
+        closed++;
+    }
+    await ensureCurrentInvoice(sub); // the (new) current period always has its invoice
+    return { sub, closed };
+}
+
 // ──────────────────────────────────────────────
 // GET /billing/subscription
 // ──────────────────────────────────────────────
@@ -135,7 +170,11 @@ export async function getSubscription(req: Request, res: Response) {
     try {
         const organizationId = (req as any).user?.organization_id;
         if (!organizationId) return res.status(400).json({ error: 'No organization found for this user' });
-        const sub = await ensureSubscription(organizationId);
+        let sub = await ensureSubscription(organizationId);
+
+        // Roll any elapsed billing period first so the new cycle's invoice exists
+        sub = (await rollElapsedPeriods(sub)).sub;
+        await refreshSubscriptionStatus(sub.id).catch(() => {});
 
         // Confirm any wallet payment Lenco accepted but we haven't booked yet
         await settleProcessingInvoices(organizationId).catch(e => console.error('[Billing] settle error:', e.message));
@@ -615,7 +654,7 @@ async function settleProcessingInvoices(organizationId: string): Promise<void> {
 }
 
 /** active ⇄ past_due: an org is past due while any invoice is unpaid after its due date. */
-async function refreshSubscriptionStatus(subscriptionId: string): Promise<void> {
+export async function refreshSubscriptionStatus(subscriptionId: string): Promise<void> {
     const { count } = await supabase
         .from('subscription_invoices')
         .select('id', { count: 'exact', head: true })
@@ -885,25 +924,9 @@ export async function billingTick(req: Request, res: Response) {
             try {
                 let sub: any = original;
 
-                // Close every elapsed period (cap guards against runaway loops on bad data).
-                for (let i = 0; i < 24 && sub.current_period_end <= todayStr(); i++) {
-                    await ensureCurrentInvoice(sub);
-                    const nextStart = sub.current_period_end;
-                    const { data: advanced, error: advErr } = await supabase
-                        .from('organization_subscriptions')
-                        .update({
-                            current_period_start: nextStart,
-                            current_period_end: addOneMonth(nextStart),
-                            fee_credits_zmw: 0,
-                            updated_at: new Date().toISOString(),
-                        })
-                        .eq('id', sub.id)
-                        .select()
-                        .single();
-                    if (advErr) throw new Error(advErr.message);
-                    sub = advanced;
-                    summary.periodsClosed++;
-                }
+                const rolled = await rollElapsedPeriods(sub);
+                sub = rolled.sub;
+                summary.periodsClosed += rolled.closed;
                 await ensureCurrentInvoice(sub);
                 await settleProcessingInvoices(sub.organization_id);
 

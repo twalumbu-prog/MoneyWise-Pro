@@ -16,7 +16,9 @@
         "test:capture": "tsc && node dist/scripts/test_capture_logic.js",
         "test:capture-chat": "tsc && node dist/scripts/test_capture_chat.js",
         "test:capture-flow": "tsc && node dist/scripts/test_capture_flow.js",
-        "test:sales": "tsc && node dist/scripts/test_public_sales.js"
+        "test:onboarding": "tsc && node dist/scripts/test_personal_onboarding.js",
+        "test:sales": "tsc && node dist/scripts/test_public_sales.js",
+        "test:transfers": "tsc && node dist/scripts/test_deposit_transfer.js"
     },
     "dependencies": {
         "@composio/core": "0.18.0",

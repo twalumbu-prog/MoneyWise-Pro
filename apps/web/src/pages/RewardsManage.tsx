@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Pencil, Plus, Ticket, Trash2 } from 'lucide-react';
 import { rewardsService } from 'core';
-import type { RewardItem, RewardItemInput, RewardType } from 'core';
+import type { RewardItem, RewardItemInput, RewardType, VoucherCheck } from 'core';
 import { PagePanel } from '../components/ui/PagePanel';
 import { Dialog, ErrorNote, PrimaryButton, TonalButton, fieldClass, labelClass } from '../components/ui/Dialog';
 
@@ -28,6 +28,8 @@ export const RewardsManage: React.FC = () => {
     const [voucherCode, setVoucherCode] = useState('');
     const [voucherMsg, setVoucherMsg] = useState<{ ok: boolean; text: string } | null>(null);
     const [voucherBusy, setVoucherBusy] = useState(false);
+    // A voucher that has been looked at (not yet used): what it is worth and whose it is.
+    const [checked, setChecked] = useState<VoucherCheck | null>(null);
 
     useEffect(() => {
         if (!program) return;
@@ -61,20 +63,37 @@ export const RewardsManage: React.FC = () => {
         }
     };
 
-    const useVoucher = async () => {
+    // Step 1: look at the voucher. Nothing is used yet, so staff see what it is worth and what it covers before giving the discount.
+    const checkVoucher = async () => {
         if (!voucherCode.trim()) return;
-        setVoucherBusy(true); setVoucherMsg(null);
+        setVoucherBusy(true); setVoucherMsg(null); setChecked(null);
         try {
-            const r = await rewardsService.useVoucher(voucherCode.trim().toUpperCase());
-            setVoucherMsg({ ok: true, text: `${r.title} marked as used for ${r.customer}.` });
-            setVoucherCode('');
-            qc.invalidateQueries({ queryKey: ['rewards'] });
+            setChecked(await rewardsService.checkVoucher(voucherCode.trim().toUpperCase()));
         } catch (e: any) {
             setVoucherMsg({ ok: false, text: e?.message || 'That code didn’t work.' });
         } finally {
             setVoucherBusy(false);
         }
     };
+
+    // Step 2: the customer has been given the discount; mark the voucher used so it can't be used again.
+    const useVoucher = async () => {
+        if (!checked) return;
+        setVoucherBusy(true); setVoucherMsg(null);
+        try {
+            const r = await rewardsService.useVoucher(checked.code);
+            setVoucherMsg({ ok: true, text: `${r.title} marked as used for ${r.customer}.` });
+            setVoucherCode(''); setChecked(null);
+            qc.invalidateQueries({ queryKey: ['rewards'] });
+        } catch (e: any) {
+            setVoucherMsg({ ok: false, text: e?.message || 'That code didn’t work.' });
+            setChecked(null);
+        } finally {
+            setVoucherBusy(false);
+        }
+    };
+
+    const worth = (v: VoucherCheck) => (v.rewardType === 'PERCENT_OFF' ? `${v.value}% off` : v.rewardType === 'FREE_ITEM' ? 'A free item' : `K${v.value.toLocaleString()} off`);
 
     const remove = async (item: RewardItem) => {
         try { await rewardsService.deleteItem(item.id); qc.invalidateQueries({ queryKey: ['rewards', 'items'] }); }
@@ -145,11 +164,26 @@ export const RewardsManage: React.FC = () => {
 
                     <section className="rounded-2xl border border-[rgba(116,119,117,0.22)] bg-white p-5">
                         <h2 className="mb-1 flex items-center gap-2 text-sm font-bold text-[#1F1F1F]"><Ticket size={16} className="text-[#0B57D0]" /> Redeem a customer’s voucher</h2>
-                        <p className="mb-3 text-xs text-[#5F6368]">Enter the code a customer shows you to mark it as used.</p>
+                        <p className="mb-3 text-xs text-[#5F6368]">Enter the code a customer shows you. Check it first to see what it is worth and what it covers, then give the discount and mark it used.</p>
                         <div className="flex gap-2">
-                            <input className={`${fieldClass} uppercase tracking-widest`} value={voucherCode} onChange={(e) => { setVoucherCode(e.target.value); setVoucherMsg(null); }} placeholder="Voucher code" />
-                            <PrimaryButton onClick={useVoucher} busy={voucherBusy} disabled={!voucherCode.trim()} className="px-6">Use</PrimaryButton>
+                            <input className={`${fieldClass} uppercase tracking-widest`} value={voucherCode} onChange={(e) => { setVoucherCode(e.target.value); setVoucherMsg(null); setChecked(null); }} onKeyDown={(e) => { if (e.key === 'Enter') checkVoucher(); }} placeholder="Voucher code" />
+                            <PrimaryButton onClick={checkVoucher} busy={voucherBusy && !checked} disabled={!voucherCode.trim()} className="px-6">Check</PrimaryButton>
                         </div>
+                        {checked && (
+                            <div className="mt-3 rounded-xl border border-[#C7DBFB] bg-[#F4F8FF] p-4">
+                                <p className="text-sm font-bold text-[#1F1F1F]">{checked.title}</p>
+                                <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+                                    <dt className="text-[#5F6368]">Worth</dt><dd className="font-semibold text-[#1F1F1F]">{worth(checked)}</dd>
+                                    <dt className="text-[#5F6368]">Covers</dt><dd className="text-[#1F1F1F]">{checked.appliesTo || 'The whole order'}</dd>
+                                    <dt className="text-[#5F6368]">Customer</dt><dd className="text-[#1F1F1F]">{checked.customer}</dd>
+                                </dl>
+                                <p className="mt-2 text-xs text-[#5F6368]">Valid and unused. Give the customer this discount, then mark it used.</p>
+                                <div className="mt-3 flex gap-2">
+                                    <PrimaryButton onClick={useVoucher} busy={voucherBusy} className="px-5">Mark as used</PrimaryButton>
+                                    <TonalButton onClick={() => setChecked(null)}>Cancel</TonalButton>
+                                </div>
+                            </div>
+                        )}
                         {voucherMsg && <p role="status" className={`mt-3 rounded-xl px-4 py-3 text-sm ${voucherMsg.ok ? 'bg-[#E6F4EA] text-[#137333]' : 'bg-[#FCE8E6] text-[#B31412]'}`}>{voucherMsg.text}</p>}
                     </section>
                 </div>

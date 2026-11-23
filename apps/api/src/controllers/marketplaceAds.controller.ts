@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { supabase } from '../lib/supabase';
 import { payLinkService } from '../services/payLink.service';
 import { ImageSearchError, describeImage } from '../services/imageSearch.service';
+import { creditBalance } from '../services/progress.service';
 import { AdError, cancelCampaign, catalog, createCampaign, myCampaigns, pendingCampaigns, recentReviewed, recordAdEvents, reviewCampaign } from '../services/ads.service';
 
 const ctxOf = (req: any) => ({ userId: req.user.id, orgId: req.user.organization_id, role: req.user.role });
@@ -22,7 +23,7 @@ export const adsOverview = async (req: any, res: Response) => {
             supabase.from('products').select('id, name, image_url, price').eq('organization_id', orgId).eq('is_active', true).eq('marketplace_listed', true).order('created_at', { ascending: false }).limit(200),
             payLinkService.payerWallets(orgId),
         ]);
-        res.json({ catalog: cat, campaigns, items: items.data ?? [], wallets });
+        res.json({ catalog: cat, campaigns, items: items.data ?? [], wallets, feeCredit: await creditBalance(req.user.id) });
     } catch (e) { fail(res, e, 'load your ads'); }
 };
 
@@ -30,7 +31,7 @@ export const adsOverview = async (req: any, res: Response) => {
 export const buyAd = async (req: any, res: Response) => {
     try {
         const b = req.body ?? {};
-        res.status(201).json({ campaign: await createCampaign(ctxOf(req), { kind: b.kind, productId: b.productId, days: Number(b.days), startDate: b.startDate, walletId: b.walletId, idempotencyKey: b.idempotencyKey }) });
+        res.status(201).json({ campaign: await createCampaign(ctxOf(req), { kind: b.kind, productId: b.productId, days: Number(b.days), startDate: b.startDate, walletId: b.walletId, idempotencyKey: b.idempotencyKey, useCredit: b.useCredit === true }) });
     } catch (e) { fail(res, e, 'book the ad'); }
 };
 

@@ -65,6 +65,18 @@ export interface RewardOption {
     pointsToGo: number;
 }
 
+/** A customer's voucher, looked at (not used) by staff: what it is worth, what it covers, whose it is, and (given an order) how much it takes off. */
+export interface VoucherCheck {
+    code: string;
+    title: string;
+    rewardType: RewardType;
+    value: number;
+    appliesTo: string | null;
+    customer: string;
+    issuedAt: string;
+    discount?: { amount: number; covered: number; reason?: string };
+}
+
 /** A reward a business has defined (business side). */
 export interface RewardItem {
     id: string;
@@ -173,6 +185,10 @@ export const rewardsService = {
     },
     deleteItem(id: string): Promise<{ ok: true }> {
         return apiJson(`/rewards/items/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    },
+    /** Staff look at a voucher before using it. Changes nothing. With `items` (the order's lines) it also says how much comes off. */
+    checkVoucher(code: string, items?: { product_id: string; unit_price: number; quantity: number }[]): Promise<VoucherCheck> {
+        return apiJson('/rewards/vouchers/check', { method: 'POST', body: JSON.stringify({ code, items }) });
     },
     /** A business marks a customer's voucher code as used. */
     useVoucher(code: string): Promise<{ title: string; value: number; customer: string }> {

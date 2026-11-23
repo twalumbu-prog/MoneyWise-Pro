@@ -54,6 +54,13 @@ router.delete('/token', handle('token', async (req) => { await momo.revokeToken(
 router.get('/balances', handle('balances', (req) => momo.balances(req.user.id, req.user.organization_id)));
 router.get('/', handle('list', (req) => momo.list(req.user.id, req.user.organization_id, req.query.status)));
 router.post('/paste', handle('paste', (req) => momo.ingest({ userId: req.user.id, orgId: req.user.organization_id, source: 'PASTE', text: req.body?.text })));
+router.get('/activity', handle('activity', (req) => momo.listWithEntries(req.user.id, req.user.organization_id, req.query.status)));
+router.get('/balance-checks/all', handle('balance-all', (req) => momo.listAllBalanceChecks(req.user.id, req.user.organization_id)));
+router.get('/ignored', handle('ignored', (req) => momo.listIgnored(req.user.id, req.user.organization_id)));
+router.post('/test-parse', handle('test-parse', async (req) => momo.testParse(req.body?.text)));
+router.get('/balance-checks', handle('balance-checks', (req) => momo.listBalanceChecks(req.user.id, req.user.organization_id)));
+router.post('/balance-checks/:id/adjust', handle('balance-adjust', (req) => momo.adjustToBalance(req.user.id, req.user.organization_id, req.params.id)));
+router.post('/balance-checks/:id/dismiss', handle('balance-dismiss', (req) => momo.dismissBalanceCheck(req.user.id, req.user.organization_id, req.params.id)));
 router.post('/:id/post', handle('post', (req) => momo.post(req.user.id, req.user.organization_id, req.params.id, req.body ?? {})));
 router.post('/:id/dismiss', handle('dismiss', (req) => momo.dismiss(req.user.id, req.user.organization_id, req.params.id)));
 

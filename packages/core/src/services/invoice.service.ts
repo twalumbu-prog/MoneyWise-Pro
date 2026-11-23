@@ -32,7 +32,17 @@ export interface CustomerInvoice {
     notes: string | null;
     last_sent_at: string | null;
     sent_count: number;
+    /** Reminders sent to the CUSTOMER on WhatsApp (separate from the finance team's follow-up emails). */
+    customer_reminder_count?: number;
+    customer_last_reminder_at?: string | null;
     created_at: string;
+}
+
+/** How a business reminds the customers who owe it money. Off until the business switches it on. */
+export interface ReminderSettings {
+    enabled: boolean;
+    repeat_every_days: number;
+    max_reminders: number;
 }
 
 export interface InvoicePaymentRow {
@@ -109,6 +119,17 @@ export const invoiceService = {
 
     send(id: string, email?: string): Promise<{ success: boolean; sent_to: string }> {
         return apiJson(`/invoices/${id}/send`, { method: 'POST', body: JSON.stringify({ email }) });
+    },
+
+    getReminderSettings(): Promise<ReminderSettings> {
+        return apiJson('/invoices/reminder-settings');
+    },
+    saveReminderSettings(patch: Partial<ReminderSettings>): Promise<ReminderSettings> {
+        return apiJson('/invoices/reminder-settings', { method: 'PUT', body: JSON.stringify(patch) });
+    },
+    /** Reminds this invoice's customer on WhatsApp now, with a pay link for the current balance. At most once a day per customer. */
+    remind(id: string): Promise<{ sent: true }> {
+        return apiJson(`/invoices/${id}/remind`, { method: 'POST' });
     },
 
     /** The invoice's one-time "Pay now" link for its current balance (created if needed). */

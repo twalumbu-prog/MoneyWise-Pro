@@ -29,7 +29,7 @@ import {
     correctMasterFeesPaymentDates,
     syncStudentsToCrmNow,
 } from '../controllers/masterfees.controller';
-import { mfRecordPayment, mfVoidPayment, mfCreateStudent, mfUpdateStudent, mfCreateInvoice, mfVoidInvoice } from '../controllers/masterfeesWrite.controller';
+import { mfRecordPayment, mfVoidPayment, mfCreateStudent, mfUpdateStudent, mfCreateInvoice, mfVoidInvoice, mfReplacePayment, mfReplaceInvoice, mfRecent } from '../controllers/masterfeesWrite.controller';
 
 import {
     getMetaStatus,
@@ -51,6 +51,7 @@ import {
     syncSageNow,
 } from '../controllers/sage.controller';
 import { composioConnect, composioComplete } from '../controllers/composio.controller';
+import { getChannelInbox, getChannelInboxItem, getInboxUnread, markInboxSeen } from '../controllers/channelInbox.controller';
 import {
     getGmailStatus,
     getGmailConnectUrl,
@@ -113,6 +114,10 @@ router.post('/masterfees/write/students', requireAuth, mfCreateStudent);
 router.patch('/masterfees/write/students/:id', requireAuth, mfUpdateStudent);
 router.post('/masterfees/write/invoices', requireAuth, mfCreateInvoice);
 router.post('/masterfees/write/invoices/:id/void', requireAuth, mfVoidInvoice);
+// Edit = void the old record and record the corrected one under a new reference (Master Fees has no edit).
+router.post('/masterfees/write/payments/:id/replace', requireAuth, mfReplacePayment);
+router.post('/masterfees/write/invoices/:id/replace', requireAuth, mfReplaceInvoice);
+router.get('/masterfees/write/recent', requireAuth, mfRecent);
 
 // ── Meta messaging (WhatsApp / Facebook / Instagram) ─────────────────────────
 // The webhook and data-deletion callback have no session: Meta signs them, and the handlers verify that signature.
@@ -143,6 +148,12 @@ router.post('/gmail/sync', gmailSyncCron);
 router.get('/gmail/status', requireAuth, getGmailStatus);
 router.get('/gmail/connect', requireAuth, getGmailConnectUrl);
 router.delete('/gmail/:id', requireAuth, disconnectGmail);
+
+// ── The connected-channel inbox: emails and customer messages the connections bring in (orders, payments, invoices)
+router.get('/inbox', requireAuth, getChannelInbox);
+router.get('/inbox/unread', requireAuth, getInboxUnread);
+router.post('/inbox/seen', requireAuth, markInboxSeen);
+router.get('/inbox/:source/:id', requireAuth, getChannelInboxItem);
 
 // ── Quick connect via Composio (Gmail, Facebook, Instagram) — the alternative to the direct connections above ──
 router.post('/composio/:toolkit/connect', requireAuth, composioConnect);

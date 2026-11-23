@@ -3,6 +3,7 @@ import { ArrowDownLeft, ArrowUpRight } from 'lucide-react-native';
 import { formatKwacha, formatShortDate } from 'core';
 import type { CashbookEntry } from 'core';
 import { colors, fonts } from '../../theme/tokens';
+import { entryLabel } from '../../lib/entryLabel';
 
 /**
  * A ledger line. Double-entry means every row carries both a debit and a credit
@@ -14,8 +15,7 @@ export const TransactionRow: React.FC<{
     onPress: () => void;
 }> = ({ entry, onPress }) => {
     const isInflow = (entry.debit ?? 0) > 0;
-    // Deposits awaiting Lenco are stored as "PENDING_INTENT: <purpose> | Ref: <ref>"; show just the purpose.
-    const label = (entry.description || '').replace(/^PENDING_INTENT:\s*/i, '').replace(/\s*\|\s*Ref:.*$/i, '') || entry.description;
+    const label = entryLabel(entry);
     const amount = isInflow ? entry.debit : entry.credit;
 
     return (

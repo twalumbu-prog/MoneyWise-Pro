@@ -31,6 +31,7 @@ import {
     deleteStatementImport,
 } from '../controllers/externalWallets.controller';
 import { createSale, getSaleByExternalReference } from '../controllers/publicSales.controller';
+import { createTransfer, getTransfer } from '../controllers/publicTransfers.controller';
 
 const router = Router();
 
@@ -63,6 +64,10 @@ router.patch('/products/:id', requireScope('write'), updateProduct);
 // ── Sales (paid outside MoneyWise: cash / mobile money / bank) ───────────────
 router.get('/sales', requireScope('read'), getSaleByExternalReference);
 router.post('/sales', requireScope('write'), createSale);
+
+// ── Transfers (sale paid into Airtel/cash/bank → deposit into the MoneyWise wallet) ──
+router.get('/transfers', requireScope('read'), getTransfer);
+router.post('/transfers', requireScope('write'), createTransfer);
 
 // ── Payment Links ─────────────────────────────────────────────────────────────
 router.get('/payment-links', requireScope('read'), getPaymentLinks);

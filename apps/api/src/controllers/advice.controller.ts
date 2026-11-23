@@ -21,3 +21,14 @@ export const setSharing = async (req: any, res: Response) => {
         res.json(await svc.setSharing(req.user.organization_id, req.body?.sharing === true));
     } catch (e) { fail(res, e, 'save the sharing setting'); }
 };
+export const suppliers = async (req: any, res: Response) => { try { res.json({ suppliers: await svc.supplierOptions(req.params.id) }); } catch (e) { fail(res, e, 'load where businesses buy'); } };
+export const getSupplierSharing = async (req: any, res: Response) => {
+    try { res.json(req.user.organization_id ? await svc.getSupplierSharing(req.user.organization_id) : { supplierSharing: false }); } catch (e) { fail(res, e, 'load the sharing setting'); }
+};
+export const setSupplierSharing = async (req: any, res: Response) => {
+    try {
+        if (!req.user.organization_id) return res.status(400).json({ error: 'No business on this account.' });
+        if (req.user.role !== 'ADMIN') return res.status(403).json({ error: 'Only the account holder can change this.' });
+        res.json(await svc.setSupplierSharing(req.user.organization_id, req.body?.supplierSharing === true));
+    } catch (e) { fail(res, e, 'save the sharing setting'); }
+};

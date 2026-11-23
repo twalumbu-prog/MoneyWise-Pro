@@ -38,26 +38,26 @@ export const isGmailConfigured = () =>
 const b64url = (b: Buffer | string) => Buffer.from(b).toString('base64url');
 const sign = (payload: string) => crypto.createHmac('sha256', process.env.GOOGLE_CLIENT_SECRET || '').update(payload).digest('base64url');
 
-export function createState(organizationId: string, userId: string): string {
-    const payload = b64url(JSON.stringify({ o: organizationId, u: userId, t: Date.now(), n: crypto.randomBytes(8).toString('hex') }));
+export function createState(organizationId: string, userId: string, app = false): string {
+    const payload = b64url(JSON.stringify({ o: organizationId, u: userId, t: Date.now(), n: crypto.randomBytes(8).toString('hex'), ...(app ? { a: 1 } : {}) }));
     return `${payload}.${sign(payload)}`;
 }
 
-export function readState(state: string): { organizationId: string; userId: string } | null {
+export function readState(state: string): { organizationId: string; userId: string; app: boolean } | null {
     const [payload, sig] = String(state || '').split('.');
     if (!payload || !sig) return null;
     const expected = sign(payload);
     if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
     try {
-        const { o, u, t } = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+        const { o, u, t, a } = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
         if (!o || !u || typeof t !== 'number' || Date.now() - t > STATE_TTL_MS) return null;
-        return { organizationId: o, userId: u };
+        return { organizationId: o, userId: u, app: a === 1 };
     } catch {
         return null;
     }
 }
 
-export function buildAuthUrl(organizationId: string, userId: string): string {
+export function buildAuthUrl(organizationId: string, userId: string, app = false): string {
     const params = new URLSearchParams({
         client_id: process.env.GOOGLE_CLIENT_ID || '',
         redirect_uri: redirectUri(),
@@ -66,7 +66,7 @@ export function buildAuthUrl(organizationId: string, userId: string): string {
         access_type: 'offline',
         prompt: 'consent',            // always returns a refresh token, also on reconnect
         include_granted_scopes: 'true',
-        state: createState(organizationId, userId),
+        state: createState(organizationId, userId, app),
     });
     return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
 }
@@ -330,4 +330,25 @@ export async function syncAllGmail(budgetMs = 15_000): Promise<{ connections: Sy
         }
     }
     return { connections, backlogClassified };
+}
+
+/**
+ * Downloads one attachment of a captured email (used by onboarding to reuse a bank statement as proof of residence).
+ * Only for mailboxes connected with MoneyWise's own Google sign-in: Composio mailboxes return null and the caller asks
+ * the person to upload the file instead. Org-scoped; picks the first PDF when no attachment id is given.
+ */
+export async function downloadEmailAttachment(organizationId: string, inboundEmailId: string, attachmentId?: string):
+    Promise<{ data: Buffer; filename: string; mimeType: string } | null> {
+    const { data: email } = await supabase.from('inbound_emails').select('connection_id, provider_message_id, attachments')
+        .eq('id', inboundEmailId).eq('organization_id', organizationId).maybeSingle();
+    if (!email) return null;
+    const { data: conn } = await supabase.from('email_connections').select('*').eq('id', email.connection_id).eq('organization_id', organizationId).maybeSingle();
+    if (!conn || conn.status !== 'ACTIVE' || (conn.auth_mode && conn.auth_mode !== 'DIRECT')) return null;
+    const list: any[] = Array.isArray(email.attachments) ? email.attachments : [];
+    const att = attachmentId ? list.find((a) => a?.attachment_id === attachmentId) : list.find((a) => /\.pdf$/i.test(String(a?.filename ?? '')) || a?.mime_type === 'application/pdf');
+    if (!att?.attachment_id) return null;
+    const token = await getAccessToken(conn);
+    const body = await gmailGet(token, `/messages/${encodeURIComponent(email.provider_message_id)}/attachments/${encodeURIComponent(att.attachment_id)}`);
+    if (!body?.data) return null;
+    return { data: Buffer.from(String(body.data), 'base64url'), filename: String(att.filename || 'statement.pdf'), mimeType: String(att.mime_type || 'application/pdf') };
 }

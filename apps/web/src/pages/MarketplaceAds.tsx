@@ -17,7 +17,7 @@ interface Campaign {
     product_name: string | null; start_date: string; end_date: string; days: number; price: number; impressions: number; clicks: number; ctr: number;
     reject_reason: string | null; refunded_at: string | null;
 }
-interface Overview { catalog: { enabled: boolean; kinds: KindInfo[] }; campaigns: Campaign[]; items: { id: string; name: string; image_url: string | null; price: number }[]; wallets: Wallet[] }
+interface Overview { catalog: { enabled: boolean; kinds: KindInfo[] }; campaigns: Campaign[]; items: { id: string; name: string; image_url: string | null; price: number }[]; wallets: Wallet[]; feeCredit?: number }
 
 const PHASE: Record<Campaign['phase'], { label: string; cls: string }> = {
     PENDING_REVIEW: { label: 'In review', cls: 'bg-[#FEF7E0] text-[#B06000]' },
@@ -46,6 +46,7 @@ export const MarketplaceAds: React.FC = () => {
     const [days, setDays] = useState(7);
     const [start, setStart] = useState(todayIso());
     const [walletId, setWalletId] = useState('');
+    const [useCredit, setUseCredit] = useState(true);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [done, setDone] = useState(false);
@@ -53,7 +54,10 @@ export const MarketplaceAds: React.FC = () => {
     const info = data?.catalog.kinds.find((k) => k.kind === kind);
     const price = info?.prices.find((p) => p.days === days);
     const wallet = data?.wallets.find((w) => w.id === walletId) ?? data?.wallets.find((w) => w.is_main) ?? data?.wallets[0];
-    const short = !!wallet && !!price && wallet.balance + 0.005 < price.price;
+    // Fee credit earned from badges pays part of the price (never all of it: at least K1 goes through the wallet).
+    const credit = useCredit && price ? Math.max(0, Math.min(data?.feeCredit ?? 0, Math.round((price.price - 1) * 100) / 100)) : 0;
+    const cash = price ? Math.round((price.price - credit) * 100) / 100 : 0;
+    const short = !!wallet && !!price && wallet.balance + 0.005 < cash;
     const enabled = !!data?.catalog.enabled;
     const canBuy = enabled && !!price && !short && (!info?.needsItem || !!productId);
     const end = new Date(Date.parse(`${start}T00:00:00`) + (days - 1) * 86_400_000).toISOString().split('T')[0];
@@ -61,7 +65,7 @@ export const MarketplaceAds: React.FC = () => {
     const buy = async () => {
         setBusy(true); setError(null); setDone(false);
         try {
-            await apiJson('/marketplace/ads', { method: 'POST', body: JSON.stringify({ kind, productId: info?.needsItem ? productId : undefined, days, startDate: start, walletId: wallet?.id, idempotencyKey: key.current }) });
+            await apiJson('/marketplace/ads', { method: 'POST', body: JSON.stringify({ kind, productId: info?.needsItem ? productId : undefined, days, startDate: start, walletId: wallet?.id, useCredit: credit > 0, idempotencyKey: key.current }) });
             key.current = newKey();
             setDone(true); setProductId('');
             await Promise.all([qc.invalidateQueries({ queryKey: ['marketplace', 'ads'] }), qc.invalidateQueries({ queryKey: ['wallets'] })]);
@@ -147,12 +151,18 @@ export const MarketplaceAds: React.FC = () => {
 
                         <div className="rounded-2xl bg-[#F8FAFD] p-4 text-sm">
                             <div className="flex items-center justify-between"><span className="text-[#5F6368]">{info?.label}{info?.needsItem && productId ? ` · ${data.items.find((i) => i.id === productId)?.name}` : ''}</span><span className="font-bold tabular-nums text-[#1F1F1F]">{price ? formatKwacha(price.price) : ''}</span></div>
-                            <p className="mt-1 text-xs text-[#5F6368]">Runs {day(start)} to {day(end)} once approved. Ads are reviewed first; if yours isn’t approved, the payment goes straight back to your wallet.</p>
+                            {(data.feeCredit ?? 0) > 0 && price && (
+                                <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-xl bg-[#E6F4EA] px-3 py-2 text-xs text-[#137333]">
+                                    <input type="checkbox" checked={useCredit} onChange={(e) => setUseCredit(e.target.checked)} className="mt-0.5" />
+                                    <span><span className="font-bold">Use my fee credit</span> ({formatKwacha(data.feeCredit ?? 0)} earned from badges){useCredit && credit > 0 ? `: takes off ${formatKwacha(credit)}, so ${formatKwacha(cash)} comes from your wallet.` : '.'}</span>
+                                </label>
+                            )}
+                            <p className="mt-1 text-xs text-[#5F6368]">Runs {day(start)} to {day(end)} once approved. Ads are reviewed first; if yours isn’t approved, the payment goes straight back to your wallet and any fee credit is returned.</p>
                         </div>
 
                         <ErrorNote text={error} />
                         {done && <p role="status" className="mt-3 rounded-xl bg-[#E6F4EA] px-4 py-2.5 text-sm font-semibold text-[#137333]">Booked. Your ad is in review and you’ll be told when it’s approved.</p>}
-                        <PrimaryButton onClick={buy} busy={busy} disabled={!canBuy} className="mt-4 h-12 w-full text-base">{enabled ? `Pay ${price ? formatKwacha(price.price) : ''} and send for review` : 'Opening soon'}</PrimaryButton>
+                        <PrimaryButton onClick={buy} busy={busy} disabled={!canBuy} className="mt-4 h-12 w-full text-base">{enabled ? `Pay ${price ? formatKwacha(cash) : ''} and send for review` : 'Opening soon'}</PrimaryButton>
                     </section>
                     </div>
                     <div>

@@ -5,7 +5,7 @@
 import axios from 'axios';
 import { collectPages } from '../services/masterfees_paging';
 import {
-    cleanPayment, cleanStudentCreate, cleanStudentUpdate, cleanInvoice, cleanVoid, money, sendWrite, writeBase, masterFeesWrites, MasterFeesWriteError,
+    cleanPayment, cleanStudentCreate, cleanStudentUpdate, cleanInvoice, cleanVoid, money, sendWrite, writeBase, masterFeesWrites, MasterFeesWriteError, replacePayment, replaceInvoice,
 } from '../services/masterfees_write';
 import { MasterFeesClient, MasterFeesRateLimitError, isMasterFeesSyncDue } from '../services/masterfees.service';
 
@@ -56,6 +56,37 @@ const config = { schoolId: SCHOOL, publicKey: 'mf_pub_test', baseUrl: undefined 
     calls.length = 0;
     await masterFeesWrites.recordPayment(config as any, { external_reference: 'MW-9', admission_number: 'A1', amount: 10 }, { http: reply(201, {}) });
     ok('recording a payment uses its own reference as the idempotency key', calls[0].headers['Idempotency-Key'] === 'MW-9' && calls[0].data.external_reference === 'MW-9');
+
+    /* ── editing = void the old, record the corrected one ── */
+    const OLD = '5a5a5a5a-1111-4222-8333-444455556666';
+    const seq: any[] = [];
+    const script = (...answers: { status: number; data: any }[]) => async (cfg: any) => { seq.push({ method: cfg.method, url: cfg.url, data: cfg.data, headers: cfg.headers }); const a = answers[Math.min(seq.length - 1, answers.length - 1)]; return { status: a.status, data: a.data, headers: {} }; };
+    const goodPay = { edit_reason: 'wrong amount', external_reference: 'MW-FIX-1', admission_number: 'A1042', amount: 1500, payment_method: 'bank' };
+    seq.length = 0;
+    const rp = await replacePayment(config as any, OLD, goodPay, { http: script({ status: 200, data: { success: true } }, { status: 201, data: { success: true, total: 1500 } }) });
+    ok('EDIT payment: the old is voided FIRST, then the corrected one recorded', seq.length === 2 && seq[0].url.endsWith(`/payments/${OLD}/void`) && seq[1].url.endsWith('/payments') && rp.created.status === 201);
+    ok('EDIT payment: the void carries the reason; the new payment does not carry edit_reason; its own reference is the idempotency key', seq[0].data.reason === 'Edited: wrong amount' && !('edit_reason' in seq[1].data) && seq[1].headers['Idempotency-Key'] === 'MW-FIX-1' && seq[1].data.amount === 1500);
+    seq.length = 0;
+    let threw422 = false;
+    try { await replacePayment(config as any, OLD, { ...goodPay, amount: -5 }, { http: script({ status: 200, data: {} }) }); } catch (e: any) { threw422 = e instanceof MasterFeesWriteError && e.status === 422; }
+    ok('EDIT payment: a mistake in the corrected record is caught BEFORE anything is voided (no request sent)', threw422 && seq.length === 0);
+    seq.length = 0;
+    let noReason = false;
+    try { await replacePayment(config as any, OLD, { ...goodPay, edit_reason: '' }, { http: script({ status: 200, data: {} }) }); } catch (e: any) { noReason = e.status === 422; }
+    ok('EDIT payment: a reason for the change is required (and nothing is sent without it)', noReason && seq.length === 0);
+
+    const goodInv = { edit_reason: 'wrong fee', external_reference: 'INV-FIX-1', student_id: STUDENT, term: 2, year: 2026, due_date: '2026-05-11', items: [{ description: 'Tuition', amount: 7000 }] };
+    seq.length = 0;
+    let refused: MasterFeesWriteError | null = null;
+    try { await replaceInvoice(config as any, OLD, goodInv, { http: script({ status: 409, data: { code: 'has_payments', message: 'Void the payments first.' } }) }); } catch (e: any) { refused = e; }
+    ok('EDIT invoice: if the old one cannot be voided (has payments) NOTHING is created and the reason is kept', refused?.code === 'has_payments' && seq.length === 1 && !(refused.details as any)?.old_voided);
+    seq.length = 0;
+    let half: MasterFeesWriteError | null = null;
+    try { await replaceInvoice(config as any, OLD, goodInv, { http: script({ status: 200, data: { success: true } }, { status: 500, data: { message: 'boom' } }) }); } catch (e: any) { half = e; }
+    ok('EDIT invoice: old voided but the new one failed: says so, flags old_voided, and is retryable', !!half && /old invoice was voided/.test(half.message) && (half.details as any)?.old_voided === true && half.retryable === true && /Send the same edit again/.test(half.message));
+    seq.length = 0;
+    const again = await replaceInvoice(config as any, OLD, goodInv, { http: script({ status: 200, data: { success: true, idempotent: true } }, { status: 200, data: { success: true, idempotent: true } }) });
+    ok('EDIT invoice: sending the same edit again finishes it (void is a repeat, create is a repeat) without doing it twice', again.voided.idempotent && again.created.idempotent && seq[1].headers['Idempotency-Key'] === 'INV-FIX-1');
 
     /* ── paging: stop on the feed's own word, and never retry a "slow down" ── */
     { const seen: number[] = [];

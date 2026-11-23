@@ -389,6 +389,59 @@ export const getExpenditure = async (req: any, res: any): Promise<any> => {
  * accounts cumulative <= end. The synthetic Retained Earnings row expands into the
  * underlying income/expense postings that compose it.
  */
+/** Postings made for a requisition carry generic text ("MONEYWISE_WALLET disbursed for Requisition #abc123"). */
+const isGenericPostingText = (d?: string | null) =>
+    !d || /disburse(d|ment)? for req|^(PENDING_INTENT|Ledger posting)|requisition #/i.test(d);
+
+const chunked = <T,>(arr: T[], n = 150): T[][] => {
+    const out: T[][] = [];
+    for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+    return out;
+};
+
+/**
+ * For ledger rows that came from a cashbook entry tied to a requisition, look up what the money was actually for —
+ * the description of the requisition's line item(s) that hit this account, else the requisition's own description —
+ * so the drill-down reads "Cooking oil" instead of "MONEYWISE_WALLET disbursed for Requisition #92a99532".
+ */
+export async function purposeForCashbookEntries(cashbookIds: string[], accountIds: string[]) {
+    const out = new Map<string, { requisitionId: string; purpose: string; requisitionDesc: string }>();
+    if (cashbookIds.length === 0) return out;
+
+    const cbToReq = new Map<string, string>();
+    for (const ids of chunked(cashbookIds)) {
+        const { data } = await supabase.from('cashbook_entries').select('id, requisition_id').in('id', ids).not('requisition_id', 'is', null);
+        for (const r of data || []) cbToReq.set(r.id, r.requisition_id);
+    }
+    const reqIds = Array.from(new Set(cbToReq.values()));
+    if (reqIds.length === 0) return out;
+
+    const reqDesc = new Map<string, string>();
+    const lineItems = new Map<string, { description: string; matches: boolean }[]>();
+    const accountSet = new Set(accountIds);
+    for (const ids of chunked(reqIds)) {
+        const { data: reqs } = await supabase.from('requisitions').select('id, description').in('id', ids);
+        for (const r of reqs || []) reqDesc.set(r.id, (r.description || '').trim());
+        const { data: lis } = await supabase.from('line_items').select('requisition_id, description, account_id, qb_account_id').in('requisition_id', ids);
+        for (const li of lis || []) {
+            const list = lineItems.get(li.requisition_id) || [];
+            list.push({ description: (li.description || '').trim(), matches: accountSet.has(li.account_id) || accountSet.has(li.qb_account_id) });
+            lineItems.set(li.requisition_id, list);
+        }
+    }
+
+    for (const [cbId, reqId] of cbToReq) {
+        const lis = (lineItems.get(reqId) || []).filter((l) => l.description);
+        const matching = lis.filter((l) => l.matches);
+        const picked = matching.length > 0 ? matching : (reqDesc.get(reqId) ? [] : lis);
+        const fromLines = Array.from(new Set(picked.map((l) => l.description))).join(' · ');
+        const requisitionDesc = reqDesc.get(reqId) || '';
+        const purpose = fromLines || requisitionDesc;
+        if (purpose) out.set(cbId, { requisitionId: reqId, purpose, requisitionDesc });
+    }
+    return out;
+}
+
 async function buildItemsFromGL(
     organizationId: string,
     accountId: string,
@@ -435,7 +488,7 @@ async function buildItemsFromGL(
         .from('journal_lines')
         .select(`
             id, debit, credit,
-            journal_entries!inner ( organization_id, entry_date, description, reference_number, created_by )
+            journal_entries!inner ( organization_id, entry_date, description, reference_number, created_by, source_type, source_id )
         `)
         .in('account_id', accountIds)
         .eq('journal_entries.organization_id', organizationId)
@@ -448,19 +501,25 @@ async function buildItemsFromGL(
     const { data: lines, error } = await q;
     if (error) throw error;
 
+    const cashbookIds = Array.from(new Set((lines || [])
+        .filter((l: any) => l.journal_entries?.source_type === 'CASHBOOK' && l.journal_entries?.source_id && isGenericPostingText(l.journal_entries?.description))
+        .map((l: any) => l.journal_entries.source_id as string)));
+    const purposes = await purposeForCashbookEntries(cashbookIds, accountIds).catch(() => new Map());
+
     const items = (lines || []).map((l: any) => {
         const je = l.journal_entries;
+        const why = je.source_type === 'CASHBOOK' ? purposes.get(je.source_id) : undefined;
         const debit = Number(l.debit || 0);
         const credit = Number(l.credit || 0);
         const amount = signMode === 'DEBIT_NORMAL' ? debit - credit : credit - debit;
         return {
             id: l.id,
-            description: je.description || 'Ledger posting',
+            description: why?.purpose || je.description || 'Ledger posting',
             amount,
             date: je.entry_date,
-            requisition_id: null,
+            requisition_id: why?.requisitionId ?? null,
             requisition_ref: je.reference_number || 'LEDGER',
-            requisition_desc: je.description || '',
+            requisition_desc: why?.requisitionDesc || je.description || '',
             requestor_name: 'Ledger'
         };
     });
@@ -629,7 +688,8 @@ export const getExpenditureItems = async (req: any, res: any): Promise<any> => {
                     date,
                     requisition_id,
                     created_by,
-                    creator:users!created_by(name)
+                    creator:users!created_by(name),
+                    requisition:requisitions!requisition_id(description)
                 `)
                 .eq('organization_id', organization_id);
 
@@ -688,9 +748,10 @@ export const getExpenditureItems = async (req: any, res: any): Promise<any> => {
                     amt = Number(entry.debit || 0) - Number(entry.credit || 0);
                 }
 
+                const reqPurpose = ((entry as any).requisition?.description || '').trim();
                 items.push({
                     id: entry.id,
-                    description: entry.description,
+                    description: reqPurpose && isGenericPostingText(entry.description) ? reqPurpose : entry.description,
                     amount: Math.abs(amt), // Show absolute amount in list
                     date: entry.date,
                     requisition_id: entry.requisition_id,

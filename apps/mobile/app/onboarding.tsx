@@ -49,6 +49,7 @@ export default function OnboardingScreen() {
         onboardingService.getState()
             .then((s) => {
                 if (cancelled) return;
+                if (s.flow === 'PERSONAL_V2') { router.replace('/personal-onboarding'); return; }
                 setState(s);
                 const orgName = (s.organization?.name || authOrgName || '').toLowerCase();
                 const personal = orgName.includes('personal') || orgName.includes('workspace') || orgName.includes('individual');

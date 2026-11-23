@@ -29,3 +29,5 @@ export const useStock = run('record the stock used', async (r) => ({ movement: a
 export const restock = run('record the purchase', async (r) => ({ movement: await basic.restock(org(r), r.user.id, r.body) }));
 export const lowStock = run('load what is low', (r) => basic.lowStock(org(r)));
 export const spending = run('load the spending', (r) => basic.spending(org(r), r.query.from as string | undefined, r.query.to as string | undefined));
+export const writeOff = run('record the loss', async (r) => ({ movement: await basic.writeOff(org(r), r.user.id, r.body) }));
+export const lossLog = run('load the losses', (r) => basic.lossLog(org(r)));

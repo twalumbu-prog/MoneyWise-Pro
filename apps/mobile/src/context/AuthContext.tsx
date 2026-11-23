@@ -34,7 +34,7 @@ interface AuthContextValue {
     refreshUserOrganizations: () => Promise<UserOrganization[] | void>;
     switchOrganization: (organizationId: string) => Promise<void>;
     signInWithPassword: (identifier: string, password: string, preferredAccountType?: 'INDIVIDUAL' | 'BUSINESS') => Promise<void>;
-    signUp: (email: string, password: string, name: string, organizationName: string, username: string) => Promise<void>;
+    signUp: (email: string, password: string, name: string, organizationName: string, username: string, accountType?: 'INDIVIDUAL' | 'BUSINESS') => Promise<void>;
     joinOrganization: (email: string, password: string, name: string, organizationId: string, username: string) => Promise<void>;
     signOut: () => Promise<void>;
 }
@@ -354,13 +354,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     };
 
-    const signUp = async (email: string, password: string, name: string, organizationName: string, username: string) => {
+    const signUp = async (email: string, password: string, name: string, organizationName: string, username: string, accountType?: 'INDIVIDUAL' | 'BUSINESS') => {
         const { getCore } = await import('core');
         const apiUrl = getCore().env.apiUrl;
         const res = await fetch(`${apiUrl}/auth/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password, name, organizationName, username }),
+            body: JSON.stringify({ email, password, name, organizationName, username, accountType }),
         });
         const data = await res.json();
         if (!res.ok) {

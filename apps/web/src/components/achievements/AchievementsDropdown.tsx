@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAchievements } from '../../context/AchievementsContext';
-import { Trophy, CheckCircle2, Play, Award, Zap, X, Lock } from 'lucide-react';
+import { Trophy, CheckCircle2, Play, Award, Zap, X, Gift } from 'lucide-react';
+import { BadgeGallery, RewardsTab } from './ProgressPanels';
 
 export const AchievementsDropdown: React.FC = () => {
     const {
@@ -11,9 +12,10 @@ export const AchievementsDropdown: React.FC = () => {
         totalXp,
         startMission,
         setDesktopDropdownOpen,
+        progress,
     } = useAchievements();
 
-    const [tab, setTab] = useState<'missions' | 'badges'>('missions');
+    const [tab, setTab] = useState<'missions' | 'badges' | 'rewards'>('missions');
     const percentage = Math.round((completedCount / totalCount) * 100);
 
     return (
@@ -27,8 +29,8 @@ export const AchievementsDropdown: React.FC = () => {
             {/* Dropdown Container */}
             <div className="absolute right-0 mt-3 w-96 bg-white rounded-2xl shadow-xl border border-[rgba(116,119,117,0.22)] z-50 overflow-hidden transform origin-top-right animate-in fade-in slide-in-from-top-2 duration-200">
                 {/* Header */}
-                <div className="p-5 bg-white border-b border-[rgba(116,119,117,0.22)]">
-                    <div className="flex items-center justify-between mb-4">
+                <div className="px-6 pt-6 pb-5 bg-white border-b border-[rgba(116,119,117,0.22)]">
+                    <div className="flex items-center justify-between mb-6">
                         <div className="flex items-center gap-2.5">
                             <div className="w-9 h-9 rounded-xl bg-[#0B57D0]/10 flex items-center justify-center">
                                 <Trophy size={16} className="text-[#0B57D0]" />
@@ -47,7 +49,7 @@ export const AchievementsDropdown: React.FC = () => {
                     </div>
 
                     {/* Progress Bar & XP */}
-                    <div className="flex items-center justify-between text-xs font-semibold mb-1.5">
+                    <div className="flex items-center justify-between text-xs font-semibold mb-2.5">
                         <span className="text-gray-600">{completedCount} of {totalCount} missions completed</span>
                         <span className="text-gray-400 font-medium">{earnedXp} / {totalXp} XP</span>
                     </div>
@@ -60,33 +62,44 @@ export const AchievementsDropdown: React.FC = () => {
                 </div>
 
                 {/* Sub-tabs */}
-                <div className="flex border-b border-[rgba(116,119,117,0.22)] bg-[#F8FAFD] px-4 pt-2">
+                <div className="flex border-b border-[rgba(116,119,117,0.22)] bg-[#F8FAFD] px-4 pt-3">
                     <button
                         onClick={() => setTab('missions')}
-                        className={`flex-1 py-2 text-xs font-bold border-b-2 transition-all flex items-center justify-center gap-1.5 ${
+                        className={`flex-1 py-3 text-xs font-bold border-b-2 transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${
                             tab === 'missions'
                                 ? 'border-[#0B57D0] text-[#0B57D0]'
                                 : 'border-transparent text-gray-400 hover:text-gray-600'
                         }`}
                     >
                         <Trophy size={14} />
-                        Missions ({totalCount - completedCount} Left)
+                        Missions · {totalCount - completedCount}
                     </button>
                     <button
                         onClick={() => setTab('badges')}
-                        className={`flex-1 py-2 text-xs font-bold border-b-2 transition-all flex items-center justify-center gap-1.5 ${
+                        className={`flex-1 py-3 text-xs font-bold border-b-2 transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${
                             tab === 'badges'
                                 ? 'border-[#0B57D0] text-[#0B57D0]'
                                 : 'border-transparent text-gray-400 hover:text-gray-600'
                         }`}
                     >
                         <Award size={14} />
-                        Badges Gallery ({completedCount})
+                        Badges · {progress ? progress.badges.filter((b) => b.earned).length : completedCount}
+                    </button>
+                    <button
+                        onClick={() => setTab('rewards')}
+                        className={`flex-1 py-3 text-xs font-bold border-b-2 transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${
+                            tab === 'rewards'
+                                ? 'border-[#0B57D0] text-[#0B57D0]'
+                                : 'border-transparent text-gray-400 hover:text-gray-600'
+                        }`}
+                    >
+                        <Gift size={14} />
+                        Rewards
                     </button>
                 </div>
 
                 {/* Content Body */}
-                <div className="p-4 max-h-[360px] overflow-y-auto space-y-3">
+                <div className="p-5 max-h-[420px] overflow-y-auto space-y-3">
                     {tab === 'missions' ? (
                         achievements.map((item) => (
                             <div
@@ -118,6 +131,8 @@ export const AchievementsDropdown: React.FC = () => {
                                             <CheckCircle2 size={14} />
                                             Completed
                                         </div>
+                                    ) : item.steps.length === 0 ? (
+                                        <span className="text-[11px] font-semibold text-gray-400 flex-shrink-0 text-right leading-tight">Just open<br />the page</span>
                                     ) : (
                                         <button
                                             onClick={() => startMission(item.id)}
@@ -130,40 +145,17 @@ export const AchievementsDropdown: React.FC = () => {
                                 </div>
                             </div>
                         ))
+                    ) : tab === 'badges' ? (
+                        <BadgeGallery />
                     ) : (
-                        <div className="grid grid-cols-2 gap-2.5">
-                            {achievements.map((item) => (
-                                <div
-                                    key={item.id}
-                                    className={`p-3 rounded-2xl border text-center transition-all ${
-                                        item.completed
-                                            ? 'bg-white border-[rgba(116,119,117,0.22)] shadow-xs'
-                                            : 'bg-gray-50 border-gray-100 opacity-50 grayscale'
-                                    }`}
-                                >
-                                    <div
-                                        className="w-10 h-10 mx-auto rounded-2xl flex items-center justify-center mb-2 shadow-xs"
-                                        style={{
-                                            backgroundColor: item.completed ? item.badgeColor : '#9AA0A6',
-                                            color: '#FFF',
-                                        }}
-                                    >
-                                        {item.completed ? <Award size={20} /> : <Lock size={18} />}
-                                    </div>
-                                    <h5 className="text-xs font-bold text-gray-900 truncate">{item.badgeName}</h5>
-                                    <p className="text-[9px] font-semibold text-gray-400 mt-0.5">
-                                        {item.completed ? 'Unlocked' : 'Locked'}
-                                    </p>
-                                </div>
-                            ))}
-                        </div>
+                        <RewardsTab />
                     )}
                 </div>
 
                 {/* Footer Note */}
                 <div className="p-3 bg-[#F8FAFD] border-t border-[rgba(116,119,117,0.22)] text-center">
                     <p className="text-[10px] font-medium text-gray-400">
-                        Complete missions to master MoneyWise Pro, one feature at a time.
+                        Earn badges, build a streak, and turn your XP into rewards.
                     </p>
                 </div>
             </div>

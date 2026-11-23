@@ -126,6 +126,8 @@ const Compared: React.FC<{ slug: string }> = ({ slug }) => {
     const offers = useMemo(() => (data?.offers ?? []).filter((o) => !town || o.town === town), [data, town]);
     const business = useQuery({ queryKey: ['compare', 'business', slug], enabled: !!data?.item?.id, queryFn: () => apiJson<{ business: { businesses: number; median: number; low: number; high: number; days: number } | null }>(`/marketplace/compare/${data!.item.id}/business`), staleTime: 300_000, retry: false });
 
+    const suppliers = useQuery({ queryKey: ['compare', 'suppliers', slug], enabled: !!data?.item?.id, queryFn: () => apiJson<{ suppliers: { suppliers: { name: string; businesses: number; median: number }[]; days: number } | null }>(`/marketplace/compare/${data!.item.id}/suppliers`), staleTime: 300_000, retry: false });
+
     if (isPending) return <div className="h-64 animate-pulse rounded-2xl bg-[#F1F3F4]" />;
     if (isError || !data) return <div className="py-14 text-center"><p className="text-sm text-[#5F6368]">{(error as any)?.message || 'Couldn’t load the prices.'}</p><TonalButton onClick={() => refetch()} className="mt-3">Try again</TonalButton></div>;
     const { item, stats } = data;
@@ -147,6 +149,17 @@ const Compared: React.FC<{ slug: string }> = ({ slug }) => {
             {stats.spread != null && stats.spread > 0 && stats.lowest != null && <p className="mt-3 rounded-2xl bg-[#E6F4EA] px-4 py-3 text-sm text-[#137333]">Buying at the cheapest place instead of the dearest saves <b>{formatKwacha(stats.spread)}</b> per {unit}. On 100 {unit}s that is <b>{formatKwacha(stats.spread * 100)}</b>.</p>}
             {business.data?.business && (
                 <p className="mt-3 rounded-2xl bg-[#E8F0FE] px-4 py-3 text-sm text-[#1967D2]">Businesses on MoneyWise paid about <b>{formatKwacha(business.data.business.median)}</b> per {unit} (most paid between {formatKwacha(business.data.business.low)} and {formatKwacha(business.data.business.high)}). From {business.data.business.businesses} businesses over the last {business.data.business.days} days, anonymous.</p>
+            )}
+            {suppliers.data?.suppliers && (
+                <div className="mt-3 rounded-2xl bg-[#E8F0FE] px-4 py-3 text-sm text-[#1967D2]">
+                    <p className="font-semibold">Where businesses on MoneyWise buy it</p>
+                    <ul className="mt-1.5 divide-y divide-[#C6DAFC]">
+                        {suppliers.data.suppliers.suppliers.map((s) => (
+                            <li key={s.name} className="flex items-center justify-between gap-3 py-1.5"><span className="min-w-0 truncate font-semibold">{s.name}</span><span className="shrink-0 text-xs">about <b>{formatKwacha(s.median)}</b> per {unit} · {s.businesses} businesses</span></li>
+                        ))}
+                    </ul>
+                    <p className="mt-1.5 text-[11px] opacity-80">Only suppliers that at least 3 businesses use are shown, over the last {suppliers.data.suppliers.days} days. Businesses are never named.</p>
+                </div>
             )}
             {data.note && <p className="mt-3 rounded-2xl bg-[#FEF7E0] px-4 py-3 text-sm text-[#7A4B00]">{data.note}</p>}
 

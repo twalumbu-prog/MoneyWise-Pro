@@ -5,7 +5,7 @@ import { Check, ChevronLeft, ChevronRight, Gavel, Heart, Share2, ShoppingBag, Sh
 import { apiJson } from 'core';
 import { PagePanel } from '../components/ui/PagePanel';
 import { Dialog, PrimaryButton, TonalButton } from '../components/ui/Dialog';
-import { LISTINGS_KEY, ListingCard, LocationText, SellerAvatar, Shelf, ShelfItem, Stars, TYPE_LABEL, Thumb, VerifiedBadge, priceText, typeGroup } from '../components/marketplace/parts';
+import { LISTINGS_KEY, ListingCard, LocationText, SellerAvatar, Shelf, ShelfItem, Stars, TYPE_LABEL, Thumb, VerifiedBadge, PriceText, typeGroup } from '../components/marketplace/parts';
 import { actionOf } from '../components/marketplace/kinds';
 import { StockLine, VariantPicker } from '../components/marketplace/stockUi';
 import { AuctionPanel } from '../components/marketplace/AuctionPanel';
@@ -153,7 +153,7 @@ export const MarketplaceListing: React.FC = () => {
 
                             {listing.auction ? <AuctionPanel listing={listing} /> : (
                                 <>
-                                    <p className="mt-5 text-3xl font-bold tabular-nums text-[#1F1F1F]">{priceText(listing)}</p>
+                                    <p className="mt-5 text-3xl font-bold tabular-nums text-[#1F1F1F]"><PriceText l={listing} /></p>
                                     <p className="mt-0.5 text-xs text-[#80868B]">Listed {new Date(listing.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                                     {listing.stock?.tracked && (
                                         <div className="mt-4 space-y-3">
@@ -265,7 +265,7 @@ export const MarketplaceListing: React.FC = () => {
                     </section>
 
                     <div id="reviews"><SellerReviews sellerId={listing.seller.id} sellerName={listing.seller.name} isMine={listing.isMine} /></div>
-                    <StartAuctionDialog listing={listing} open={auctionOpen} onClose={() => setAuctionOpen(false)} />
+                    <StartAuctionDialog listing={{ id: listing.id, name: listing.name, price: listing.usdPrice ?? listing.price, currency: listing.usdPrice != null ? 'USD' : 'ZMW' }} open={auctionOpen} onClose={() => setAuctionOpen(false)} />
                     <Dialog open={protectionOpen} onClose={() => setProtectionOpen(false)} title="MoneyWise buyer protection" size="md">
                         <p className="mb-4 text-sm text-[#5F6368]">When you buy an item that checks out in the app and pay with MoneyWise Pay, here is what you can count on.</p>
                         <ol className="space-y-4 text-sm text-[#3C4043]">

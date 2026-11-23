@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAchievements } from '../../context/AchievementsContext';
-import { Trophy, CheckCircle2, Play, Award, Zap, ArrowLeft, Lock, Sparkles, ChevronRight } from 'lucide-react';
+import { Trophy, CheckCircle2, Play, Award, Zap, ArrowLeft, Sparkles, ChevronRight, Gift } from 'lucide-react';
+import { BadgeGallery, RewardsTab } from './ProgressPanels';
 
 export const AchievementsMobileModal: React.FC = () => {
     const {
@@ -11,9 +12,10 @@ export const AchievementsMobileModal: React.FC = () => {
         totalCount,
         earnedXp,
         startMission,
+        progress,
     } = useAchievements();
 
-    const [activeTab, setActiveTab] = useState<'missions' | 'badges'>('missions');
+    const [activeTab, setActiveTab] = useState<'missions' | 'badges' | 'rewards'>('missions');
 
     if (!isMobileModalOpen) return null;
 
@@ -110,7 +112,18 @@ export const AchievementsMobileModal: React.FC = () => {
                         }`}
                     >
                         <Award size={16} />
-                        Badges Showcase ({completedCount})
+                        Badges ({progress ? progress.badges.filter((b) => b.earned).length : completedCount})
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('rewards')}
+                        className={`pb-3 text-xs font-extrabold border-b-2 transition-all flex items-center gap-1.5 ${
+                            activeTab === 'rewards'
+                                ? 'border-[#0B57D0] text-[#0B57D0]'
+                                : 'border-transparent text-gray-400'
+                        }`}
+                    >
+                        <Gift size={16} />
+                        Rewards
                     </button>
                 </div>
 
@@ -149,7 +162,10 @@ export const AchievementsMobileModal: React.FC = () => {
                                 <h3 className="text-sm font-bold text-[#1F1F1F] mb-1">{item.title}</h3>
                                 <p className="text-xs text-gray-500 leading-relaxed mb-4">{item.description}</p>
 
-                                {!item.completed && (
+                                {!item.completed && item.steps.length === 0 && (
+                                    <p className="w-full py-2.5 bg-gray-50 text-gray-500 text-xs font-semibold rounded-2xl text-center">Just open the page to earn it</p>
+                                )}
+                                {!item.completed && item.steps.length > 0 && (
                                     <button
                                         onClick={() => startMission(item.id)}
                                         className="w-full py-3 bg-[#0B57D0] hover:bg-[#0842A0] active:scale-98 text-white text-xs font-bold rounded-2xl shadow-md flex items-center justify-center gap-2 transition-all"
@@ -161,33 +177,10 @@ export const AchievementsMobileModal: React.FC = () => {
                                 )}
                             </div>
                         ))
+                    ) : activeTab === 'badges' ? (
+                        <BadgeGallery />
                     ) : (
-                        <div className="grid grid-cols-2 gap-3">
-                            {achievements.map((item) => (
-                                <div
-                                    key={item.id}
-                                    className={`p-4 rounded-3xl border text-center transition-all ${
-                                        item.completed
-                                            ? 'bg-white border-[rgba(116,119,117,0.22)] shadow-sm'
-                                            : 'bg-gray-50 border-gray-100 opacity-60 grayscale'
-                                    }`}
-                                >
-                                    <div
-                                        className="w-14 h-14 mx-auto rounded-3xl flex items-center justify-center mb-3 shadow-md"
-                                        style={{
-                                            backgroundColor: item.completed ? item.badgeColor : '#9AA0A6',
-                                            color: '#FFF',
-                                        }}
-                                    >
-                                        {item.completed ? <Award size={28} /> : <Lock size={24} />}
-                                    </div>
-                                    <h4 className="text-xs font-bold text-[#1F1F1F] truncate">{item.badgeName}</h4>
-                                    <p className="text-[10px] font-semibold text-gray-400 mt-1">
-                                        {item.completed ? 'Unlocked' : 'Locked Objective'}
-                                    </p>
-                                </div>
-                            ))}
-                        </div>
+                        <RewardsTab />
                     )}
                 </div>
             </div>

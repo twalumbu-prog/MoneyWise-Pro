@@ -12,5 +12,7 @@ router.get('/low', read, c.lowStock);
 router.get('/spending', read, c.spending);
 router.post('/use', write, c.useStock);
 router.post('/restock', write, c.restock);
+router.post('/loss', write, c.writeOff);
+router.get('/losses', read, c.lossLog);
 
 export default router;

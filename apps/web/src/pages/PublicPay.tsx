@@ -34,7 +34,6 @@ import {
     ShieldCheck,
     Ticket,
     Receipt,
-    Info,
     Wallet,
     ClipboardList,
     CalendarDays,
@@ -50,6 +49,7 @@ import { savePendingPayment, loadPendingPayment, clearPendingPayment } from '../
 import BookingCalendar from '../components/BookingCalendar';
 import { StoreMoneyWisePay } from '../components/StoreMoneyWisePay';
 import { StoreRewardsSection } from '../components/rewards/StoreRewardsSection';
+import { SaveReceiptCard } from '../components/SaveReceiptCard';
 import { BookingRange, isBookingProductType, isAppointmentProductType, formatSlotTime, getBookingTerminology } from '../services/product.service';
 import AppointmentPicker from '../components/AppointmentPicker';
 
@@ -277,6 +277,13 @@ export const PublicPay: React.FC = () => {
     // Only needed when the cart contains a digital product — that's where we email
     // the file. Can't be derived from the mobile-money account, so we collect it.
     const [customerEmail, setCustomerEmail] = useState('');
+    // A reward voucher the customer typed in: what the server says it takes off THIS order (the server works it out again when paying).
+    const [voucher, setVoucher] = useState<{ code: string; title: string; discount: number } | null>(null);
+    const [voucherOpen, setVoucherOpen] = useState(false);
+    const [voucherInput, setVoucherInput] = useState('');
+    const [voucherBusy, setVoucherBusy] = useState(false);
+    const [voucherError, setVoucherError] = useState<string | null>(null);
+    const [voucherNote, setVoucherNote] = useState<string | null>(null);
     const [selectedQuantities, setSelectedQuantities] = useState<Record<string, number>>({});
     // Customer-entered amounts for DONATION products (keyed by product id).
     const [donationAmounts, setDonationAmounts] = useState<Record<string, number>>({});
@@ -668,6 +675,46 @@ export const PublicPay: React.FC = () => {
         .filter(li => li.quantity > 0);
 
     const subtotal = lineItems.reduce((sum, li) => sum + li.total, 0);
+
+    // ── Reward voucher: usable on plain items only (no bookings, appointments or donations yet).
+    const cartAllowsVoucher = lineItems.length > 0 && lineItems.every((li) => !li.isBooking && !li.isDonation);
+    const voucherDiscount = voucher && cartAllowsVoucher ? Math.min(voucher.discount, subtotal) : 0;
+    // What the business is paid for the order after the voucher: the platform fee, the card fee and the payment all work from this.
+    const payableSubtotal = Math.max(0, Math.round((subtotal - voucherDiscount) * 100) / 100);
+    const cartKey = lineItems.map((li) => `${li.product.id}:${li.quantity}`).join(',');
+
+    const voucherItems = () => lineItems.map((li) => ({ id: li.product.id, quantity: li.quantity }));
+    const applyVoucher = async () => {
+        if (!org || !voucherInput.trim()) return;
+        setVoucherBusy(true); setVoucherError(null); setVoucherNote(null);
+        try {
+            const r = await axios.post(`${API_URL}/rewards/public/voucher-check`, { organizationId: org.id, code: voucherInput.trim(), items: voucherItems() }, { timeout: 15000 });
+            setVoucher({ code: r.data.code, title: r.data.title, discount: Number(r.data.discount) });
+            setVoucherInput('');
+        } catch (e: any) {
+            setVoucherError(e?.response?.data?.error || 'That code didn’t work. Check it and try again.');
+        } finally { setVoucherBusy(false); }
+    };
+    // When the order changes, the voucher is checked again against the new order; if it no longer fits it comes off.
+    useEffect(() => {
+        if (!voucher || !org) return;
+        if (!cartAllowsVoucher) { setVoucher(null); setVoucherNote('The reward was taken off because your order changed.'); return; }
+        let cancelled = false;
+        axios.post(`${API_URL}/rewards/public/voucher-check`, { organizationId: org.id, code: voucher.code, items: voucherItems() }, { timeout: 15000 })
+            .then((r) => { if (!cancelled) setVoucher({ code: r.data.code, title: r.data.title, discount: Number(r.data.discount) }); })
+            .catch(() => { if (!cancelled) { setVoucher(null); setVoucherNote('That reward no longer fits your order, so it was taken off.'); } });
+        return () => { cancelled = true; };
+    }, [cartKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    /** Logs the sale. The server works the discount out again from its own prices; if it disagrees with what this page shows, stop before any money moves. */
+    const postIntent = async (body: Record<string, unknown>) => {
+        const res = await axios.post(`${API_URL}/lenco/public-wallet-deposit-intent`, body);
+        const net = res?.data?.voucher?.net;
+        if (voucher && cartAllowsVoucher && (typeof net !== 'number' || Math.abs(net - payableSubtotal) > 0.01)) {
+            throw new Error('The discount on your order changed. Please check your order and try again.');
+        }
+        return res;
+    };
     // Donation items in cart with no amount yet entered (amount = 0)
     const pendingDonations = lineItems.filter(li => li.isDonation && li.unitPrice === 0);
 
@@ -678,7 +725,7 @@ export const PublicPay: React.FC = () => {
     // MoneyWise platform fee (tiered) — additive markup paid by the customer on top
     // of the subtotal. The merchant settles the net subtotal; the fee is swept to
     // the MoneyWise settlement account after the collection succeeds.
-    const processingFee = calculatePlatformFee(subtotal);
+    const processingFee = calculatePlatformFee(payableSubtotal);
 
     const isSlowNetwork = networkLatencyMs !== null && networkLatencyMs > SLOW_LATENCY_MS;
 
@@ -736,7 +783,7 @@ export const PublicPay: React.FC = () => {
     })();
     const effectiveDeliveryCharge = deliveryMode === 'pickup' ? 0 :
         cartAllowsExternalDelivery ? riderDeliveryCharge : ownDeliveryCharge;
-    const totalPayable = subtotal > 0 ? subtotal + processingFee + effectiveDeliveryCharge : 0;
+    const totalPayable = subtotal > 0 ? payableSubtotal + processingFee + effectiveDeliveryCharge : 0;
 
     // Computed delivery details snapshot for the order.
     const deliveryDetails: DeliveryDetails | null = cartNeedsDelivery ? {
@@ -873,10 +920,10 @@ export const PublicPay: React.FC = () => {
 
         try {
             // Log intent on server publicly
-            await axios.post(`${API_URL}/lenco/public-wallet-deposit-intent`, {
+            await postIntent({
                 reference: ref,
                 purpose: `Sale: Products: ${productNarration} | Cust: ${customerPhone}`,
-                amount: subtotal, // Settle the subtotal net amount in ledger
+                amount: payableSubtotal, voucherCode: voucher && cartAllowsVoucher ? voucher.code : undefined, // Settle the subtotal net amount in ledger
                 walletId: wallet.id,
                 customerName,
                 customerPhone,
@@ -1184,10 +1231,10 @@ export const PublicPay: React.FC = () => {
 
         try {
             // 1. Log the PENDING intent (net subtotal) — same as the widget flow.
-            await axios.post(`${API_URL}/lenco/public-wallet-deposit-intent`, {
+            await postIntent({
                 reference: ref,
                 purpose: `Sale: Products: ${productNarration} | Cust: ${payerPhone}`,
-                amount: subtotal,
+                amount: payableSubtotal, voucherCode: voucher && cartAllowsVoucher ? voucher.code : undefined,
                 walletId: wallet.id,
                 customerName: payerName,
                 customerPhone: payerPhone,
@@ -1267,8 +1314,14 @@ export const PublicPay: React.FC = () => {
     // recorded first, then the card payment starts, then we wait for the result exactly as for mobile money. Desktop gets a popup; phones go to
     // the card page in this tab. Orders with a delivery charge stay on mobile money for now.
     const CARD_RATE = 0.04;
-    const cardCharged = subtotal > 0 ? Math.round((subtotal / (1 - CARD_RATE)) * 100) / 100 : 0;
-    const cardFee = Math.round((cardCharged - subtotal) * 100) / 100;
+    // A cart of only dollar products is charged to the card in dollars (the server decides the same way, from the products): no voucher,
+    // no delivery, every line a dollar product and not a booking or donation.
+    const cartUsd = (lineItems.length > 0 && voucherDiscount === 0 && effectiveDeliveryCharge === 0 && lineItems.every((li: any) => !li.isBooking && !li.isDonation && Number((li.product as any)?.usd_price) > 0))
+        ? Math.round(lineItems.reduce((s: number, li: any) => s + Number(li.product.usd_price) * li.quantity, 0) * 100) / 100 : 0;
+    const cardInUsd = cartUsd > 0;
+    const cardCharged = cardInUsd ? Math.round((cartUsd / (1 - CARD_RATE)) * 100) / 100 : subtotal > 0 ? Math.round((payableSubtotal / (1 - CARD_RATE)) * 100) / 100 : 0;
+    const cardFee = Math.round((cardCharged - (cardInUsd ? cartUsd : payableSubtotal)) * 100) / 100;
+    const cardMoney = (n: number) => `${cardInUsd ? '$' : 'K'}${n.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
     const cardBlockedByDelivery = effectiveDeliveryCharge > 0;
     const cardDetailsReady = customerName.trim().length > 1 && customerPhone.replace(/\D/g, '').length >= 9 && (!cartHasDigital || emailIsValid);
     const onPhoneBrowser = typeof navigator !== 'undefined' && /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
@@ -1297,10 +1350,10 @@ export const PublicPay: React.FC = () => {
         const checkoutStartedAt = Date.now();
         trackEvent('public_catalogue_checkout', 'payment', 'started', { workflow_id: ref, organization_id: org.id, wallet_id: wallet.id, subtotal, total_payable: cardCharged, item_count: lineItems.length, payment_method: 'card' });
         try {
-            await axios.post(`${API_URL}/lenco/public-wallet-deposit-intent`, {
+            await postIntent({
                 reference: ref,
                 purpose: `Sale: Products: ${productNarration} | Cust: ${payerPhone}`,
-                amount: subtotal,
+                amount: payableSubtotal, voucherCode: voucher && cartAllowsVoucher ? voucher.code : undefined,
                 walletId: wallet.id,
                 customerName: payerName,
                 customerPhone: payerPhone,
@@ -3562,6 +3615,14 @@ Status: VERIFIED`;
                                                 K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                             </span>
                                         </div>
+                                        {voucherDiscount > 0 && (
+                                            <div className="flex justify-between text-xs">
+                                                <span className="text-emerald-700">Reward voucher</span>
+                                                <span className="text-emerald-700 font-medium">
+                                                    −K{voucherDiscount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                </span>
+                                            </div>
+                                        )}
                                         <div className="flex justify-between text-xs">
                                             <span className="text-slate-500">Transaction Fee</span>
                                             <span className="text-slate-700 font-medium">
@@ -3590,30 +3651,45 @@ Status: VERIFIED`;
                                     </div>
                                 </div>
 
-                                {/* Discounts (placeholder) */}
+                                {/* Reward voucher */}
                                 <div>
                                     <div className="flex items-center gap-2 mb-3">
                                         <Ticket size={16} className="text-slate-900" />
-                                        <h5 className="text-sm font-bold text-slate-900">Discounts</h5>
+                                        <h5 className="text-sm font-bold text-slate-900">Reward voucher</h5>
                                     </div>
-                                    <div className="flex items-start gap-2 px-3 py-2.5 bg-slate-50 rounded-xl mb-3">
-                                        <Info size={13} className="text-slate-400 mt-0.5 flex-shrink-0" />
-                                        <p className="text-[11px] text-slate-400 leading-snug">
-                                            You can check which discounts you can get for and apply them.
-                                        </p>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        disabled
-                                        className="w-full flex items-center justify-between px-4 py-3.5 border border-slate-200 rounded-xl text-sm text-slate-500 cursor-not-allowed"
-                                        title="Coming soon"
-                                    >
-                                        <span className="flex items-center gap-2">
-                                            <Plus size={15} strokeWidth={2.5} />
-                                            Add Discounts (0 Selected)
-                                        </span>
-                                        <ChevronDown size={16} className="text-slate-400" />
-                                    </button>
+                                    {voucher && cartAllowsVoucher ? (
+                                        <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                                            <div className="min-w-0">
+                                                <p className="truncate text-sm font-bold text-emerald-900">{voucher.title}</p>
+                                                <p className="text-xs text-emerald-800">Takes K{voucherDiscount.toLocaleString(undefined, { minimumFractionDigits: 2 })} off your order.</p>
+                                            </div>
+                                            <button type="button" onClick={() => { setVoucher(null); setVoucherNote(null); }} className="flex-shrink-0 text-xs font-bold text-emerald-900 underline">Remove</button>
+                                        </div>
+                                    ) : !cartAllowsVoucher ? (
+                                        <p className="text-[11px] leading-snug text-slate-400">Rewards can’t be used on bookings, appointments or donations yet.</p>
+                                    ) : !voucherOpen ? (
+                                        <button type="button" onClick={() => setVoucherOpen(true)} className="w-full flex items-center justify-between px-4 py-3.5 border border-slate-200 rounded-xl text-sm text-slate-600 hover:bg-slate-50">
+                                            <span className="flex items-center gap-2"><Plus size={15} strokeWidth={2.5} />Have a reward voucher?</span>
+                                            <ChevronDown size={16} className="text-slate-400" />
+                                        </button>
+                                    ) : (
+                                        <div>
+                                            <div className="flex gap-2">
+                                                <input
+                                                    value={voucherInput}
+                                                    onChange={(e) => { setVoucherInput(e.target.value); setVoucherError(null); }}
+                                                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyVoucher(); } }}
+                                                    placeholder="Voucher code"
+                                                    aria-label="Reward voucher code"
+                                                    className="min-w-0 flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm uppercase tracking-widest outline-none focus:border-[#0B57D0]"
+                                                />
+                                                <button type="button" onClick={applyVoucher} disabled={voucherBusy || !voucherInput.trim()} className="rounded-xl bg-[#0B57D0] px-5 text-sm font-bold text-white disabled:opacity-50">{voucherBusy ? '…' : 'Apply'}</button>
+                                            </div>
+                                            {voucherError && <p role="alert" className="mt-2 text-xs font-semibold text-rose-600">{voucherError}</p>}
+                                            <p className="mt-2 text-[11px] leading-snug text-slate-400">Redeemed your points with {org?.name || 'this business'}? Enter the code you got.</p>
+                                        </div>
+                                    )}
+                                    {voucherNote && <p className="mt-2 text-xs font-semibold text-amber-700">{voucherNote}</p>}
                                 </div>
                             </div>
 
@@ -3868,9 +3944,9 @@ Status: VERIFIED`;
                                             {cartHasDigital && <input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="Email for your download" autoComplete="email" className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0B57D0]" />}
                                         </div>
                                         <div className="mt-4 space-y-1 text-xs text-gray-600">
-                                            <div className="flex justify-between"><span>Order total</span><span>K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
-                                            <div className="flex justify-between"><span>Card fee</span><span>K{cardFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
-                                            <div className="flex justify-between border-t border-slate-100 pt-1 font-bold text-gray-800"><span>You pay</span><span>K{cardCharged.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                            <div className="flex justify-between"><span>Order total</span><span>{cardInUsd ? cardMoney(cartUsd) : `K${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}</span></div>
+                                            <div className="flex justify-between"><span>Card fee</span><span>{cardMoney(cardFee)}</span></div>
+                                            <div className="flex justify-between border-t border-slate-100 pt-1 font-bold text-gray-800"><span>You pay</span><span>{cardMoney(cardCharged)}{cardInUsd ? ' USD' : ''}</span></div>
                                         </div>
                                         {cardBlockedByDelivery && <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">Card isn’t available for orders with a delivery charge yet. Use Mobile Money, or choose pick-up.</p>}
                                     </div>
@@ -3928,7 +4004,7 @@ Status: VERIFIED`;
                                     className={`w-full h-14 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${!submitting && cardDetailsReady && !cardBlockedByDelivery ? 'bg-[#0B57D0] hover:bg-[#0842A0] text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'}`}
                                 >
                                     {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
-                                    <span>{submitting ? 'Starting…' : `Pay K${cardCharged.toLocaleString(undefined, { minimumFractionDigits: 2 })} by card`}</span>
+                                    <span>{submitting ? 'Starting…' : `Pay ${cardMoney(cardCharged)}${cardInUsd ? ' USD' : ''} by card`}</span>
                                 </button>
                             ) : (
                                 <button disabled className="w-full h-14 rounded-xl font-bold text-base bg-neutral-100 text-zinc-400 cursor-not-allowed">
@@ -4061,6 +4137,9 @@ Status: VERIFIED`;
                             {currentReference && (
                                 <StoreRewardsSection reference={currentReference} organizationId={org.id} businessName={org.name} />
                             )}
+
+                            {/* Offer a free account to keep this receipt (not shown to someone already signed in) */}
+                            <SaveReceiptCard businessName={org.name} source="store" className="mt-6" />
 
                             {/* Payment Details */}
                             <div className="mt-7 bg-gray-50 border border-neutral-200 rounded-2xl px-6 pt-4 pb-5">

@@ -6,12 +6,13 @@ import { Plus } from 'lucide-react';
 import { InventoryPanel } from '../components/purchasing/InventoryPanel';
 import { StockPanel } from '../components/purchasing/StockPanel';
 import { SalonPanel } from '../components/purchasing/SalonPanel';
+import { StockLossPanel } from '../components/purchasing/StockLossPanel';
 
 export const ProductsServices: React.FC = () => {
     const { userRole } = useAuth();
     const isAdmin = userRole === 'ADMIN';
     const openAddRef = useRef<(() => void) | null>(null);
-    const [view, setView] = useState<'products' | 'stock' | 'value' | 'salon'>('products');
+    const [view, setView] = useState<'products' | 'stock' | 'losses' | 'value' | 'salon'>('products');
 
     const mobileHeaderAction = isAdmin ? (
         <button
@@ -26,11 +27,11 @@ export const ProductsServices: React.FC = () => {
     return (
         <Layout noPadding backgroundColor="bg-gray-50" mobileHeaderAction={mobileHeaderAction}>
             <div className="mx-5 mb-2 flex h-8 w-fit items-center gap-1 rounded-[10px] bg-slate-100 p-1 md:bg-[#F8FAFD]">
-                {([['products', 'Products'], ['salon', 'Bookings'], ['stock', 'Stock'], ['value', 'Stock & value']] as const).map(([id, label]) => (
+                {([['products', 'Products'], ['salon', 'Bookings'], ['stock', 'Stock'], ['losses', 'Losses'], ['value', 'Stock & value']] as const).map(([id, label]) => (
                     <button key={id} onClick={() => setView(id)} className={`h-full rounded-lg px-4 text-[11px] font-['DM_Sans'] ${view === id ? 'bg-white font-bold text-gray-900 shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)]' : 'text-gray-900 hover:bg-white/50'}`}>{label}</button>
                 ))}
             </div>
-            {view === 'products' ? <ProductSettings onRequestAdd={(fn) => { openAddRef.current = fn; }} /> : view === 'stock' ? <StockPanel /> : view === 'salon' ? <SalonPanel /> : <InventoryPanel />}
+            {view === 'products' ? <ProductSettings onRequestAdd={(fn) => { openAddRef.current = fn; }} /> : view === 'stock' ? <StockPanel /> : view === 'losses' ? <StockLossPanel /> : view === 'salon' ? <SalonPanel /> : <InventoryPanel />}
         </Layout>
     );
 };

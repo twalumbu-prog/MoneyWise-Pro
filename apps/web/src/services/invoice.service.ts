@@ -8,4 +8,5 @@ export type {
     CreateCreditSaleInput,
     EntryAllocation,
     InvoicePayLink,
+    ReminderSettings,
 } from 'core';

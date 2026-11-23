@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import posthog from '../lib/posthog';
+import { SaveReceiptCard } from '../components/SaveReceiptCard';
 import { trackEvent, trackVerificationTimeout } from '../lib/analytics';
 import {
     Loader2,
@@ -1406,6 +1407,9 @@ export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenO
                                 Your payment was successful.<br />Thank you for your business.
                             </p>
                         </div>
+
+                        {/* Offer a free account to keep this receipt (not shown to someone already signed in) */}
+                        <SaveReceiptCard businessName={ctx.organization?.name || ''} source="payment_link" className="mt-6" />
 
                         {/* Payment Details */}
                         <div className="mt-7 bg-gray-50 border border-neutral-200 rounded-2xl px-6 pt-4 pb-5">

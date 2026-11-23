@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, useCallback } from 'react';
+import { useMemo, useRef, useState, useCallback, useEffect } from 'react';
 import { TourTarget } from '../../src/components/walkthrough/TourTarget';
 import {
     View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator,
@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-    ChevronDown, ChevronLeft, ChevronRight, Filter, ArrowUpDown, Check, Settings, Share2, Sprout,
+    ChevronDown, ChevronLeft, ChevronRight, Filter, ArrowUpDown, Check, Settings, Share2,
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -253,8 +253,17 @@ export default function ReportingScreen() {
         },
     });
 
+    // The per-account transaction lists are fetched on first expand; drop them whenever the period or view changes
+    // so a re-expand shows current postings instead of the first copy loaded.
+    useEffect(() => {
+        setAccountItems({});
+        setExpandedAccount(null);
+    }, [organizationId, view, range.start, range.end]);
+
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
+        setAccountItems({});
+        setExpandedAccount(null);
         await refetch();
         queryClient.invalidateQueries({ queryKey: ['report'] });
         queryClient.invalidateQueries({ queryKey: ['accounts'] });
@@ -435,16 +444,6 @@ export default function ReportingScreen() {
                                 ) : (
                                     <Text style={styles.heroValue}>{formatKwacha(headline)}</Text>
                                 )}
-                            </Pressable>
-                            <Pressable
-                                style={({ pressed }) => [styles.growBtn, pressed && { opacity: 0.8 }]}
-                                onPress={() => router.push('/grow')}
-                                hitSlop={8}
-                                accessibilityRole="button"
-                                accessibilityLabel="Grow — plan your net worth"
-                            >
-                                <Sprout size={15} color="#4ADE80" />
-                                <Text style={styles.growText}>Grow</Text>
                             </Pressable>
                         </LinearGradient>
 
@@ -801,12 +800,6 @@ const styles = StyleSheet.create({
     segmentTextActive: { color: colors.text },
     hero: { borderRadius: 18, padding: 20, minHeight: 100, overflow: 'hidden' },
     heroTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    growBtn: {
-        position: 'absolute', top: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 6,
-        paddingHorizontal: 14, height: 34, borderRadius: 17,
-        backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
-    },
-    growText: { fontFamily: fonts.bodyBold, fontSize: 13, color: '#FFFFFF' },
     heroLabel: { fontFamily: fonts.bodyBold, fontSize: 11, color: '#94A3B8', letterSpacing: 0.8 },
     heroValue: { fontFamily: fonts.bodyBold, fontSize: 32, color: '#FFFFFF', marginTop: 6 },
     heroChevronWrap: {

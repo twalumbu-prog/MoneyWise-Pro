@@ -42,7 +42,7 @@ export const PRESETS: { name: string; accent: string; mode: StoreMode }[] = [
 export const LAYOUTS: { id: StoreLayout; label: string; hint: string }[] = [
     { id: 'grid', label: 'Grid', hint: 'Pictures first. Good for products.' },
     { id: 'menu', label: 'Menu', hint: 'A list with an Add button. Good for food and services.' },
-    { id: 'showcase', label: 'Showcase', hint: 'One big feature, then a grid.' },
+    { id: 'showcase', label: 'Showcase', hint: 'A big stage for your best items, then a grid. Looks like a product launch page.' },
     { id: 'services', label: 'Services', hint: 'Cards with a description and a Book button. Good for consultancies.' },
 ];
 

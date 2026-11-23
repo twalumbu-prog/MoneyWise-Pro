@@ -90,14 +90,17 @@ async function resolveLink(token: string, payerOrgId: string): Promise<Resolved>
     };
 }
 
-async function resolveQuick(username: string, payerOrgId: string): Promise<Resolved> {
+async function resolveQuick(username: string, payerOrgId: string, orgId?: string): Promise<Resolved> {
     const handle = String(username ?? '').trim().replace(/^@/, '').toLowerCase();
-    if (!handle) throw new PayLinkError('This pay page doesn’t exist.', 404, 'NOT_FOUND');
-    const { data: org } = await supabase.from('organizations').select('id, name, logo_url, lenco_subaccount_id, is_personal').ilike('public_username', handle).maybeSingle();
+    // The Marketplace pays a seller by account, so a seller who has not chosen a public username can still be paid.
+    if (!handle && !orgId) throw new PayLinkError('This pay page doesn’t exist.', 404, 'NOT_FOUND');
+    const { data: org } = orgId
+        ? await supabase.from('organizations').select('id, name, logo_url, lenco_subaccount_id, is_personal, public_username').eq('id', orgId).maybeSingle()
+        : await supabase.from('organizations').select('id, name, logo_url, lenco_subaccount_id, is_personal').ilike('public_username', handle).maybeSingle();
     if (!org) throw new PayLinkError('This pay page doesn’t exist any more.', 404, 'NOT_FOUND');
     const ready = !!org.lenco_subaccount_id;
     return {
-        kind: 'QUICK', username: handle, status: ready ? 'READY' : 'UNAVAILABLE',
+        kind: 'QUICK', username: handle || String((org as any).public_username ?? ''), status: ready ? 'READY' : 'UNAVAILABLE',
         reason: ready ? undefined : `${org.name} can’t receive MoneyWise payments yet.`,
         recipient: { orgId: org.id, name: org.name, logoUrl: org.logo_url ?? null },
         amount: null, fee: 0, total: null, amountEditable: true, purpose: null, own: org.id === payerOrgId, _org: org,
@@ -144,9 +147,9 @@ export interface PayResult {
     recipient: string;
 }
 
-export async function payWithWallet(ctx: AgentContext, body: { token?: string; username?: string; amount?: number; purpose?: string; walletId?: string }): Promise<PayResult> {
+export async function payWithWallet(ctx: AgentContext, body: { token?: string; username?: string; orgId?: string; amount?: number; purpose?: string; walletId?: string }): Promise<PayResult> {
     if (ctx.role !== 'ADMIN') throw new PayLinkError('Only the account holder can pay from this wallet.', 403, 'FORBIDDEN');
-    const t = body.token ? await resolveLink(String(body.token), ctx.organizationId) : await resolveQuick(String(body.username ?? ''), ctx.organizationId);
+    const t = body.token ? await resolveLink(String(body.token), ctx.organizationId) : await resolveQuick(String(body.username ?? ''), ctx.organizationId, body.orgId);
     if (t.status === 'PAID') throw new PayLinkError(t.reason!, 409, 'PAID');
     if (t.status !== 'READY') throw new PayLinkError(t.reason ?? 'This link can’t be paid.', 409, 'UNAVAILABLE');
     if (t.own) throw new PayLinkError('This is your own link — you can’t pay yourself.', 400, 'OWN');

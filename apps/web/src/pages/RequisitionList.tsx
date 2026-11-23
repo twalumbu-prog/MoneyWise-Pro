@@ -7,6 +7,7 @@ import { requisitionService } from '../services/requisition.service';
 import { useAuth } from '../context/AuthContext';
 import { RequisitionInbox } from '../components/RequisitionInbox';
 import { InboxCard, NewMenuItem } from '../components/InboxCard';
+import { ChannelInboxBody, ChannelConnections } from './ChannelInbox';
 import RequisitionModal from '../components/requisitions/RequisitionModal';
 import { MobileRequisitionWizard } from '../components/requisitions/MobileRequisitionWizard';
 import { MobileStaffLoanWizard } from '../components/requisitions/MobileStaffLoanWizard';
@@ -113,7 +114,7 @@ export const RequisitionList: React.FC = () => {
     const [currentView] = useState<'active' | 'history'>('active');
     const [selectedRequisition, setSelectedRequisition] = useState<RequisitionType | null>(null);
     // Outflows = requisitions (existing) · Inflows = money-in ledger entries (sales, deposits, cash inflows)
-    const [inboxMode, setInboxMode] = useState<'outflows' | 'inflows'>('outflows');
+    const [inboxMode, setInboxMode] = useState<'outflows' | 'inflows' | 'messages'>('outflows');
     // Within the Inflows view: cash payments vs. sent invoice links
     const [inflowSubMode, setInflowSubMode] = useState<'cash' | 'invoices' | 'captured'>('cash');
     // Captured = transaction capture review queue (receipts, MoMo messages). Badge counts items waiting for review.
@@ -256,6 +257,13 @@ export const RequisitionList: React.FC = () => {
     useEffect(() => {
         if (searchParams.get('new') === 'true') {
             setIsRequisitionWizardOpen(true);
+        }
+        // Deep link to the Orders & messages tab (the old /messages address redirects here).
+        if (searchParams.get('inbox') === 'messages') {
+            setInboxMode('messages');
+            const next = new URLSearchParams(searchParams);
+            next.delete('inbox');
+            setSearchParams(next, { replace: true });
         }
         // Deep link from the credit-sale success screen: Inflows → Invoices.
         if (searchParams.get('inflows') === 'invoices') {
@@ -582,7 +590,7 @@ export const RequisitionList: React.FC = () => {
                                 <SegmentedControl
                                     variant="capsule"
                                     value={inboxMode}
-                                    onChange={(v) => setInboxMode(v as 'outflows' | 'inflows')}
+                                    onChange={(v) => setInboxMode(v as 'outflows' | 'inflows' | 'messages')}
                                     options={[
                                         {
                                             value: 'inflows',
@@ -602,12 +610,13 @@ export const RequisitionList: React.FC = () => {
                                                 </span>
                                             ),
                                         },
+                                        { value: 'messages', label: 'Orders' },
                                     ]}
                                 />
                             </div>
 
                             {/* Mobile Search & Sort/Filter Bar */}
-                            <div className="md:hidden px-5 pt-4 pb-3">
+                            <div className={`md:hidden px-5 pt-4 pb-3 ${inboxMode === 'messages' ? 'hidden' : ''}`}>
                                 <div className="flex items-center bg-white rounded-[32px] pl-6 pr-2.5 py-2.5 shadow-[0px_4px_4px_0px_rgba(0,0,0,0.08)] outline outline-1 outline-offset-[-1px] outline-black/5">
                                     <Search className="text-zinc-500 mr-4 flex-shrink-0" size={20} strokeWidth={1.5} />
                                     <input
@@ -761,7 +770,7 @@ export const RequisitionList: React.FC = () => {
                             onModeChange={setInboxMode}
                             outflowCount={requisitions.length}
                             inflowCount={inflowTotalCount}
-                            showNew={inboxMode === 'outflows' || isCashHandler}
+                            showNew={inboxMode === 'outflows' || (inboxMode === 'inflows' && isCashHandler)}
                             newLabel={inboxMode === 'inflows' ? 'New Sale' : 'New Request'}
                             onNew={() => navigate(inboxMode === 'inflows' ? '/sales/new' : '/requisitions/new')}
                             newMenuItems={inboxMode === 'outflows' ? desktopNewMenuItems : desktopSaleMenuItems}
@@ -777,6 +786,7 @@ export const RequisitionList: React.FC = () => {
                             onOpenFilters={() => setIsFilterSheetOpen(true)}
                             onRefresh={() => inboxMode === 'inflows' ? (loadInflows(), refetchCreditInvoices()) : loadRequisitions()}
                             hasActiveFilters={hasActiveDesktopFilters}
+                            rightContent={<ChannelConnections />}
                             onMarkAllRead={inboxMode === 'outflows' && unreadCount > 0 ? markAllRead : undefined}
                             markAllReadBusy={markingAll}
                             leftContent={inboxMode === 'inflows' && !isRequestor ? (
@@ -810,7 +820,7 @@ export const RequisitionList: React.FC = () => {
                                 </div>
                             ) : undefined}
                         >
-                            {inboxMode === 'outflows' ? (
+                            {inboxMode === 'messages' ? <ChannelInboxBody /> : inboxMode === 'outflows' ? (
                                 <>
                                     {loading && (
                                         <div className="bg-gray-50/60 rounded-2xl p-24 text-center">
@@ -925,6 +935,8 @@ export const RequisitionList: React.FC = () => {
                         </InboxCard>
                       )}
                     </div>
+
+                    {inboxMode === 'messages' && <div className="md:hidden px-4 pb-24"><div className="mb-3"><ChannelConnections /></div><ChannelInboxBody /></div>}
 
                     {inboxMode === 'outflows' && (<>
                     {loading && (

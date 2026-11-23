@@ -5,7 +5,7 @@ import { BadgeCheck, Camera, Gavel, Heart, Lightbulb, MapPin, Plus, Search, Shop
 import { apiJson } from 'core';
 import { PagePanel } from '../components/ui/PagePanel';
 import { PrimaryButton, TonalButton } from '../components/ui/Dialog';
-import { LISTINGS_KEY, ListingCard, Shelf, ShelfItem, StoreCard, typeGroup } from '../components/marketplace/parts';
+import { LISTINGS_KEY, ListingCard, MarketCurrencyToggle, Shelf, ShelfItem, StoreCard, typeGroup } from '../components/marketplace/parts';
 import { buildFeed } from '../components/marketplace/feed';
 import { ImportedCard } from './MarketplaceImported';
 import type { ImportBrowse, ImportCard } from '../components/marketplace/importTypes';
@@ -15,7 +15,7 @@ import { StoreLocationDialog } from '../components/marketplace/StoreLocationDial
 import { LocationNudge } from '../components/marketplace/LocationNudge';
 import { MarketplaceTabs } from '../components/marketplace/MarketplaceTabs';
 import { HeroCarousel } from '../components/marketplace/HeroCarousel';
-import { formatKwacha } from 'core';
+import { moneyText } from '../lib/marketCurrency';
 import { smartSlides } from '../components/marketplace/heroSlides';
 import { ImageSearchDialog, matchScore } from '../components/marketplace/ImageSearchDialog';
 import type { ImageMatch } from '../components/marketplace/ImageSearchDialog';
@@ -182,7 +182,7 @@ export const Marketplace: React.FC = () => {
     const popular = [...mainsWithItems].sort((a, b) => (counts.main.get(b.id) ?? 0) - (counts.main.get(a.id) ?? 0));
     const topMain = popular[0];
     // Only items with a picture go on a banner. Paid placements lead, then slides made from what is on the Marketplace right now.
-    const pics = (ls: Listing[]) => ls.filter((l) => l.imageUrl).slice(0, 3).map((l) => ({ id: l.id, image: l.imageUrl, label: l.name, sub: formatKwacha(l.price), onOpen: () => open(l) }));
+    const pics = (ls: Listing[]) => ls.filter((l) => l.imageUrl).slice(0, 3).map((l) => ({ id: l.id, image: l.imageUrl, label: l.name, sub: moneyText(l.price, l.usdPrice), onOpen: () => open(l) }));
     const newest = (ls: Listing[]) => [...ls].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
     const sponsored: Slide[] = [];
     featured.stores.slice(0, 2).forEach((s, k) => {
@@ -266,6 +266,7 @@ export const Marketplace: React.FC = () => {
                         <option value="ALL">All categories</option>
                         {mainsWithItems.map((m) => <option key={m.id} value={m.id}>{m.name} ({counts.main.get(m.id)})</option>)}
                     </select>
+                    <MarketCurrencyToggle />
                     <button
                         type="button"
                         onClick={() => setFiltersOpen((v) => !v)}

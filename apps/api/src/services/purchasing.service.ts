@@ -34,7 +34,22 @@ export async function ensureAccount(orgId: string, code: string, name: string, t
 }
 export const inventoryAcct = (o: string) => ensureAccount(o, 'INVENTORY', 'Inventory', 'ASSET', 'Inventory');
 const payablesAcct = (o: string) => ensureAccount(o, 'ACCTS-PAYABLE', 'Accounts Payable', 'LIABILITY', 'Accounts Payable');
-const adjustmentAcct = (o: string) => ensureAccount(o, 'INV-ADJUSTMENTS', 'Inventory adjustments', 'EXPENSE', 'Expense');
+export const LOSS_KINDS = ['DAMAGED', 'LOST', 'STOLEN', 'EXPIRED', 'MISCOUNT', 'OTHER'] as const;
+/** What kind of loss it was and who was in charge of the stock, from what the screen sent (nothing when neither was given). */
+export async function lossFields(orgId: string, body: any): Promise<Record<string, unknown>> {
+    const out: Record<string, unknown> = {};
+    const kind = String(body?.kind ?? '').toUpperCase();
+    if ((LOSS_KINDS as readonly string[]).includes(kind)) out.loss_kind = kind;
+    const staffId = String(body?.inChargeStaffId ?? '');
+    if (/^[0-9a-f-]{36}$/i.test(staffId)) {
+        const { data: s } = await supabase.from('salon_staff_profiles').select('id, display_name').eq('organization_id', orgId).eq('id', staffId).maybeSingle();
+        if (s) { out.in_charge_staff_id = s.id; out.in_charge_name = s.display_name; }
+    }
+    if (!out.in_charge_name) { const n = text(body?.inChargeName, 80); if (n) out.in_charge_name = n; }
+    return out;
+}
+
+export const adjustmentAcct = (o: string) => ensureAccount(o, 'INV-ADJUSTMENTS', 'Inventory adjustments', 'EXPENSE', 'Expense');
 
 interface PostLine { accountId: string; debit: number; credit: number; memo?: string }
 export async function postJournal(orgId: string, userId: string | null, date: string, memo: string, ref: string, sourceType: string, sourceId: string, lines: PostLine[]) {
@@ -398,7 +413,7 @@ export async function adjustStock(orgId: string, userId: string, body: any) {
 
     await applyStock(p, variantId, change);
     if (change < 0) void alertIfLow(orgId, p, variantId, before, after);
-    const { data: mv, error } = await supabase.from('stock_movements').insert({ organization_id: orgId, product_id: p.id, variant_id: variantId, quantity_change: change, unit_cost: cost || null, reason, note: text(body?.note, 300), balance_after: after, created_by: userId }).select('*').single();
+    const { data: mv, error } = await supabase.from('stock_movements').insert({ organization_id: orgId, product_id: p.id, variant_id: variantId, quantity_change: change, unit_cost: cost || null, reason, note: text(body?.note, 300), balance_after: after, created_by: userId, ...(change < 0 ? await lossFields(orgId, body) : {}) }).select('*').single();
     if (error || !mv) throw new PurchasingError(error?.message ?? 'Could not record the movement.', 500);
     const value = r2(Math.abs(change) * cost);
     if (value > 0) {

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiJson } from 'core';
+import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, AlertCircle, CheckCircle2, Trash2 } from 'lucide-react';
 import { startQuickConnect, completeQuickConnect, takeQuickConnectReturn } from './quickConnect';
 
@@ -15,16 +16,21 @@ interface EmailConnection {
 /** configured = our own Google connection is set up server-side; composio = Quick connect is. */
 interface GmailStatus { configured: boolean; composio?: boolean; connections: EmailConnection[] }
 
+/** Gmail's multicolour "M" on its own, to sit in a circle or a chip. */
+export const GmailMark: React.FC<{ size?: number }> = ({ size = 16 }) => (
+    <svg viewBox="52 42 88 66" width={size} height={size * 0.75} aria-label="Gmail">
+        <path fill="#4285f4" d="M58 108h14V74L52 59v43c0 3.32 2.69 6 6 6" />
+        <path fill="#34a853" d="M120 108h14c3.32 0 6-2.69 6-6V59l-20 15" />
+        <path fill="#fbbc04" d="M120 48v26l20-15v-8c0-7.42-8.47-11.65-14.4-7.2" />
+        <path fill="#ea4335" d="M72 74V48l24 18 24-18v26L96 92" />
+        <path fill="#c5221f" d="M52 51v8l20 15V48l-5.6-4.2c-5.94-4.45-14.4-.22-14.4 7.2" />
+    </svg>
+);
+
 /** Gmail's multicolour "M" on a white tile — same footprint as IntegrationLogo. */
 export const GmailLogo: React.FC<{ size?: number; className?: string }> = ({ size = 40, className = '' }) => (
     <div className={`rounded-xl bg-white border border-gray-100 flex items-center justify-center shrink-0 shadow-sm ${className}`} style={{ height: size, width: size }}>
-        <svg viewBox="52 42 88 66" width={size * 0.58} height={size * 0.58} aria-label="Gmail">
-            <path fill="#4285f4" d="M58 108h14V74L52 59v43c0 3.32 2.69 6 6 6" />
-            <path fill="#34a853" d="M120 108h14c3.32 0 6-2.69 6-6V59l-20 15" />
-            <path fill="#fbbc04" d="M120 48v26l20-15v-8c0-7.42-8.47-11.65-14.4-7.2" />
-            <path fill="#ea4335" d="M72 74V48l24 18 24-18v26L96 92" />
-            <path fill="#c5221f" d="M52 51v8l20 15V48l-5.6-4.2c-5.94-4.45-14.4-.22-14.4 7.2" />
-        </svg>
+        <GmailMark size={size * 0.58} />
     </div>
 );
 
@@ -38,6 +44,7 @@ const timeAgo = (iso?: string | null) => {
 };
 
 export const GmailIntegration: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+    const navigate = useNavigate();
     const [status, setStatus] = useState<GmailStatus | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -167,6 +174,7 @@ export const GmailIntegration: React.FC<{ onBack: () => void }> = ({ onBack }) =
                     Quick connect signs you in to Google through our connection partner, Composio, and is the fastest way to get started.
                     Connect directly signs you in with Google ourselves. Both only read your email.
                 </p>
+                {conns.length > 0 && <button type="button" onClick={() => navigate('/messages')} className="mt-3 text-sm font-semibold text-brand-navy hover:underline">See your emails in Orders &amp; messages →</button>}
                 {conns.map(c => (
                     <div key={c.id} className="mt-3 flex items-center justify-between gap-3 text-sm bg-gray-50 rounded-xl px-3 py-2">
                         <div className="min-w-0">

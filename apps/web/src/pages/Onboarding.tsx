@@ -251,6 +251,7 @@ export const Onboarding: React.FC = () => {
                     {step === 7 && (
                         <StepProducts
                             organizationId={state.organization.id}
+                            industries={state.profile?.industries || []}
                             storeCategories={state.profile?.store_categories || []}
                             onBack={() => goBack(6)}
                             onContinue={(count) => {

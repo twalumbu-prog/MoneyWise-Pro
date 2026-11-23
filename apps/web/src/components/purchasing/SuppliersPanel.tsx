@@ -189,25 +189,34 @@ const Row: React.FC<{ onClick?: () => void; children: React.ReactNode }> = ({ on
     <div onClick={onClick} className={`flex items-center justify-between gap-4 border-b border-gray-100 px-5 py-3 text-sm text-gray-900 ${onClick ? 'cursor-pointer hover:bg-gray-50' : ''}`}>{children}</div>
 );
 
-/** Lets a business share what it pays suppliers, anonymously, so everyone can compare. Off until the owner turns it on. */
-const PriceSharing: React.FC = () => {
+/** Lets a business share what it pays suppliers, anonymously, so everyone can compare. Off until the owner turns it on. A second switch, also off, lets shoppers see which suppliers it buys from. */
+export const PriceSharing: React.FC = () => {
     const qc = useQueryClient();
     const q = useQuery<{ sharing: boolean }>({ queryKey: ['advice', 'sharing'], queryFn: () => apiJson('/marketplace/advice/sharing'), retry: false });
+    const s = useQuery<{ supplierSharing: boolean }>({ queryKey: ['advice', 'supplier-sharing'], queryFn: () => apiJson('/marketplace/advice/supplier-sharing'), retry: false });
     const [busy, setBusy] = useState(false);
     const [err, setErr] = useState<string | null>(null);
     const on = q.data?.sharing === true;
-    const toggle = async () => {
+    const supOn = s.data?.supplierSharing === true;
+    const flip = async (path: string, body: object, key: string) => {
         setBusy(true); setErr(null);
-        try { await apiJson('/marketplace/advice/sharing', { method: 'POST', body: JSON.stringify({ sharing: !on }) }); await qc.invalidateQueries({ queryKey: ['advice', 'sharing'] }); }
+        try { await apiJson(path, { method: 'POST', body: JSON.stringify(body) }); await qc.invalidateQueries({ queryKey: ['advice', key] }); }
         catch (e: any) { setErr(e?.message || 'Could not change that.'); } finally { setBusy(false); }
     };
+    const Switch: React.FC<{ checked: boolean; onClick: () => void; disabled?: boolean; title: string; text: string }> = ({ checked, onClick, disabled, title, text }) => (
+        <button type="button" role="switch" aria-checked={checked} onClick={onClick} disabled={disabled} className="flex w-full items-center justify-between gap-4 text-left">
+            <span><span className="block text-sm font-bold text-gray-900">{title}</span><span className="mt-0.5 block text-xs text-gray-500">{text}</span></span>
+            <span className={`relative h-6 w-10 flex-shrink-0 rounded-full transition-colors ${checked ? 'bg-[#0B57D0]' : 'bg-gray-300'}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-5' : 'translate-x-1'}`} /></span>
+        </button>
+    );
     if (q.isLoading) return null;
     return (
         <div className={`rounded-xl border p-4 ${on ? 'border-[#0B57D0]/40 bg-[#F0F6FF]' : 'border-gray-200 bg-gray-50'}`}>
-            <button type="button" role="switch" aria-checked={on} onClick={toggle} disabled={busy || !!q.error} className="flex w-full items-center justify-between gap-4 text-left">
-                <span><span className="block text-sm font-bold text-gray-900">Help others compare prices</span><span className="mt-0.5 block text-xs text-gray-500">Share what you pay for products in the Marketplace catalogue. Only a combined figure from at least 5 businesses is ever shown, and never your name or your suppliers.</span></span>
-                <span className={`relative h-6 w-10 flex-shrink-0 rounded-full transition-colors ${on ? 'bg-[#0B57D0]' : 'bg-gray-300'}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-5' : 'translate-x-1'}`} /></span>
-            </button>
+            <Switch checked={on} disabled={busy || !!q.error} onClick={() => flip('/marketplace/advice/sharing', { sharing: !on }, 'sharing')} title="Help others compare prices"
+                text="Share what you pay for products in the Marketplace catalogue, from supplier bills and from stock you add with a price. Only a combined figure from at least 5 businesses is ever shown, and never your name or your suppliers." />
+            <div className="my-3 border-t border-gray-200" />
+            <Switch checked={supOn} disabled={busy || !!s.error} onClick={() => flip('/marketplace/advice/supplier-sharing', { supplierSharing: !supOn }, 'supplier-sharing')} title="Let shoppers see where you buy"
+                text="Name the suppliers you buy catalogue products from. A supplier is only shown when at least 3 businesses buy from it, with the typical price they pay. Your business is never named. This is separate from sharing prices and off until you turn it on." />
             {err && <p className="mt-2 text-xs text-[#B31412]">{err}</p>}
         </div>
     );

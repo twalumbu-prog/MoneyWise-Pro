@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, Clock, Gavel, ShieldAlert, Trophy } from 'lucide-react';
-import { apiJson, formatKwacha } from 'core';
+import { apiJson } from 'core';
+import { auctionMoney, currencySymbol } from '../../lib/marketCurrency';
 import { Dialog, ErrorNote, PrimaryButton, TonalButton, fieldClass, labelClass } from '../ui/Dialog';
 import { LISTINGS_KEY, timeLeft, useNow } from './parts';
 import type { Listing } from './parts';
@@ -11,7 +12,7 @@ const PHONE_KEY = 'mw:bid-phone';
 const readPhone = () => { try { return localStorage.getItem(PHONE_KEY) ?? ''; } catch { return ''; } };
 const savePhone = (v: string) => { try { localStorage.setItem(PHONE_KEY, v); } catch { /* storage unavailable */ } };
 
-interface BidsResponse { bids: { bidder: string; amount: number; at: string }[]; paymentLinkToken: string | null }
+interface BidsResponse { currency?: 'ZMW' | 'USD'; isSeller?: boolean; bids: { bidder: string; phone?: string | null; amount: number; at: string }[]; paymentLinkToken: string | null }
 
 /**
  * Everything about an item on auction: the current bid, the clock, a bid box, Buy it now, who has bid, and, once it ends, what happens next
@@ -19,6 +20,8 @@ interface BidsResponse { bids: { bidder: string; amount: number; at: string }[];
  */
 export const AuctionPanel: React.FC<{ listing: Listing }> = ({ listing }) => {
     const a = listing.auction!;
+    const am = (n: number) => auctionMoney(n, a.currency);
+    const sym = currencySymbol(a.currency);
     const navigate = useNavigate();
     const qc = useQueryClient();
     const open = a.status === 'OPEN';
@@ -31,7 +34,9 @@ export const AuctionPanel: React.FC<{ listing: Listing }> = ({ listing }) => {
     const [busy, setBusy] = useState<'bid' | 'buy' | 'cancel' | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [confirmBuy, setConfirmBuy] = useState(false);
-    const [showBids, setShowBids] = useState(false);
+    // The seller sees who is bidding straight away; buyers open the list when they want it.
+    const [showBids, setShowBids] = useState(!!listing.isMine);
+    const [confirmOff, setConfirmOff] = useState(false);
 
     // The suggested bid is always the lowest allowed one, and moves up when someone outbids.
     useEffect(() => { setAmount(String(a.minNextBid)); }, [a.minNextBid, a.id]);
@@ -54,7 +59,7 @@ export const AuctionPanel: React.FC<{ listing: Listing }> = ({ listing }) => {
 
     const place = async () => {
         const value = Number(amount);
-        if (!(value >= a.minNextBid)) { setError(`Your bid must be at least ${formatKwacha(a.minNextBid)}.`); return; }
+        if (!(value >= a.minNextBid)) { setError(`Your bid must be at least ${am(a.minNextBid)}.`); return; }
         if (!phone.trim()) { setError('Enter your mobile money number: the winner pays with it.'); return; }
         setBusy('bid'); setError(null);
         try {
@@ -88,10 +93,11 @@ export const AuctionPanel: React.FC<{ listing: Listing }> = ({ listing }) => {
         }
     };
 
+    // Turning the auction off makes the item a normal buy-now listing again. With bids it is confirmed first and every bidder is told.
     const cancel = async () => {
         setBusy('cancel'); setError(null);
-        try { await apiJson(`/marketplace/auctions/${a.id}/cancel`, { method: 'POST' }); await refresh(); }
-        catch (e: any) { setError(e?.message || 'Couldn’t cancel the auction.'); }
+        try { await apiJson(`/marketplace/auctions/${a.id}/cancel`, { method: 'POST', body: JSON.stringify({ confirm: true }) }); setConfirmOff(false); await refresh(); await qc.invalidateQueries({ queryKey: ['products'] }); }
+        catch (e: any) { setError(e?.message || 'Couldn’t turn off the auction.'); setConfirmOff(false); }
         finally { setBusy(null); }
     };
 
@@ -103,11 +109,11 @@ export const AuctionPanel: React.FC<{ listing: Listing }> = ({ listing }) => {
         return (
             <section className="mt-5 rounded-2xl border border-[rgba(116,119,117,0.22)] p-5">
                 <p className="flex items-center gap-2 text-sm font-bold text-[#1F1F1F]"><Gavel size={16} /> {sold ? 'This auction has ended' : 'Auction ending…'}</p>
-                {sold && <p className="mt-2 text-sm text-[#3C4043]">Winning bid <span className="font-bold tabular-nums">{formatKwacha(a.winningAmount ?? 0)}</span></p>}
+                {sold && <p className="mt-2 text-sm text-[#3C4043]">Winning bid <span className="font-bold tabular-nums">{am(a.winningAmount ?? 0)}</span></p>}
                 {a.iWon && (
                     <div className="mt-3 rounded-xl bg-[#E6F4EA] p-4 text-sm text-[#137333]">
                         <p className="flex items-center gap-2 font-bold"><Trophy size={16} /> You won this item</p>
-                        <p className="mt-1">Pay {formatKwacha(a.winningAmount ?? 0)} to {listing.seller.name} to complete the purchase.</p>
+                        <p className="mt-1">Pay {am(a.winningAmount ?? 0)} to {listing.seller.name} to complete the purchase.</p>
                         {listing.inAppCheckout
                             ? <><PrimaryButton onClick={() => navigate(`/marketplace/checkout/${listing.id}?auction=${a.id}`)} className="mt-3 h-11 w-full">Pay with MoneyWise wallet</PrimaryButton>{token && <button type="button" onClick={() => navigate(`/pl/${token}`)} className="mt-2 w-full text-center text-xs font-semibold underline">Pay another way</button>}</>
                             : token ? <PrimaryButton onClick={() => navigate(`/pl/${token}`)} className="mt-3 h-11 w-full">Pay now</PrimaryButton> : <p className="mt-2 text-xs">Your payment link is being prepared. Refresh in a moment.</p>}
@@ -131,7 +137,7 @@ export const AuctionPanel: React.FC<{ listing: Listing }> = ({ listing }) => {
             <div className="flex items-start justify-between gap-3">
                 <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-[#5F6368]">{a.currentBid === null ? 'Starting bid' : 'Current bid'}</p>
-                    <p className="text-3xl font-bold tabular-nums text-[#1F1F1F]">{formatKwacha(a.currentBid ?? a.startPrice)}</p>
+                    <p className="text-3xl font-bold tabular-nums text-[#1F1F1F]">{am(a.currentBid ?? a.startPrice)}</p>
                     <button type="button" onClick={() => setShowBids((v) => !v)} aria-expanded={showBids} className="mt-0.5 inline-flex items-center gap-1 text-xs font-semibold text-[#0B57D0] hover:underline">
                         {a.bidCount} {a.bidCount === 1 ? 'bid' : 'bids'} <ChevronDown size={12} className={showBids ? 'rotate-180' : ''} />
                     </button>
@@ -154,14 +160,15 @@ export const AuctionPanel: React.FC<{ listing: Listing }> = ({ listing }) => {
 
             {listing.isMine ? (
                 <div className="mt-4">
-                    <p className="text-xs text-[#5F6368]">This is your auction. Bidders can’t be edited or removed once the bidding starts.</p>
-                    {a.bidCount === 0 && <TonalButton onClick={cancel} disabled={busy === 'cancel'} className="mt-3">{busy === 'cancel' ? 'Cancelling…' : 'Cancel auction'}</TonalButton>}
+                    <p className="text-xs text-[#5F6368]">This is your auction. Everyone who bids is listed below, with their bid.</p>
+                    <TonalButton onClick={() => setConfirmOff(true)} disabled={busy === 'cancel'} className="mt-3">Turn off auction</TonalButton>
+                    <p className="mt-1.5 text-[11px] text-[#80868B]">The item stays on sale as a normal listing at its fixed price.</p>
                 </div>
             ) : (
                 <div className="mt-4 flex flex-col gap-3">
                     <div className="grid grid-cols-[1fr_1fr] gap-3">
                         <div>
-                            <label className={labelClass} htmlFor="bid-amount">Your bid (K)</label>
+                            <label className={labelClass} htmlFor="bid-amount">Your bid ({sym})</label>
                             <input id="bid-amount" className={`${fieldClass} font-bold tabular-nums`} inputMode="decimal" value={amount} onChange={(e) => { setAmount(e.target.value.replace(/[^0-9.]/g, '')); setError(null); }} />
                         </div>
                         <div>
@@ -169,11 +176,11 @@ export const AuctionPanel: React.FC<{ listing: Listing }> = ({ listing }) => {
                             <input id="bid-phone" className={fieldClass} inputMode="tel" value={phone} onChange={(e) => { setPhone(e.target.value); setError(null); }} placeholder="0971234567" />
                         </div>
                     </div>
-                    <p className="-mt-1 text-xs text-[#80868B]">Enter {formatKwacha(a.minNextBid)} or more. If you win, you pay with this number through a one-time link.</p>
+                    <p className="-mt-1 text-xs text-[#80868B]">Enter {am(a.minNextBid)} or more. If you win, you pay with this number through a one-time link.</p>
                     <PrimaryButton onClick={place} busy={busy === 'bid'} className="h-12 text-base"><Gavel size={17} /> Place bid</PrimaryButton>
                     {a.buyNowPrice && (
                         <button type="button" onClick={() => setConfirmBuy(true)} className="inline-flex h-12 items-center justify-center rounded-full text-sm font-semibold text-[#0B57D0] shadow-[inset_0_0_0_1px_#0B57D0] hover:bg-[#E8F0FE]">
-                            Buy it now for {formatKwacha(a.buyNowPrice)}
+                            Buy it now for {am(a.buyNowPrice)}
                         </button>
                     )}
                 </div>
@@ -186,9 +193,9 @@ export const AuctionPanel: React.FC<{ listing: Listing }> = ({ listing }) => {
                         <ul className="divide-y divide-[rgba(116,119,117,0.12)]">
                             {history.bids.map((b, i) => (
                                 <li key={`${b.at}-${i}`} className="flex items-center justify-between py-2 text-sm">
-                                    <span className={i === 0 ? 'font-bold text-[#1F1F1F]' : 'text-[#3C4043]'}>{b.bidder}{i === 0 ? ' · Highest' : ''}</span>
+                                    <span className={i === 0 ? 'font-bold text-[#1F1F1F]' : 'text-[#3C4043]'}>{b.bidder}{i === 0 ? ' · Highest' : ''}{b.phone ? <span className="ml-2 text-xs font-normal text-[#80868B]">{b.phone}</span> : null}</span>
                                     <span className="tabular-nums">
-                                        <span className="font-semibold">{formatKwacha(b.amount)}</span>
+                                        <span className="font-semibold">{am(b.amount)}</span>
                                         <span className="ml-2 text-xs text-[#80868B]">{new Date(b.at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                                     </span>
                                 </li>
@@ -198,8 +205,16 @@ export const AuctionPanel: React.FC<{ listing: Listing }> = ({ listing }) => {
                 </div>
             )}
 
+            <Dialog open={confirmOff} title="Turn off this auction?" onClose={() => setConfirmOff(false)}>
+                <p className="mb-5 text-sm text-[#3C4043]">{a.bidCount > 0 ? `This auction has ${a.bidCount} ${a.bidCount === 1 ? 'bid' : 'bids'}. Turning it off cancels them and tells the ${a.bidCount === 1 ? 'bidder' : 'bidders'}; nobody owes anything.` : 'Nobody has bid yet.'} The item stays on sale at its fixed price.</p>
+                <div className="flex gap-3">
+                    <TonalButton onClick={() => setConfirmOff(false)} className="h-12 flex-1">Keep the auction</TonalButton>
+                    <PrimaryButton busy={busy === 'cancel'} onClick={cancel} className="flex-1">Turn it off</PrimaryButton>
+                </div>
+            </Dialog>
+
             <Dialog open={confirmBuy} title="Buy it now?" onClose={() => setConfirmBuy(false)}>
-                <p className="mb-5 text-sm text-[#3C4043]">This ends the auction right away. You’ll pay <span className="font-bold">{formatKwacha(a.buyNowPrice ?? 0)}</span> to {listing.seller.name} on the next screen.</p>
+                <p className="mb-5 text-sm text-[#3C4043]">This ends the auction right away. You’ll pay <span className="font-bold">{am(a.buyNowPrice ?? 0)}</span> to {listing.seller.name} on the next screen.</p>
                 <div className="flex gap-3">
                     <TonalButton onClick={() => setConfirmBuy(false)} className="h-12 flex-1">Cancel</TonalButton>
                     <PrimaryButton busy={busy === 'buy'} onClick={buyNow} className="flex-1">Buy it now</PrimaryButton>

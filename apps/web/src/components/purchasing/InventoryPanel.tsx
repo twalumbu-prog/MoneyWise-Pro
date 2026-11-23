@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiJson, formatKwacha } from 'core';
 import { Dialog, ErrorNote, PrimaryButton, fieldClass, labelClass } from '../ui/Dialog';
 import { Upgrade, useAccountingAccess } from '../accounting/AccountingParts';
+import { InChargePicker, LOSS_KINDS, useStaffList } from './StockLossPanel';
 
 const money = (n: number) => formatKwacha(n);
 interface Valuation { rows: { productId: string; name: string; quantity: number; unitCost: number; value: number; low: boolean; costKnown: boolean; variants: { id: string; name: string; stock: number }[] }[]; totalValue: number; withoutCost: number; ledgerInventory: number | null }
@@ -12,9 +13,13 @@ const REASON: Record<string, string> = { PURCHASE: 'Bought', ADJUSTMENT: 'Adjust
 function Adjust({ row, onClose, onSaved }: { row: Valuation['rows'][number]; onClose: () => void; onSaved: () => void }) {
     const [mode, setMode] = useState<'count' | 'change'>('count'); const [value, setValue] = useState(''); const [note, setNote] = useState(''); const [variantId, setVariantId] = useState('');
     const [busy, setBusy] = useState(false); const [err, setErr] = useState<string | null>(null);
+    const [kind, setKind] = useState(''); const [who, setWho] = useState({ staffId: '', name: '' });
+    const staff = useStaffList();
+    // Anything that takes stock out (a lower count, or a minus) is a loss: say what happened and who was in charge, and it shows under Losses.
+    const removing = mode === 'count' ? value !== '' && Number(value) < row.quantity : value !== '' && Number(value) < 0;
     const save = async () => {
         setBusy(true); setErr(null);
-        try { await apiJson('/purchasing/stock/adjust', { method: 'POST', body: JSON.stringify({ productId: row.productId, variantId: variantId || undefined, [mode === 'count' ? 'countedQuantity' : 'change']: Number(value), note }) }); onSaved(); onClose(); }
+        try { await apiJson('/purchasing/stock/adjust', { method: 'POST', body: JSON.stringify({ productId: row.productId, variantId: variantId || undefined, [mode === 'count' ? 'countedQuantity' : 'change']: Number(value), note, ...(removing ? { kind: kind || undefined, inChargeStaffId: who.staffId || undefined, inChargeName: who.staffId ? undefined : who.name.trim() || undefined } : {}) }) }); onSaved(); onClose(); }
         catch (e: any) { setErr(e?.message || 'Could not adjust the stock.'); } finally { setBusy(false); }
     };
     return (
@@ -29,7 +34,14 @@ function Adjust({ row, onClose, onSaved }: { row: Valuation['rows'][number]; onC
             <div className="mb-3 flex gap-2">{([['count', 'I counted'], ['change', 'Add or remove']] as const).map(([id, l]) => <button key={id} type="button" onClick={() => setMode(id)} className={`rounded-full px-4 py-1.5 text-sm ${mode === id ? 'bg-[#CFE4FF] font-medium text-[#0059D8]' : 'bg-[#F1F3F4] text-[#3C4043]'}`}>{l}</button>)}</div>
             <label className={labelClass}>{mode === 'count' ? 'Counted quantity' : 'Change (use a minus to remove)'}</label>
             <input type="number" className={`${fieldClass} mb-3`} value={value} onChange={(e) => setValue(e.target.value)} />
-            <label className={labelClass}>Why</label>
+            {removing && (
+                <>
+                    <label className={labelClass}>What happened</label>
+                    <div className="mb-3 flex flex-wrap gap-2">{LOSS_KINDS.map(([k, l]) => <button key={k} type="button" onClick={() => setKind(kind === k ? '' : k)} className={`rounded-full border px-3 py-1.5 text-xs font-bold ${kind === k ? 'border-[#0B57D0] bg-[#D3E3FD] text-[#041E49]' : 'border-[#C4C7C5] bg-white text-[#5F6368]'}`}>{l}</button>)}</div>
+                    <InChargePicker staff={staff.data ?? []} staffId={who.staffId} name={who.name} onChange={setWho} />
+                </>
+            )}
+            <label className={labelClass}>{removing ? 'Details (optional)' : 'Why'}</label>
             <input className={`${fieldClass} mb-3`} placeholder="Damaged, lost, miscount…" value={note} onChange={(e) => setNote(e.target.value)} />
             <p className="mb-3 text-[11px] text-[#5F6368]">{row.costKnown ? 'The difference is valued at the average cost and posted to your books as an inventory adjustment.' : 'No cost is recorded for this product yet, so nothing is posted to your books. Receive it on a purchase bill to set its cost.'}</p>
             <PrimaryButton busy={busy} onClick={save} disabled={value === '' || (row.variants.length > 0 && !variantId)} className="w-full">Save</PrimaryButton>

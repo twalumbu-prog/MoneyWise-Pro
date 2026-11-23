@@ -18,6 +18,7 @@ import { supabase } from '../lib/supabase';
 import { accountsOf, getAllPaymentInfo } from './paymentInfo.service';
 import { normalizeZambiaPhone } from '../utils/zambiaPhone';
 import { getFrontendUrl } from '../utils/frontendUrl';
+import { voucherDiscount, CartLine, VoucherTerms } from './rewardDiscount';
 
 export const PLATFORM = 'moneywise';
 export const PLATFORM_REFERRAL_POINTS = 200;
@@ -678,10 +679,152 @@ export async function useVoucher(orgId: string, actorId: string, code: string) {
     if (!v || (v as any).organization_id !== orgId) throw new RewardsError("That code isn't one of your rewards.", 404);
     if ((v as any).status === 'USED') throw new RewardsError('This reward has already been used.', 409);
     if ((v as any).status !== 'ISSUED') throw new RewardsError('This reward is no longer valid.', 409);
+    if (isHeld(v)) throw new RewardsError('This reward is being used in an online checkout right now. Try again in a few minutes.', 409);
     const { data: done } = await supabase.from('reward_redemptions').update({ status: 'USED', used_at: new Date().toISOString(), used_by: actorId }).eq('id', (v as any).id).eq('status', 'ISSUED').select('id');
     if (!done || done.length === 0) throw new RewardsError('This reward has already been used.', 409);
     const { data: u } = await supabase.from('users').select('name').eq('id', (v as any).user_id).maybeSingle();
     return { title: (v as any).title, value: Number((v as any).value), customer: (u as any)?.name ?? 'Customer' };
+}
+
+/**
+ * Looks at a customer's voucher WITHOUT using it, so staff can see what it is worth, what it covers and who it belongs to before they give
+ * the discount. With the order's lines it also says exactly how much comes off (the same rules a checkout will use). Changes nothing.
+ */
+export async function checkVoucher(orgId: string, code: string, lines: CartLine[] = []) {
+    const c = String(code ?? '').trim().toUpperCase();
+    if (!c) throw new RewardsError('Enter the voucher code.');
+    const { data: v } = await supabase.from('reward_redemptions').select('*').eq('code', c).maybeSingle();
+    if (!v || (v as any).organization_id !== orgId) throw new RewardsError("That code isn't one of your rewards.", 404);
+    const status = String((v as any).status);
+    if (status === 'USED') throw new RewardsError('This reward has already been used.', 409);
+    if (status !== 'ISSUED') throw new RewardsError('This reward is no longer valid.', 409);
+    if (isHeld(v)) throw new RewardsError('This reward is being used in an online checkout right now. Try again in a few minutes.', 409);
+    // Which products it covers: the reward it came from (as it stands now), else nothing named means the whole order.
+    let productIds: string[] = [];
+    if ((v as any).reward_id) {
+        const { data: r, error } = await supabase.from('reward_items').select('product_ids').eq('id', (v as any).reward_id).maybeSingle();
+        if (!error && r) productIds = (r as any).product_ids ?? [];
+    }
+    const { data: u } = await supabase.from('users').select('name').eq('id', (v as any).user_id).maybeSingle();
+    const terms: VoucherTerms = { reward_type: ((v as any).reward_type as RewardType | null) ?? null, value: Number((v as any).value), product_ids: productIds };
+    return {
+        code: c, title: (v as any).title as string, rewardType: terms.reward_type ?? 'AMOUNT_OFF', value: terms.value,
+        appliesTo: ((v as any).product_names as string | null) || null, customer: ((u as any)?.name as string | undefined) ?? 'Customer',
+        issuedAt: (v as any).created_at as string,
+        ...(lines.length ? { discount: voucherDiscount(terms, lines) } : {}),
+    };
+}
+
+/* ───────────── Using a voucher at an online checkout ───────────── */
+
+/** How long a voucher is held for a checkout being paid. An abandoned or failed payment frees it by itself when this runs out. */
+export const HOLD_MINUTES = 45;
+const isHeld = (v: any) => !!v?.reserved_until && new Date(v.reserved_until).getTime() > Date.now();
+const noHoldColumns = (e: any) => !!e && (e.code === '42703' || (/reserved_(ref|until)/.test(String(e.message ?? '')) && /does not exist|schema cache/.test(String(e.message ?? ''))));
+/** Product types a voucher can be used on at checkout: plain items with a fixed price. Bookings, appointments, donations and open-priced services are not (yet). */
+const VOUCHER_PRODUCT_TYPES = ['PRODUCT', 'SERVICE_FIXED', 'DIGITAL'];
+
+/**
+ * The order's lines priced from the DATABASE, never from the browser (a dollar product is converted to kwacha at today's rate). Refuses an order
+ * that has anything a voucher can't be used on, so a discount can never be worked out from a number the buyer chose.
+ */
+export async function trustedLines(orgId: string, items: { id: string; quantity: number }[]): Promise<CartLine[]> {
+    const clean = items.map((i) => ({ id: String(i?.id ?? ''), quantity: Math.floor(Number(i?.quantity)) })).filter((i) => i.id && i.quantity > 0);
+    if (clean.length === 0) throw new RewardsError('Add something to your order first.');
+    const ids = [...new Set(clean.map((i) => i.id))];
+    const { data: prods } = await supabase.from('products').select('id, name, product_type, is_active').eq('organization_id', orgId).in('id', ids);
+    const byId = new Map((prods ?? []).map((p: any) => [p.id, p]));
+    for (const id of ids) {
+        const p: any = byId.get(id);
+        if (!p || p.is_active === false) throw new RewardsError('One of the items in your order is no longer available.', 409);
+        if (!VOUCHER_PRODUCT_TYPES.includes(String(p.product_type))) throw new RewardsError(`A reward can't be used on this order yet: ${p.name} is a booking, appointment, donation or open-priced item.`, 409);
+    }
+    // Loaded here, not at the top, so this file and lipila.service (which uses it) never import each other at start-up.
+    const { productPrices } = await import('./lipila.service');
+    const prices = await productPrices(ids, orgId);
+    return clean.map((i) => {
+        const k = prices.get(i.id);
+        if (!k) throw new RewardsError("Prices can't be worked out right now. Please try again later.", 503);
+        return { product_id: i.id, unit_price: k.zmw, quantity: i.quantity };
+    });
+}
+
+/** Reads a voucher for use at checkout: it must be this business's, unused and not held by another checkout. Returns it with its terms. */
+async function voucherForCheckout(orgId: string, code: string, reference?: string) {
+    const c = String(code ?? '').trim().toUpperCase();
+    if (!c) throw new RewardsError('Enter the voucher code.');
+    const { data: v } = await supabase.from('reward_redemptions').select('*').eq('code', c).maybeSingle();
+    if (!v || (v as any).organization_id !== orgId) throw new RewardsError("That code isn't a reward from this business.", 404);
+    if ((v as any).status === 'USED') throw new RewardsError('This reward has already been used.', 409);
+    if ((v as any).status !== 'ISSUED') throw new RewardsError('This reward is no longer valid.', 409);
+    if (isHeld(v) && (!reference || (v as any).reserved_ref !== reference)) throw new RewardsError('This reward is being used in another checkout right now. Try again in a few minutes.', 409);
+    let productIds: string[] = [];
+    if ((v as any).reward_id) {
+        const { data: r, error } = await supabase.from('reward_items').select('product_ids').eq('id', (v as any).reward_id).maybeSingle();
+        if (!error && r) productIds = (r as any).product_ids ?? [];
+    }
+    const terms: VoucherTerms = { reward_type: ((v as any).reward_type as RewardType | null) ?? null, value: Number((v as any).value), product_ids: productIds };
+    return { v: v as any, code: c, terms };
+}
+
+/** What the store shows when a customer types a code: what it takes off THIS order, worked out from the database's prices. Holds nothing. */
+export async function previewVoucherForCart(orgId: string, code: string, items: { id: string; quantity: number }[]) {
+    const lines = await trustedLines(orgId, items);
+    const { v, code: c, terms } = await voucherForCheckout(orgId, code);
+    const d = voucherDiscount(terms, lines);
+    if (d.amount <= 0) throw new RewardsError(d.reason || 'This reward takes nothing off this order.', 409);
+    const subtotal = Math.round(lines.reduce((s, l) => s + l.unit_price * l.quantity, 0) * 100) / 100;
+    return { code: c, title: v.title as string, discount: d.amount, subtotal, payableSubtotal: Math.round((subtotal - d.amount) * 100) / 100, appliesTo: (v.product_names as string | null) || null };
+}
+
+/**
+ * Holds a voucher for the checkout with this reference and says what it takes off. The hold is one atomic update, so two checkouts can never
+ * hold the same voucher; the same reference may hold it again (a retry). Throws if the hold columns don't exist yet (nothing is half-applied).
+ */
+export async function reserveVoucher(orgId: string, code: string, reference: string, lines: CartLine[]) {
+    const { v, code: c, terms } = await voucherForCheckout(orgId, code, reference);
+    const d = voucherDiscount(terms, lines);
+    if (d.amount <= 0) throw new RewardsError(d.reason || 'This reward takes nothing off this order.', 409);
+    const now = new Date();
+    const { data, error } = await supabase.from('reward_redemptions')
+        .update({ reserved_ref: reference, reserved_until: new Date(now.getTime() + HOLD_MINUTES * 60_000).toISOString() })
+        .eq('id', v.id).eq('status', 'ISSUED')
+        .or(`reserved_until.is.null,reserved_until.lt.${now.toISOString()},reserved_ref.eq.${reference}`)
+        .select('id');
+    if (error) {
+        if (noHoldColumns(error)) throw new RewardsError("Rewards can't be used at checkout just yet. Please pay without one for now.", 503);
+        throw new Error(error.message);
+    }
+    if (!data || data.length === 0) throw new RewardsError('This reward is being used in another checkout right now. Try again in a few minutes.', 409);
+    return { code: c, title: v.title as string, discount: d.amount, terms };
+}
+
+/** The checkout failed before it was recorded: give the voucher back at once instead of waiting for the hold to run out. */
+export async function releaseVoucherForReference(reference: string): Promise<void> {
+    await supabase.from('reward_redemptions').update({ reserved_ref: null, reserved_until: null }).eq('reserved_ref', reference).eq('status', 'ISSUED');
+}
+
+/** The payment for this reference was confirmed: the voucher held for it is now used. Safe to call for any payment and any number of times. */
+export async function consumeVoucherForReference(reference: string): Promise<boolean> {
+    const { data, error } = await supabase.from('reward_redemptions')
+        .update({ status: 'USED', used_at: new Date().toISOString() }).eq('reserved_ref', reference).eq('status', 'ISSUED').select('id');
+    if (error) { if (noHoldColumns(error)) return false; console.error('[Rewards] could not mark the voucher used for', reference, error.message); return false; }
+    return (data?.length ?? 0) > 0;
+}
+
+/**
+ * What the voucher held for this reference takes off the order, worked out again from the database's prices: the card amount check uses it
+ * so a discounted payment is accepted only for exactly the discount the voucher gives. Null when no voucher is held for this payment.
+ */
+export async function heldDiscountFor(orgId: string, reference: string, lines: CartLine[]): Promise<number | null> {
+    const { data, error } = await supabase.from('reward_redemptions').select('*').eq('organization_id', orgId).eq('reserved_ref', reference).maybeSingle();
+    if (error || !data) return null;
+    let productIds: string[] = [];
+    if ((data as any).reward_id) {
+        const { data: r } = await supabase.from('reward_items').select('product_ids').eq('id', (data as any).reward_id).maybeSingle();
+        productIds = (r as any)?.product_ids ?? [];
+    }
+    return voucherDiscount({ reward_type: ((data as any).reward_type as RewardType | null) ?? null, value: Number((data as any).value), product_ids: productIds }, lines).amount;
 }
 
 /** Everything the redeem screen needs: businesses where a reward is ready, and vouchers waiting to be used. */
@@ -701,4 +844,4 @@ export async function getRedeemables(userId: string) {
     };
 }
 
-export const rewardsService = { previewPurchase, claimPurchase, getProgram, updateProgram, awardMoneyWisePay, syncPurchases, syncReferrals, sync, getOverview, getDetail, getInvite, getReferralCode, claimReferral, redeem, useVoucher, getRedeemables, listRewardItems, createRewardItem, updateRewardItem, deleteRewardItem };
+export const rewardsService = { previewPurchase, claimPurchase, getProgram, updateProgram, awardMoneyWisePay, syncPurchases, syncReferrals, sync, getOverview, getDetail, getInvite, getReferralCode, claimReferral, redeem, useVoucher, checkVoucher, previewVoucherForCart, reserveVoucher, releaseVoucherForReference, consumeVoucherForReference, heldDiscountFor, trustedLines, getRedeemables, listRewardItems, createRewardItem, updateRewardItem, deleteRewardItem };

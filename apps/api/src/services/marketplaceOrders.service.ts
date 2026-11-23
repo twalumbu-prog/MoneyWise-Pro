@@ -9,6 +9,9 @@ import { notifySeller, notifyUser } from './marketplaceNotify';
 import * as payLater from './payLater.service';
 import { estimateParcel } from './parcelEstimate.service';
 import { stockView } from './stock';
+import { randomBytes } from 'crypto';
+import { isValidZambiaMobile, normalizeZambiaPhone, INVALID_PHONE_MESSAGE } from '../utils/zambiaPhone';
+import { dollarRate, productPrices, usdToZmw } from './lipila.service';
 
 /**
  * Buying inside the app. The buyer pays from a MoneyWise wallet by MoneyWise Pro, a wallet-to-wallet transfer that costs nothing (the
@@ -73,7 +76,7 @@ async function loadItem(productId: string) {
 
     const reason = !IN_APP_TYPES.includes(product.product_type)
         ? 'Donations, quotes and digital items are completed in the seller’s store.'
-        : !org.public_username || !org.lenco_subaccount_id
+        : !org.lenco_subaccount_id
             ? `${org.name} can’t take MoneyWise payments in the app yet.`
             : null;
     return { product, org, profile, supported: !reason, unsupportedReason: reason };
@@ -99,6 +102,22 @@ async function opusOrg(): Promise<{ id: string; public_username: string } | null
     return data?.lenco_subaccount_id ? { id: data.id, public_username: data.public_username } : null;
 }
 
+/**
+ * What one unit costs in kwacha, which is what the wallets pay in. A dollar product (or the winning bid of a dollar auction) is converted at today's
+ * rate; with no rate it can't be priced, so it is refused rather than charged at its dollar number as if it were kwacha.
+ */
+async function kwachaUnit(productId: string, win: AuctionRow | null): Promise<number> {
+    if (win && String(win.currency ?? 'ZMW').toUpperCase() === 'USD') {
+        const rate = await dollarRate().catch(() => 0);
+        if (!(rate > 0)) throw new OrderError('Dollar prices can’t be paid right now (no dollar rate is set). Please try again later.', 503, 'NO_RATE');
+        return usdToZmw(num(win.winning_amount), rate);
+    }
+    if (win) return num(win.winning_amount);
+    const priced = (await productPrices([productId])).get(productId);
+    if (!priced) throw new OrderError('Dollar prices can’t be paid right now (no dollar rate is set). Please try again later.', 503, 'NO_RATE');
+    return priced.zmw;
+}
+
 export interface QuoteInput { productId: string; checkIn?: string; checkOut?: string; variantId?: string; quantity?: number; area?: string; size?: Size; weightKg?: number; speed?: Speed; auctionId?: string }
 
 /** What the order would cost, the delivery choices and their prices, and the buyer's wallets. Nothing is charged. */
@@ -114,7 +133,7 @@ export async function quoteOrder(ctx: Ctx, q: QuoteInput) {
     const maxQuantity = !stock.tracked ? 20 : variant ? variant.stock : stock.variants.length ? 0 : stock.available ?? 0;
     const wanted = win || item.product.product_type !== 'PRODUCT' ? 1 : Math.min(20, Math.max(1, Math.floor(Number(q.quantity) || 1)));
     const quantity = stock.tracked && (variant || stock.variants.length === 0) ? Math.max(1, Math.min(wanted, maxQuantity)) : wanted;
-    const unit = win ? num(win.winning_amount) : num(item.product.price);
+    const unit = await kwachaUnit(item.product.id, win);
     if (!(unit > 0)) throw new OrderError('This item has no price to pay.', 400, 'NO_PRICE');
     const itemTotal = round2(unit * quantity);
 
@@ -149,7 +168,7 @@ export async function quoteOrder(ctx: Ctx, q: QuoteInput) {
         stock: { tracked: stock.tracked, available: stock.available, low: stock.low, soldOut: stock.soldOut, variants: stock.variants, variantId: variant?.id ?? null, maxQuantity: Math.min(20, maxQuantity) },
         seller: { id: item.org.id, name: item.org.name, logoUrl: item.org.logo_url, location: sellerPlace, inLusaka: sellerInLusaka },
         supported: item.supported, unsupportedReason: item.unsupportedReason, storePath: item.org.public_username ? `/${item.org.public_username}/store` : '',
-        auction: win ? { id: win.id, amount: num(win.winning_amount), payBy: paymentDeadline(win) } : null,
+        auction: win ? { id: win.id, amount: unit, payBy: paymentDeadline(win) } : null,   // in kwacha, what the wallet pays (a dollar win is converted at today's rate)
         parcel: { size: loadSize, weightKg: loadKg, setBySeller: sizeSet, estimatedFrom: est?.source ?? null },
         delivery: { ...delivery, areas: LUSAKA_AREAS.map((a) => a.name) },
         wallets, fees: { moneyWisePay: 0 },
@@ -161,7 +180,7 @@ export async function quoteOrder(ctx: Ctx, q: QuoteInput) {
 /** A room or rental: priced by the night, nothing to deliver, and the dates must be free. */
 async function bookingQuote(ctx: Ctx, item: Awaited<ReturnType<typeof loadItem>>, q: QuoteInput) {
     const stay = await stayView(item.product.id, q.checkIn, q.checkOut);
-    const unit = num(item.product.price);
+    const unit = await kwachaUnit(item.product.id, null);
     if (!(unit > 0)) throw new OrderError('This has no price to pay.', 400, 'NO_PRICE');
     const quantity = Math.max(1, stay.nights);
     const sellerPlace = locationText(item.profile, item.org);
@@ -187,6 +206,8 @@ export interface OrderInput extends QuoteInput {
     address?: string; notes?: string; phone?: string; walletId?: string; idempotencyKey?: string;
     /** Split into four instalments with Pay in 4 instead of paying all of it now. */
     payLater?: boolean;
+    /** How it is paid: from a MoneyWise wallet (the default), or with mobile money or a card through a one-time payment link. */
+    payVia?: 'WALLET' | 'LINK';
 }
 
 async function strikeCount(userId: string): Promise<number> {
@@ -197,7 +218,8 @@ export const isSuspended = async (userId: string) => (await strikeCount(userId))
 
 /** Pays for the item from the buyer's wallet and records the order. Safe to send twice: the idempotency key returns the first result. */
 export async function createOrder(ctx: Ctx, input: OrderInput) {
-    if (ctx.role !== 'ADMIN') throw new OrderError('Only the account holder can pay from this wallet.', 403, 'FORBIDDEN');
+    const viaLink = input.payVia === 'LINK';
+    if (!viaLink && ctx.role !== 'ADMIN') throw new OrderError('Only the account holder can pay from this wallet.', 403, 'FORBIDDEN');
     if (await isSuspended(ctx.userId)) throw new OrderError('Buying is paused on your account because auctions you won weren’t paid. Contact support.', 403, 'SUSPENDED');
 
     const key = String(input.idempotencyKey ?? '').trim() || null;
@@ -205,7 +227,7 @@ export async function createOrder(ctx: Ctx, input: OrderInput) {
         const { data: prior } = await supabase.from('marketplace_orders').select('*').eq('idempotency_key', key).maybeSingle();
         if (prior) {
             if (prior.buyer_user_id !== ctx.userId) throw new OrderError('That request isn’t yours.', 403, 'FORBIDDEN');
-            return { order: prior, repeated: true };
+            return { order: prior, repeated: true, paymentLinkToken: prior.payment_link_token ?? null };
         }
     }
 
@@ -216,6 +238,7 @@ export async function createOrder(ctx: Ctx, input: OrderInput) {
     const stayText = q.stay ? stayLabel(q.stay.checkIn!, q.stay.checkOut!, q.stay.nights, daily) : '';
 
     const method: 'PICKUP' | 'SELLER' | 'OPUS' = q.stay ? 'PICKUP' : input.deliveryMethod === 'SELLER' ? 'SELLER' : input.deliveryMethod === 'OPUS' ? 'OPUS' : 'PICKUP';
+    if (viaLink && (input.payLater || method === 'OPUS' || q.stay)) throw new OrderError(q.stay ? 'Bookings are paid from your MoneyWise wallet for now.' : input.payLater ? 'Pay in 4 uses your wallet.' : 'Opus Delivery is paid from your wallet. Choose pick-up or the seller’s delivery to pay by mobile money or card.', 400, 'LINK_NOT_ALLOWED');
     const chosen = q.delivery.options.find((o) => o.method === method)!;
     if (!chosen.available) throw new OrderError(chosen.note, 409, 'DELIVERY_UNAVAILABLE');
     const area = areaByName(input.area);
@@ -223,11 +246,12 @@ export async function createOrder(ctx: Ctx, input: OrderInput) {
     if (method !== 'PICKUP' && (!area || !address)) throw new OrderError('Add your area and delivery address.', 400, 'ADDRESS');
 
     const phone = String(input.phone ?? '').trim().slice(0, 20) || null;
+    if (viaLink && !isValidZambiaMobile(normalizeZambiaPhone(phone ?? ''))) throw new OrderError(INVALID_PHONE_MESSAGE.replace('the customer\'s', 'your'), 400, 'PHONE');
     const total = round2(q.item.itemTotal + chosen.fee);
 
     const wallets = q.wallets;
     const wallet = input.walletId ? wallets.find((w) => w.id === input.walletId) : wallets.find((w) => w.is_main) ?? wallets[0];
-    if (!wallet) throw new OrderError('Choose one of your wallets to pay from.', 400, 'WALLET');
+    if (!viaLink && !wallet) throw new OrderError('Choose one of your wallets to pay from.', 400, 'WALLET');
     const financed = !!input.payLater;
     let plan: ReturnType<typeof payLater.schedule> = [];
     let funder: Awaited<ReturnType<typeof payLater.assertCanBorrow>> | null = null;
@@ -237,8 +261,8 @@ export async function createOrder(ctx: Ctx, input: OrderInput) {
         catch (e: any) { if (e instanceof payLater.PayLaterError) throw new OrderError(e.message, e.httpStatus, e.code); throw e; }
         plan = payLater.schedule(total);
     }
-    if (wallet.balance + 0.005 < (financed ? plan[0].amount : total)) {
-        throw new OrderError(`${wallet.name} has K${wallet.balance.toFixed(2)} but this needs K${total.toFixed(2)}. Add money or choose another wallet.`, 402, 'INSUFFICIENT');
+    if (!viaLink && wallet!.balance + 0.005 < (financed ? plan[0].amount : total)) {
+        throw new OrderError(`${wallet!.name} has K${wallet!.balance.toFixed(2)} but this needs K${total.toFixed(2)}. Add money or choose another wallet.`, 402, 'INSUFFICIENT');
     }
 
     // Stock: take it now so the last one can't be sold twice, and put it back if this order doesn't go through.
@@ -288,6 +312,20 @@ export async function createOrder(ctx: Ctx, input: OrderInput) {
         }
     }
 
+    // Mobile money or card: the buyer pays through a one-time payment link for exactly this order. The order waits (PENDING_PAYMENT) and becomes PAID
+    // when the link is paid (see refreshOrder); if it isn't paid in time the order is cancelled and the stock goes back.
+    if (viaLink) {
+        try {
+            const { token } = await createOrderPayLink({ q, buyerName: ctx.name, phone: phone!, total, deliveryFee: chosen.fee, buyerUserId: ctx.userId });
+            const { data: waiting } = await supabase.from('marketplace_orders').update({ payment_method: 'LINK', payment_link_token: token, updated_at: new Date().toISOString() }).eq('id', row.id).select('*').single();
+            return { order: waiting, repeated: false, paymentLinkToken: token as string | null };
+        } catch (e: any) {
+            await supabase.from('marketplace_orders').update({ status: 'FAILED', updated_at: new Date().toISOString() }).eq('id', row.id);
+            await giveBack();
+            throw e instanceof OrderError ? e : new OrderError('We couldn’t prepare the payment page. Please try again.', 500, 'LINK');
+        }
+    }
+
     // The seller's public username is the address of their MoneyWise Pay page: a quick link, which carries no MoneyWise fee.
     const { data: sellerOrg } = await supabase.from('organizations').select('public_username').eq('id', q.seller.id).maybeSingle();
     try {
@@ -295,9 +333,9 @@ export async function createOrder(ctx: Ctx, input: OrderInput) {
         const label = q.stay ? `${q.item.name} · ${stayText}` : `${q.item.name}${q.item.quantity > 1 ? ` ×${q.item.quantity}` : ''}`;
         // Opus Delivery: the seller is paid for the item, and the delivery fee goes to the Opus account as its own transfer.
         const paid = financed && funder
-            ? await payLater.fundOrder({ f: funder, buyerUserId: ctx.userId, buyerOrgId: ctx.orgId, sellerUsername: sellerOrg?.public_username, total, first: plan[0].amount, walletId: wallet.id, label })
+            ? await payLater.fundOrder({ f: funder, buyerUserId: ctx.userId, buyerOrgId: ctx.orgId, sellerUsername: sellerOrg?.public_username, sellerOrgId: q.seller.id, total, first: plan[0].amount, walletId: wallet!.id, label })
             : await payLinkService.payWithWallet(payCtx, {
-                username: sellerOrg?.public_username, amount: method === 'OPUS' ? q.item.itemTotal : total, purpose: `${label} · Marketplace order`, walletId: wallet.id,
+                username: sellerOrg?.public_username ?? '', orgId: q.seller.id, amount: method === 'OPUS' ? q.item.itemTotal : total, purpose: `${label} · Marketplace order`, walletId: wallet!.id,
             });
         let opusNote: string | null = null;
         let opusPaid = false;
@@ -305,7 +343,7 @@ export async function createOrder(ctx: Ctx, input: OrderInput) {
             const opus = await opusOrg();
             try {
                 if (!opus) throw new Error('Opus Delivery isn’t set up');
-                await payLinkService.payWithWallet(payCtx, { username: opus.public_username, amount: chosen.fee, purpose: `Opus Delivery · ${label}`, walletId: wallet.id });
+                await payLinkService.payWithWallet(payCtx, { username: opus.public_username, amount: chosen.fee, purpose: `Opus Delivery · ${label}`, walletId: wallet!.id });
                 opusPaid = true;
             } catch (e: any) {
                 // The item is already paid. The buyer isn't charged for a delivery that wasn't booked: the order falls back to pick-up.
@@ -327,7 +365,7 @@ export async function createOrder(ctx: Ctx, input: OrderInput) {
         }
         if (confirmed) void announcePaid(updated);
         if (opusPaid) void requestOpusDispatch(updated, q.seller.location, chosen.fee, q.delivery.opus);
-        return { order: updated, repeated: false, notice: opusNote };
+        return { order: updated, repeated: false, notice: opusNote, paymentLinkToken: null as string | null };
     } catch (e: any) {
         await supabase.from('marketplace_orders').update({ status: 'FAILED', updated_at: new Date().toISOString() }).eq('id', row.id);
         await giveBack();
@@ -335,6 +373,36 @@ export async function createOrder(ctx: Ctx, input: OrderInput) {
         if (e instanceof PayLinkError || e instanceof payLater.PayLaterError) throw new OrderError(e.message, e.httpStatus, e.code);
         throw e;
     }
+}
+
+const LINK_ORDER_HOURS = 2;
+
+/** The one-time payment link an order is paid through (mobile money or card). A dollar item with nothing added to it is charged to a card in dollars. */
+async function createOrderPayLink(p: { q: Awaited<ReturnType<typeof quoteOrder>>; buyerName: string; phone: string; total: number; deliveryFee: number; buyerUserId: string }): Promise<{ token: string }> {
+    const { q } = p;
+    if (!(q as any).seller?.id) throw new OrderError('The seller can’t be found.', 404, 'NOT_FOUND');
+    const { data: product } = await supabase.from('products').select('wallet_id').eq('id', q.item.id).maybeSingle();
+    let walletId: string | null = product?.wallet_id ?? null;
+    if (!walletId) {
+        const { data: main } = await supabase.from('organization_wallets').select('id').eq('organization_id', q.seller.id).eq('is_main', true).maybeSingle();
+        walletId = main?.id ?? null;
+    }
+    if (!walletId) throw new OrderError(`${q.seller.name} can’t take payments yet.`, 409, 'NO_WALLET');
+    const priced = (await productPrices([q.item.id])).get(q.item.id);
+    const usd = !q.auction && p.deliveryFee === 0 && priced?.currency === 'USD' && !!priced.usd;
+    const token = randomBytes(24).toString('base64url');
+    const { error } = await supabase.from('payment_links').insert({
+        organization_id: q.seller.id, product_id: q.item.id, token, customer_name: p.buyerName, customer_phone: p.phone, amount: p.total, wallet_id: walletId, status: 'ACTIVE', created_by: p.buyerUserId,
+        ...(usd ? { currency: 'USD', foreign_amount: round2(priced!.usd! * q.item.quantity) } : {}),
+    });
+    if (error) { console.error('[Marketplace] could not create the order payment link:', error.message); throw new OrderError('We couldn’t prepare the payment page. Please try again.', 500, 'LINK'); }
+    return { token };
+}
+
+async function putStockBack(order: any): Promise<void> {
+    if (!order.stock_reserved) return;
+    await supabase.rpc('release_stock', { p_product: order.product_id, p_variant: order.variant_id ?? null, p_qty: order.quantity }).then(() => undefined, (e: any) => console.error('[Stock] could not put stock back', e));
+    await supabase.from('marketplace_orders').update({ stock_reserved: false }).eq('id', order.id);
 }
 
 /** Tells the seller there's a new order and the buyer that it's paid. */
@@ -367,6 +435,21 @@ async function requestOpusDispatch(order: any, pickupPlace: string | null, fee: 
 
 /** An order stuck at PAYMENT_PROCESSING is settled from what happened to its payment. */
 export async function refreshOrder(order: any): Promise<any> {
+    // An order paid by mobile money or card is settled from its payment link: paid, or given up on after a couple of hours.
+    if (order.status === 'PENDING_PAYMENT' && order.payment_link_token) {
+        const { data: link } = await supabase.from('payment_links').select('status').eq('token', order.payment_link_token).maybeSingle();
+        const paid = String(link?.status ?? '').toUpperCase() === 'PAID';
+        const stale = !paid && Date.now() - Date.parse(order.created_at) > LINK_ORDER_HOURS * 3_600_000;
+        if (!paid && !stale) return order;
+        const { data } = await supabase.from('marketplace_orders').update({ status: paid ? 'PAID' : 'FAILED', paid_at: paid ? new Date().toISOString() : null, updated_at: new Date().toISOString() })
+            .eq('id', order.id).eq('status', 'PENDING_PAYMENT').select('*').maybeSingle();
+        if (data && paid) void announcePaid(data);
+        if (data && !paid) {
+            await supabase.from('payment_links').update({ status: 'CANCELLED' }).eq('token', order.payment_link_token).eq('status', 'ACTIVE');
+            await putStockBack(data);
+        }
+        return data ?? order;
+    }
     if (order.status !== 'PAYMENT_PROCESSING' || !order.requisition_id) return order;
     const { data: req } = await supabase.from('requisitions').select('status, updated_at').eq('id', order.requisition_id).maybeSingle();
     const done = ['DISBURSED', 'RECEIVED', 'ACCOUNTED', 'COMPLETED'].includes(String(req?.status ?? ''));

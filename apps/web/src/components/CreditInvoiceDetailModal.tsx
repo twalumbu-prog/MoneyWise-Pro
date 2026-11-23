@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { X, User, Phone, Mail, Calendar, Download, Send, Ban, Loader2, Receipt, Wallet, Link2, Copy, Check } from 'lucide-react';
-import { invoiceService, CustomerInvoice, InvoicePayLink } from '../services/invoice.service';
+import { X, User, Phone, Mail, Calendar, Download, Send, Ban, Loader2, Receipt, Wallet, Link2, Copy, Check, MessageCircle } from 'lucide-react';
+import { invoiceService, CustomerInvoice, InvoicePayLink, ReminderSettings } from '../services/invoice.service';
 import { InvoiceStatusPill, formatInvoiceDate } from './CreditInvoiceInbox';
 
 interface Props {
@@ -24,7 +24,15 @@ export const CreditInvoiceDetailModal: React.FC<Props> = ({ invoice, isOpen, onC
     const inv = detail || invoice;
 
     const [email, setEmail] = useState('');
-    const [busy, setBusy] = useState<'send' | 'pdf' | 'void' | null>(null);
+    const [busy, setBusy] = useState<'send' | 'pdf' | 'void' | 'remind' | null>(null);
+    // How this business reminds the customers who owe it money (one setting for the whole business, shown here where it matters).
+    const { data: reminderSettings } = useQuery({ queryKey: ['invoice-reminder-settings'], queryFn: () => invoiceService.getReminderSettings(), enabled: isOpen, retry: false });
+    const [settingsError, setSettingsError] = useState<string | null>(null);
+    const saveReminderSettings = async (patch: Partial<ReminderSettings>) => {
+        setSettingsError(null);
+        try { queryClient.setQueryData(['invoice-reminder-settings'], await invoiceService.saveReminderSettings(patch)); }
+        catch (e: any) { setSettingsError(e?.message || 'Could not save that.'); }
+    };
     const [notice, setNotice] = useState<string | null>(null);
     const [confirmVoid, setConfirmVoid] = useState(false);
     const [createdLink, setCreatedLink] = useState<InvoicePayLink | null>(null);
@@ -50,6 +58,13 @@ export const CreditInvoiceDetailModal: React.FC<Props> = ({ invoice, isOpen, onC
         setBusy('send'); setNotice(null);
         try { await invoiceService.send(inv.id, email.trim()); setNotice(`Invoice sent to ${email.trim()}.`); await refresh(); }
         catch (e: any) { setNotice(e?.message || 'Could not send the invoice.'); }
+        finally { setBusy(null); }
+    };
+
+    const remind = async () => {
+        setBusy('remind'); setNotice(null);
+        try { await invoiceService.remind(inv.id); setNotice(`Reminder sent to ${inv.customer_name} on WhatsApp.`); await refresh(); }
+        catch (e: any) { setNotice(e?.message || 'Could not send the reminder.'); }
         finally { setBusy(null); }
     };
 
@@ -188,6 +203,43 @@ export const CreditInvoiceDetailModal: React.FC<Props> = ({ invoice, isOpen, onC
                                     {busy === 'send' ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} Send
                                 </button>
                             </div>
+                        </div>
+                    )}
+                    {(inv.status === 'OPEN' || inv.status === 'PARTIAL') && (
+                        <div className="space-y-3">
+                            <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                                Remind the customer {(inv.customer_reminder_count ?? 0) > 0 && <span className="normal-case tracking-normal font-semibold text-gray-400">· reminded {inv.customer_reminder_count}×{inv.customer_last_reminder_at ? `, last ${formatInvoiceDate(inv.customer_last_reminder_at)}` : ''}</span>}
+                            </h4>
+                            <button onClick={remind} disabled={busy !== null || !inv.customer_phone} className="w-full py-2.5 rounded-xl border border-gray-200 text-gray-700 text-sm font-bold flex items-center justify-center gap-2 hover:bg-gray-50 disabled:opacity-50">
+                                {busy === 'remind' ? <Loader2 size={15} className="animate-spin" /> : <MessageCircle size={15} />} Remind on WhatsApp now
+                            </button>
+                            {!inv.customer_phone && <p className="text-[11px] text-amber-700 font-medium">This invoice has no customer mobile number, so there is nowhere to send a reminder.</p>}
+                            {reminderSettings && (
+                                <div className="rounded-2xl bg-gray-50 p-4 space-y-3">
+                                    <label className="flex items-center justify-between gap-3 cursor-pointer">
+                                        <span>
+                                            <span className="block text-sm font-bold text-[#1F1F1F]">Remind customers automatically</span>
+                                            <span className="block text-[11px] text-gray-500">Once an unpaid invoice reaches its follow-up date, the customer gets a WhatsApp message with a pay link. It stops when the invoice is paid.</span>
+                                        </span>
+                                        <input type="checkbox" checked={reminderSettings.enabled} onChange={(e) => saveReminderSettings({ enabled: e.target.checked })} className="h-5 w-5 flex-shrink-0 rounded border-gray-300 text-[#0B57D0]" />
+                                    </label>
+                                    {reminderSettings.enabled && (
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <label className="text-[11px] font-bold text-gray-500">Repeat every
+                                                <select value={reminderSettings.repeat_every_days} onChange={(e) => saveReminderSettings({ repeat_every_days: Number(e.target.value) })} className="mt-1 block w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-[#1F1F1F]">
+                                                    {[3, 5, 7, 10, 14, 21, 30].map((d) => <option key={d} value={d}>{d} days</option>)}
+                                                </select>
+                                            </label>
+                                            <label className="text-[11px] font-bold text-gray-500">At most
+                                                <select value={reminderSettings.max_reminders} onChange={(e) => saveReminderSettings({ max_reminders: Number(e.target.value) })} className="mt-1 block w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-[#1F1F1F]">
+                                                    {[1, 2, 3, 4, 5, 6].map((n) => <option key={n} value={n}>{n} reminder{n === 1 ? '' : 's'}</option>)}
+                                                </select>
+                                            </label>
+                                        </div>
+                                    )}
+                                    {settingsError && <p className="text-[11px] font-semibold text-red-600">{settingsError}</p>}
+                                </div>
+                            )}
                         </div>
                     )}
                     {notice && <p className="text-xs font-semibold text-gray-600">{notice}</p>}

@@ -14,6 +14,7 @@ import {
     runInvoiceReminders,
 } from '../services/customerInvoice.service';
 import { getFrontendUrl } from '../utils/frontendUrl';
+import { getSettings as getReminderSettings, saveSettings as saveReminderSettings, remindNow, runCustomerPaymentReminders } from '../services/paymentReminders.service';
 
 const fail = (res: Response, error: any, label: string) => {
     if (error instanceof InvoiceError) return res.status(error.status).json({ error: error.message });
@@ -193,6 +194,22 @@ export const reminderTick = async (req: any, res: Response): Promise<any> => {
     const secret = process.env.LENCO_SYNC_SECRET;
     if (secret && req.headers['authorization'] !== `Bearer ${secret}`) return res.status(401).json({ error: 'Unauthorized' });
     try {
-        res.json({ success: true, ...(await runInvoiceReminders()) });
+        const finance = await runInvoiceReminders();
+        // Then the customers: businesses that switched reminders on have their unpaid invoices' customers reminded. One failing never stops the other.
+        const customers = await runCustomerPaymentReminders().catch((e: any) => { console.error('[Invoices] customer reminders failed:', e?.message); return { error: String(e?.message ?? e) }; });
+        res.json({ success: true, ...finance, customers });
     } catch (error) { fail(res, error, 'run invoice reminders'); }
+};
+
+/** GET /invoices/reminder-settings: whether this business reminds its customers about unpaid invoices, and how. */
+export const reminderSettings = async (req: any, res: Response): Promise<any> => {
+    try { res.json(await getReminderSettings(req.user.organization_id)); } catch (error) { fail(res, error, 'load the reminder settings'); }
+};
+/** PUT /invoices/reminder-settings { enabled?, repeat_every_days?, max_reminders? } (administrators). */
+export const saveReminderSettingsHandler = async (req: any, res: Response): Promise<any> => {
+    try { res.json(await saveReminderSettings(req.user.organization_id, req.body ?? {})); } catch (error) { fail(res, error, 'save the reminder settings'); }
+};
+/** POST /invoices/:id/remind: remind this invoice's customer on WhatsApp now (at most once a day per customer). */
+export const remindCustomer = async (req: any, res: Response): Promise<any> => {
+    try { res.json(await remindNow(req.user.organization_id, req.params.id, { frontend: getFrontendUrl(req) })); } catch (error) { fail(res, error, 'send the reminder'); }
 };

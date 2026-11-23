@@ -14,8 +14,9 @@ import { cacheStore } from '../platform/storage';
  * capture key, so this file only configures them, reports their status and walks the permission screens.
  *
  * iOS: no app can read SMS or other apps' notifications, so capture runs through a Shortcuts automation
- * ("When I get a message containing ZMW → run MoneyWise MoMo Capture"). The app installs the shortcut from an iCloud
- * link and hands it the capture key via the clipboard; the person adds the automation once.
+ * ("When I get a message containing ZMW → Capture mobile money message"). From 0.6.0 the action is an App Intent built
+ * into MoneyWise (modules/momo-capture/app-target), so it's in Shortcuts as soon as the app is installed and it reads
+ * the capture key from the Keychain. Older binaries fall back to the hand-made iCloud shortcut + pasted key.
  */
 
 interface NativeStatus {
@@ -55,6 +56,18 @@ interface MomoCaptureNative {
 /** null on iOS, and on an Android binary built before the module existed (an OTA can't add native code). */
 const native: MomoCaptureNative | null = Platform.OS === 'android' ? requireOptionalNativeModule<MomoCaptureNative>('MomoCapture') : null;
 
+export interface IosCaptureStatus { hasToken: boolean; queued: number; lastSentAt: number | null; lastError: string | null; intentAvailable: boolean }
+interface MomoCaptureIosNative {
+    configure(options: { apiUrl: string; token?: string }): void;
+    clear(): void;
+    getStatus(): IosCaptureStatus;
+    flush(): Promise<number>;
+    pasteboardChangeCount(): number;
+    pasteboardMightBeMessage(): Promise<boolean>;
+}
+/** null on Android, and on an iPhone binary older than 0.6.0. */
+const iosNative: MomoCaptureIosNative | null = Platform.OS === 'ios' ? requireOptionalNativeModule<MomoCaptureIosNative>('MomoCapture') : null;
+
 const API_URL: string = (Constants.expoConfig?.extra as any)?.apiUrl ?? '';
 const SHORTCUT_URL: string = (Constants.expoConfig?.extra as any)?.momoShortcutUrl ?? '';
 
@@ -70,7 +83,25 @@ export const MOMO_SETTINGS_KEY = ['momo-capture', 'settings'];
 export const MOMO_CAPTURES_KEY = ['momo-capture', 'list'];
 
 export const androidCaptureAvailable = !!native;
-export const iosShortcutAvailable = Platform.OS === 'ios' && !!SHORTCUT_URL;
+/** This iPhone has the built-in "Capture mobile money message" action (0.6.0+). */
+export const iosIntentAvailable = !!iosNative;
+/** Older iPhone binaries can still use the hand-made iCloud shortcut, if one is published. */
+export const iosShortcutAvailable = Platform.OS === 'ios' && !iosNative && !!SHORTCUT_URL;
+export const iosCaptureAvailable = iosIntentAvailable || iosShortcutAvailable;
+
+export function getIosStatus(): IosCaptureStatus | null {
+    try { return iosNative?.getStatus() ?? null; } catch { return null; }
+}
+
+/** Issues a fresh capture key and keeps it in this iPhone's Keychain for the Shortcuts action. Nothing to paste. */
+export async function connectIphone(): Promise<void> {
+    if (!iosNative) throw new Error('Update MoneyWise to set up capture on this iPhone.');
+    const { token } = await momoCaptureService.rotateToken();
+    iosNative.configure({ apiUrl: API_URL, token });
+}
+
+export const pasteboardChangeCount = (): number | null => { try { return iosNative?.pasteboardChangeCount() ?? null; } catch { return null; } };
+export const pasteboardMightBeMessage = async (): Promise<boolean> => { try { return (await iosNative?.pasteboardMightBeMessage()) ?? false; } catch { return false; } };
 
 export function getAndroidStatus(): NativeStatus | null {
     try { return native?.getStatus() ?? null; } catch { return null; }
@@ -149,7 +180,7 @@ export async function flushQueued(): Promise<void> {
             await setAndroidSources({ notifications: s.notificationsEnabled, sms: s.smsEnabled }, { askToPrompt: false });
         }
     } catch { /* signed out or offline: the next foreground tries again */ }
-    try { await native?.flush(); } catch { /* next foreground tries again */ }
+    try { await (native ?? iosNative)?.flush(); } catch { /* next foreground tries again */ }
 }
 
 // ── iOS Shortcut ─────────────────────────────────────────────────────────────
@@ -179,13 +210,13 @@ export const openShortcutsApp = () => Linking.openURL('shortcuts://').catch(() =
 
 /** Stops capture on this device and invalidates the key, so a forgotten shortcut or old phone can't keep sending. */
 export async function disconnectCapture(): Promise<void> {
-    try { native?.clear(); } catch { /* ignore */ }
+    try { native?.clear(); iosNative?.clear(); } catch { /* ignore */ }
     await markIosShortcutSetUp(false);
     await momoCaptureService.revokeToken();
 }
 
 /** On sign-out: forget the key locally (the next person to sign in must not send messages as this user). */
 export function clearCaptureDevice() {
-    try { native?.clear(); } catch { /* ignore */ }
+    try { native?.clear(); iosNative?.clear(); } catch { /* ignore */ }
     void markIosShortcutSetUp(false);
 }

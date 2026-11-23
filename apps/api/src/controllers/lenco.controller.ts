@@ -22,6 +22,8 @@ import { captureEvent, withTiming } from '../utils/analytics';
 import { ensureWalletTransferConfirmed } from './disbursement.controller';
 import { getCachedOrgSecretKey } from '../lib/orgSecretKeyCache';
 import { CARD_REF_PREFIX, cardsEnabledFor, finalizeCard, dollarRate, usdToZmw, productPrices } from '../services/lipila.service';
+import { rewardsService, RewardsError } from '../services/rewards.service';
+import { allocateDiscount } from '../services/rewardDiscount';
 import { SalonError, staffForService, serviceDuration, publicSlots, assignStaff, sanitizeDepositOptions, checkDeposit } from '../services/salon.service';
 import { status as lipilaCardStatus } from './lipila.controller';
 import { sanitizeCheckoutFields } from './product.controller';
@@ -1229,7 +1231,7 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
     let analyticsBase: { feature: string; workflow_id: string; organization_id: string; user_id: string; [key: string]: any } =
         { feature, workflow_id: 'unknown', organization_id: 'unknown', user_id: (req as any).user?.id || 'anonymous' };
     try {
-        const { reference, purpose, amount, walletId, customerName, customerPhone, customerEmail, items, paymentLinkToken, orderDetails } = req.body;
+        const { reference, purpose, amount, walletId, customerName, customerPhone, customerEmail, items, paymentLinkToken, orderDetails, voucherCode } = req.body;
 
         if (!reference || !purpose || !walletId) {
             return res.status(400).json({ error: 'reference, purpose, and walletId are required' });
@@ -1367,12 +1369,58 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
             }
         }
 
+        // --- Reward voucher (the public store only) -----------------------------------------------------------
+        // The discount is worked out HERE from the database's prices and the voucher's own terms, never from what the browser says it
+        // is, and the voucher is held for this reference (released if recording the sale fails, used when the payment is confirmed).
+        let voucherNet: number | null = null;
+        let voucherUnits: number[] = [];
+        let voucherShare: number[] = [];
+        let voucherApplied: { title: string; discount: number } | null = null;
+        if (voucherCode) {
+            if (allowPastBooking || paymentLinkToken) return res.status(400).json({ error: 'A reward can’t be used on this kind of payment yet.' });
+            if (bookingItems.length > 0 || apptItems.length > 0) return res.status(400).json({ error: 'A reward can’t be used on a booking or appointment yet.' });
+            try {
+                const lines = await rewardsService.trustedLines(wallet.organization_id, (Array.isArray(items) ? items : []).map((i: any) => ({ id: i?.id, quantity: i?.quantity })));
+                if (lines.length !== (Array.isArray(items) ? items.length : 0)) return res.status(400).json({ error: 'Some items in your order aren’t valid.' });
+                const held = await rewardsService.reserveVoucher(wallet.organization_id, String(voucherCode), reference, lines);
+                voucherUnits = lines.map((l) => l.unit_price);
+                voucherShare = allocateDiscount(held.terms, lines, held.discount);
+                voucherNet = Math.round((lines.reduce((s, l) => s + l.unit_price * l.quantity, 0) - held.discount) * 100) / 100;
+                voucherApplied = { title: held.title, discount: held.discount };
+            } catch (e: any) {
+                if (e instanceof RewardsError) return res.status(e.httpStatus).json({ error: e.message });
+                throw e;
+            }
+        }
+
+        // --- A plain public-store order is never recorded for less than the products cost -----------------------------------
+        // The browser sends the price of each item and the order total; a customer (or a script) could send less than the price and the sale
+        // would be recorded, and the goods released, for that smaller amount. Every plain item (no booking, appointment or voucher, and not a
+        // pay link or till sale) must be at least its database price (a dollar product at today's rate, 2% slack), and the total at least the
+        // sum of those. Items with no fixed price (donations, open quotes) are the payer's choice and are left alone.
+        if (!voucherCode && !paymentLinkToken && !allowPastBooking && Array.isArray(items) && items.length > 0) {
+            const plain = items.filter((it: any) => it?.id && !(it.check_in && it.check_out) && !(it.appointment_date && it.appointment_time));
+            if (plain.length > 0) {
+                const kw = await productPrices([...new Set(plain.map((it: any) => String(it.id)))], wallet.organization_id);
+                let floor = 0;
+                for (const it of plain) {
+                    const k = kw.get(String(it.id));
+                    if (!k || !(k.zmw > 0)) continue;
+                    const slack = k.currency === 'USD' ? 0.98 : 1;
+                    const qty = Math.max(0, Number(it.quantity) || 0);
+                    if ((Number(it.price) || 0) + 0.01 < k.zmw * slack) return res.status(409).json({ error: 'A price in your order has changed. Please refresh the page and try again.' });
+                    floor += k.zmw * slack * qty;
+                }
+                if ((Number(amount) || 0) + 0.01 < Math.round(floor * 100) / 100) return res.status(409).json({ error: 'The order total doesn’t match the prices. Please refresh the page and try again.' });
+            }
+        }
+
         const { error } = await supabase.from('cashbook_entries').insert({
             organization_id: wallet.organization_id,
             entry_type: 'INFLOW',
             account_type: 'MONEYWISE_WALLET',
             description: `PENDING_INTENT: ${purpose} | Ref: ${reference}`,
-            debit: amount || 0,
+            debit: voucherNet ?? (amount || 0),
             credit: 0,
             balance_after: 0,
             date: new Date().toISOString().split('T')[0],
@@ -1387,8 +1435,9 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
             // Unique index uniq_cashbook_inflow_per_reference: a retried initiation
             // with the same reference means the intent is already logged — idempotent.
             if (error.message?.includes('uniq_cashbook_inflow_per_reference')) {
-                return res.json({ message: 'Intent already logged' });
+                return res.json({ message: 'Intent already logged', ...(voucherApplied ? { voucher: { ...voucherApplied, net: voucherNet } } : {}) });
             }
+            if (voucherApplied) await rewardsService.releaseVoucherForReference(reference).catch(() => undefined);
             throw error;
         }
 
@@ -1403,7 +1452,7 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
         // Log pending product sales + booking reservations if present
         if (!isCreditInvoiceLink && items && Array.isArray(items) && items.length > 0) {
             // Booking lines store nights as quantity and a server-recomputed amount.
-            const salesData = items.map((item: any) => {
+            const salesData = items.map((item: any, idx: number) => {
                 const isBooking = !!(item.check_in && item.check_out);
                 const isAppt = !isBooking && !!apptInfo[item.id] && !!(item.appointment_date && item.appointment_time);
                 const qty = isBooking ? nightsOf(String(item.check_in), String(item.check_out)) : isAppt ? 1 : Number(item.quantity);
@@ -1417,7 +1466,8 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
                     customer_phone: customerPhone || 'N/A',
                     customer_email: (customerEmail && String(customerEmail).trim()) || null,
                     quantity: qty,
-                    amount_paid: Math.round(unit * qty * 100) / 100,
+                    // With a voucher: the database's price less this line's share of the discount (the lines add up to what is paid).
+                    amount_paid: voucherNet !== null ? Math.round((voucherUnits[idx] * qty - voucherShare[idx]) * 100) / 100 : Math.round(unit * qty * 100) / 100,
                     reference: reference,
                     status: 'PENDING',
                     // Store the delivery details captured at checkout (address, mode, rider service).
@@ -1505,12 +1555,12 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
             }
         }
 
-        captureEvent(`${feature}_intent_logged`, { ...analyticsBase, status: 'succeeded' });
+        captureEvent(`${feature}_intent_logged`, { ...analyticsBase, status: 'succeeded', ...(voucherApplied ? { voucher: true } : {}) });
         trackFlow('started', {
             reference, organizationId: wallet.organization_id, userId: (req as any).user?.id,
             flow: paymentLinkToken ? 'payment_link' : allowPastBooking ? 'pos_sale' : undefined,
         });
-        res.json({ message: 'Intent logged successfully' });
+        res.json({ message: 'Intent logged successfully', ...(voucherApplied ? { voucher: { ...voucherApplied, net: voucherNet } } : {}) });
     } catch (error: any) {
         console.error('[Lenco Public Intent] Error:', error);
         captureEvent(`${feature}_intent_failed`, {

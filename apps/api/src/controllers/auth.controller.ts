@@ -1,3 +1,4 @@
+import { onboardingSeedRow, isPersonalSignup } from '../services/personalOnboarding/steps';
 import express from 'express';
 import { supabase } from '../lib/supabase';
 import { seedDefaultAccounts, seedPersonalAccounts, purgeBusinessTemplateAccounts } from '../services/account-provisioning.service';
@@ -17,7 +18,7 @@ interface RegisterUserRequest {
 
 export const registerUser = async (req: any, res: any): Promise<any> => {
     try {
-        const { email, password, name, organizationName, username }: RegisterUserRequest & { organizationName?: string, username?: string } = req.body;
+        const { email, password, name, organizationName, username, accountType }: RegisterUserRequest & { organizationName?: string, username?: string, accountType?: 'INDIVIDUAL' | 'BUSINESS' } = req.body;
 
         // Defaults for organization creator
         const role = 'ADMIN';
@@ -183,7 +184,8 @@ export const registerUser = async (req: any, res: any): Promise<any> => {
                 // to resolve it at send time. An org created without this sat with
                 // organizations.email null until someone set it manually — confirmed live
                 // as the cause of TAEMJA General Dealers never receiving payment emails.
-                email: normalizedEmail
+                email: normalizedEmail,
+                is_personal: isPersonalSignup(accountType, orgName),
             })
             .select()
             .single();
@@ -264,7 +266,7 @@ export const registerUser = async (req: any, res: any): Promise<any> => {
         }
         const { error: onboardingSeedError } = await supabase
             .from('onboarding_progress')
-            .insert({ organization_id: orgData.id, current_step: 1, completed_steps: [], status: 'IN_PROGRESS' });
+            .insert(onboardingSeedRow(orgData.id, isPersonalSignup(accountType, orgName)));
         if (onboardingSeedError) {
             console.error('[RegisterUser] Failed to seed onboarding progress:', onboardingSeedError.message);
         }

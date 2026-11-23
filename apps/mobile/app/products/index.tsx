@@ -4,8 +4,8 @@ import {
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Package } from 'lucide-react-native';
-import { productService, formatKwacha } from 'core';
+import { Plus, Package, Link2 } from 'lucide-react-native';
+import { productService, formatMoney } from 'core';
 import type { Product } from 'core';
 import { useAuth } from '../../src/context/AuthContext';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
@@ -62,8 +62,13 @@ export default function ProductsScreen() {
                             )}
                             <View style={styles.cardMain}>
                                 <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-                                <Text style={styles.price}>{formatKwacha(item.price)}</Text>
+                                <Text style={styles.price}>{formatMoney(item.price, item.currency)}</Text>
                             </View>
+                            {isAdmin && item.is_active && item.product_type !== 'SERVICE_BOOKING' && item.product_type !== 'SERVICE_BOOKING_DAILY' && item.product_type !== 'SERVICE_APPOINTMENT' && (
+                                <Pressable hitSlop={8} onPress={() => router.push(`/products/share?id=${item.id}` as never)} accessibilityLabel={`Share a payment link for ${item.name}`} style={{ paddingHorizontal: 6 }}>
+                                    <Link2 size={18} color={colors.blue} />
+                                </Pressable>
+                            )}
                             {isAdmin && (
                                 <Switch
                                     value={item.is_active}

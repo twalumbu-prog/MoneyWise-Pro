@@ -5,7 +5,7 @@
  * add it here (with names/numbers changed) before adjusting the parser.
  */
 import assert from 'assert';
-import { parseMomoMessage, parseBalanceOnly } from '../services/momoCapture/parser';
+import { parseMomoMessage, parseBalanceOnly, parseBalanceMessage } from '../services/momoCapture/parser';
 
 type Expect = Partial<ReturnType<typeof parseMomoMessage> & {}> | null;
 const cases: { text: string; sender?: string; expect: Expect }[] = [
@@ -98,6 +98,11 @@ const cases: { text: string; sender?: string; expect: Expect }[] = [
     // Till payment and withdrawal name the other party differently.
     { text: 'Payment of ZMW 2.00 Till Number CORNER SHOP LUSAKA. Airtel Money bal is ZMW 0.44. TID : MP261113.0725.D88498.', sender: 'AirtelMoney', expect: { direction: 'OUT', amount: 2, balanceAfter: 0.44, counterparty: 'CORNER SHOP LUSAKA' } },
     { text: 'You have withdrawn ZMW 50.00 from 123456 JANE PHIRI. Bal is ZMW 83.81. TID: CO261017.1047.E96746.', sender: 'AirtelMoney', expect: { direction: 'OUT', amount: 50, balanceAfter: 83.81, counterparty: '123456 JANE PHIRI' } },
+    // Real Airtel receipt (2026-11-21): "Dial *115#" is a footer here, and the sender is not named.
+    {
+        text: 'Money received ZMW 14.00 from 0245972 NFS SETTLEMENT ACCOUNT. Dial *115# to check balance. Deposits are free. TID: CI261121.0928.Z14917',
+        expect: { provider: 'AIRTEL', direction: 'IN', amount: 14, counterparty: '0245972 NFS SETTLEMENT ACCOUNT', reference: 'CI261121.0928.Z14917' },
+    },
     // Not transactions — must be ignored.
     { text: "Y'ello! You have received K10: 1GB - 30Days from 260960000001 valid until 2026-11-15 14:53:07.123.", sender: 'MTN-ZM', expect: null },
     { text: "Y'ello! You have successfully purchased K10: 1GB - 30Days for 260960000001 valid until 2026-11-15 14:53:07.123.", sender: 'MTN-ZM', expect: null },
@@ -156,5 +161,24 @@ for (const c of balanceCases) {
     }
 }
 
+const balanceMessageCases: { text: string; sender?: string; expect: { provider: string; balance: number } | null }[] = [
+    { text: 'Your MTN MoMo balance is ZMW 105.00. Dial *115# for more.', expect: { provider: 'MTN', balance: 105 } },
+    { text: 'Airtel Money: Your available balance is K1,250.50', expect: { provider: 'AIRTEL', balance: 1250.5 } },
+    { text: 'Zamtel Kwacha balance: ZMW 20.00', expect: { provider: 'ZAMTEL', balance: 20 } },
+    { text: 'Your airtime balance is K5.00', expect: null },
+    { text: 'Your data balance is 500MB. Bal ZMW 3.00', expect: null },
+    { text: 'You have received ZMW 250.00 from JOHN BANDA. New balance: ZMW 1,320.50.', expect: null },
+    { text: 'Your MoMo OTP is 482911. Balance ZMW 5.00', expect: null },
+    { text: 'Hi, are we still meeting at 5?', expect: null },
+];
+for (const c of balanceMessageCases) {
+    const got = parseBalanceMessage(c.text, c.sender);
+    // a message the transaction parser takes must never also look like a balance check
+    try {
+        if (c.expect === null) assert.strictEqual(got, null);
+        else { assert.ok(got); assert.strictEqual(got!.provider, c.expect.provider); assert.strictEqual(got!.balance, c.expect.balance); }
+        console.log(`✓ balance: ${c.text.slice(0, 55)}`);
+    } catch (e: any) { failed++; console.log(`✗ balance: ${c.text.slice(0, 55)}\n    ${e.message}\n    got: ${JSON.stringify(got)}`); }
+}
 console.log(failed ? `\n${failed} failing` : '\nall passed');
 process.exit(failed ? 1 : 0);

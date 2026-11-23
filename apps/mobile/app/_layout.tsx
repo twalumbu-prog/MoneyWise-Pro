@@ -24,6 +24,7 @@ import { useBadgeSync } from '../src/hooks/useBadgeSync';
 import { useMomoCaptureFlush } from '../src/hooks/useMomoCaptureFlush';
 import { AppLockProvider } from '../src/context/AppLockContext';
 import { SendResultHost } from '../src/components/payments/SendResultHost';
+import { ClipboardCapturePrompt } from '../src/components/ClipboardCapturePrompt';
 import '../src/lib/appOrigin';
 import { colors } from '../src/theme/tokens';
 
@@ -183,6 +184,7 @@ export default function RootLayout() {
                     <PushNotificationTapHandler />
                     <BadgeSync />
                     <MomoCaptureFlush />
+                    <ClipboardCapturePrompt />
                     </AppLockProvider>
                 </AuthProvider>
             </PersistQueryClientProvider>

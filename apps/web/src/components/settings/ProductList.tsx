@@ -1,13 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { auctionMoney } from '../../lib/marketCurrency';
 import { Download, Edit2, Gavel, Loader2, MoreHorizontal, Package, Search, Share2, Store, Trash2 } from 'lucide-react';
-import { formatKwacha, formatMoney } from 'core';
+import { formatMoney } from 'core';
 import { PRODUCT_TYPE_OPTIONS } from '../../services/product.service';
 import type { Product } from '../../services/product.service';
 import { resized } from '../../lib/images';
 import { TimeLeftText } from '../marketplace/parts';
 
 /** The live auction on an item, taken from the Marketplace. */
-export interface AuctionInfo { id: string; status: 'OPEN' | 'SOLD'; endsAt: string; serverNow?: string; bidCount: number; currentBid: number | null; startPrice: number }
+export interface AuctionInfo { id: string; status: 'OPEN' | 'SOLD'; endsAt: string; serverNow?: string; bidCount: number; currentBid: number | null; startPrice: number; currency?: 'ZMW' | 'USD' }
 
 interface Props {
     products: Product[];
@@ -21,6 +22,8 @@ interface Props {
     onDelete: (p: Product) => void;
     onDownload: (p: Product) => void;
     onAuction: (p: Product) => void;
+    /** Turns a running auction off: the item becomes a normal fixed-price listing again. */
+    onEndAuction?: (p: Product) => void;
     onToggleActive: (p: Product, active: boolean) => Promise<void> | void;
     onAdd: () => void;
 }
@@ -50,7 +53,7 @@ const Switch: React.FC<{ on: boolean; busy?: boolean; disabled?: boolean; label:
  * The list of products and services: one row each with the picture, what it is, where it is sold, its price, an Active switch and the
  * actions you need most (Edit, Auction, Share) in plain sight. The rest is under the three dots.
  */
-export const ProductList: React.FC<Props> = ({ products, isAdmin, onMarketplace, auctions, downloadingId, onEdit, onShare, onDelete, onDownload, onAuction, onToggleActive, onAdd }) => {
+export const ProductList: React.FC<Props> = ({ products, isAdmin, onMarketplace, auctions, downloadingId, onEdit, onShare, onDelete, onDownload, onAuction, onEndAuction, onToggleActive, onAdd }) => {
     const [query, setQuery] = useState('');
     const [menu, setMenu] = useState<string | null>(null);
     const [busyId, setBusyId] = useState<string | null>(null);
@@ -104,7 +107,7 @@ export const ProductList: React.FC<Props> = ({ products, isAdmin, onMarketplace,
                                         {liveAuction
                                             ? <span className="inline-flex items-center gap-1 rounded-full bg-[#FEF7E0] px-2.5 py-0.5 text-[11px] font-bold text-[#B06000]"><Gavel size={11} /> Auction · <TimeLeftText endsAt={a!.endsAt} serverNow={a!.serverNow} /> · {a!.bidCount} {a!.bidCount === 1 ? 'bid' : 'bids'}</span>
                                             : a?.status === 'SOLD'
-                                                ? <span className="inline-flex items-center gap-1 rounded-full bg-[#E6F4EA] px-2.5 py-0.5 text-[11px] font-bold text-[#137333]"><Gavel size={11} /> Auction won · {formatKwacha(a.currentBid ?? 0)}</span>
+                                                ? <span className="inline-flex items-center gap-1 rounded-full bg-[#E6F4EA] px-2.5 py-0.5 text-[11px] font-bold text-[#137333]"><Gavel size={11} /> Auction won · {auctionMoney(a.currentBid ?? 0, a.currency)}</span>
                                                 : listed
                                                     ? <span className="inline-flex items-center gap-1 rounded-full bg-[#E6F4EA] px-2.5 py-0.5 text-[11px] font-semibold text-[#137333]"><Store size={11} /> On the Marketplace</span>
                                                     : <span className="rounded-full bg-[#F1F3F4] px-2.5 py-0.5 text-[11px] font-medium text-[#5F6368]">Not on the Marketplace</span>}
@@ -125,7 +128,7 @@ export const ProductList: React.FC<Props> = ({ products, isAdmin, onMarketplace,
 
                                 <div className="w-24 text-right">
                                     <p className="text-base font-bold tabular-nums text-[#1F1F1F]">{p.price != null && !(p.product_type === 'DONATION') ? formatMoney(Number(p.price), p.currency) : <span className="text-xs font-medium text-[#80868B]">{p.product_type === 'DONATION' ? 'Any amount' : 'Variable'}</span>}</p>
-                                    {liveAuction && a!.currentBid != null && <p className="text-[11px] text-[#B06000]">Top bid {formatKwacha(a!.currentBid)}</p>}
+                                    {liveAuction && a!.currentBid != null && <p className="text-[11px] text-[#B06000]">Top bid {auctionMoney(a!.currentBid, a!.currency)}</p>}
                                 </div>
 
                                 <div className="flex flex-shrink-0 items-center gap-2" title={p.is_active ? 'Visible to customers' : 'Hidden from customers'}>
@@ -137,6 +140,9 @@ export const ProductList: React.FC<Props> = ({ products, isAdmin, onMarketplace,
                                     {isAdmin && <button type="button" onClick={() => onEdit(p)} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[#D3E3FD] px-4 text-sm font-semibold text-[#041E49] hover:bg-[#C2D7FB]"><Edit2 size={14} /> Edit</button>}
                                     {isAdmin && canAuction(p) && !liveAuction && a?.status !== 'SOLD' && (
                                         <button type="button" onClick={() => onAuction(p)} className="inline-flex h-9 items-center gap-1.5 rounded-full px-4 text-sm font-semibold text-[#0B57D0] shadow-[inset_0_0_0_1px_#0B57D0] hover:bg-[#E8F0FE]"><Gavel size={14} /> Auction</button>
+                                    )}
+                                    {isAdmin && liveAuction && onEndAuction && (
+                                        <button type="button" onClick={() => onEndAuction(p)} className="inline-flex h-9 items-center gap-1.5 rounded-full px-4 text-sm font-semibold text-[#B3261E] shadow-[inset_0_0_0_1px_#E6B8B5] hover:bg-[#FCE8E6]" title="Stop the auction and sell it at the fixed price"><Gavel size={14} /> Turn off auction</button>
                                     )}
                                     <button type="button" onClick={() => onShare(p)} aria-label="Share payment link" title="Share payment link" className="flex h-9 w-9 items-center justify-center rounded-full text-[#5F6368] hover:bg-[#F1F3F4]"><Share2 size={16} /></button>
                                     <div className="relative" ref={menu === p.id ? box : null}>

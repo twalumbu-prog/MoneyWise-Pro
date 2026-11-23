@@ -47,6 +47,14 @@ export const useVoucher = async (req: Request, res: Response) => {
     try { res.json(await rewardsService.useVoucher(me(req).organization_id, me(req).id, String(req.body?.code ?? ''))); } catch (e) { fail(res, e, 'use that reward'); }
 };
 
+/** Staff look at a voucher before using it: what it is worth, what it covers, whose it is, and (given the order's lines) how much it takes off. */
+export const checkVoucher = async (req: Request, res: Response) => {
+    try {
+        const lines = (Array.isArray(req.body?.items) ? req.body.items : []).slice(0, 100).map((i: any) => ({ product_id: String(i?.product_id ?? ''), unit_price: Number(i?.unit_price), quantity: Number(i?.quantity) }));
+        res.json(await rewardsService.checkVoucher(me(req).organization_id, String(req.body?.code ?? ''), lines));
+    } catch (e) { fail(res, e, 'check that reward'); }
+};
+
 /** The business's own list of rewards (any member can read; only an admin changes them). */
 export const listRewardItems = async (req: Request, res: Response) => {
     try { res.json(await rewardsService.listRewardItems(me(req).organization_id)); } catch (e) { fail(res, e, 'load the rewards'); }
@@ -64,6 +72,30 @@ export const deleteRewardItem = async (req: Request, res: Response) => {
 /** Public (no sign-in): what a store purchase earns, for the checkout success screen. */
 export const previewPurchase = async (req: Request, res: Response) => {
     try { res.json(await rewardsService.previewPurchase(String(req.query.reference ?? ''), String(req.query.organizationId ?? ''))); } catch (e) { fail(res, e, 'load the rewards for this purchase'); }
+};
+
+/**
+ * Public (no sign-in): the store checks a voucher code against the customer's order and says what it takes off. A code is a bearer token (whoever
+ * holds it holds the reward), so guessing is limited: 12 wrong tries in 10 minutes from one address, then a pause. Holds nothing.
+ */
+const guesses = new Map<string, { n: number; since: number }>();
+const WINDOW_MS = 10 * 60_000, MAX_WRONG = 12;
+export const previewVoucherForCart = async (req: Request, res: Response) => {
+    const ip = String((req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0] || req.ip || 'unknown').trim();
+    const now = Date.now();
+    const g = guesses.get(ip);
+    if (g && now - g.since < WINDOW_MS && g.n >= MAX_WRONG) return res.status(429).json({ error: 'Too many tries. Please wait a few minutes and try again.' });
+    try {
+        const items = (Array.isArray(req.body?.items) ? req.body.items : []).slice(0, 100).map((i: any) => ({ id: String(i?.id ?? ''), quantity: Number(i?.quantity) }));
+        res.json(await rewardsService.previewVoucherForCart(String(req.body?.organizationId ?? ''), String(req.body?.code ?? ''), items));
+    } catch (e: any) {
+        // Only a code that is not a real, usable reward counts as a wrong try (not "add something to your order first").
+        if (e instanceof RewardsError && (e.httpStatus === 404 || e.httpStatus === 409)) {
+            const cur = g && now - g.since < WINDOW_MS ? g : { n: 0, since: now };
+            guesses.set(ip, { n: cur.n + 1, since: cur.since });
+        }
+        fail(res, e, 'check that reward');
+    }
 };
 
 /** Adds a store purchase's points to the signed-in person's rewards. */

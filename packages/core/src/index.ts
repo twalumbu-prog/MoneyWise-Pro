@@ -79,8 +79,8 @@ export type {
     Achievement,
 } from './services/highlights.service';
 
-export { loadAchievementsState, saveAchievementsState, INITIAL_ACHIEVEMENTS } from './achievements';
-export type { OnboardingAchievement, MissionStep } from './achievements';
+export { loadAchievementsState, saveAchievementsState, badgesUnlockedByVisit, INITIAL_ACHIEVEMENTS, TIER_STYLE } from './achievements';
+export type { OnboardingAchievement, MissionStep, BadgeTier } from './achievements';
 
 export { reportService } from './services/report.service';
 export type {
@@ -123,7 +123,15 @@ export type { LipilaBankOption, LipilaCardStart, LipilaCardOutcome, LipilaWallet
 export type { ManualEntryResult } from './services/cashbook.service';
 export type { CashbookEntry, CashbookSummary } from './services/cashbook.service';
 
-export { PL_SECTIONS, onboardingService } from './services/onboarding.service';
+export { PL_SECTIONS, onboardingService, personalOnboardingService, PersonalStepError } from './services/onboarding.service';
+export type { PersonalOnboardingState, PersonalMoney, PersonalAccount, PersonalHolding, HoldingKind, MoneyProviderType, GmailFindings } from './services/onboarding.service';
+export {
+    PERSONAL_STEPS, PERSONAL_STEP_KEYS, PERSONAL_CHAPTERS, personalStepDef, builtPersonalSteps, firstOpenPersonalStep,
+    personalRequiredDone, personalChecklist, personalProgress, PERSONAL_INTENTS, zambianNetwork, zambianMobileDigits,
+    BILL_SUGGESTIONS, BILL_CADENCE_LABEL, billMonthly, nextBillDue,
+} from './onboarding/personalSteps';
+export type { BillCadence, BillCategory, BillSuggestion } from './onboarding/personalSteps';
+export type { PersonalStepKey, PersonalChapter, PersonalStepState, PersonalStepRecord, PersonalStepsMap, PersonalStepDef } from './onboarding/personalSteps';
 export type { OnboardingProgress, BusinessProfile, OnboardingState, PlSection, CoaAccount, WalletStatus } from './services/onboarding.service';
 
 export { organizationService } from './services/organization.service';
@@ -148,11 +156,11 @@ export { savingsService } from './services/savings.service';
 export { rewardsService } from './services/rewards.service';
 export { payLinkService } from './services/payLink.service';
 export type { PayTarget, PayResult } from './services/payLink.service';
-export type { RewardCard, RewardsOverview, RewardDetail, RewardPointEntry, RewardAchievement, RewardInvite, RewardVoucher, RewardProgramSettings, RewardOption, RewardItem, RewardItemInput, RewardType, PurchaseClaim, PurchasePreview } from './services/rewards.service';
+export type { RewardCard, RewardsOverview, RewardDetail, RewardPointEntry, RewardAchievement, RewardInvite, RewardVoucher, RewardProgramSettings, RewardOption, RewardItem, RewardItemInput, RewardType, PurchaseClaim, PurchasePreview, VoucherCheck } from './services/rewards.service';
 export { captureService } from './services/capture.service';
 export type { CaptureRow, CaptureDetail, CaptureConversation, CaptureSettings, CaptureStatus, CustomerCapture } from './services/capture.service';
 export { momoCaptureService } from './services/momoCapture.service';
-export type { MomoBalance, MomoCapture, MomoCaptureSettings, MomoCaptureSource, MomoCaptureStatus } from './services/momoCapture.service';
+export type { MomoBalance, MomoBalanceCheck, MomoCaptureActivity, MomoDiagnosis, MomoIgnoredMessage, MomoCapture, MomoCaptureSettings, MomoCaptureSource, MomoCaptureStatus } from './services/momoCapture.service';
 export type {
     SavingsKind, SavingsFrequency, SavingsItem, SavingsOverview, SavingsDetail, SavingsMember, SavingsContribution, SavingsMemberSummary,
     SavingsInvitePreview, SavingsPerson,
@@ -199,6 +207,7 @@ export type {
     CreateCreditSaleInput,
     EntryAllocation,
     InvoicePayLink,
+    ReminderSettings,
 } from './services/invoice.service';
 export type {
     Customer,
@@ -332,3 +341,7 @@ export type {
     GrowFrequency, GrowTargetKey, GrowTarget, GrowPlan, GrowMonthPlan, GrowProjection,
     GrowMonthActuals, GrowTargetStatus, GrowMonthStatus, GrowMonthResult, GrowLedgerRow,
 } from './grow';
+
+// Starter listings by type of business (onboarding and Products & Services).
+export { BUSINESS_TEMPLATES, needsPrice, templatesForIndustries, productFromTemplate } from './onboarding/businessTemplates';
+export type { BusinessTemplate, TemplateItem } from './onboarding/businessTemplates';

@@ -8,6 +8,7 @@ import { IntegrationLogo } from '../components/settings/integrations/Integration
 import { SageIntegration } from '../components/settings/integrations/SageIntegration';
 import { GmailIntegration, GmailLogo } from '../components/settings/integrations/GmailIntegration';
 import { LipilaIntegration } from '../components/settings/integrations/LipilaIntegration';
+import { MomoCaptureIntegration } from '../components/settings/integrations/MomoCaptureIntegration';
 import { TapToPay } from '../components/settings/TapToPay';
 import { DeveloperAPI } from '../components/settings/DeveloperAPI';
 import { InvestorPayouts } from '../components/settings/InvestorPayouts';
@@ -22,7 +23,8 @@ import {
     CreditCard,
     Code2,
     Landmark,
-    CheckCircle2
+    CheckCircle2,
+    Smartphone
 } from 'lucide-react';
 import { GeneralSettings } from '../components/settings/GeneralSettings';
 import { UserManagement } from '../components/settings/UserManagement';
@@ -63,7 +65,7 @@ export const Settings: React.FC = () => {
         staleTime: 60_000,
     });
 
-    const [activeIntegration, setActiveIntegration] = useState<'quickbooks' | 'sage' | 'lenco' | 'masterfees' | 'meta' | 'gmail' | 'lipila' | null>(null);
+    const [activeIntegration, setActiveIntegration] = useState<'quickbooks' | 'sage' | 'lenco' | 'masterfees' | 'meta' | 'gmail' | 'lipila' | 'momo' | null>(null);
     // Card payments through Lipila are switched on business by business, so the card only shows for those that have it.
     const lipilaAvailable = useQuery({ queryKey: ['lipila', 'available'], queryFn: () => apiJson<{ available?: boolean; configured?: boolean }>('/lipila/settings'), staleTime: 300_000, retry: false });
     const [integrationError, setIntegrationError] = useState<string | null>(null);
@@ -269,6 +271,17 @@ export const Settings: React.FC = () => {
                                                                 <p className="text-sm text-gray-500">Take card payments straight into your own Card Wallet</p>
                                                             </button>
                                                         )}
+                                                        {/* Mobile money & SMS Card */}
+                                                        <button
+                                                            onClick={() => setActiveIntegration('momo')}
+                                                            className="relative flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-navy/30 transition-all text-left group"
+                                                        >
+                                                            <div className="h-12 w-12 bg-brand-navy rounded-xl flex items-center justify-center text-white mb-4 group-hover:scale-105 transition-transform shadow-sm">
+                                                                <Smartphone className="h-6 w-6" />
+                                                            </div>
+                                                            <h4 className="text-base font-bold text-gray-900 mb-1">Mobile Money &amp; SMS</h4>
+                                                            <p className="text-sm text-gray-500">Review messages your phone captures and how they are booked</p>
+                                                        </button>
                                                         {/* Gmail Card */}
                                                         <button
                                                             onClick={() => setActiveIntegration('gmail')}
@@ -292,6 +305,8 @@ export const Settings: React.FC = () => {
                                                 <MetaMessagingIntegration onBack={() => setActiveIntegration(null)} />
                                             ) : activeIntegration === 'lipila' ? (
                                                 <LipilaIntegration onBack={() => setActiveIntegration(null)} />
+                                            ) : activeIntegration === 'momo' ? (
+                                                <MomoCaptureIntegration onBack={() => setActiveIntegration(null)} />
                                             ) : activeIntegration === 'gmail' ? (
                                                 <GmailIntegration onBack={() => setActiveIntegration(null)} />
                                             ) : activeIntegration === 'masterfees' ? (

@@ -122,7 +122,9 @@ export const DateField: React.FC<{
     value: string; // YYYY-MM-DD or ''
     onChange: (iso: string) => void;
     error?: string;
-}> = ({ label, value, onChange, error }) => {
+    /** Underlined boxes instead of outlined ones (personal onboarding). */
+    underline?: boolean;
+}> = ({ label, value, onChange, error, underline }) => {
     const initial = splitIsoDate(value);
     const [day, setDay] = useState(initial.day);
     const [month, setMonth] = useState(initial.month);
@@ -150,7 +152,7 @@ export const DateField: React.FC<{
                     value={day}
                     onChangeText={(t) => { const v = digits(t).slice(0, 2); setDay(v); emit(v, month, year); if (v.length === 2) monthRef.current?.focus(); }}
                     placeholder="DD" placeholderTextColor={colors.textFaint} keyboardType="number-pad" inputAccessoryViewID={KB_DONE_ID} maxLength={2}
-                    style={[styles.input, styles.dateBox, !!error && styles.inputError]} accessibilityLabel={`${label} day`}
+                    style={[styles.input, styles.dateBox, underline && styles.dateUnderline, !!error && styles.inputError]} accessibilityLabel={`${label} day`}
                 />
                 <Text style={styles.dateSep}>/</Text>
                 <TextInput
@@ -158,7 +160,7 @@ export const DateField: React.FC<{
                     value={month}
                     onChangeText={(t) => { const v = digits(t).slice(0, 2); setMonth(v); emit(day, v, year); if (v.length === 2) yearRef.current?.focus(); }}
                     placeholder="MM" placeholderTextColor={colors.textFaint} keyboardType="number-pad" inputAccessoryViewID={KB_DONE_ID} maxLength={2}
-                    style={[styles.input, styles.dateBox, !!error && styles.inputError]} accessibilityLabel={`${label} month`}
+                    style={[styles.input, styles.dateBox, underline && styles.dateUnderline, !!error && styles.inputError]} accessibilityLabel={`${label} month`}
                 />
                 <Text style={styles.dateSep}>/</Text>
                 <TextInput
@@ -166,7 +168,7 @@ export const DateField: React.FC<{
                     value={year}
                     onChangeText={(t) => { const v = digits(t).slice(0, 4); setYear(v); emit(day, month, v); }}
                     placeholder="YYYY" placeholderTextColor={colors.textFaint} keyboardType="number-pad" inputAccessoryViewID={KB_DONE_ID} maxLength={4}
-                    style={[styles.input, styles.dateBox, styles.dateYear, !!error && styles.inputError]} accessibilityLabel={`${label} year`}
+                    style={[styles.input, styles.dateBox, styles.dateYear, underline && styles.dateUnderline, !!error && styles.inputError]} accessibilityLabel={`${label} year`}
                 />
             </View>
             {!!error && <Text style={styles.error}>{error}</Text>}
@@ -356,6 +358,7 @@ const styles = StyleSheet.create({
     dateRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     dateBox: { width: 64, textAlign: 'center', paddingHorizontal: 8 },
     dateYear: { width: 88 },
+    dateUnderline: { borderWidth: 0, borderBottomWidth: 1, borderBottomColor: '#D9DCE3', borderRadius: 0, backgroundColor: 'transparent', minHeight: 46, fontSize: 17 },
     dateSep: { fontFamily: fonts.bodyMedium, fontSize: 18, color: colors.textFaint },
 
     docCard: {

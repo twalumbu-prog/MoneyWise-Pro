@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Modal, Pressable, ScrollView } from 'react-native';
 import { Trophy, CheckCircle2, Play, X, Zap } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
@@ -17,6 +17,17 @@ interface Props {
 export const GuidedMissionsModal: React.FC<Props> = ({ visible, onClose }) => {
     const router = useRouter();
     const [achievements, setAchievements] = useState<OnboardingAchievement[]>(() => loadAchievementsState());
+
+    // Opening the missions panel earns "Welcome Aboard" (the one easy badge that fits here); the other easy badges are earned by opening those pages.
+    useEffect(() => {
+        if (!visible) return;
+        setAchievements((prev) => {
+            if (!prev.some((a) => a.id === 'visit_home' && !a.completed)) return prev;
+            const updated = prev.map((a) => (a.id === 'visit_home' ? { ...a, completed: true, completedAt: new Date().toISOString() } : a));
+            saveAchievementsState(updated);
+            return updated;
+        });
+    }, [visible]);
 
     const completedCount = achievements.filter((a) => a.completed).length;
     const totalCount = achievements.length;
@@ -104,6 +115,10 @@ export const GuidedMissionsModal: React.FC<Props> = ({ visible, onClose }) => {
                                         <View style={styles.completedBadge}>
                                             <CheckCircle2 size={14} color="#059669" />
                                             <Text style={styles.completedBadgeText}>Completed</Text>
+                                        </View>
+                                    ) : item.steps.length === 0 ? (
+                                        <View style={styles.completedBadge}>
+                                            <Text style={[styles.completedBadgeText, { color: '#B45309' }]}>Easy one: just open that page</Text>
                                         </View>
                                     ) : (
                                         <Pressable

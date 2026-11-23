@@ -8,7 +8,7 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Camera, X } from 'lucide-react-native';
 import {
-    productService, formatKwacha, requireCapability, PRODUCT_TYPE_OPTIONS,
+    productService, formatMoney, requireCapability, PRODUCT_TYPE_OPTIONS,
 } from 'core';
 import type { ProductType, CheckoutField } from 'core';
 import { uploadToBucket } from '../../src/lib/uploads';
@@ -35,6 +35,7 @@ export default function ProductEditScreen() {
     const [description, setDescription] = useState('');
     const [price, setPrice] = useState('');
     const [type, setType] = useState<ProductType>('PRODUCT');
+    const [currency, setCurrency] = useState<'ZMW' | 'USD'>('ZMW');
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [uploadingImage, setUploadingImage] = useState(false);
     // Buyer-info fields shown on the store's own page before payment. `optionsText`
@@ -60,6 +61,7 @@ export default function ProductEditScreen() {
             setDescription(existing.description ?? '');
             setPrice(String(existing.price ?? ''));
             setType(existing.product_type ?? 'PRODUCT');
+            setCurrency(existing.currency === 'USD' ? 'USD' : 'ZMW');
             setImageUrl(existing.image_url ?? null);
             const cf = Array.isArray(existing.checkout_fields) ? existing.checkout_fields : [];
             setFields(cf.map((f) => ({ ...f, optionsText: (f.options || []).join(', ') })));
@@ -89,6 +91,7 @@ export default function ProductEditScreen() {
                 description: description.trim(),
                 price: numericPrice,
                 product_type: type,
+                currency,
                 image_url: imageUrl,
                 checkout_fields: infoActive ? cleanFields : [],
             };
@@ -160,14 +163,22 @@ export default function ProductEditScreen() {
                     {type !== 'DONATION' && (
                         <>
                             <Text style={[styles.label, styles.spaced]}>
-                                Price (K){type === 'SERVICE_VARIABLE' ? ' — set per link instead' : ''}
+                                Price ({currency === 'USD' ? '$' : 'K'}){type === 'SERVICE_VARIABLE' ? ' — set per link instead' : ''}
                             </Text>
+                            <View style={[styles.chips, { marginBottom: 10 }]}>
+                                {(['ZMW', 'USD'] as const).map((c) => (
+                                    <Pressable key={c} onPress={() => setCurrency(c)} style={[styles.chip, currency === c && styles.chipActive]}>
+                                        <Text style={[styles.chipText, currency === c && styles.chipTextActive]}>{c === 'ZMW' ? 'Kwacha (K)' : 'US dollars ($)'}</Text>
+                                    </Pressable>
+                                ))}
+                            </View>
                             <TextInput
                                 style={styles.input} value={price}
                                 onChangeText={(v) => setPrice(v.replace(/[^0-9.]/g, ''))}
                                 keyboardType="decimal-pad" inputAccessoryViewID={KB_DONE_ID} placeholder="0.00" placeholderTextColor={colors.textFaint}
                                 editable={type !== 'SERVICE_VARIABLE'}
                             />
+                            {currency === 'USD' && <Text style={styles.toggleHint}>Priced in US dollars. Payment links charge cards in dollars once US dollars are on in the card settings. Mobile money pays the kwacha equivalent.</Text>}
                         </>
                     )}
                 </View>
@@ -238,7 +249,7 @@ export default function ProductEditScreen() {
                 {numericPrice > 0 && (
                     <View style={styles.previewCard}>
                         <Text style={styles.previewLabel}>Price shown to customers</Text>
-                        <Text style={styles.previewValue}>{formatKwacha(numericPrice)}</Text>
+                        <Text style={styles.previewValue}>{formatMoney(numericPrice, currency)}</Text>
                     </View>
                 )}
             </ScrollView>

@@ -46,6 +46,7 @@ import { handleCallback as handleFaceMatchCallback } from './services/faceMatch.
 import payrollRoutes from './routes/payroll.routes';
 import crmRoutes from './routes/crm.routes';
 import invoiceRoutes from './routes/invoice.routes';
+import dashboardLinkRoutes from './routes/dashboardLink.routes';
 import scheduleRoutes from './routes/schedule.routes';
 import automationRoutes from './routes/automation.routes';
 import billingRoutes from './routes/billing.routes';
@@ -58,6 +59,7 @@ import usageRoutes from './routes/usage.routes';
 import stockRoutes from './routes/stock.routes';
 import salonRoutes from './routes/salon.routes';
 import investRoutes from './routes/invest.routes';
+import progressRoutes from './routes/progress.routes';
 import savingsRoutes from './routes/savings.routes';
 import developerRoutes from './routes/developer.routes';
 import publicApiRoutes from './routes/publicApi.routes';
@@ -81,7 +83,7 @@ import pool from './db';
 // each cold Vercel instance otherwise opened a fresh direct connection and reran
 // ~15 sequential DDL statements just to find out they were all no-ops, which is
 // what was exhausting Postgres's connection limit under concurrent traffic.
-const MIGRATION_VERSION = 37;
+const MIGRATION_VERSION = 49;
 
 const runMigration = async () => {
     const directUrl = process.env.DIRECT_DATABASE_URL;
@@ -836,6 +838,11 @@ ALTER TABLE public.products ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFA
 ALTER TABLE public.products DROP CONSTRAINT IF EXISTS products_currency_check;
 ALTER TABLE public.products ADD CONSTRAINT products_currency_check CHECK (currency IN ('ZMW', 'USD'));
 
+-- A voucher held for a checkout being paid (see supabase/migrations/20261119120000_voucher_hold.sql).
+ALTER TABLE public.reward_redemptions ADD COLUMN IF NOT EXISTS reserved_ref TEXT;
+ALTER TABLE public.reward_redemptions ADD COLUMN IF NOT EXISTS reserved_until TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_reward_redemptions_reserved_ref ON public.reward_redemptions (reserved_ref) WHERE reserved_ref IS NOT NULL;
+
 -- Stock for products (see supabase/migrations/20261103100000_product_stock.sql).
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS track_stock BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS stock_quantity INTEGER CHECK (stock_quantity IS NULL OR stock_quantity >= 0);
@@ -1317,6 +1324,17 @@ ALTER TABLE public.accounting_settings ADD COLUMN IF NOT EXISTS tpin TEXT;
 ALTER TABLE public.accounting_settings ADD COLUMN IF NOT EXISTS vat_number TEXT;
 
 ALTER TABLE public.customer_invoices ADD COLUMN IF NOT EXISTS vat_amount NUMERIC(14,2) NOT NULL DEFAULT 0;
+-- Reminders to the customer who owes a business money (see supabase/migrations/20261119140000_customer_payment_reminders.sql).
+CREATE TABLE IF NOT EXISTS public.payment_reminder_settings (
+    organization_id   UUID PRIMARY KEY REFERENCES public.organizations(id) ON DELETE CASCADE,
+    enabled           BOOLEAN NOT NULL DEFAULT false,
+    repeat_every_days INTEGER NOT NULL DEFAULT 7 CHECK (repeat_every_days BETWEEN 2 AND 30),
+    max_reminders     INTEGER NOT NULL DEFAULT 3 CHECK (max_reminders BETWEEN 1 AND 6),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.payment_reminder_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.customer_invoices ADD COLUMN IF NOT EXISTS customer_reminder_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE public.customer_invoices ADD COLUMN IF NOT EXISTS customer_last_reminder_at TIMESTAMPTZ;
 ALTER TABLE public.purchase_bills ADD COLUMN IF NOT EXISTS vat_amount NUMERIC(14,2) NOT NULL DEFAULT 0;
 ALTER TABLE public.purchase_bill_lines ADD COLUMN IF NOT EXISTS tax_code TEXT;
 ALTER TABLE public.purchase_bill_lines ADD COLUMN IF NOT EXISTS vat_amount NUMERIC(14,2) NOT NULL DEFAULT 0;
@@ -1686,9 +1704,208 @@ CREATE INDEX IF NOT EXISTS idx_pay_requests_receiver ON public.pay_requests (rec
 ALTER TABLE public.pay_requests ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.pay_requests FROM anon, authenticated;
 GRANT ALL ON public.pay_requests TO service_role;
+
+-- Progress: badges, streak, points, fee credit (20261120120000_progress_badges_points.sql)
+CREATE TABLE IF NOT EXISTS public.user_progress (
+    user_id      UUID PRIMARY KEY,
+    streak       INTEGER NOT NULL DEFAULT 0,          -- consecutive days with activity, up to and including last_active
+    best_streak  INTEGER NOT NULL DEFAULT 0,
+    active_days  INTEGER NOT NULL DEFAULT 0,
+    last_active  DATE,                                -- a Lusaka calendar day
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.user_badges (
+    user_id    UUID NOT NULL,
+    badge_id   TEXT NOT NULL,
+    tier       TEXT NOT NULL CHECK (tier IN ('BRONZE','SILVER','GOLD','PLATINUM')),
+    xp         INTEGER NOT NULL CHECK (xp >= 0),      -- what it was worth when earned
+    earned_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, badge_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.user_points_ledger (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id    UUID NOT NULL,
+    kind       TEXT NOT NULL CHECK (kind IN ('CONVERT','GIFT','REDEEM')),
+    points     INTEGER NOT NULL DEFAULT 0,            -- + earned, - spent
+    xp_spent   INTEGER NOT NULL DEFAULT 0,            -- XP turned into points (CONVERT)
+    credit     NUMERIC(12, 2) NOT NULL DEFAULT 0,     -- kwacha of fee credit: + gained (REDEEM), - used
+    reason     TEXT,
+    ref        TEXT,                                  -- makes a one-off row (a tier gift) happen only once
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_points_ledger_ref ON public.user_points_ledger (user_id, ref);
+CREATE INDEX IF NOT EXISTS idx_points_ledger_user ON public.user_points_ledger (user_id, created_at DESC);
+
+ALTER TABLE public.user_progress ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_badges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_points_ledger ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.user_progress, public.user_badges, public.user_points_ledger TO service_role;
+
+CREATE OR REPLACE FUNCTION public.progress_convert(p_user UUID, p_xp INTEGER, p_xp_per_point INTEGER, p_xp_earned INTEGER)
+RETURNS INTEGER LANGUAGE plpgsql AS $$
+DECLARE spent INTEGER; pts INTEGER;
+BEGIN
+    PERFORM pg_advisory_xact_lock(hashtext('progress:' || p_user::text));
+    IF p_xp <= 0 OR p_xp_per_point <= 0 OR p_xp % p_xp_per_point <> 0 THEN RAISE EXCEPTION 'BAD_AMOUNT'; END IF;
+    SELECT COALESCE(SUM(xp_spent), 0) INTO spent FROM public.user_points_ledger WHERE user_id = p_user;
+    IF p_xp > p_xp_earned - spent THEN RAISE EXCEPTION 'NOT_ENOUGH_XP'; END IF;
+    pts := p_xp / p_xp_per_point;
+    INSERT INTO public.user_points_ledger (user_id, kind, points, xp_spent, reason) VALUES (p_user, 'CONVERT', pts, p_xp, 'XP converted to points');
+    RETURN pts;
+END $$;
+
+CREATE OR REPLACE FUNCTION public.progress_redeem(p_user UUID, p_points INTEGER, p_credit NUMERIC)
+RETURNS NUMERIC LANGUAGE plpgsql AS $$
+DECLARE bal INTEGER;
+BEGIN
+    PERFORM pg_advisory_xact_lock(hashtext('progress:' || p_user::text));
+    IF p_points <= 0 OR p_credit <= 0 THEN RAISE EXCEPTION 'BAD_AMOUNT'; END IF;
+    SELECT COALESCE(SUM(points), 0) INTO bal FROM public.user_points_ledger WHERE user_id = p_user;
+    IF p_points > bal THEN RAISE EXCEPTION 'NOT_ENOUGH_POINTS'; END IF;
+    INSERT INTO public.user_points_ledger (user_id, kind, points, credit, reason) VALUES (p_user, 'REDEEM', -p_points, p_credit, 'Points redeemed for fee credit');
+    RETURN p_credit;
+END $$;
+GRANT EXECUTE ON FUNCTION public.progress_convert(UUID, INTEGER, INTEGER, INTEGER), public.progress_redeem(UUID, INTEGER, NUMERIC) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.progress_money_stats(p_org UUID)
+RETURNS TABLE (txn_count BIGINT, volume NUMERIC) LANGUAGE sql STABLE AS $$
+    SELECT COUNT(*)::bigint, COALESCE(SUM(COALESCE(debit, 0) + COALESCE(credit, 0)), 0)::numeric
+    FROM public.cashbook_entries
+    WHERE organization_id = p_org AND status IN ('COMPLETED', 'ACCOUNTED', 'DISBURSED') AND entry_type IN ('INFLOW', 'DISBURSEMENT', 'EXPENSE');
+$$;
+GRANT EXECUTE ON FUNCTION public.progress_money_stats(UUID) TO service_role;
+
+-- Fee credit pays part of an ad (20261120140000_fee_credit_for_ads.sql)
+ALTER TABLE public.ad_campaigns ADD COLUMN IF NOT EXISTS credit_applied NUMERIC(12, 2) NOT NULL DEFAULT 0;   -- kwacha of fee credit used on this ad
+
+ALTER TABLE public.user_points_ledger DROP CONSTRAINT IF EXISTS user_points_ledger_kind_check;
+ALTER TABLE public.user_points_ledger ADD CONSTRAINT user_points_ledger_kind_check CHECK (kind IN ('CONVERT','GIFT','REDEEM','SPEND','RESTORE'));
+
+CREATE OR REPLACE FUNCTION public.progress_spend_credit(p_user UUID, p_amount NUMERIC, p_ref TEXT, p_reason TEXT)
+RETURNS NUMERIC LANGUAGE plpgsql AS $$
+DECLARE bal NUMERIC;
+BEGIN
+    PERFORM pg_advisory_xact_lock(hashtext('progress:' || p_user::text));
+    IF p_amount <= 0 THEN RAISE EXCEPTION 'BAD_AMOUNT'; END IF;
+    IF EXISTS (SELECT 1 FROM public.user_points_ledger WHERE user_id = p_user AND ref = p_ref) THEN RETURN p_amount; END IF;
+    SELECT COALESCE(SUM(credit), 0) INTO bal FROM public.user_points_ledger WHERE user_id = p_user;
+    IF p_amount > bal THEN RAISE EXCEPTION 'NOT_ENOUGH_CREDIT'; END IF;
+    INSERT INTO public.user_points_ledger (user_id, kind, credit, reason, ref) VALUES (p_user, 'SPEND', -p_amount, p_reason, p_ref);
+    RETURN p_amount;
+END $$;
+
+CREATE OR REPLACE FUNCTION public.progress_restore_credit(p_user UUID, p_amount NUMERIC, p_ref TEXT, p_reason TEXT)
+RETURNS NUMERIC LANGUAGE plpgsql AS $$
+BEGIN
+    PERFORM pg_advisory_xact_lock(hashtext('progress:' || p_user::text));
+    IF p_amount <= 0 THEN RAISE EXCEPTION 'BAD_AMOUNT'; END IF;
+    IF EXISTS (SELECT 1 FROM public.user_points_ledger WHERE user_id = p_user AND ref = p_ref) THEN RETURN p_amount; END IF;
+    INSERT INTO public.user_points_ledger (user_id, kind, credit, reason, ref) VALUES (p_user, 'RESTORE', p_amount, p_reason, p_ref);
+    RETURN p_amount;
+END $$;
+GRANT EXECUTE ON FUNCTION public.progress_spend_credit(UUID, NUMERIC, TEXT, TEXT), public.progress_restore_credit(UUID, NUMERIC, TEXT, TEXT) TO service_role;
+
+-- XP converts to points once a calendar month (20261121090000_progress_monthly_convert.sql)
+CREATE OR REPLACE FUNCTION public.progress_convert(p_user UUID, p_xp INTEGER, p_xp_per_point INTEGER, p_xp_earned INTEGER)
+RETURNS INTEGER LANGUAGE plpgsql AS $$
+DECLARE spent INTEGER; pts INTEGER;
+BEGIN
+    PERFORM pg_advisory_xact_lock(hashtext('progress:' || p_user::text));
+    IF p_xp <= 0 OR p_xp_per_point <= 0 OR p_xp % p_xp_per_point <> 0 THEN RAISE EXCEPTION 'BAD_AMOUNT'; END IF;
+    IF EXISTS (
+        SELECT 1 FROM public.user_points_ledger
+        WHERE user_id = p_user AND kind = 'CONVERT'
+          AND date_trunc('month', created_at AT TIME ZONE 'Africa/Lusaka') = date_trunc('month', NOW() AT TIME ZONE 'Africa/Lusaka')
+    ) THEN RAISE EXCEPTION 'ALREADY_CONVERTED_THIS_MONTH'; END IF;
+    SELECT COALESCE(SUM(xp_spent), 0) INTO spent FROM public.user_points_ledger WHERE user_id = p_user;
+    IF p_xp > p_xp_earned - spent THEN RAISE EXCEPTION 'NOT_ENOUGH_XP'; END IF;
+    pts := p_xp / p_xp_per_point;
+    INSERT INTO public.user_points_ledger (user_id, kind, points, xp_spent, reason) VALUES (p_user, 'CONVERT', pts, p_xp, 'XP converted to points');
+    RETURN pts;
+END $$;
+
+-- Blue Opus share offers (20261122100000_share_offers.sql)
+CREATE TABLE IF NOT EXISTS public.share_offers (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id             UUID NOT NULL,
+    organization_id     UUID,
+    full_name           TEXT NOT NULL,
+    email               TEXT,
+    phone               TEXT,
+    amount              NUMERIC(14, 2) NOT NULL CHECK (amount > 0),
+    post_money          NUMERIC(16, 2) NOT NULL CHECK (post_money > 0),   -- the valuation the offer was made at
+    ownership_pct       NUMERIC(10, 6) NOT NULL CHECK (ownership_pct > 0),
+    currency            TEXT NOT NULL DEFAULT 'ZMW',
+    agreement_version   TEXT NOT NULL,
+    accepted_name       TEXT NOT NULL,                                     -- what they typed to sign
+    accepted_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    accepted_ip         TEXT,
+    status              TEXT NOT NULL DEFAULT 'SUBMITTED' CHECK (status IN ('SUBMITTED','COUNTERSIGNED','PAID','DECLINED','WITHDRAWN')),
+    note                TEXT,                                              -- Blue Opus's note to the person
+    decided_at          TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_share_offers_user ON public.share_offers (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_share_offers_status ON public.share_offers (status, created_at DESC);
+
+ALTER TABLE public.share_offers ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.share_offers TO service_role;
+
+INSERT INTO public.app_settings (key, value, description)
+VALUES ('blue_opus_round', '{"enabled": true, "postMoney": 7500000, "currency": "ZMW", "minAmount": 1000, "maxAmount": null, "maxTotal": 1500000, "agreementVersion": "2026-11-draft-2"}'::jsonb, 'Blue Opus share round (post-money valuation, limits, open or closed)')
+ON CONFLICT (key) DO NOTHING;
+
+-- Blue Opus share offers: invite-only, lawyer gate (20261123100000_share_invites.sql)
+CREATE TABLE IF NOT EXISTS public.share_invites (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    code         TEXT NOT NULL UNIQUE,                 -- e.g. BO-7K2M9QX4, typed or opened from a link
+    name         TEXT NOT NULL,                        -- who it is for
+    email        TEXT,
+    phone        TEXT,
+    note         TEXT,
+    created_by   UUID,
+    expires_at   TIMESTAMPTZ,                          -- null = does not expire
+    redeemed_by  UUID,                                 -- the account that used it (one account per invite)
+    redeemed_at  TIMESTAMPTZ,
+    revoked_at   TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_share_invites_redeemed_by ON public.share_invites (redeemed_by) WHERE redeemed_by IS NOT NULL;
+ALTER TABLE public.share_invites ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.share_invites TO service_role;
+
+ALTER TABLE public.share_offers ADD COLUMN IF NOT EXISTS declarations JSONB;
+ALTER TABLE public.share_offers ADD COLUMN IF NOT EXISTS invite_id UUID;
+
+UPDATE public.app_settings
+SET value = value || '{"inviteOnly": true, "legalApprovedVersion": null, "maxInvestors": null}'::jsonb, updated_at = NOW()
+WHERE key = 'blue_opus_round' AND NOT (value ? 'inviteOnly');
+
+-- Auctions run in the product's currency (20261124100000_auction_currency.sql)
+ALTER TABLE public.marketplace_auctions ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'ZMW';
+ALTER TABLE public.marketplace_auctions DROP CONSTRAINT IF EXISTS marketplace_auctions_currency_check;
+ALTER TABLE public.marketplace_auctions ADD CONSTRAINT marketplace_auctions_currency_check CHECK (currency IN ('ZMW', 'USD'));
+
+-- Marketplace orders paid by mobile money or card (20261125100000_order_payment_link.sql)
+ALTER TABLE public.marketplace_orders ADD COLUMN IF NOT EXISTS payment_link_token TEXT;
+CREATE INDEX IF NOT EXISTS idx_marketplace_orders_link ON public.marketplace_orders (payment_link_token) WHERE payment_link_token IS NOT NULL;
         `);
 
         // Refresh PostgREST schema cache
+        // Salon staff category (hairdresser / nail technician). Mirrors supabase/migrations/20261126100000_salon_staff_role.sql.
+        await migrationPool.query("ALTER TABLE public.salon_staff_profiles ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'HAIRDRESSER';");
+        await migrationPool.query(`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'salon_staff_profiles_role_check') THEN ALTER TABLE public.salon_staff_profiles ADD CONSTRAINT salon_staff_profiles_role_check CHECK (role IN ('HAIRDRESSER', 'NAIL_TECH')); END IF; END $$;`);
+
+        // Stock loss tracking (kind of loss + who was in charge). Mirrors supabase/migrations/20261127100000_stock_loss_tracking.sql.
+        await migrationPool.query('ALTER TABLE public.stock_movements ADD COLUMN IF NOT EXISTS loss_kind TEXT;');
+        await migrationPool.query('ALTER TABLE public.stock_movements ADD COLUMN IF NOT EXISTS in_charge_name TEXT;');
+        await migrationPool.query('ALTER TABLE public.stock_movements ADD COLUMN IF NOT EXISTS in_charge_staff_id UUID;');
+
+        // Supplier name on stock purchases. Mirrors supabase/migrations/20261128100000_stock_supplier_name.sql.
+        await migrationPool.query('ALTER TABLE public.stock_movements ADD COLUMN IF NOT EXISTS supplier_name TEXT;');
+
         console.log('[Migration] Reloading PostgREST schema cache...');
         await migrationPool.query("NOTIFY pgrst, 'reload config';");
 
@@ -1742,6 +1959,8 @@ app.use('/requisitions/scan-invoice', express.json({ limit: '15mb' }));
 // Uploaded HTML email designs (CRM campaigns) are bigger than the default 100kb JSON limit.
 // express.json skips bodies that are already parsed, so this runs instead of the global parser here.
 app.use(['/crm/campaigns/send', '/crm/email-designs'], express.json({ limit: '2mb' }));
+// Onboarding avatar: a compressed square picture as base64 (≤ 600 KB decoded).
+app.use('/onboarding/personal/avatar', express.json({ limit: '1mb' }));
 
 app.use(express.json({
     verify: (req: any, res, buf) => {
@@ -1796,11 +2015,13 @@ app.use('/mtn', mtnRoutes);
 app.use('/payroll', payrollRoutes);
 app.use('/crm', crmRoutes);
 app.use('/invoices', invoiceRoutes);
+app.use('/dashboard-link', dashboardLinkRoutes);
 app.use('/schedules', scheduleRoutes);
 app.use('/automations', automationRoutes);
 app.use('/billing', billingRoutes);
 app.use('/cron', cronRoutes);
 app.use('/investments', investRoutes);
+app.use('/progress', progressRoutes);
 app.use('/savings', savingsRoutes);
 app.use('/developer', developerRoutes);
 app.use('/v1', publicApiRoutes);

@@ -74,7 +74,8 @@ export const MarketplaceCheckout: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [done, setDone] = useState<Order | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
-    const [payMode, setPayMode] = useState<'NOW' | 'LATER'>('NOW');
+    // How it is paid: from a MoneyWise wallet (NOW), in four (LATER), or with mobile money or a card through a one-time payment page (CARD).
+    const [payMode, setPayMode] = useState<'NOW' | 'LATER' | 'CARD'>('NOW');
 
     const { data: q, isPending, isError, error: loadError } = useQuery({
         queryKey: ['marketplace', 'quote', productId, auctionId, variantId, quantity, area, speed, stayDates?.checkIn, stayDates?.checkOut],
@@ -103,7 +104,10 @@ export const MarketplaceCheckout: React.FC = () => {
     const laterPlan = useMemo(() => payLaterSchedule(total), [total]);
     const later = payMode === 'LATER' && payLaterOpen;
     const due = later ? laterPlan[0].amount : total;
-    const short = !!wallet && wallet.balance + 0.005 < due;
+    const byCard = payMode === 'CARD';
+    const short = !byCard && !!wallet && wallet.balance + 0.005 < due;
+    // Mobile money and card are for things and services bought now: a room or rental, Pay in 4 and Opus Delivery all use the wallet.
+    const cardBlocked: string | null = q?.stay ? 'Rooms and rentals are paid from your MoneyWise wallet for now.' : method === 'OPUS' ? 'Opus Delivery is paid from your wallet. Choose pick-up or the seller’s delivery to use mobile money or card.' : null;
     // A physical product can be delivered or collected. Everything else (a service, a rental, a ticket, a room) is just booked or paid for.
     const isThing = !q || q.item.type === 'PRODUCT';
     const canChangeQty = !!q && !q.auction && q.item.type === 'PRODUCT';
@@ -121,9 +125,9 @@ export const MarketplaceCheckout: React.FC = () => {
         if (!phone.trim()) { setError('Add a phone number so the seller can reach you.'); return; }
         setBusy(true); setError(null);
         try {
-            const r = await apiJson<{ order: Order; notice?: string | null }>('/marketplace/orders', {
+            const r = await apiJson<{ order: Order; notice?: string | null; paymentLinkToken?: string | null }>('/marketplace/orders', {
                 method: 'POST',
-                body: JSON.stringify({ productId, auctionId, variantId: variantId || undefined, quantity, area: area || undefined, speed, checkIn: stayDates?.checkIn, checkOut: stayDates?.checkOut, deliveryMethod: method, address, notes, phone, walletId, idempotencyKey: idempotencyKey.current, payLater: later }),
+                body: JSON.stringify({ productId, auctionId, variantId: variantId || undefined, quantity, area: area || undefined, speed, checkIn: stayDates?.checkIn, checkOut: stayDates?.checkOut, deliveryMethod: method, address, notes, phone, walletId, idempotencyKey: idempotencyKey.current, payLater: later, payVia: byCard ? 'LINK' : 'WALLET' }),
             });
             try { localStorage.setItem(PHONE_KEY, phone); } catch { /* storage unavailable */ }
             qc.invalidateQueries({ queryKey: LISTINGS_KEY });
@@ -131,9 +135,11 @@ export const MarketplaceCheckout: React.FC = () => {
             qc.invalidateQueries({ queryKey: ['cashbook-entries'] });
             qc.invalidateQueries({ queryKey: ['marketplace', 'orders'] });
             setNotice(r.notice ?? null);
+            // Mobile money or card: on to the secure payment page for this order. The order turns PAID when it is paid.
+            if (byCard && r.paymentLinkToken) { navigate(`/pl/${r.paymentLinkToken}`); return; }
             setDone(r.order);
         } catch (e: any) {
-            setError(e?.message || 'The payment didn’t go through. Nothing was taken from your wallet.');
+            setError(e?.message || (byCard ? 'We couldn’t start the payment. Nothing was charged.' : 'The payment didn’t go through. Nothing was taken from your wallet.'));
             // A retry after a failure is a new attempt.
             idempotencyKey.current = newKey();
         } finally {
@@ -202,7 +208,18 @@ export const MarketplaceCheckout: React.FC = () => {
                                     )}
                                 </button>
 
-                                <div className="rounded-2xl bg-[#F8FAFD] p-4">
+                                <button type="button" role="radio" aria-checked={byCard} disabled={!!cardBlocked} onClick={() => { setPayMode('CARD'); setError(null); }}
+                                    className={`rounded-2xl border p-3 text-left transition md:p-4 ${byCard ? 'border-[#0B57D0] bg-[#F0F6FF] shadow-[0_0_0_3px_rgba(11,87,208,0.12)]' : 'border-[rgba(116,119,117,0.3)] bg-white hover:border-[#0B57D0]/40'} ${cardBlocked ? 'cursor-not-allowed opacity-70 hover:border-[rgba(116,119,117,0.3)]' : ''}`}>
+                                    <div className="flex items-start gap-3">
+                                        <span className={`mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-2 md:h-5 md:w-5 ${byCard ? 'border-[#0B57D0]' : 'border-[#9AA0A6]'}`}>{byCard && <span className="h-2 w-2 rounded-full bg-[#0B57D0] md:h-2.5 md:w-2.5" />}</span>
+                                        <span className="min-w-0 flex-1">
+                                            <span className="flex flex-wrap items-center gap-2 text-sm font-bold text-[#1F1F1F]"><Smartphone size={15} className="text-[#0B57D0]" /> Mobile money or card <CreditCard size={15} className="text-[#0B57D0]" /></span>
+                                            <span className="mt-0.5 block text-xs text-[#5F6368]">{cardBlocked ?? 'MTN, Airtel, Zamtel, Visa and Mastercard. You’ll finish on a secure page; a small payment fee is added there.'}</span>
+                                        </span>
+                                    </div>
+                                </button>
+
+                                {!byCard && <div className="rounded-2xl bg-[#F8FAFD] p-4">
                                     <label className={labelClass} htmlFor="co-wallet">{payMode === 'LATER' ? 'First payment from' : 'Pay from'}</label>
                                     <select id="co-wallet" className={`${fieldClass} appearance-none`} value={walletId} onChange={(e) => { setWalletId(e.target.value); setError(null); }}>
                                         {q.wallets.length === 0 && <option value="">No wallets</option>}
@@ -213,21 +230,12 @@ export const MarketplaceCheckout: React.FC = () => {
                                             This wallet has {formatKwacha(wallet?.balance ?? 0)}. <button type="button" onClick={() => navigate('/cashbook')} className="font-bold underline">Add money</button> or choose another wallet.
                                         </p>
                                     )}
-                                </div>
-                                {[{ icon: Smartphone, label: 'Mobile money', note: 'MTN, Airtel and Zamtel' }, { icon: CreditCard, label: 'Card', note: 'Visa and Mastercard' }].map((m) => (
-                                    <div key={m.label} aria-disabled className="hidden items-start gap-3 md:flex rounded-2xl border border-[rgba(116,119,117,0.3)] p-4 opacity-60">
-                                        <span className="mt-0.5 h-5 w-5 flex-shrink-0 rounded-full border-2 border-[#C4C7C5]" />
-                                        <span className="flex-1">
-                                            <span className="flex items-center gap-2 text-sm font-bold text-[#1F1F1F]"><m.icon size={15} /> {m.label} <span className="rounded bg-[#FEF7E0] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#B06000]">Coming soon</span></span>
-                                            <span className="mt-0.5 block text-xs text-[#5F6368]">{m.note}</span>
-                                        </span>
-                                    </div>
-                                ))}
+                                </div>}
                             </div>
     );
 
     const payButton = q ? (
-        <PrimaryButton onClick={pay} busy={busy} disabled={short || !walletId || (later && !laterAllowed) || stockBlocked || stayBlocked} className="h-12 w-full text-base"><Lock size={16} /> {later ? `Pay ${formatKwacha(laterPlan[0].amount)} today` : `Pay ${formatKwacha(total)}`}</PrimaryButton>
+        <PrimaryButton onClick={pay} busy={busy} disabled={short || (!byCard && !walletId) || (byCard && !!cardBlocked) || (later && !laterAllowed) || stockBlocked || stayBlocked} className="h-12 w-full text-base"><Lock size={16} /> {byCard ? `Continue to pay ${formatKwacha(total)}` : later ? `Pay ${formatKwacha(laterPlan[0].amount)} today` : `Pay ${formatKwacha(total)}`}</PrimaryButton>
     ) : null;
 
     /* ── Paid ── */

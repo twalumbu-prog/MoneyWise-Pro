@@ -1,11 +1,13 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
     View, Text, ScrollView, Pressable, StyleSheet, TextInput, KeyboardAvoidingView, RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useNavigation, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { Inbox, CalendarDays, User, ArrowDownToLine, ArrowLeftRight, ArrowUp, Mic } from 'lucide-react-native';
+import { Inbox, CalendarDays, User, ArrowDownToLine, ArrowLeftRight, ArrowUp, Mic, Sprout, Settings } from 'lucide-react-native';
+import { AnimatedSegmented, AnimatedTabContent } from '../components/AnimatedTabs';
+import { GrowPanel, useGrowSettings } from '../components/grow/GrowPanel';
 import { useDictation } from '../hooks/useDictation';
 import { VoiceWave } from '../components/assistant/VoiceWave';
 import { TourTarget } from '../components/walkthrough/TourTarget';
@@ -16,13 +18,16 @@ import { ReceiveMoneySheet } from '../components/home/ReceiveMoneySheet';
 import { cardShadow } from '../components/home/HomeCard';
 import { AccountMenuSheet } from '../components/requisitions/AccountMenuSheet';
 import { WalkthroughCard } from '../components/walkthrough/WalkthroughCard';
+import { FinishSetupCard } from '../components/onboarding/personal/FinishSetupCard';
 import { useAttentionCount } from '../hooks/useBadgeSync';
 import { queueAssistantPrompt } from '../lib/assistantHandoff';
-import { colors, fonts } from '../theme/tokens';
+import { colors, fonts, radius } from '../theme/tokens';
+
+type HomeMode = 'home' | 'grow';
 
 /**
- * Home — a MoneyWise personal account's first tab: the wallets and their balances, Receive / Send, where this month's money went,
- * the other services, and a box to ask the Assistant anything. The Inbox (requests and notifications) is behind the bell.
+ * Home — a MoneyWise personal account's first tab, with a Home | Grow toggle under the header. Home: the wallets and their balances, Receive / Send, where this month's money went,
+ * the other services, and a box to ask the Assistant anything. Grow: the net-worth plan. The header stays; only its title changes. The Inbox (requests and notifications) is behind the bell.
  */
 export function HomeScreen() {
     const insets = useSafeAreaInsets();
@@ -33,6 +38,15 @@ export function HomeScreen() {
     const [accountMenuOpen, setAccountMenuOpen] = useState(false);
     const [question, setQuestion] = useState('');
     const [refreshing, setRefreshing] = useState(false);
+    const [mode, setMode] = useState<HomeMode>('home');
+    const navigation = useNavigation();
+    const { hasPlan: growHasPlan, openSettings: openGrowSettings } = useGrowSettings();
+
+    // Grow takes the whole screen: the bottom tab bar goes away while it shows (and always returns).
+    useEffect(() => {
+        navigation.setOptions({ tabBarStyle: mode === 'grow' ? { display: 'none' } : undefined });
+        return () => navigation.setOptions({ tabBarStyle: undefined });
+    }, [mode, navigation]);
     const { listening, level, toggle: toggleDictation, stop: stopDictation } = useDictation(question, setQuestion);
 
     const ask = () => {
@@ -58,25 +72,66 @@ export function HomeScreen() {
     }, [qc]);
 
     return (
-        <KeyboardAvoidingView style={[styles.root, { paddingTop: insets.top }]} behavior="padding">
+        <KeyboardAvoidingView style={[styles.root, mode === 'grow' && { backgroundColor: '#FFFFFF' }, { paddingTop: insets.top }]} behavior="padding">
             <View style={styles.header}>
-                <Text style={styles.title}>📮 Home</Text>
+                <Text style={styles.title}>{mode === 'grow' ? 'Grow' : '📮 Home'}</Text>
                 <View style={styles.actions}>
-                    <Pressable style={styles.iconBtn} onPress={() => router.navigate('/inbox')} accessibilityRole="button" accessibilityLabel={attention > 0 ? `Inbox, ${attention} need attention` : 'Inbox'}>
-                        <Inbox size={18} color={colors.textMuted} />
-                        {attention > 0 && (
-                            <View style={styles.badge}><Text style={styles.badgeText}>{attention > 99 ? '99+' : attention}</Text></View>
-                        )}
-                    </Pressable>
-                    <Pressable style={styles.iconBtn} onPress={() => router.push('/schedules')} accessibilityRole="button" accessibilityLabel="Schedules">
-                        <CalendarDays size={18} color={colors.textMuted} />
-                    </Pressable>
+                    {mode === 'grow' ? (
+                        <>
+                            {/* Inbox goes; the Grow settings gear takes the calendar's place */}
+                            <View style={styles.iconSlot} />
+                            {growHasPlan ? (
+                                <Pressable style={styles.iconBtn} onPress={openGrowSettings} accessibilityRole="button" accessibilityLabel="Grow plan settings">
+                                    <Settings size={18} color={colors.textMuted} />
+                                </Pressable>
+                            ) : (
+                                <View style={styles.iconSlot} />
+                            )}
+                        </>
+                    ) : (
+                        <>
+                            <Pressable style={styles.iconBtn} onPress={() => router.navigate('/inbox')} accessibilityRole="button" accessibilityLabel={attention > 0 ? `Inbox, ${attention} need attention` : 'Inbox'}>
+                                <Inbox size={18} color={colors.textMuted} />
+                                {attention > 0 && (
+                                    <View style={styles.badge}><Text style={styles.badgeText}>{attention > 99 ? '99+' : attention}</Text></View>
+                                )}
+                            </Pressable>
+                            <Pressable style={styles.iconBtn} onPress={() => router.push('/schedules')} accessibilityRole="button" accessibilityLabel="Schedules">
+                                <CalendarDays size={18} color={colors.textMuted} />
+                            </Pressable>
+                        </>
+                    )}
                     <Pressable style={styles.iconBtn} onPress={() => setAccountMenuOpen(true)} accessibilityRole="button" accessibilityLabel="Account and Organizations">
                         <User size={18} color={colors.textMuted} />
                     </Pressable>
                 </View>
             </View>
 
+            {/* Home | Grow */}
+            <View style={styles.toggleWrap}>
+                <AnimatedSegmented
+                    value={mode}
+                    onChange={(v) => setMode(v as HomeMode)}
+                    trackStyle={styles.segment}
+                    indicatorStyle={styles.segmentIndicator}
+                    itemStyle={styles.segmentBtn}
+                    items={(['home', 'grow'] as HomeMode[]).map((v) => ({
+                        value: v,
+                        content: (
+                            <View style={styles.segmentInner}>
+                                {v === 'grow' && <Sprout size={15} color={mode === 'grow' ? '#16A34A' : colors.textMuted} />}
+                                <Text style={[styles.segmentText, mode === v && styles.segmentTextActive]}>{v === 'home' ? 'Home' : 'Grow'}</Text>
+                            </View>
+                        ),
+                    }))}
+                />
+            </View>
+
+            <AnimatedTabContent tabKey={mode} index={mode === 'grow' ? 1 : 0} style={{ flex: 1 }}>
+            {mode === 'grow' ? (
+                <GrowPanel embedded />
+            ) : (
+            <View style={{ flex: 1 }}>
             <ScrollView
                 style={{ flex: 1 }}
                 contentContainerStyle={styles.scroll}
@@ -84,6 +139,7 @@ export function HomeScreen() {
                 keyboardShouldPersistTaps="handled"
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.blue} />}
             >
+                <FinishSetupCard />
                 <WalkthroughCard />
                 <AccountsCard />
 
@@ -130,6 +186,9 @@ export function HomeScreen() {
                     </Pressable>
                 </View>
             </View>
+            </View>
+            )}
+            </AnimatedTabContent>
 
             <ReceiveMoneySheet visible={receiveOpen} onClose={() => setReceiveOpen(false)} />
             <AccountMenuSheet visible={accountMenuOpen} onClose={() => setAccountMenuOpen(false)} />
@@ -142,6 +201,17 @@ const styles = StyleSheet.create({
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 12, marginBottom: 4 },
     title: { fontFamily: fonts.advercase, fontSize: 30, color: '#000000' },
     actions: { flexDirection: 'row', gap: 8 },
+    iconSlot: { width: 40, height: 40 },
+    toggleWrap: { paddingHorizontal: 20, paddingBottom: 12 },
+    segment: { flexDirection: 'row', padding: 4, backgroundColor: colors.chipActiveBg, borderRadius: radius.pill },
+    segmentBtn: { flex: 1, paddingVertical: 9, borderRadius: radius.pill, alignItems: 'center' },
+    segmentIndicator: {
+        borderRadius: radius.pill, backgroundColor: colors.surface,
+        shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 1,
+    },
+    segmentInner: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    segmentText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.textMuted },
+    segmentTextActive: { color: colors.text },
     // Exactly the Inbox page's header buttons: 40pt circles, hairline border, 18pt icon.
     iconBtn: {
         width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface,
