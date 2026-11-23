@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, KeyboardAvoidingView, ScrollView } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -6,6 +6,8 @@ import { apiJson } from 'core';
 import { useAuth } from '../src/context/AuthContext';
 import { AccountTypeChooser } from '../src/components/auth/AccountTypeChooser';
 import { track } from '../src/lib/analytics';
+import { cacheStoreSync } from '../src/platform/storage';
+import { PENDING_ACCOUNT_TYPE_KEY } from '../src/lib/pendingAccountType';
 import { colors, fonts, radius } from '../src/theme/tokens';
 
 /**
@@ -17,7 +19,11 @@ export default function CompleteProfileScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
     const { userName, refreshUserOrganizations, switchOrganization, signOut } = useAuth();
-    const [type, setType] = useState<'INDIVIDUAL' | 'BUSINESS'>('INDIVIDUAL');
+    // Personal or Pro was already chosen before the Apple/Google sheet (/(auth)/choose).
+    const [picked] = useState<'INDIVIDUAL' | 'BUSINESS' | null>(() => {
+        try { const v = cacheStoreSync.getItem(PENDING_ACCOUNT_TYPE_KEY); return v === 'INDIVIDUAL' || v === 'BUSINESS' ? v : null; } catch { return null; }
+    });
+    const [type, setType] = useState<'INDIVIDUAL' | 'BUSINESS'>(picked ?? 'INDIVIDUAL');
     const [businessName, setBusinessName] = useState('');
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
@@ -36,6 +42,7 @@ export default function CompleteProfileScreen() {
             });
             await refreshUserOrganizations();
             await switchOrganization(res.organizationId);
+            try { cacheStoreSync.removeItem(PENDING_ACCOUNT_TYPE_KEY); } catch { /* nothing stored */ }
             router.replace('/');
         } catch (e: any) {
             setError(e?.message || 'Something went wrong. Please try again.');
@@ -44,6 +51,9 @@ export default function CompleteProfileScreen() {
             setBusy(false);
         }
     };
+
+    // A Personal pick needs nothing more, so create it straight away; a Pro pick still needs the business name below.
+    useEffect(() => { if (picked === 'INDIVIDUAL') void submit(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
         <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: colors.canvas }}>

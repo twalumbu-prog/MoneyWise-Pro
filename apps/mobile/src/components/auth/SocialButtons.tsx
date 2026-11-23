@@ -46,7 +46,9 @@ export const SocialButtons: React.FC<{
     /** The welcome screen's smaller set: one-colour logos at one size, and a "Continue with email" button in the same style as Google's. */
     compact?: boolean;
     onEmail?: () => void;
-}> = ({ onError, showDivider = true, compact = false, onEmail }) => {
+    /** When given, tapping Apple/Google hands the provider to the caller instead of signing in (the welcome screen asks Personal or Pro first). */
+    onProvider?: (provider: SocialProvider) => void;
+}> = ({ onError, showDivider = true, compact = false, onEmail, onProvider }) => {
     const router = useRouter();
     const [busy, setBusy] = useState<SocialProvider | null>(null);
     const [showApple, setShowApple] = useState(false);
@@ -56,6 +58,7 @@ export const SocialButtons: React.FC<{
 
     const go = async (provider: SocialProvider) => {
         if (busy) return;
+        if (onProvider) { onProvider(provider); return; }
         setBusy(provider);
         onError('');
         try {
