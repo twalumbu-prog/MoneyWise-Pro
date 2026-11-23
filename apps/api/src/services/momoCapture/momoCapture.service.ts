@@ -18,7 +18,7 @@ import crypto from 'crypto';
 import { supabase } from '../../lib/supabase';
 import { recordManualEntry, ensureCashWallet, listExternalWallets, ManualEntryError } from '../manualEntry.service';
 import { cashbookService } from '../cashbook.service';
-import { parseMomoMessage, parseBalanceOnly, parseBalanceMessage, diagnoseMessage, balanceDedupeKey, dedupeKey, describe, type MomoProvider, type ParsedMomoMessage } from './parser';
+import { parseMomoMessage, parseBalanceOnly, parseBalanceMessage, diagnoseMessage, balanceDedupeKey, dedupeKey, describe, isPersonalNumber, type MomoProvider, type ParsedMomoMessage } from './parser';
 import { mirrorMomoCapture, findBookedCaptureEntry } from '../capture/capture.momoMirror';
 
 export class MomoCaptureError extends Error {
@@ -127,6 +127,13 @@ export async function ingest(input: IngestInput) {
     const occurredAt = (Number.isNaN(when.getTime()) || when.getTime() > Date.now() + 10 * 60 * 1000 || when.getTime() < Date.now() - 400 * 24 * 3600 * 1000)
         ? new Date().toISOString() : when.toISOString();
 
+    // A confirmation from an ordinary phone number is a scam, not a transaction (see isPersonalNumber). Checked here as
+    // well as on the phone, so older app versions are covered too.
+    if (isPersonalNumber(sender)) {
+        await logIgnored(input.userId, input.orgId, source, text, sender, 'Sent from a personal phone number, not a mobile money provider or bank — possibly a scam');
+        return { accepted: false as const, reason: 'PERSONAL_NUMBER' as const };
+    }
+
     const parsed = parseMomoMessage(text, sender);
     await supabase.from('momo_capture_settings')
         .update({ last_capture_at: new Date().toISOString(), last_capture_source: source }).eq('user_id', input.userId);
@@ -135,11 +142,9 @@ export async function ingest(input: IngestInput) {
         found !== 'OTHER' ? found : (((await settingsRow(input.userId, input.orgId)).default_provider as MomoProvider | null) ?? 'OTHER');
     if (parsed) parsed.provider = await fallbackProvider(parsed.provider);
     if (!parsed) {
-        // Not a transaction, but a plain "what's my balance" reply is still worth something: it anchors the
-        // running total better than inferring one only from transaction messages (strict: must name the provider)...
+        // Not a transaction. A balance enquiry reply is compared with the ledger and offers a one-tap adjustment, but
+        // is never booked by itself: an account's balance only moves when the person records something.
         const reading = parseBalanceOnly(text, sender);
-        if (reading) await recordBalanceReading(input.userId, input.orgId, reading.provider, reading.balance, occurredAt);
-        // ...and a balance enquiry reply is also compared with the ledger, offering a one-tap adjustment.
         const bal = parseBalanceMessage(text, sender);
         if (bal) return { accepted: true as const, balanceCheck: await recordBalanceCheck(input.userId, input.orgId, source, text, await fallbackProvider(bal.provider), bal.balance, occurredAt) };
         if (reading) return { accepted: false as const, reason: 'BALANCE_ONLY' as const };
@@ -248,123 +253,58 @@ export async function categorySuggestions(userId: string, orgId: string) {
             .eq('organization_id', orgId).in('id', ids.slice(i, i + 200)).not('account_id', 'is', null);
         for (const e of entries ?? []) accountOf.set((e as any).id, (e as any).account_id);
     }
-    return buildSuggestions((booked ?? []).map((b: any) => ({ ...b, account_id: accountOf.get(b.cashbook_entry_id) ?? null })));
+    // Most-used categories come from everything in the books, not just mobile money: someone new to capture still gets
+    // their usual categories first. Last 120 days, so habits that changed fade out.
+    const { data: ledger } = await supabase.from('cashbook_entries').select('entry_type, account_id')
+        .eq('organization_id', orgId).not('account_id', 'is', null).in('entry_type', ['INFLOW', 'EXPENSE', 'DISBURSEMENT'])
+        .gte('date', new Date(Date.now() - 120 * 86400_000).toISOString().slice(0, 10))
+        .order('date', { ascending: false }).limit(1000);
+    return buildSuggestions(
+        (booked ?? []).map((b: any) => ({ ...b, account_id: accountOf.get(b.cashbook_entry_id) ?? null })),
+        (ledger ?? []).map((e: any) => ({ direction: e.entry_type === 'INFLOW' ? 'IN' : 'OUT', account_id: e.account_id })),
+    );
 }
 
-/** Pure part of categorySuggestions. `history` is newest first. */
-export function buildSuggestions(history: { direction: string; counterparty: string | null; account_id: string | null }[]) {
+/**
+ * Pure part of categorySuggestions. `history` (booked captures, newest first) gives the category last used with each
+ * contact; the ranking counts `ledger` (every categorised entry) when given, else `history`.
+ */
+export function buildSuggestions(
+    history: { direction: string; counterparty: string | null; account_id: string | null }[],
+    ledger?: { direction: string; account_id: string | null }[],
+) {
     const byContact = new Map<string, string>();
     const counts: Record<'IN' | 'OUT', Map<string, number>> = { IN: new Map(), OUT: new Map() };
+    const count = (direction: string, accountId: string) => {
+        if (direction === 'IN' || direction === 'OUT') counts[direction].set(accountId, (counts[direction].get(accountId) ?? 0) + 1);
+    };
     for (const h of history) {
         if (!h.account_id || (h.direction !== 'IN' && h.direction !== 'OUT')) continue;
         const key = contactKey(h.direction, h.counterparty);
         if (key && !byContact.has(key)) byContact.set(key, h.account_id);   // newest wins
-        counts[h.direction].set(h.account_id, (counts[h.direction].get(h.account_id) ?? 0) + 1);
+        if (!ledger) count(h.direction, h.account_id);
     }
+    for (const e of ledger ?? []) if (e.account_id) count(e.direction, e.account_id);
     const top = (m: Map<string, number>) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([id]) => id);
     return { byContact, ranked: { IN: top(counts.IN), OUT: top(counts.OUT) } };
 }
 
 /**
- * Saves a plain "what's my balance" reading, shown alongside the running total — informational only. It is the
- * most trustworthy figure there is (nothing inferred, no transaction wording to misread), so a later check always
- * overwrites an earlier one, kept per provider on the capture settings row. Never throws: never worth losing the
- * message over.
+ * What each mobile money account holds in MoneyWise: the booked ledger balance of its provider account, and nothing
+ * else. A balance only moves when the person records a transaction (or taps "Adjust" on a balance check) — never from
+ * a message alone, whether it is still waiting for review, dismissed, or just states a balance. Providers with no
+ * account yet are left out rather than shown as zero.
  */
-async function recordBalanceReading(userId: string, orgId: string, provider: MomoProvider, balance: number, occurredAt: string): Promise<void> {
-    try {
-        const row = await settingsRow(userId, orgId);
-        const checks: Record<string, { balance: number; occurredAt: string }> = { ...(row.balance_checks || {}) };
-        const existing = checks[provider];
-        if (existing && new Date(existing.occurredAt) >= new Date(occurredAt)) return;
-        checks[provider] = { balance, occurredAt };
-        await supabase.from('momo_capture_settings').update({ balance_checks: checks, updated_at: new Date().toISOString() }).eq('user_id', userId);
-    } catch (e: any) {
-        console.error(`[MoMo capture] could not save a balance check for ${provider}:`, e?.message);
-    }
-}
-
-/** The most recent plain balance check per provider, merged across every phone capturing for this organisation. */
-async function balanceChecks(orgId: string, userId?: string): Promise<Record<string, { balance: number; occurredAt: string }>> {
-    let q = supabase.from('momo_capture_settings').select('balance_checks').eq('organization_id', orgId);
-    if (userId) q = q.eq('user_id', userId);
-    const { data } = await q;
-    const merged: Record<string, { balance: number; occurredAt: string }> = {};
-    for (const row of data ?? []) {
-        for (const [provider, reading] of Object.entries((row as any).balance_checks || {})) {
-            const r = reading as { balance: number; occurredAt: string };
-            if (!merged[provider] || new Date(r.occurredAt) > new Date(merged[provider].occurredAt)) merged[provider] = r;
-        }
-    }
-    return merged;
-}
-
-/**
- * What each wallet holds now, worked out the way a person checking their messages by hand would: find the most
- * recent reading of the actual balance — either a transaction message that stated one (MTN only does this on money
- * OUT; Airtel does it both ways) or a plain balance check, whichever is more recent — then add or subtract every
- * later transaction's amount in order, even ones that never stated a balance themselves. Without this, an MTN
- * deposit — which never carries "new balance" — would leave the figure unmoved until the next withdrawal.
- *
- * Every captured transaction counts toward this, even one later dismissed: the money still moved on the phone
- * regardless of how it ended up booked here. The ONE exception is a message the CURRENT parser no longer reads as a
- * transaction at all (an advert captured before a parser fix, say) — those never moved money and are left out, so a
- * parser fix cleans up old noise here too, not just for new messages. A provider with no reading at all, ever, has
- * nothing to anchor to and is left out rather than guessed.
- */
-async function runningBalances(orgId: string, userId?: string) {
-    let q = supabase.from('momo_captures')
-        .select('provider, sender, raw_text, occurred_at')
-        .eq('organization_id', orgId)
-        .order('occurred_at', { ascending: true }).limit(1000);
-    if (userId) q = q.eq('user_id', userId);
-    const [{ data, error }, checks] = await Promise.all([q, balanceChecks(orgId, userId)]);
-    if (error) throw new MomoCaptureError(error.message, 500);
-
-    type Event = { occurredAt: string; balance: number | null; amount: number; direction: 'IN' | 'OUT' | null; fee: number };
-    const byProvider = new Map<MomoProvider, Event[]>();
-    const push = (provider: MomoProvider, e: Event) => byProvider.set(provider, [...(byProvider.get(provider) ?? []), e]);
-
-    for (const row of data ?? []) {
-        const parsed = parseMomoMessage(row.raw_text, row.sender);
-        if (!parsed) continue; // today's parser says this never moved money
-        push(row.provider as MomoProvider, { occurredAt: row.occurred_at, balance: parsed.balanceAfter, amount: parsed.amount, direction: parsed.direction, fee: parsed.fee || 0 });
-    }
-    for (const [provider, reading] of Object.entries(checks)) {
-        push(provider as MomoProvider, { occurredAt: reading.occurredAt, balance: reading.balance, amount: 0, direction: null, fee: 0 });
-    }
-
+export async function balances(_userId: string, orgId: string) {
+    const wallets = await listExternalWallets(orgId);
     const out: { provider: MomoProvider; name: string; balance: number; asOf: string }[] = [];
-    for (const [provider, unsorted] of byProvider) {
-        const rows = [...unsorted].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
-        let anchor = -1;
-        for (let i = rows.length - 1; i >= 0; i--) if (rows[i].balance !== null) { anchor = i; break; }
-        if (anchor === -1) continue; // never had a reading — nothing to anchor to
-        let balance = Number(rows[anchor].balance);
-        for (let i = anchor + 1; i < rows.length; i++) {
-            const r = rows[i];
-            if (!r.direction) continue; // a balance check contributes no amount of its own
-            balance += (r.direction === 'IN' ? 1 : -1) * r.amount - (r.direction === 'OUT' ? r.fee : 0);
-        }
-        out.push({ provider, name: PROVIDER_WALLET[provider], balance: Math.round(balance * 100) / 100, asOf: rows[rows.length - 1].occurredAt });
+    for (const [provider, name] of Object.entries(PROVIDER_WALLET) as [MomoProvider, string][]) {
+        const wallet = wallets.find((w) => w.name.toLowerCase() === name.toLowerCase());
+        if (!wallet) continue;
+        const balance = await cashbookService.getCurrentBalance(orgId, wallet.id);
+        out.push({ provider, name: wallet.name, balance: Math.round(Number(balance) * 100) / 100, asOf: new Date().toISOString() });
     }
     return out;
-}
-
-export async function balances(userId: string, orgId: string) {
-    return runningBalances(orgId, userId);
-}
-
-/**
- * Every phone's running balance for this org, merged — what the Wallet page shows as each mobile money account's
- * balance. Deliberately the live figure, not the booked ledger total: a real external account's balance is what the
- * provider says it is, and showing anything else ("but you haven't booked everything yet") would just read as the
- * app getting it wrong. The ledger entries themselves are untouched — still only what's actually been booked — so
- * the account's balance and its own listed transactions won't fully reconcile until the backlog is cleared, same as
- * a real statement that hasn't caught up with a pending transaction yet.
- */
-export async function orgWalletBalances(orgId: string) {
-    return runningBalances(orgId);
 }
 
 /** Every capture with where it ended up in the ledger (account, category, status) — for the web review page. */
@@ -398,13 +338,14 @@ export async function listWithEntries(userId: string, orgId: string, status?: un
 const IGNORED_KEEP_DAYS = 30;
 
 /** Remembers a message the parser ignored, and why. Never allowed to break ingest. */
-async function logIgnored(userId: string, orgId: string, source: CaptureSource, text: string, sender: string | null) {
+async function logIgnored(userId: string, orgId: string, source: CaptureSource, text: string, sender: string | null, reason?: string) {
     try {
         const d = diagnoseMessage(text, sender);
-        if (d.kind !== 'IGNORED') return;
+        if (!reason && d.kind !== 'IGNORED') return;
+        const sensitive = d.kind === 'IGNORED' && d.sensitive;
         await supabase.from('momo_ignored_messages').insert({
-            organization_id: orgId, user_id: userId, source, reason: d.reason,
-            raw_text: d.sensitive ? '[hidden: looks like a one-time code]' : text.slice(0, 300),
+            organization_id: orgId, user_id: userId, source, reason: reason ?? (d.kind === 'IGNORED' ? d.reason : 'Ignored'),
+            raw_text: sensitive ? '[hidden: looks like a one-time code]' : text.slice(0, 300),
         });
         await supabase.from('momo_ignored_messages').delete().eq('user_id', userId)
             .lt('created_at', new Date(Date.now() - IGNORED_KEEP_DAYS * 24 * 3600 * 1000).toISOString());
@@ -465,7 +406,13 @@ export async function post(userId: string, orgId: string, id: string, overrides:
             ? overrides.description.trim()
             : describe({ ...claimed, direction, counterparty: claimed.counterparty } as ParsedMomoMessage);
         const date = lusakaDate(claimed.occurred_at);
-        const accountId = typeof overrides.accountId === 'string' ? overrides.accountId : null;
+        // No category chosen (the prompt's quick Record, or auto-record): the one last used with this contact, if any;
+        // otherwise recordManualEntry suggests one as before.
+        let accountId = typeof overrides.accountId === 'string' ? overrides.accountId : null;
+        if (!accountId) {
+            const key = contactKey(direction, claimed.counterparty);
+            if (key) accountId = (await categorySuggestions(userId, orgId).catch(() => null))?.byContact.get(key) ?? null;
+        }
 
         const entry = await recordManualEntry({ orgId, userId, direction, amount, description, date, externalWalletId: wallet.id, accountId });
         // From here the movement is in the ledger, so nothing below may send the capture back to PENDING (the catch
@@ -480,6 +427,9 @@ export async function post(userId: string, orgId: string, id: string, overrides:
                 console.error(`[MoMo capture] fee of ${claimed.fee} for capture ${id} was not booked:`, e.message);
             }
         }
+        // The balance the newest recorded message states wins. Never allowed to undo the booking above.
+        await syncToLatestBalance(orgId, userId, claimed.provider, settings.destination)
+            .catch((e: any) => console.error(`[MoMo capture] balance sync after ${id} failed:`, e?.message));
         await mirrorMomoCapture(done, mirror);
         return { ...done, entry };
     } catch (e: any) {
@@ -497,6 +447,59 @@ export async function dismiss(userId: string, orgId: string, id: string) {
     return data;
 }
 
+
+// ── The latest message's balance wins (only once recorded) ─────────────────
+
+export interface RecordedCapture { direction: string; amount: number | string; fee: number | string | null; balance_after: number | string | null; occurred_at: string }
+
+/**
+ * What a provider account should hold, from the person's RECORDED captures (newest first): the balance stated by the
+ * most recent message that states one — the operator's own figure, so it beats anything worked out from our records —
+ * plus whatever recorded transactions happened after it (an MTN deposit message, say, states no balance). Ordered by
+ * the time in the message, not by when it was recorded, so recording an older message later never rolls the
+ * balance back. Null when no recorded message states a balance: then the booked total stands as it is. Pure.
+ */
+export function latestBalanceTarget(rows: RecordedCapture[]): { balance: number; asOf: string } | null {
+    const sorted = [...rows].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at));
+    const anchor = sorted.findIndex((r) => r.balance_after !== null && r.balance_after !== undefined && Number.isFinite(Number(r.balance_after)));
+    if (anchor === -1) return null;
+    let balance = Number(sorted[anchor].balance_after);
+    for (const r of sorted.slice(0, anchor)) {
+        balance += (r.direction === 'IN' ? 1 : -1) * Number(r.amount) - (Number(r.fee) > 0 ? Number(r.fee) : 0);
+    }
+    return { balance: Math.round(balance * 100) / 100, asOf: sorted[anchor].occurred_at };
+}
+
+/**
+ * After a capture is recorded: brings the provider account to latestBalanceTarget with one ADJUSTMENT entry (not
+ * income or spending, so Grow and the reports never count it). Runs only from recording — a message that is merely
+ * captured, waiting or dismissed never moves a balance. Not for captures booked to Cash.
+ */
+async function syncToLatestBalance(orgId: string, userId: string, provider: MomoProvider, destination: string) {
+    if (destination === 'CASH' || provider === 'OTHER') return null;
+    const { data, error } = await supabase.from('momo_captures')
+        .select('direction, amount, fee, balance_after, occurred_at')
+        .eq('organization_id', orgId).eq('provider', provider).eq('status', 'POSTED').not('cashbook_entry_id', 'is', null)
+        .order('occurred_at', { ascending: false }).limit(500);
+    if (error) throw new Error(error.message);
+    const target = latestBalanceTarget((data ?? []) as RecordedCapture[]);
+    if (!target) return null;
+    const wallet = await walletFor(orgId, provider, 'PROVIDER');
+    const current = round2(Number(await cashbookService.getCurrentBalance(orgId, wallet.id)));
+    const diff = round2(target.balance - current);
+    if (Math.abs(diff) < EPS) return null;
+    const when = new Date(target.asOf).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Lusaka' });
+    await cashbookService.createEntry(orgId, {
+        entry_type: 'ADJUSTMENT',
+        description: `${PROVIDER_WALLET[provider]} · Balance set to K${target.balance.toFixed(2)} from the ${when} message`,
+        debit: diff > 0 ? diff : 0,
+        credit: diff < 0 ? -diff : 0,
+        date: lusakaDate(new Date().toISOString()),
+        created_by: userId,
+        account_type: wallet.id,
+    } as any);
+    return { balance: target.balance, adjustedBy: diff };
+}
 
 // ── Balance checks ──────────────────────────────────────────────────────────
 

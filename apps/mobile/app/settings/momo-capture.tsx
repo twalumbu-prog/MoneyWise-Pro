@@ -33,8 +33,8 @@ const ago = (iso: string | null) => {
 export default function MomoCaptureSettingsScreen() {
     const qc = useQueryClient();
     const settings = useQuery({ queryKey: MOMO_SETTINGS_KEY, queryFn: () => momoCaptureService.getSettings() });
-    // Mobile money capture is open to every plan. The combined "All captured transactions" list is Premium-only, so
-    // its row is shown only to accounts that can open it; a failed lookup just hides the row.
+    // Capture is free on every plan. The server still says whether the combined list can open (planEligible),
+    // so a failed lookup just hides the row.
     const captureSettings = useQuery({ queryKey: ['captures', 'settings'], queryFn: () => captureService.settings(), retry: false });
     const allCapturesAvailable = !!captureSettings.data?.planEligible;
     const balances = useQuery({ queryKey: ['momo-capture', 'balances'], queryFn: () => momoCaptureService.balances(), retry: false });
@@ -164,14 +164,14 @@ export default function MomoCaptureSettingsScreen() {
                     <>
                         <Text style={[styles.sectionLabel, { marginTop: 24 }]}>WALLET BALANCES</Text>
                         <Text style={styles.intro}>
-                            What your messages say each wallet holds. Nothing here is booked automatically — review and confirm
-                            a transaction to add it to MoneyWise.
+                            What each mobile money account holds in MoneyWise. It only changes when you record a transaction —
+                            messages waiting for review don't count until you confirm them.
                         </Text>
                         <View style={styles.card}>
                             {balances.data.map((b, i) => (
                                 <Row
                                     key={b.provider} border={i > 0} icon={<Wallet size={18} color={colors.blue} />} label={b.name}
-                                    sub={`From your last message, ${ago(b.asOf)}`}
+                                    sub="Recorded in MoneyWise"
                                     right={<Text style={styles.balance}>K{b.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>}
                                 />
                             ))}

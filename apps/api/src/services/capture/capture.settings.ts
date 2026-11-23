@@ -1,21 +1,18 @@
 import { supabase } from '../../lib/supabase';
-import { getEntitlements } from '../entitlements.service';
 import { capturePlanEligible, CAPTURE_CHANNELS, type ChannelRule } from './capture.logic';
 
 export interface CaptureSettings { enabled: boolean; autoPostEnabled: boolean; autoPostLimit: number; dailyAiBudget: number; repliesEnabled: boolean; channels: Record<string, ChannelRule> }
 
 const DEFAULTS: CaptureSettings = { enabled: false, autoPostEnabled: false, autoPostLimit: 2000, dailyAiBudget: 500, repliesEnabled: false, channels: {} };
 
-/** Premium and active. A failed lookup means not eligible. */
+/** Every workspace, on every plan: capture is free. No plan lookup, so a slow billing check can never switch it off. */
 export async function isCapturePlanEligible(orgId: string): Promise<boolean> {
-    if (!orgId) return false;
-    try { return capturePlanEligible(await getEntitlements(orgId)); }
-    catch { return false; }
+    return !!orgId && capturePlanEligible();
 }
 
 /**
- * `enabled` is the effective state: the org's own switch AND an eligible plan, so every path that checks it (upload,
- * worker, MoMo mirror, re-matching, auto-post) stops when a plan lapses and resumes on renewal. No row, or the lookup
+ * `enabled` is the effective state: the org's own switch (capture is free on every plan), so every path that checks it
+ * (upload, worker, MoMo mirror, re-matching, auto-post) follows that switch. No row, or the lookup
  * failing, means OFF: the kill switch fails closed. The plan is only looked up for orgs that switched capture on.
  */
 export async function getCaptureSettings(orgId: string): Promise<CaptureSettings> {

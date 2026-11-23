@@ -61,3 +61,27 @@ export async function sendMomoConfirmDigests(budgetMs: number) {
     }
     return result;
 }
+
+/** Hours between two "still waiting" nudges sent after settling one from the prompt. */
+const NUDGE_EVERY_HOURS = 4;
+
+/**
+ * Right after the person records or dismisses one transaction from the phone's prompt: if others from the last 30 days
+ * are still waiting, the same push as the daily digest (it opens the quick-confirm queue). At most once every few
+ * hours, so settling several in a row sends one. Not used by the in-app queue, where they are already confirming.
+ */
+export async function nudgeIfWaiting(userId: string, orgId: string, now = new Date()): Promise<boolean> {
+    const since = new Date(now.getTime() - WINDOW_DAYS * 86400_000).toISOString();
+    const { count, error } = await supabase.from('momo_captures').select('id', { count: 'exact', head: true })
+        .eq('user_id', userId).eq('organization_id', orgId).eq('status', 'PENDING').gte('occurred_at', since);
+    if (error) throw new Error(error.message);
+    if (!count) return false;
+    const bucket = Math.floor(now.getTime() / (NUDGE_EVERY_HOURS * 3600_000));
+    const { error: claimErr } = await supabase.from('push_alert_log').insert({ user_id: userId, organization_id: orgId, key: `confirmnudge:${bucket}` });
+    if (claimErr) { if (claimErr.code === '23505') return false; throw new Error(claimErr.message); }
+    await pushService.sendToUser(userId, {
+        ...confirmDigestMessage(count), topic: 'to_confirm', category: PUSH_CATEGORIES.TO_CONFIRM, orgId,
+        data: { type: 'momo_confirm', count },
+    });
+    return true;
+}

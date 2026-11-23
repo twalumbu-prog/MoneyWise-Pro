@@ -48,10 +48,10 @@ router.get('/by-customer/:customerId', handle('by-customer', async (req) => {
     return capture.byCustomer(org(req), req.params.customerId);
 }));
 
-// Everything below needs an active Premium plan.
+// Capture is free on every plan; this only turns away a request with no workspace.
 router.use(async (req: any, res: any, next: any) => {
     if (await isCapturePlanEligible(req.user?.organization_id)) return next();
-    res.status(402).json({ error: 'Transaction capture requires an active Premium plan. Manage your plan under Settings → Subscription & Billing.', code: 'PLAN_LIMIT' });
+    res.status(400).json({ error: 'Choose a workspace first.' });
 });
 
 router.put('/settings', requireRole(SETTINGS_ROLES), handle('settings', async (req) => ({

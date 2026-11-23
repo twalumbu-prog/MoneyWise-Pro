@@ -28,7 +28,7 @@ class MomoSmsReceiver : BroadcastReceiver() {
         MomoCapture.blockedReason(context, "sms")?.let { MomoCapture.note(context, "smsSeen", "Not captured: $it"); return }
         val parts = Telephony.Sms.Intents.getMessagesFromIntent(intent) ?: return
         val groups = parts.groupBy { it.originatingAddress ?: "" }
-        val matches = groups.filter { (sender, msgs) -> MomoCapture.looksLikeMomo(context, sender, msgs.joinToString("") { it.messageBody ?: "" }) }
+        val matches = groups.filter { (sender, msgs) -> MomoCapture.looksLikeMomo(context, sender, msgs.joinToString("") { it.messageBody ?: "" }, fromSms = true) }
         if (matches.isEmpty()) {
             MomoCapture.note(context, "smsSeen", "Ignored: not a mobile money message")
             return

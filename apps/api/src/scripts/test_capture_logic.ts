@@ -122,10 +122,9 @@ test('a channel can only narrow the org settings', () => {
 });
 
 console.log('Plan eligibility');
-test('only an active Premium subscription qualifies', () => {
-    assert.strictEqual(capturePlanEligible({ planId: 'premium', status: 'active' }), true);
-    for (const status of ['past_due', 'cancelled']) assert.strictEqual(capturePlanEligible({ planId: 'premium', status }), false, status);
-    assert.strictEqual(capturePlanEligible({ planId: 'free', status: 'active' }), false);
+test('capture is free on every plan', () => {
+    for (const planId of ['free', 'premium', 'pro']) for (const status of ['active', 'past_due', 'cancelled'])
+        assert.strictEqual(capturePlanEligible({ planId, status }), true, `${planId}/${status}`);
 });
 
 console.log('Injection flagging (S4 sample)');

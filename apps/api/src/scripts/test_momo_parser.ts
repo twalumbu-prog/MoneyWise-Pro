@@ -5,7 +5,7 @@
  * add it here (with names/numbers changed) before adjusting the parser.
  */
 import assert from 'assert';
-import { parseMomoMessage, parseBalanceOnly, parseBalanceMessage } from '../services/momoCapture/parser';
+import { parseMomoMessage, parseBalanceOnly, parseBalanceMessage, isPersonalNumber } from '../services/momoCapture/parser';
 
 type Expect = Partial<ReturnType<typeof parseMomoMessage> & {}> | null;
 const cases: { text: string; sender?: string; expect: Expect }[] = [
@@ -180,5 +180,20 @@ for (const c of balanceMessageCases) {
         console.log(`✓ balance: ${c.text.slice(0, 55)}`);
     } catch (e: any) { failed++; console.log(`✗ balance: ${c.text.slice(0, 55)}\n    ${e.message}\n    got: ${JSON.stringify(got)}`); }
 }
+
+// A scam: a real-looking MTN confirmation typed into an ordinary text from a personal number. The wording parses, so
+// the sender is what rules it out (ingest rejects personal numbers before parsing).
+const scam = 'MoMo Yello.You have received ZMW 1000.00 from Mambwe maggie on your mobile money account at 2026-02-1 20:02 Message from sender: 1111. Financial Transaction ID: 7537307803. Dial *115# to view balance. Thank you for using Momo from MTN.';
+const senderCases: [string | null, boolean][] = [
+    ['+260971234567', true], ['0971234567', true], ['+260 97 123 4567', true], ['097-123-4567', true],
+    ['MoMo', false], ['AirtelMoney', false], ['MTNZM', false], ['115', false], ['8080', false], ['Zanaco', false], [null, false], ['', false],
+];
+for (const [sender, personal] of senderCases) {
+    try { assert.strictEqual(isPersonalNumber(sender), personal); console.log(`✓ personal number? ${JSON.stringify(sender)} → ${personal}`); }
+    catch (e: any) { failed++; console.log(`✗ personal number? ${JSON.stringify(sender)}\n    ${e.message}`); }
+}
+try { assert.ok(isPersonalNumber('+260977000111') && parseMomoMessage(scam, '+260977000111')); console.log('✓ scam from a personal number is caught by its sender, not its wording'); }
+catch (e: any) { failed++; console.log(`✗ scam example\n    ${e.message}`); }
+
 console.log(failed ? `\n${failed} failing` : '\nall passed');
 process.exit(failed ? 1 : 0);

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import * as momo from '../services/momoCapture/momoCapture.service';
+import { nudgeIfWaiting } from '../services/momoCapture/confirmDigest';
 
 /**
  * Mobile money capture. `/ingest` is the one unauthenticated-by-session route: background senders (the Android native
@@ -35,8 +36,15 @@ const settleWithKey = (label: string, fn: (userId: string, orgId: string, id: st
         res.json(await fn(owner.userId, owner.orgId, req.params.id));
     } catch (error) { fail(res, error, label); }
 };
-router.post('/ingest/:id/post', settleWithKey('prompt post', (userId, orgId, id) => momo.post(userId, orgId, id)));
-router.post('/ingest/:id/dismiss', settleWithKey('prompt dismiss', (userId, orgId, id) => momo.dismiss(userId, orgId, id)));
+// After settling one from the prompt, others still waiting get the same "N transactions to confirm" push as the daily
+// one (opens the quick-confirm queue), at most every few hours. Never allowed to fail the settle itself.
+const thenNudge = async <T>(userId: string, orgId: string, done: Promise<T>): Promise<T> => {
+    const r = await done;
+    await nudgeIfWaiting(userId, orgId).catch((e: any) => console.error('[MoMo capture] waiting nudge failed:', e?.message));
+    return r;
+};
+router.post('/ingest/:id/post', settleWithKey('prompt post', (userId, orgId, id) => thenNudge(userId, orgId, momo.post(userId, orgId, id))));
+router.post('/ingest/:id/dismiss', settleWithKey('prompt dismiss', (userId, orgId, id) => thenNudge(userId, orgId, momo.dismiss(userId, orgId, id))));
 
 router.use(requireAuth);
 

@@ -41,6 +41,9 @@ export function useNotificationNavigation() {
                 case 'insights':
                     router.push('/grow');
                     break;
+                case 'grow_setup':
+                    router.push('/grow/setup');
+                    break;
                 case 'requisition':
                     if (data.id) router.push(`/requisition/${data.id}`);
                     break;

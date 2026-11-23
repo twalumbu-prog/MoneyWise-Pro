@@ -55,8 +55,8 @@ export function decideMerge(scored: ScoredCandidate[], extractionConfidence: num
     return { action: 'SUGGEST', candidates: scored.slice(0, 3) };
 }
 
-/** Capture is a Premium feature, and only while the subscription is active (past_due and cancelled lose access). */
-export const capturePlanEligible = (e: { planId: string; status: string }) => e.planId === 'premium' && e.status === 'active';
+/** Capture is free on every plan, including the free one. Kept as a function so a future gate has one place to live. */
+export const capturePlanEligible = (_e?: { planId: string; status: string }) => true;
 
 /** The local part of the first address at our receiving domain, from fields that may be strings, arrays or "Name <a@b>". */
 export function recipientAlias(fields: unknown[], domain: string): string | null {

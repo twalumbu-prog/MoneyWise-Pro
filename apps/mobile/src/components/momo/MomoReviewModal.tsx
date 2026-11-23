@@ -64,6 +64,8 @@ export function MomoReviewModal({ capture, busy, onClose, onConfirm, queue, onSk
     const confirm = () => { dictation.stop(); onConfirm({ accountId, description: note.trim() || null }); };
     const skip = () => { dictation.stop(); onSkip?.(); };
     const suggested = !!capture.suggested_account_id && accountId === capture.suggested_account_id;
+    // The person's three most-used categories of this kind get a star, so the usual choice is one glance away.
+    const frequent = new Set((capture.ranked_account_ids ?? []).filter((id) => options.some((a) => a.id === id)).slice(0, 3));
     const last = !queue || queue.position >= queue.total;
     const accountNumber = capture.sender || (capture.counterparty || '').match(/\b(\+?\d[\d ]{6,})\b/)?.[1] || null;
     const accountName = (capture.counterparty || '').replace(/\b\+?\d[\d ]{6,}\b/g, '').trim() || capture.counterparty;
@@ -102,13 +104,15 @@ export function MomoReviewModal({ capture, busy, onClose, onConfirm, queue, onSk
                     </View>
 
                     <Text style={styles.sectionLabel}>Please choose how this should be treated</Text>
-                    {suggested && <Text style={styles.suggestedHint}>Picked from what you chose last time with them. Tap another to change it.</Text>}
+                    {suggested
+                        ? <Text style={styles.suggestedHint}>Picked from what you chose last time with them. Tap another to change it.</Text>
+                        : frequent.size > 0 && <Text style={styles.suggestedHint}>★ Your most-used categories come first.</Text>}
                     <ScrollView ref={chipsRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
                         {accounts.isLoading && <ActivityIndicator color={colors.blue} />}
                         {options.map((a) => (
                             <Pressable key={a.id} onPress={() => setAccountId((v) => (v === a.id ? null : a.id))}
                                 style={[styles.chip, accountId === a.id && styles.chipOn]}>
-                                <Text style={[styles.chipText, accountId === a.id && styles.chipTextOn]} numberOfLines={1}>{a.name}</Text>
+                                <Text style={[styles.chipText, accountId === a.id && styles.chipTextOn]} numberOfLines={1}>{frequent.has(a.id) ? '★ ' : ''}{a.name}</Text>
                             </Pressable>
                         ))}
                         {!accounts.isLoading && options.length === 0 && <Text style={styles.chipEmpty}>No categories set up yet — add a note instead.</Text>}

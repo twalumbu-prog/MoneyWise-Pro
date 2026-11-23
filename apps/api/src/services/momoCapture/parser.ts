@@ -23,6 +23,17 @@ export interface ParsedMomoMessage {
 const clean = (s: string) => s.replace(/\u0000/g, '').replace(/\s+/g, ' ').trim();
 const stripDialFooter = (s: string) => s.replace(/\bdial\s+\*\S*/gi, '');
 
+/**
+ * An ordinary phone number ("+260 97 123 4567", "0971234567"): 7+ digits and only number punctuation. Operators and
+ * banks send from a name ("MoMo", "AirtelMoney", "Zanaco") or a short code ("115"), never from a personal number, so
+ * a "You have received ZMW 1000" from one is a scam (the classic "I sent it by mistake, please send it back") and is
+ * never a transaction, whatever it says.
+ */
+export function isPersonalNumber(sender?: string | null): boolean {
+    const s = (sender ?? '').trim();
+    return /^[+0-9 ().-]+$/.test(s) && (s.match(/\d/g)?.length ?? 0) >= 7;
+}
+
 export function detectProvider(text: string, sender?: string | null): MomoProvider {
     const hay = `${sender ?? ''} ${text}`.toLowerCase();
     if (/\bmtn\b|momo/.test(hay)) return 'MTN';

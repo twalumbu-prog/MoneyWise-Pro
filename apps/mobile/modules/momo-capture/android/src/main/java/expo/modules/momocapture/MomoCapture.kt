@@ -24,6 +24,10 @@ import java.util.concurrent.Executors
  *
  * Only messages that look like mobile money confirmations leave the phone: the sender (or notification title) must
  * name a provider AND the text must carry an amount. Parsing and booking happen on the server.
+ *
+ * Operators send from a name ("MoMo", "AirtelMoney") or a short code, never from an ordinary phone number. A
+ * confirmation that arrives from a personal number is a scam — someone pasting "You have received ZMW 1000" into a
+ * normal text to trick the person into "refunding" it — so it never leaves the phone, whatever it says.
  */
 object MomoCapture {
     private const val TAG = "MomoCapture"
@@ -74,12 +78,25 @@ object MomoCapture {
         prefs(ctx).getString("senderPattern", null)?.takeIf { it.isNotBlank() }?.let { runCatching { Regex(it, RegexOption.IGNORE_CASE) }.getOrNull() }
             ?: DEFAULT_SENDERS
 
-    /** Sender/title names a provider, or the text does and it came from a provider app; and it mentions an amount. */
-    fun looksLikeMomo(ctx: Context, sender: String?, text: String, fromProviderApp: Boolean = false): Boolean {
+    /** An ordinary phone number ("+260 97 123 4567", "0971234567"): 7+ digits and nothing but number punctuation. */
+    fun isPersonalNumber(sender: String?): Boolean {
+        if (sender.isNullOrBlank()) return false
+        val s = sender.trim()
+        return PHONE_CHARS.matches(s) && s.count { it.isDigit() } >= 7
+    }
+    private val PHONE_CHARS = Regex("^[+0-9 ().-]+$")
+
+    /**
+     * Sender/title names a provider, or the text does and it came from a provider app (or, for an SMS, an operator
+     * sender id we don't know yet, never a phone number); and it mentions an amount. [fromSms]: the sender is a real
+     * SMS address. A notification title can be a saved contact's name, so there the text alone is never enough.
+     */
+    fun looksLikeMomo(ctx: Context, sender: String?, text: String, fromProviderApp: Boolean = false, fromSms: Boolean = false): Boolean {
         if (text.length < 12 || !MONEY_HINT.containsMatchIn(text)) return false
+        if (isPersonalNumber(sender)) return false
         val re = senderRegex(ctx)
         if (sender != null && re.containsMatchIn(sender)) return true
-        return re.containsMatchIn(text) && (fromProviderApp || TXN_HINT.containsMatchIn(text))
+        return re.containsMatchIn(text) && (fromProviderApp || (fromSms && TXN_HINT.containsMatchIn(text)))
     }
 
     private fun digest(text: String): String {

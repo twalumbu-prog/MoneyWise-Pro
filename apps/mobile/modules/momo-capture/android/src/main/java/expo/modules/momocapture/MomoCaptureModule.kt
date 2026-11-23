@@ -88,7 +88,7 @@ class MomoCaptureModule : Module() {
                 while (c.moveToNext() && count < max) {
                     val sender = c.getString(0)
                     val body = c.getString(1) ?: continue
-                    if (MomoCapture.looksLikeMomo(context, sender, body)) {
+                    if (MomoCapture.looksLikeMomo(context, sender, body, fromSms = true)) {
                         MomoCapture.capture(context, "ANDROID_SMS", sender, body, c.getLong(2), silent = true)
                         count++
                     }
