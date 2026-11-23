@@ -3,12 +3,13 @@ import { View, Text, Pressable, StyleSheet, ScrollView, KeyboardAvoidingView, Ac
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft, Eye, EyeOff, Building2 } from 'lucide-react-native';
-import { AnimatedSegmented } from '../../src/components/AnimatedTabs';
+import { AnimatedSegmented, AnimatedTabContent } from '../../src/components/AnimatedTabs';
 import { WalletCardsIcon } from '../../src/components/icons/WalletCardsIcon';
 import { useAuth } from '../../src/context/AuthContext';
 import { SocialButtons } from '../../src/components/auth/SocialButtons';
 import { MoneywiseMark } from '../../src/components/icons/MoneywiseMark';
 import { Field } from '../../src/components/onboarding/personal/steps';
+import { hapticTick } from '../../src/lib/haptics';
 import { track } from '../../src/lib/analytics';
 import { signInWithSocial, SocialAuthCancelled, type SocialProvider } from '../../src/lib/socialAuth';
 import { cacheStoreSync } from '../../src/platform/storage';
@@ -110,7 +111,7 @@ export default function SignInScreen() {
                 {!isSignup && (
                     <AnimatedSegmented
                         value={tab}
-                        onChange={(v) => setTab(v as 'INDIVIDUAL' | 'BUSINESS')}
+                        onChange={(v) => { if (v !== tab) hapticTick(); setTab(v as 'INDIVIDUAL' | 'BUSINESS'); }}
                         trackStyle={styles.segTrack}
                         indicatorStyle={styles.segIndicator}
                         itemStyle={styles.segItem}
@@ -130,41 +131,44 @@ export default function SignInScreen() {
                         ]}
                     />
                 )}
-                <Text style={[styles.title, !isSignup && { marginTop: 22 }]} accessibilityRole="header">{isSignup ? 'Let’s get started' : 'Welcome back'}</Text>
-                <Text style={styles.sub}>{isSignup ? 'Enter your email and create a password.' : 'Sign in to pick up where you left off.'}</Text>
+                {/* The form slides sideways when the tab changes, as the old login page did. */}
+                <AnimatedTabContent tabKey={tab} index={tab === 'INDIVIDUAL' ? 0 : 1}>
+                    <Text style={[styles.title, !isSignup && { marginTop: 22 }]} accessibilityRole="header">{isSignup ? 'Let’s get started' : 'Welcome back'}</Text>
+                    <Text style={styles.sub}>{isSignup ? 'Enter your email and create a password.' : 'Sign in to pick up where you left off.'}</Text>
 
-                <View style={{ marginTop: 14 }}>
-                    <Field
-                        label={isSignup ? 'Email' : 'Email or username'} value={identifier} onChangeText={(t) => { setIdentifier(t); setError(''); }}
-                        keyboardType="email-address" textContentType="username" autoComplete="username" maxLength={120}
-                        returnKeyType="next" onSubmitEditing={() => passwordRef.current?.focus()}
-                    />
-                    <View style={{ marginTop: 10 }}>
+                    <View style={{ marginTop: 14 }}>
                         <Field
-                            ref={passwordRef}
-                            label="Password" value={password} onChangeText={(t) => { setPassword(t); setError(''); }}
-                            secureTextEntry={!showPassword} textContentType={isSignup ? 'newPassword' : 'password'} autoComplete={isSignup ? 'new-password' : 'password'} maxLength={128}
-                            returnKeyType="go" onSubmitEditing={submit}
-                            suffix={(
-                                <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={10} accessibilityRole="button" accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}>
-                                    {showPassword ? <EyeOff size={18} color={colors.textMuted} /> : <Eye size={18} color={colors.textMuted} />}
-                                </Pressable>
-                            )}
+                            label={isSignup ? 'Email' : 'Email or username'} value={identifier} onChangeText={(t) => { setIdentifier(t); setError(''); }}
+                            keyboardType="email-address" textContentType="username" autoComplete="username" maxLength={120}
+                            returnKeyType="next" onSubmitEditing={() => passwordRef.current?.focus()}
                         />
-                    </View>
-                    {isSignup && accountType === 'BUSINESS' && (
                         <View style={{ marginTop: 10 }}>
-                            <Field label="Business name" value={businessName} onChangeText={(t) => { setBusinessName(t); setError(''); }} autoCapitalize="words" maxLength={80} />
+                            <Field
+                                ref={passwordRef}
+                                label="Password" value={password} onChangeText={(t) => { setPassword(t); setError(''); }}
+                                secureTextEntry={!showPassword} textContentType={isSignup ? 'newPassword' : 'password'} autoComplete={isSignup ? 'new-password' : 'password'} maxLength={128}
+                                returnKeyType="go" onSubmitEditing={submit}
+                                suffix={(
+                                    <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={10} accessibilityRole="button" accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}>
+                                        {showPassword ? <EyeOff size={18} color={colors.textMuted} /> : <Eye size={18} color={colors.textMuted} />}
+                                    </Pressable>
+                                )}
+                            />
                         </View>
-                    )}
-                    {isSignup ? <View style={{ height: 12 }} /> : (
-                        <Pressable onPress={() => router.push({ pathname: '/(auth)/login', params: { mode: 'forgot' } } as any)} hitSlop={8} style={styles.forgot} accessibilityRole="button">
-                            <Text style={styles.forgotText}>Forgot password?</Text>
-                        </Pressable>
-                    )}
-                </View>
+                        {isSignup && accountType === 'BUSINESS' && (
+                            <View style={{ marginTop: 10 }}>
+                                <Field label="Business name" value={businessName} onChangeText={(t) => { setBusinessName(t); setError(''); }} autoCapitalize="words" maxLength={80} />
+                            </View>
+                        )}
+                        {isSignup ? <View style={{ height: 12 }} /> : (
+                            <Pressable onPress={() => router.push({ pathname: '/(auth)/login', params: { mode: 'forgot' } } as any)} hitSlop={8} style={styles.forgot} accessibilityRole="button">
+                                <Text style={styles.forgotText}>Forgot password?</Text>
+                            </Pressable>
+                        )}
+                    </View>
 
-                {!!error && <Text style={styles.error}>{error}</Text>}
+                    {!!error && <Text style={styles.error}>{error}</Text>}
+                </AnimatedTabContent>
 
                 {/* Pushed down the page, but still clear of the Continue button. */}
                 <View style={styles.social}>
