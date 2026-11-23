@@ -1,5 +1,7 @@
 import { apiJson } from '../api/apiFetch';
 
+let banksSessionCache: any = null;
+
 export const lencoService = {
     /** Pull this organization's Lenco transactions into the ledger right now (the "Cycle" button). */
     syncNow(): Promise<any> {
@@ -51,8 +53,24 @@ export const lencoService = {
         return apiJson(`/lenco/reconcile/${organizationId}`);
     },
 
-    getBanks(): Promise<any> {
-        return apiJson('/lenco/banks');
+    // Callers fetch the list once when a screen opens and swallow errors, so a single dropped
+    // request (flaky network, cold API) used to leave the bank dropdown empty until a reload.
+    // Retry a few times, and keep a good list for the session.
+    async getBanks(): Promise<any> {
+        if (banksSessionCache) return banksSessionCache;
+        let lastErr: any;
+        for (let attempt = 0; attempt < 4; attempt++) {
+            try {
+                const list = await apiJson('/lenco/banks');
+                const rows = Array.isArray(list) ? list : (list?.data || []);
+                if (rows.length) banksSessionCache = list;
+                return list;
+            } catch (err) {
+                lastErr = err;
+                await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+            }
+        }
+        throw lastErr;
     },
 
     resolveBankAccount(accountNumber: string, bankId: string, organizationId?: string): Promise<any> {
