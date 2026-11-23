@@ -3,7 +3,9 @@ import { View, Text, Pressable, StyleSheet, ScrollView, KeyboardAvoidingView, Ac
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft, Eye, EyeOff, Building2 } from 'lucide-react-native';
-import { AnimatedSegmented, AnimatedTabContent } from '../../src/components/AnimatedTabs';
+import Animated, { useReducedMotion, useSharedValue } from 'react-native-reanimated';
+import { pushIn, pushOut } from '../../src/lib/pagePush';
+import { AnimatedSegmented } from '../../src/components/AnimatedTabs';
 import { WalletCardsIcon } from '../../src/components/icons/WalletCardsIcon';
 import { useAuth } from '../../src/context/AuthContext';
 import { SocialButtons } from '../../src/components/auth/SocialButtons';
@@ -37,6 +39,9 @@ export default function SignInScreen() {
     const [showPassword, setShowPassword] = useState(false);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
+    const reduced = useReducedMotion();
+    const dirSV = useSharedValue(1);   // push direction: forward (1) towards Businesses, back (-1) towards Individuals
+    const [moved, setMoved] = useState(false);
     const passwordRef = useRef<TextInput>(null);
 
     const looksLikeEmail = /^\S+@\S+\.\S+$/.test(identifier.trim());
@@ -111,7 +116,7 @@ export default function SignInScreen() {
                 {!isSignup && (
                     <AnimatedSegmented
                         value={tab}
-                        onChange={(v) => { if (v !== tab) hapticTick(); setTab(v as 'INDIVIDUAL' | 'BUSINESS'); }}
+                        onChange={(v) => { if (v === tab) return; hapticTick(); dirSV.value = v === 'BUSINESS' ? 1 : -1; setMoved(true); setTab(v as 'INDIVIDUAL' | 'BUSINESS'); }}
                         trackStyle={styles.segTrack}
                         indicatorStyle={styles.segIndicator}
                         itemStyle={styles.segItem}
@@ -131,8 +136,9 @@ export default function SignInScreen() {
                         ]}
                     />
                 )}
-                {/* The form slides sideways when the tab changes, as the old login page did. */}
-                <AnimatedTabContent tabKey={tab} index={tab === 'INDIVIDUAL' ? 0 : 1}>
+                {/* The form pushes sideways when the tab changes: the same Animate UI push as the onboarding pages. */}
+                <View style={{ overflow: 'hidden' }}>
+                <Animated.View key={tab} entering={moved && !reduced ? pushIn(dirSV) : undefined} exiting={reduced ? undefined : pushOut(dirSV)}>
                     <Text style={[styles.title, !isSignup && { marginTop: 22 }]} accessibilityRole="header">{isSignup ? 'Let’s get started' : 'Welcome back'}</Text>
                     <Text style={styles.sub}>{isSignup ? 'Enter your email and create a password.' : 'Sign in to pick up where you left off.'}</Text>
 
@@ -168,7 +174,8 @@ export default function SignInScreen() {
                     </View>
 
                     {!!error && <Text style={styles.error}>{error}</Text>}
-                </AnimatedTabContent>
+                </Animated.View>
+                </View>
 
                 {/* Pushed down the page, but still clear of the Continue button. */}
                 <View style={styles.social}>
