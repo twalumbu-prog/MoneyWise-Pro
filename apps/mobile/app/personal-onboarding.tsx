@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ActivityIndicator, BackHandler, LogBox } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator, BackHandler, LogBox, Alert } from 'react-native';
 import { useSharedValue, withTiming } from 'react-native-reanimated';
 import { PUSH_EASE, PUSH_MS, SCREEN_W } from '../src/lib/pagePush';
 import { SlideContext } from '../src/components/onboarding/personal/slide';
@@ -69,7 +69,7 @@ function SlideLayer({ mode, dir, children }: { mode: 'enter' | 'leave' | 'rest';
 export default function PersonalOnboardingScreen() {
     const router = useRouter();
     const queryClient = useQueryClient();
-    const { refreshUserOrganizations } = useAuth();
+    const { refreshUserOrganizations, signOut } = useAuth();
     const params = useLocalSearchParams<{ step?: string; single?: string; preview?: string }>();
     const preview = __DEV__ && params.preview === '1';
     const service: PersonalService = preview ? (previewPersonalOnboardingService as unknown as PersonalService) : personalOnboardingService;
@@ -87,6 +87,7 @@ export default function PersonalOnboardingScreen() {
     // Drafts live here, not in the steps, so going Back and forward never loses what was typed.
     const keepError = useRef(false);   // set when a background save failed and we came back to show why
     const inFlight = useRef(false);
+    const swipeStart = useRef<{ x: number; y: number } | null>(null);
     const dirSV = useSharedValue(1);   // which way pages push: forward (1) or back (-1)
     const dirRef = { get current() { return dirSV.value as 1 | -1; }, set current(v: 1 | -1) { dirSV.value = v; } };
     const [cheer, setCheer] = useState(false);          // the "great start" page shown between net worth and Grow
@@ -144,14 +145,27 @@ export default function PersonalOnboardingScreen() {
 
     const index = cursor && cursor !== 'done' ? built.findIndex((s) => s.key === cursor) : built.length;
 
+    // Back from the very first step: the account already exists, so going back means signing out to the welcome screen.
+    const leaveSetup = useCallback(() => {
+        Alert.alert(
+            'Go back?',
+            'You’ll be signed out. Your account is saved, so you can sign in again any time to finish setting up.',
+            [
+                { text: 'Stay', style: 'cancel' },
+                { text: 'Sign out', style: 'destructive', onPress: () => { void signOut().then(() => router.replace('/(auth)/welcome' as any)); } },
+            ],
+        );
+    }, [signOut, router]);
+
     const goBack = useCallback(() => {
         dirRef.current = -1;
         if (single) { exitSingle(); return true; }
+        if (!preview && cursor === built[0]?.key && !cheer) { leaveSetup(); return true; }
         if (cursor === 'done') { setCursor(built[built.length - 1].key); return true; }
         if (cheer) { setCheer(false); setCursor(built[index - 1].key); return true; }
         if (index > 0) { setCursor(built[index - 1].key); return true; }
         return false;
-    }, [single, cursor, index, built, exitSingle, cheer]);
+    }, [single, cursor, index, built, exitSingle, cheer, preview, leaveSetup]);
 
     // Android back follows the wizard's Back instead of leaving the app mid-setup.
     useEffect(() => {
@@ -286,7 +300,7 @@ export default function PersonalOnboardingScreen() {
         state,
         drafts,
         setDraft: (k, v) => setDrafts((d) => ({ ...d, [k]: v })),
-        onBack: single || index > 0 ? () => { goBack(); } : undefined,
+        onBack: () => { goBack(); },
         saving,
         error,
         fieldErrors,
@@ -313,7 +327,17 @@ export default function PersonalOnboardingScreen() {
     return (
         <>
             <Stack.Screen options={{ headerShown: false, gestureEnabled: single }} />
-            <View style={{ flex: 1, backgroundColor: colors.surface, overflow: 'hidden' }}>
+            <View
+                style={{ flex: 1, backgroundColor: colors.surface, overflow: 'hidden' }}
+                // Swipe right from the left edge = Back (the wizard's pages are not stack screens, so the system gesture can't do it).
+                onTouchStart={(e) => { swipeStart.current = { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY }; }}
+                onTouchEnd={(e) => {
+                    const st = swipeStart.current; swipeStart.current = null;
+                    if (!st || st.x > 40 || saving) return;
+                    const dx = e.nativeEvent.pageX - st.x, dy = Math.abs(e.nativeEvent.pageY - st.y);
+                    if (dx > 70 && dy < 60) goBack();
+                }}
+            >
                 {leaving.map((l) => {
                     const Old = l.key === 'cheer' ? StepCheer : STEP_COMPONENTS[l.key as PersonalStepKey];
                     return Old ? <SlideLayer key={`out${l.id}`} mode="leave" dir={l.dir}><Old ctx={l.ctx} /></SlideLayer> : null;
