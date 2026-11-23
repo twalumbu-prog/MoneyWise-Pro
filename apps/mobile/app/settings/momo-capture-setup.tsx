@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Alert, AppState, ActivityIndicator } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
-import { Bell, MessageSquare, Workflow, ShieldCheck, CheckCircle2, History, Smartphone, Plus, Zap, Search, MousePointerClick } from 'lucide-react-native';
+import { Bell, MessageSquare, Workflow, ShieldCheck, CheckCircle2, History, Smartphone } from 'lucide-react-native';
 import { momoCaptureService } from 'core';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { PrimaryButton, GhostButton } from '../../src/components/onboarding/ui';
@@ -12,7 +12,7 @@ import { useGoBack } from '../../src/hooks/useGoBack';
 import {
     getAndroidStatus, setAndroidSources, requestSmsPermission, openNotificationAccessSettings, openAppSettings,
     importSmsHistory, installIosShortcut, openShortcutsApp, markIosShortcutSetUp, MOMO_SETTINGS_KEY,
-    iosIntentAvailable, connectIphone, getIosStatus,
+    iosIntentAvailable, connectIphone, getIosStatus, isIosShortcutSetUp,
 } from '../../src/lib/momoCapture';
 
 type Mode = 'notifications' | 'sms' | 'ios';
@@ -169,17 +169,9 @@ function SmsFlow() {
 
 // ── iOS: built-in Shortcuts action (0.6.0+) ─────────────────────────────────
 
-/** One automation step, drawn the way it looks in Shortcuts: what to tap, and the label to look for. */
-const AUTOMATION_STEPS: { icon: React.ReactNode; title: string; look: string; detail?: string }[] = [
-    { icon: <Plus size={18} color={colors.blue} />, title: 'Tap Automation at the bottom, then New Automation (or + at the top right)', look: 'New Automation' },
-    { icon: <MessageSquare size={18} color={colors.blue} />, title: 'Choose Message. Tap Choose next to Message Contains, type ZMW and tap Done', look: 'Message Contains: ZMW', detail: 'Leave Sender as Any Sender.' },
-    { icon: <Zap size={18} color={colors.blue} />, title: 'Choose Run Immediately, then tap Next', look: 'Run Immediately', detail: 'Otherwise iPhone asks you every time a message arrives.' },
-    { icon: <Search size={18} color={colors.blue} />, title: 'Tap Create New Shortcut, search MoneyWise and tap Capture mobile money message', look: 'Capture mobile money message' },
-    { icon: <MousePointerClick size={18} color={colors.blue} />, title: 'Tap the word Message, then Select Variable, then Shortcut Input. Tap ✓ at the top.', look: 'Send Shortcut Input to MoneyWise' },
-];
-
 function IosFlow() {
     const back = useGoBack();
+    const router = useRouter();
     const qc = useQueryClient();
     const [step, setStep] = useState<'intro' | 'automation' | 'verify' | 'done'>('intro');
     const [busy, setBusy] = useState(false);
@@ -197,6 +189,13 @@ function IosFlow() {
                 if (s.lastCaptureSource === 'IOS_SHORTCUT' && s.lastCaptureAt && new Date(s.lastCaptureAt).getTime() > startedAt.current) setHeard(true);
             } catch { /* keep waiting */ }
         }, 4000);
+        return () => clearInterval(t);
+    }, [step]);
+
+    // The guide (/capture-guide) marks the setup done once its test message is caught.
+    useEffect(() => {
+        if (step !== 'automation') return;
+        const t = setInterval(() => { void isIosShortcutSetUp().then((d) => { if (d) setStep('done'); }); }, 1500);
         return () => clearInterval(t);
     }, [step]);
 
@@ -231,21 +230,9 @@ function IosFlow() {
     if (step === 'automation') return (
         <>
             <StepHeader n={1} of={2} title="Add one automation in Shortcuts" />
-            <View style={styles.steps}>
-                {AUTOMATION_STEPS.map((a, i) => (
-                    <View key={a.title} style={styles.stepRow}>
-                        <View style={styles.stepNum}><Text style={styles.stepNumText}>{i + 1}</Text></View>
-                        <View style={{ flex: 1, gap: 6 }}>
-                            <Text style={styles.stepText}>{a.title}</Text>
-                            <View style={styles.lookChip}>{a.icon}<Text style={styles.lookText}>{a.look}</Text></View>
-                            {!!a.detail && <Text style={styles.tip}>{a.detail}</Text>}
-                        </View>
-                    </View>
-                ))}
-            </View>
-            <Text style={styles.tip}>Tip: if your provider writes amounts as “K 50” instead of “ZMW 50”, add a second automation the same way with Message Contains set to Bal.</Text>
-            <PrimaryButton onPress={openShortcutsApp}>Open Shortcuts</PrimaryButton>
-            <GhostButton onPress={() => { startedAt.current = Date.now(); setStep('verify'); }}>I’ve added it</GhostButton>
+            <Text style={styles.tip}>About a minute. The guide shows every tap on the real Shortcuts screens, and keeps playing in a small window over Shortcuts while you follow along.</Text>
+            <PrimaryButton onPress={() => router.push('/capture-guide' as any)}>Start the guide</PrimaryButton>
+            <GhostButton onPress={() => { startedAt.current = Date.now(); setStep('verify'); }}>I’ve already added it</GhostButton>
         </>
     );
 

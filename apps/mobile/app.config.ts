@@ -81,6 +81,8 @@ const PLUGINS: ExpoConfig['plugins'] = [
     'expo-web-browser',
     // Puts the "Capture mobile money message" App Intent into the app target so Shortcuts lists it after install.
     './modules/momo-capture/plugin/withMomoCaptureIntents',
+    // The iPhone capture guide plays its how-to video in a floating picture-in-picture window over Shortcuts.
+    ['expo-video', { supportsPictureInPicture: true, supportsBackgroundPlayback: true }],
     // App PIN with Face ID / fingerprint unlock (Settings → Security).
     ['expo-local-authentication', { faceIDPermission: 'MoneyWise uses Face ID to unlock the app.' }],
     [

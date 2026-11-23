@@ -7,7 +7,7 @@ import { PersonalStepShell } from './PersonalStepShell';
 import type { StepContext } from './stepContext';
 import {
     androidCaptureAvailable, iosIntentAvailable, iosCaptureAvailable, getAndroidStatus, getIosStatus, setAndroidSources,
-    requestSmsPermission, openNotificationAccessSettings, connectIphone,
+    requestSmsPermission, openNotificationAccessSettings, connectIphone, isIosShortcutSetUp,
 } from '../../../lib/momoCapture';
 import { colors, fonts, radius } from '../../../theme/tokens';
 
@@ -15,8 +15,7 @@ import { colors, fonts, radius } from '../../../theme/tokens';
  * Step "capture": turn mobile money confirmation messages into transactions.
  *   Android — notification access (no restricted permission) and, in builds that include it, SMS. The state shown is
  *             read back from the phone when the person returns from Settings, not assumed from the tap.
- *   iPhone  — connect this iPhone (capture key into the Keychain), then the existing 5-tap Shortcuts guide.
- * A message tester shows what MoneyWise would read from any pasted message, without booking it.
+ *   iPhone  — connect this iPhone (capture key into the Keychain), then the guided Shortcuts setup (/capture-guide).
  */
 const PROVIDER_LABEL: Record<string, string> = { MTN: 'MTN', AIRTEL: 'Airtel', ZAMTEL: 'Zamtel' };
 
@@ -38,7 +37,10 @@ export function StepCapture({ ctx }: { ctx: StepContext }) {
         if (ctx.preview) return;
         setAndroid(getAndroidStatus());
         setIos(getIosStatus());
+        if (Platform.OS === 'ios') void isIosShortcutSetUp().then((done) => { if (done) setGuideOpened(true); });
     }, [ctx.preview]);
+
+    useEffect(() => { reread(); }, [reread]);
 
     // Coming back from Settings / Shortcuts: read the real state again.
     useEffect(() => {
@@ -73,7 +75,7 @@ export function StepCapture({ ctx }: { ctx: StepContext }) {
     });
     const openGuide = () => {
         setGuideOpened(true);
-        if (!ctx.preview) router.push('/settings/momo-capture-setup?mode=ios');
+        router.push('/capture-guide' as any);
     };
 
     const finish = () => void ctx.run('continue', async () => {
@@ -103,7 +105,7 @@ export function StepCapture({ ctx }: { ctx: StepContext }) {
                 <View style={{ gap: 12, marginTop: 20 }}>
                     <Item done={connected} title="Connect this iPhone" body="So MoneyWise can read your mobile money messages and keep your balance up to date." action="Connect" onPress={iphoneConnect} busy={busy} />
                     {(iosIntentAvailable || ctx.preview) && (
-                        <Item done={guideOpened} disabled={!connected} title="Add the automation in Shortcuts" body="5 taps: when a message contains “ZMW”, run “Capture mobile money message”. Takes about a minute." action="Show me" onPress={openGuide} busy={false} />
+                        <Item done={guideOpened} disabled={!connected} title="Add the automation" body="About a minute in the Shortcuts app. We’ll show you every tap." action="Start" onPress={openGuide} busy={false} />
                     )}
                 </View>
             )}
