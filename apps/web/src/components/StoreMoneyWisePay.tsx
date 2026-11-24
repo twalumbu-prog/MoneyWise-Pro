@@ -20,11 +20,14 @@ export interface StoreLinkBody { walletId: string; items: any[]; orderDetails?: 
  * Either way this page notices when the link is paid and moves on to the receipt.
  */
 export const StoreMoneyWisePay: React.FC<{
-    body: StoreLinkBody;
+    /** A store cart to turn into a one-time link. Not needed when `token` names a link that already exists (an invoice). */
+    body?: StoreLinkBody;
+    /** An existing payment link to pay (e.g. an e-invoice), instead of making one from a cart. */
+    token?: string;
     /** Same value changes ⇒ the cart changed ⇒ a new link is made. */
     cartKey: string;
     onPaid: (r: { reference: string | null; referenceNumber: string | null }) => void;
-}> = ({ body, cartKey, onPaid }) => {
+}> = ({ body, token, cartKey, onPaid }) => {
     const { session } = useAuth();
     const [link, setLink] = useState<{ token: string; total: number; fee: number } | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -42,7 +45,10 @@ export const StoreMoneyWisePay: React.FC<{
     useEffect(() => {
         let cancelled = false;
         setLink(null); setError(null); setTarget(null); setProcessing(false); done.current = false;
-        axios.post(`${API_URL}/pay-links/store-link`, bodyRef.current, { timeout: 20000 })
+        const made = token
+            ? axios.get(`${API_URL}/pay-links/store-link/${encodeURIComponent(token)}`, { timeout: 20000 }).then((r) => ({ data: { token, total: r.data.total, fee: r.data.fee } }))
+            : axios.post(`${API_URL}/pay-links/store-link`, bodyRef.current, { timeout: 20000 });
+        made
             .then((r) => { if (!cancelled) setLink(r.data); })
             .catch((e) => { if (!cancelled) setError(e?.response?.data?.error || 'We couldn’t prepare this payment. Please try again.'); });
         return () => { cancelled = true; };

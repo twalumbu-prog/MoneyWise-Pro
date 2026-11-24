@@ -24,6 +24,7 @@ import { calculatePlatformFee } from 'shared';
 import { CheckoutErrorInfo, diagnoseCheckoutError } from '../utils/checkoutError';
 import { PaymentWaitingScreen, PaymentPhase } from '../components/PaymentWaitingScreen';
 import { isValidZambiaMobile, normalizeZambiaPhone } from '../lib/zambiaPhone';
+import { StoreMoneyWisePay } from '../components/StoreMoneyWisePay';
 import { savePendingPayment, loadPendingPayment, clearPendingPayment } from '../lib/paymentRecovery';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -106,7 +107,7 @@ export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenO
 
     // Own-UX checkout (Collections API). Gated by ctx.collections_api_enabled — when
     // off, the READY step keeps the LencoPay widget button unchanged.
-    const [checkoutMethod, setCheckoutMethod] = useState<'mobile-money' | 'card'>('mobile-money');
+    const [checkoutMethod, setCheckoutMethod] = useState<'mobile-money' | 'card' | 'moneywise'>('mobile-money');
     const [phone, setPhone] = useState('');
     const [resolvedAccountName, setResolvedAccountName] = useState('');
     const [resolvingAccountName, setResolvingAccountName] = useState(false);
@@ -254,6 +255,8 @@ export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenO
     }, [loadContext]);
 
     const subtotal = ctx?.amount || 0;
+    // Bookings are paid in the browser (the MoneyWise app can't pick dates), as on the store page.
+    const hasBooking = !!ctx?.items?.some((i) => i.check_in && i.check_out);
     const processingFee = subtotal > 0 ? calculatePlatformFee(subtotal) : 0;
     const totalPayable = subtotal > 0 ? subtotal + processingFee : 0;
 
@@ -827,6 +830,16 @@ export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenO
         }
     };
 
+    // Paid from a MoneyWise wallet (here or in the app): straight to the receipt.
+    const handleMoneyWisePaid = (r: { reference: string | null; referenceNumber: string | null }) => {
+        if (r.reference) setCurrentReference(r.reference);
+        setReceiptNumber(r.referenceNumber);
+        setVerificationStep('POLLING');
+        clearPendingPayment();
+        if (ctx) trackEvent('payment_link_checkout', 'payment', 'succeeded', { workflow_id: r.reference || 'moneywise-pay', organization_id: ctx.organization.id, subtotal, total_payable: totalPayable, payment_link_token: token, payment_method: 'moneywise' });
+        setStep('SUCCESS');
+    };
+
     // Success "View receipt" → the existing full receipt screen.
     const handleViewReceipt = () => {
         setPaymentPhase(null);
@@ -1116,12 +1129,26 @@ export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenO
                         >
                             <CreditCard size={16} /> Debit Card
                         </button>
+                        {!hasBooking && (
+                            <button
+                                onClick={() => { setCheckoutMethod('moneywise'); setError(null); }}
+                                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-full text-xs leading-4 transition-all ${
+                                    checkoutMethod === 'moneywise'
+                                        ? 'bg-white text-gray-800 font-normal shadow-sm'
+                                        : 'text-gray-800 font-normal'
+                                }`}
+                            >
+                                <Wallet size={16} /> MoneyWise
+                            </button>
+                        )}
                     </div>
                 </div>
 
                 {/* Scrollable content */}
                 <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-6 pb-2">
-                    {checkoutMethod === 'mobile-money' && !ctx.collections_api_enabled ? (
+                    {checkoutMethod === 'moneywise' ? (
+                        <StoreMoneyWisePay token={token} cartKey={token || ''} onPaid={handleMoneyWisePaid} />
+                    ) : checkoutMethod === 'mobile-money' && !ctx.collections_api_enabled ? (
                         <div className="rounded-2xl border border-slate-200 bg-white p-5">
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-full bg-[#E8F0FE] text-[#0B57D0] flex items-center justify-center"><Smartphone size={20} /></div>
@@ -1247,7 +1274,7 @@ export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenO
                             </div>
                         )}
                     </div>
-                    {checkoutMethod === 'mobile-money' && !ctx.collections_api_enabled ? (
+                    {checkoutMethod === 'moneywise' ? null : checkoutMethod === 'mobile-money' && !ctx.collections_api_enabled ? (
                         <button
                             onClick={handlePay}
                             disabled={submitting}
@@ -1420,12 +1447,12 @@ export const PublicPaymentLink: React.FC<{ tokenOverride?: string }> = ({ tokenO
                             <div className="space-y-3">
                                 <div className="flex justify-between items-center">
                                     <span className="text-xs text-zinc-600">Payment Method</span>
-                                    <span className="text-xs font-semibold text-zinc-600">{checkoutMethod === 'card' ? 'Card' : 'Mobile Money'}</span>
+                                    <span className="text-xs font-semibold text-zinc-600">{checkoutMethod === 'card' ? 'Card' : checkoutMethod === 'moneywise' ? 'MoneyWise Pay' : 'Mobile Money'}</span>
                                 </div>
-                                <div className="flex justify-between items-center">
+                                {checkoutMethod !== 'moneywise' && <div className="flex justify-between items-center">
                                     <span className="text-xs text-zinc-600">Account Number</span>
                                     <span className="text-xs font-semibold text-zinc-600">{phone || ctx.customer_phone}</span>
-                                </div>
+                                </div>}
                                 <div className="flex justify-between items-center">
                                     <span className="text-xs text-zinc-600">Account Name</span>
                                     <span className="text-xs font-bold text-zinc-600 text-right truncate max-w-[55%]">{ctx.customer_name}</span>
