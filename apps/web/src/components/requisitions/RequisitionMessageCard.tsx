@@ -13,6 +13,8 @@ import { useAuth } from '../../context/AuthContext';
 import heic2any from 'heic2any';
 import WalletSelect from '../WalletSelect';
 import BankSelect from '../BankSelect';
+import { MoneyWiseRecipientPicker } from './MoneyWiseRecipientPicker';
+import type { MoneyWiseRecipient } from 'core';
 
 interface RequisitionMessageCardProps {
     message: RequisitionMessage;
@@ -159,7 +161,9 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     
     // Disbursal State
     const [activeMethod, setActiveMethod] = useState<string | null>(null);
-    const [paymentType, setPaymentType] = useState<'MOBILE_MONEY' | 'BANK'>('MOBILE_MONEY');
+    const [paymentType, setPaymentType] = useState<'MOBILE_MONEY' | 'BANK' | 'MONEYWISE'>('MOBILE_MONEY');
+    // MoneyWise rail: another MoneyWise account picked by the disburser (wallet-to-wallet, no payout fee).
+    const [mwRecipient, setMwRecipient] = useState<MoneyWiseRecipient | null>(null);
     const [recipientValue, setRecipientValue] = useState('');
     const [recipientProvider, setRecipientProvider] = useState<string | null>(null);
     const [lookupName, setLookupName] = useState<string | null>(null);
@@ -486,7 +490,15 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     }, [activeMethod, selectedWalletId, wallets]);
 
     // Paying from the Card Wallet (Lipila): mobile money numbers only, and no payout fee is added on our side.
-    const selectedIsCard = !!wallets.find((w: any) => w.id === selectedWalletId && w.is_card_wallet);
+    const selectedIsCard = paymentType !== 'MONEYWISE' && !!wallets.find((w: any) => w.id === selectedWalletId && w.is_card_wallet);
+    // The Card Wallet (Lipila) pays mobile money and banks, not MoneyWise accounts: move off it when the MoneyWise rail is chosen.
+    useEffect(() => {
+        if (paymentType !== 'MONEYWISE') return;
+        const current = wallets.find((w: any) => w.id === selectedWalletId);
+        if (current && !current.is_card_wallet) return;
+        const usable = wallets.filter((w: any) => !w.is_card_wallet);
+        if (usable.length > 0) setSelectedWalletId((usable.find((w: any) => w.is_main) || usable[0]).id);
+    }, [paymentType, wallets, selectedWalletId]);
     // The banks Lipila can pay, each with the SWIFT code Lipila itself uses (picked, never typed). Filled in from the bank chosen where the lists agree.
     const [lipilaBanks, setLipilaBanks] = useState<{ name: string; swiftCode: string }[]>([]);
     useEffect(() => {
@@ -506,7 +518,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     // MoneyWise Pay (wallet-to-wallet) is an on-us transfer: no payout fee.
     const isMoneyWisePayReq = String(requisitionData?.payment_method || '').toUpperCase() === 'MONEYWISE_PAY' ||
         String(requisitionData?.recipient_bank_code || '').toUpperCase() === 'MONEYWISE';
-    const payoutFeeType = isMoneyWisePayReq ? 'MONEYWISE_PAY' : (activeMethod || paymentType);
+    const payoutFeeType = (isMoneyWisePayReq || paymentType === 'MONEYWISE') ? 'MONEYWISE_PAY' : (activeMethod || paymentType);
     const walletTotalDue = Number(requisitionData?.estimated_total || 0) +
         (selectedIsCard ? lencoService.calculateLipilaPayoutFee(Number(requisitionData?.estimated_total || 0), paymentType === 'BANK' ? 'bank' : 'mobile') : lencoService.calculatePayoutFee(Number(requisitionData?.estimated_total || 0), payoutFeeType));
     const isWalletBalanceInsufficient = activeMethod === 'MONEYWISE_WALLET' &&
@@ -810,16 +822,22 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             setIsProcessing(false);
             return;
         }
+        if (paymentType === 'MONEYWISE' && !mwRecipient) {
+            setDisburseError('Please search and select a verified MoneyWise recipient.');
+            setIsProcessing(false);
+            return;
+        }
 
         try {
             setDisburseStatusMsg('Initiating transfer...');
 
+            const isMwPick = isLencoTransfer && paymentType === 'MONEYWISE' && !!mwRecipient;
             const result = await requisitionService.disburse(requisitionData.id, {
                 payment_method: activeMethod,
                 total_prepared: requisitionData.estimated_total,
-                recipient_account: normalizedPhone || recipientValue || undefined,
-                recipient_bank_code: recipientBankCode,
-                recipient_account_name: lookupName || undefined,
+                recipient_account: isMwPick ? mwRecipient!.id : (normalizedPhone || recipientValue || undefined),
+                recipient_bank_code: isMwPick ? 'moneywise' : recipientBankCode,
+                recipient_account_name: isMwPick ? mwRecipient!.name : (lookupName || undefined),
                 ...(cardBank ? { recipient_account_name: cardHolder, recipient_swift_code: swiftCode.replace(/\s/g, '').toUpperCase(), recipient_phone: holderPhoneRef.current?.value || holderPhone } : {}),
                 wallet_id: selectedWalletId || undefined,
             });
@@ -2068,6 +2086,12 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                             <>
                                                                 <div className="flex p-1.5 bg-gray-100/80 rounded-full w-full">
                                                                     <button 
+                                                                        onClick={() => setPaymentType('MONEYWISE')} 
+                                                                        className={`flex-1 h-11 rounded-full text-[12px] font-black tracking-wider transition-all duration-300 ${paymentType === 'MONEYWISE' ? 'bg-white text-[#0B57D0] shadow-sm' : 'text-gray-500'}`}
+                                                                    >
+                                                                        MONEYWISE
+                                                                    </button>
+                                                                    <button 
                                                                         onClick={() => setPaymentType('MOBILE_MONEY')} 
                                                                         className={`flex-1 h-11 rounded-full text-[12px] font-black tracking-wider transition-all duration-300 ${paymentType === 'MOBILE_MONEY' ? 'bg-white text-[#0B57D0] shadow-sm' : 'text-gray-500'}`}
                                                                     >
@@ -2106,7 +2130,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                         <label className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest ml-4">Source Subwallet</label>
                                                                         <div className="animate-in fade-in slide-in-from-top-2 duration-300">
                                                                             <WalletSelect
-                                                                                wallets={wallets}
+                                                                                wallets={paymentType === 'MONEYWISE' ? wallets.filter((w: any) => !w.is_card_wallet) : wallets}
                                                                                 value={selectedWalletId}
                                                                                 onChange={setSelectedWalletId}
                                                                                 placeholder="Select Source Subwallet"
@@ -2129,6 +2153,13 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                     </div>
                                                                 )}
 
+                                                                {paymentType === 'MONEYWISE' ? (
+                                                                    <MoneyWiseRecipientPicker
+                                                                        recipient={mwRecipient}
+                                                                        onSelect={setMwRecipient}
+                                                                        onClear={() => setMwRecipient(null)}
+                                                                    />
+                                                                ) : (
                                                                 <div className="flex flex-col space-y-2">
                                                                     <label className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest ml-4">
                                                                         {paymentType === 'MOBILE_MONEY' ? 'Recipient Number' : 'Bank & Account Details'}
@@ -2198,6 +2229,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                         </div>
                                                                     )}
                                                                 </div>
+                                                                )}
 
                                                                 <div className="flex items-center space-x-3 pt-4">
                                                                     <button 
@@ -2213,7 +2245,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                     </button>
                                                                     <button
                                                                         onClick={handleDisburse}
-                                                                        disabled={!recipientValue || (paymentType === 'MOBILE_MONEY' && !recipientProvider) || isWalletBalanceInsufficient}
+                                                                        disabled={(paymentType === 'MONEYWISE' ? !mwRecipient : (!recipientValue || (paymentType === 'MOBILE_MONEY' && !recipientProvider))) || isWalletBalanceInsufficient}
                                                                         className="flex-[2] h-11 bg-[#0B57D0] md:bg-[#0B57D0] text-white text-[13px] font-bold rounded-full hover:bg-[#0842A0] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-100/50 flex items-center justify-center space-x-2"
                                                                     >
                                                                         <span>Send Money</span>

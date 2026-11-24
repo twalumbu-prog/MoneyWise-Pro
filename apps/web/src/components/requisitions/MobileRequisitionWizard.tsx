@@ -10,6 +10,8 @@ import { apiFetch } from '../../lib/api';
 import { useNavigate } from 'react-router-dom';
 import WalletSelect from '../WalletSelect';
 import BankSelect from '../BankSelect';
+import { MoneyWiseRecipientPicker } from './MoneyWiseRecipientPicker';
+import type { MoneyWiseRecipient } from 'core';
 
 interface LineItem {
     id: string;
@@ -120,7 +122,8 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
     const [manualAmount, setManualAmount] = useState('');
 
     // Stage 3: Payment Method
-    const [paymentMethod, setPaymentMethod] = useState<'mobile' | 'bank'>('mobile');
+    const [paymentMethod, setPaymentMethod] = useState<'moneywise' | 'mobile' | 'bank'>('moneywise');
+    const [selectedRecipient, setSelectedRecipient] = useState<MoneyWiseRecipient | null>(null);
     const [banks, setBanks] = useState<any[]>([]);
     const [bankId, setBankId] = useState('');
     const [activeRequisitionId, setActiveRequisitionId] = useState<string | null>(null);
@@ -161,7 +164,8 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
             setInvoiceScanError(null);
             setLineItems([{ id: '1', description: '', quantity: 1, unit_price: 0, estimated_amount: 0 }]);
             setManualAmount('');
-            setPaymentMethod('mobile');
+            setPaymentMethod('moneywise');
+        setSelectedRecipient(null);
             setBankId('');
             setAccountNumber('');
             setPhoneNumber('');
@@ -241,6 +245,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
     };
 
     const handleResolveName = async () => {
+        if (paymentMethod === 'moneywise') return;
         if (paymentMethod === 'mobile') {
             if (phoneNumber.length < 10 || !momoOperator) return;
             setConfirmingName(true);
@@ -279,11 +284,19 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
     useEffect(() => {
         setResolvedName('');
         setConfirmingName(false);
-        if (paymentMethod === 'bank') {
+        if (paymentMethod === 'moneywise') {
             setPhoneNumber('');
-        } else {
             setAccountNumber('');
             setBankId('');
+            if (selectedRecipient) setResolvedName(selectedRecipient.name);
+        } else {
+            setSelectedRecipient(null);
+            if (paymentMethod === 'bank') {
+                setPhoneNumber('');
+            } else {
+                setAccountNumber('');
+                setBankId('');
+            }
         }
     }, [paymentMethod]);
 
@@ -377,7 +390,9 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
         } else if (stage === 5) {
             if (!manualAmount || Number(manualAmount) <= 0) { setError('Please enter an amount greater than zero.'); return; }
         } else if (stage === 3) {
-            if (!resolvedName || resolvedName === 'Name not confirmed') { setError('Please verify the recipient details.'); return; }
+            if (paymentMethod === 'moneywise') {
+                if (!selectedRecipient) { setError('Please search and select a verified MoneyWise recipient.'); return; }
+            } else if (!resolvedName || resolvedName === 'Name not confirmed') { setError('Please verify the recipient details.'); return; }
         }
 
         const seq = getStageSequence();
@@ -413,16 +428,17 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                 })) : undefined,
                 payment_method: useMyAccount 
                     ? (paymentInfo?.mobile_money_number ? paymentInfo.mobile_money_provider : (paymentInfo?.bank_account_number ? 'BANK' : undefined))
-                    : (paymentMethod === 'mobile' ? momoOperator : 'BANK'),
+                    : (paymentMethod === 'moneywise' ? 'MONEYWISE_PAY' : (paymentMethod === 'mobile' ? momoOperator : 'BANK')),
                 recipient_account: useMyAccount 
                     ? (paymentInfo?.mobile_money_number || paymentInfo?.bank_account_number)
-                    : (paymentMethod === 'mobile' ? phoneNumber : accountNumber),
+                    : (paymentMethod === 'moneywise' ? (selectedRecipient?.id || '') : (paymentMethod === 'mobile' ? phoneNumber : accountNumber)),
                 recipient_bank_code: useMyAccount 
                     ? (paymentInfo?.mobile_money_number ? paymentInfo.mobile_money_provider : (paymentInfo?.bank_name || undefined))
-                    : (paymentMethod === 'bank' ? bankId : (paymentMethod === 'mobile' ? momoOperator : undefined)),
+                    : (paymentMethod === 'moneywise' ? 'MONEYWISE' : (paymentMethod === 'bank' ? bankId : (paymentMethod === 'mobile' ? momoOperator : undefined))),
                 recipient_name: useMyAccount 
                     ? (paymentInfo?.mobile_money_name || paymentInfo?.bank_account_name || userName)
-                    : resolvedName
+                    : (paymentMethod === 'moneywise' ? (selectedRecipient?.name || resolvedName) : resolvedName),
+                recipient_organization_id: !useMyAccount && paymentMethod === 'moneywise' ? (selectedRecipient?.organization_id || undefined) : undefined,
             };
             if (importInvoice && scannedInvoice) {
                 data.invoice_path = scannedInvoice.path;
@@ -440,19 +456,20 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                 try {
                     const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
                     const normalizedPhone = cleanPhone.startsWith('260') ? '0' + cleanPhone.substring(3) : cleanPhone;
-                    const recipientAccount = paymentMethod === 'mobile' ? normalizedPhone : accountNumber;
-                    const recipientBankCode = (paymentMethod === 'mobile' ? momoOperator : bankId).toLowerCase();
+                    const recipientAccount = paymentMethod === 'moneywise' ? (selectedRecipient?.id || '') : (paymentMethod === 'mobile' ? normalizedPhone : accountNumber);
+                    const recipientBankCode = paymentMethod === 'moneywise' ? 'moneywise' : (paymentMethod === 'mobile' ? momoOperator : bankId).toLowerCase();
 
                     // Single atomic call: authorizes the requisition AND disburses it
                     // via Lenco in one HTTP round-trip. This replaces the old two-step
                     // updateStatus('AUTHORISED') + disburse() pattern which had a race
                     // window where the disburse lock could see the pre-commit DRAFT status.
                     const result = await requisitionService.autoDisburse(created.id, {
-                        payment_method: 'MONEYWISE_WALLET',
+                        payment_method: paymentMethod === 'moneywise' ? 'MONEYWISE_PAY' : 'MONEYWISE_WALLET',
                         total_prepared: getTotal(),
                         recipient_account: recipientAccount,
                         recipient_bank_code: recipientBankCode,
-                        recipient_account_name: resolvedName || undefined,
+                        recipient_account_name: (paymentMethod === 'moneywise' ? (selectedRecipient?.name || resolvedName) : resolvedName) || undefined,
+                        recipient_organization_id: paymentMethod === 'moneywise' ? (selectedRecipient?.organization_id || undefined) : undefined,
                         wallet_id: selectedWalletId || undefined,
                     });
 
@@ -725,10 +742,15 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                 <h2 className="text-[20px] font-bold text-[#1F1F1F]">Payment Method</h2>
                                 <TabPillGroup
                                     value={paymentMethod}
-                                    onChange={(v) => setPaymentMethod(v as 'mobile' | 'bank')}
+                                    onChange={(v) => setPaymentMethod(v as 'moneywise' | 'mobile' | 'bank')}
                                     trackClassName="flex p-1 bg-gray-50 rounded-2xl"
                                     indicatorClassName="bg-white rounded-xl shadow-sm"
                                     tabs={[
+                                        {
+                                            value: 'moneywise',
+                                            buttonClassName: 'flex-1 py-3 text-xs font-black uppercase tracking-widest',
+                                            label: <span className={paymentMethod === 'moneywise' ? 'text-[#0B57D0]' : 'text-gray-400'}>MoneyWise</span>,
+                                        },
                                         {
                                             value: 'mobile',
                                             buttonClassName: 'flex-1 py-3 text-xs font-black uppercase tracking-widest',
@@ -743,7 +765,13 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                 />
 
                                 <div className="space-y-4">
-                                    {paymentMethod === 'mobile' ? (
+                                    {paymentMethod === 'moneywise' ? (
+                                        <MoneyWiseRecipientPicker
+                                            recipient={selectedRecipient}
+                                            onSelect={(r) => { setSelectedRecipient(r); setResolvedName(r.name); }}
+                                            onClear={() => { setSelectedRecipient(null); setResolvedName(''); }}
+                                        />
+                                    ) : paymentMethod === 'mobile' ? (
                                         <div className="space-y-4">
                                             <div className="space-y-1.5">
                                                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Phone Number</label>
@@ -872,11 +900,11 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                 <div className="bg-white border border-gray-100 rounded-[24px] p-6 space-y-4">
                                     <div className="flex justify-between items-center text-sm">
                                         <span className="text-gray-500">Payment Method</span>
-                                        <span className="font-bold text-black">{paymentMethod === 'mobile' ? 'Mobile Money' : 'Bank Transfer'}</span>
+                                        <span className="font-bold text-black">{paymentMethod === 'moneywise' ? 'MoneyWise' : paymentMethod === 'mobile' ? 'Mobile Money' : 'Bank Transfer'}</span>
                                     </div>
                                     <div className="flex justify-between items-center text-sm">
                                         <span className="text-gray-500">Account Number</span>
-                                        <span className="font-bold text-black">{paymentMethod === 'mobile' ? phoneNumber : accountNumber}</span>
+                                        <span className="font-bold text-black">{paymentMethod === 'moneywise' ? (selectedRecipient?.username ? `@${selectedRecipient.username}` : (selectedRecipient?.moneywise_id || selectedRecipient?.email || '')) : paymentMethod === 'mobile' ? phoneNumber : accountNumber}</span>
                                     </div>
                                     <div className="flex justify-between items-center text-sm">
                                         <span className="text-gray-500">Account Name</span>
