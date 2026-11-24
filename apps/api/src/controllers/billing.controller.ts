@@ -5,6 +5,7 @@ import { captureEvent } from '../utils/analytics';
 import { LencoService } from '../services/lenco.service';
 import { cashbookService } from '../services/cashbook.service';
 import { countOrgMembers } from '../services/entitlements.service';
+import { buildSubNarration } from '../utils/subscriptionRef';
 
 const SUBSCRIPTION_PRICE = 500; // K500/month base (Premium)
 const MASTERFEES_ADDON_PRICE = 500; // +K500 each billing cycle while Master Fees is integrated
@@ -613,7 +614,7 @@ async function payInvoiceFromWallet(organizationId: string, invoice: any, wallet
         }, { onConflict: 'key' });
 
         await LencoService.transferToLencoMerchant(
-            { amount, reference, tillNumber: SETTLEMENT_TILL_NUMBER, narration: `Subscription ${invoice.invoice_number} ${reference}`.slice(0, 60) },
+            { amount, reference, tillNumber: SETTLEMENT_TILL_NUMBER, narration: buildSubNarration(invoice.invoice_number, reference) },
             org.lenco_subaccount_id,
             secretKey,
         );

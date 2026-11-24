@@ -26,6 +26,7 @@ import { rewardsService, RewardsError } from '../services/rewards.service';
 import { allocateDiscount } from '../services/rewardDiscount';
 import { SalonError, staffForService, serviceDuration, publicSlots, assignStaff, sanitizeDepositOptions, checkDeposit } from '../services/salon.service';
 import { status as lipilaCardStatus } from './lipila.controller';
+import { extractSubRef } from '../utils/subscriptionRef';
 import { sanitizeCheckoutFields } from './product.controller';
 
 // MoneyWise's own Lenco settlement merchant (receives the commission-sweep
@@ -2992,7 +2993,7 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
                 // narration (Lenco returns no reference for on-us merchant transfers), so recover it
                 // there — lets the payer's debit dedup against the row we booked and lets Blue Opus's
                 // inflow be categorised as Subscription Revenue.
-                const narrationSubRef = txnDesc.match(/PG-SUB-\d+-[A-Za-z0-9]+/i)?.[0] || '';
+                const narrationSubRef = extractSubRef(txnDesc);
                 const txnRefRaw = (txn.reference || txn.clientReference || narrationSubRef || '').trim();
 
                 // A wallet-to-wallet investment / savings transfer we already booked ourselves: don't log it twice.
