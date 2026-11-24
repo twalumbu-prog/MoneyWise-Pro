@@ -458,6 +458,28 @@ const runMigration = async () => {
                 ADD COLUMN IF NOT EXISTS investor_account_number TEXT,
                 ADD COLUMN IF NOT EXISTS product_name TEXT;
         `);
+        // Portal confirmations (units from the company's portal + verified snapshots). Keep in step with supabase/migrations/20261124120000_portfolio_portal.sql.
+        await migrationPool.query(`
+            ALTER TABLE public.investments
+                ADD COLUMN IF NOT EXISTS units NUMERIC(18, 4),
+                ADD COLUMN IF NOT EXISTS flow_code TEXT,
+                ADD COLUMN IF NOT EXISTS portal_verified_at TIMESTAMPTZ;
+            CREATE TABLE IF NOT EXISTS public.investment_portal_snapshots (
+                id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                investor_organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+                investment_target_id     UUID NOT NULL REFERENCES public.investment_targets(id) ON DELETE CASCADE,
+                fund_id                  UUID NOT NULL REFERENCES public.fund_products(id) ON DELETE CASCADE,
+                as_of                    DATE NOT NULL,
+                valid_deposits           NUMERIC(16, 2),
+                total_units              NUMERIC(18, 4) NOT NULL,
+                available_value          NUMERIC(16, 2) NOT NULL,
+                nav                      NUMERIC(18, 6) NOT NULL,
+                recorded_by              UUID,
+                created_at               TIMESTAMPTZ NOT NULL DEFAULT now()
+            );
+            CREATE INDEX IF NOT EXISTS idx_portal_snapshots_lookup ON public.investment_portal_snapshots (investor_organization_id, fund_id, as_of DESC);
+            ALTER TABLE public.investment_portal_snapshots ENABLE ROW LEVEL SECURITY;
+        `);
         // Loan / salary-advance recoveries acknowledged by an admin outside payroll.
         await migrationPool.query(`
             CREATE TABLE IF NOT EXISTS public.loan_manual_recoveries (

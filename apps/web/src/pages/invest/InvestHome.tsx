@@ -199,6 +199,7 @@ export const InvestHome: React.FC = () => {
                     </div>
                     <div className="ml-3 flex flex-shrink-0 gap-2">
                         {myCompany.data?.isTarget && <Link to="/invest/prices" className="inline-flex h-10 items-center rounded-full bg-[#0B57D0] px-4 text-xs font-semibold text-white hover:bg-[#0842A0]">Fund prices</Link>}
+                        <Link to="/invest/portfolio" className="inline-flex h-10 items-center rounded-full bg-[#D3E3FD] px-4 text-xs font-semibold text-[#041E49] hover:bg-[#C2D7FA]">Portfolio check</Link>
                         <Link to="/invest/accounts" className="inline-flex h-10 items-center rounded-full bg-[#D3E3FD] px-4 text-xs font-semibold text-[#041E49] hover:bg-[#C2D7FA]">Investor accounts</Link>
                         <Link to="/invest/kyc" className="inline-flex h-10 items-center rounded-full px-4 text-xs font-semibold text-[#0B57D0] shadow-[inset_0_0_0_1px_#C4C7C5] hover:bg-[#F1F3F4]">KYC profile</Link>
                     </div>

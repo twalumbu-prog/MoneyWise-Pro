@@ -7,7 +7,7 @@ import {
     listMyInvestorAccounts, connectInvestorAccount, applyForInvestorAccount, extractInvestorId,
     listInvestorApplications, getInvestorApplication, reviewInvestorApplication,
     getPayoutSettings, savePayoutSettings, applyWithKycProfile, getMyKycProfile, saveMyKycProfile,
-    getMyPortfolio, setHoldingValue, listFunds, fundSeries, myFunds, saveFund, addFundPrices, deleteFundPrice, checkKycDocument, faceMatchStatusHandler, startFaceMatchHandler,
+    getMyPortfolio, setHoldingValue, getPortalView, postPortalTotals, postPortalOrderBook, listFunds, fundSeries, myFunds, saveFund, addFundPrices, deleteFundPrice, checkKycDocument, faceMatchStatusHandler, startFaceMatchHandler,
 } from '../controllers/invest.controller';
 
 const router = Router();
@@ -43,6 +43,9 @@ router.get('/blue-opus/admin/invites', requireSuperAdmin, adminInvites);
 router.post('/blue-opus/admin/invites', requireSuperAdmin, adminCreateInvite);
 router.post('/blue-opus/admin/invites/:id/revoke', requireSuperAdmin, adminRevokeInvite);
 router.post('/blue-opus/admin/legal', requireSuperAdmin, adminLegal);
+router.get('/portfolio/portal', getPortalView);
+router.post('/portfolio/portal/totals', requireRole(['ADMIN', 'ACCOUNTANT']), postPortalTotals);
+router.post('/portfolio/portal/order-book', requireRole(['ADMIN', 'ACCOUNTANT']), postPortalOrderBook);
 router.put('/portfolio/:targetId/value', requireRole(['ADMIN', 'ACCOUNTANT']), setHoldingValue);
 router.post('/accounts/connect', connectInvestorAccount);
 router.post('/accounts/apply', applyForInvestorAccount);

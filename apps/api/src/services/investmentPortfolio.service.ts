@@ -26,7 +26,7 @@ export interface Holding {
     valuedAt: string | null;
 }
 
-export interface InvestmentRow { investment_target_id: string; amount: number; at: string; product_name?: string | null }
+export interface InvestmentRow { investment_target_id: string; amount: number; at: string; product_name?: string | null; units?: number | null }
 export interface ValuationRow { investment_target_id: string; value: number; created_at: string }
 
 /** Pure: turns confirmed investments + recorded values into holdings. Newest valuation wins; later deposits add on top of it. */
@@ -63,10 +63,10 @@ export function buildHoldings(
 
 export async function getPortfolio(orgId: string) {
     const { data: inv } = await supabase.from('investments')
-        .select('investment_target_id, amount_received, amount_paid, confirmed_at, created_at, product_name')
+        .select('investment_target_id, amount_received, amount_paid, confirmed_at, created_at, product_name, units')
         .eq('investor_organization_id', orgId).eq('status', 'CONFIRMED');
     const rows: InvestmentRow[] = (inv ?? []).map((i: any) => ({
-        investment_target_id: i.investment_target_id, amount: Number(i.amount_received ?? i.amount_paid ?? 0), at: i.confirmed_at ?? i.created_at, product_name: i.product_name ?? null,
+        investment_target_id: i.investment_target_id, amount: Number(i.amount_received ?? i.amount_paid ?? 0), at: i.confirmed_at ?? i.created_at, product_name: i.product_name ?? null, units: i.units != null ? Number(i.units) : null,
     }));
     const ids = [...new Set(rows.map((r) => r.investment_target_id))];
     if (ids.length === 0) return { holdings: [] as Holding[], positions: [] as Position[], totals: { invested: 0, currentValue: 0, gain: 0, gainPct: 0 } };
@@ -85,7 +85,7 @@ export async function getPortfolio(orgId: string) {
     // Otherwise it keeps the older way (the last value the investor recorded), flagged as not updated.
     let positions: Position[] = [];
     try {
-        const priced = await positionsFor(rows.map((r) => ({ investment_target_id: r.investment_target_id, product_name: r.product_name ?? null, amount: r.amount, at: r.at })));
+        const priced = await positionsFor(rows.map((r) => ({ investment_target_id: r.investment_target_id, product_name: r.product_name ?? null, amount: r.amount, at: r.at, units: r.units ?? null })));
         positions = priced.positions;
         for (const h of holdings) {
             if (priced.unmatchedTargets.has(h.targetId)) continue;

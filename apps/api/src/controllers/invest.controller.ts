@@ -4,6 +4,7 @@ import { investmentService, WalletInvestError } from '../services/investment.ser
 import { investorAccountService, InvestorAccountError } from '../services/investorAccount.service';
 import { investmentPortfolioService, PortfolioError } from '../services/investmentPortfolio.service';
 import { fundPriceService, FundError } from '../services/fundPrices.service';
+import { portfolioPortalService, PortalError } from '../services/portfolioPortal.service';
 import { checkDocument } from '../services/kycDocumentCheck.service';
 import { faceMatchStatus, startFaceMatch } from '../services/faceMatch.service';
 
@@ -410,4 +411,21 @@ export const setHoldingValue = async (req: any, res: any): Promise<any> => {
         console.error('[Invest] set value failed:', error);
         res.status(500).json({ error: 'Could not save the value. Please try again.' });
     }
+};
+
+
+/** Portal confirmations: the investor types what the company's portal shows, and pastes its order book, so units and prices are verified. */
+const portalFail = (res: any, e: any, what: string) => {
+    if (e instanceof PortalError) return res.status(e.httpStatus).json({ error: e.message });
+    console.error(`[Invest] ${what} failed:`, e);
+    res.status(500).json({ error: `Could not ${what}. Please try again.` });
+};
+export const getPortalView = async (req: any, res: any): Promise<any> => {
+    try { res.json(await portfolioPortalService.portalView(req.user.organization_id)); } catch (e) { portalFail(res, e, 'load the portfolio'); }
+};
+export const postPortalTotals = async (req: any, res: any): Promise<any> => {
+    try { res.json(await portfolioPortalService.recordTotals(req.user.organization_id, req.user.id, req.body ?? {})); } catch (e) { portalFail(res, e, 'save the portal totals'); }
+};
+export const postPortalOrderBook = async (req: any, res: any): Promise<any> => {
+    try { res.json(await portfolioPortalService.recordOrderBook(req.user.organization_id, req.user.id, req.body ?? {})); } catch (e) { portalFail(res, e, 'confirm the order book'); }
 };

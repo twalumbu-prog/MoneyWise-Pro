@@ -196,7 +196,7 @@ export interface Position {
  * the money put in divided by that fund's price on the day (the last price on or before it). An investment with no price that old, or with no
  * matching fund, has no units, and the caller then falls back to its older way of valuing the holding.
  */
-export async function positionsFor(inv: { investment_target_id: string; product_name: string | null; amount: number; at: string }[]): Promise<{ positions: Position[]; unmatchedTargets: Set<string> }> {
+export async function positionsFor(inv: { investment_target_id: string; product_name: string | null; amount: number; at: string; units?: number | null }[]): Promise<{ positions: Position[]; unmatchedTargets: Set<string> }> {
     const targetIds = [...new Set(inv.map((i) => i.investment_target_id))];
     const unmatchedTargets = new Set<string>(targetIds);
     if (!targetIds.length) return { positions: [], unmatchedTargets };
@@ -213,9 +213,11 @@ export async function positionsFor(inv: { investment_target_id: string; product_
         const fund = byKey.get(`${i.investment_target_id}|${String(i.product_name ?? '').trim().toLowerCase()}`);
         const s = fund ? series.get(fund.id) ?? [] : [];
         const at = priceOn(s, String(i.at).slice(0, 10));
-        if (fund && at) {
+        // Units the company's portal confirmed beat an estimate (amount ÷ the price that day, which ignores fees and the portal's own pricing).
+        const portalUnits = i.units != null && i.units > 0 ? i.units : null;
+        if (fund && (at || portalUnits)) {
             const e = acc.get(fund.id) ?? { fund, units: 0, invested: 0 };
-            e.units += i.amount / at.nav; e.invested += i.amount; acc.set(fund.id, e);
+            e.units += portalUnits ?? i.amount / at!.nav; e.invested += i.amount; acc.set(fund.id, e);
             c.priced++;
         }
         covered.set(i.investment_target_id, c);

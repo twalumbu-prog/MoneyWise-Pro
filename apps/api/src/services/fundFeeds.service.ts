@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { savePrice } from './portfolioPortal.service';
 
 /**
  * Reads the fund data Longhorn Associates publishes on its own website, so Longhorn's funds on MoneyWise carry its real prices without anyone
@@ -45,7 +46,7 @@ function describe(f: any): string | null {
     return lines.length ? lines.join('\n') : null;
 }
 
-export async function pullLonghorn(): Promise<{ funds: number; prices: number; asOf: string | null; skipped?: string }> {
+export async function pullLonghorn(): Promise<{ funds: number; prices: number; asOf: string | null; skipped?: string; feedStale?: boolean }> {
     const { data: target } = await supabase.from('investment_targets').select('id').eq('provider_key', 'longhorn').maybeSingle();
     if (!target) return { funds: 0, prices: 0, asOf: null, skipped: 'Longhorn is not set up as an investment company' };
 
@@ -74,12 +75,15 @@ export async function pullLonghorn(): Promise<{ funds: number; prices: number; a
 
         // The yields Longhorn reports go with the price they were reported for.
         const yields = { m3: row.averageYieldThreeMonths ?? null, m6: row.averageYieldSixMonths ?? null, m12: row.averageYieldTwelveMonths ?? null };
-        const { error: pe } = await supabase.from('fund_prices').upsert({ fund_id: fund.id, as_of: date, nav, source: 'WEBSITE', note: JSON.stringify({ yields }) }, { onConflict: 'fund_id,as_of' });
-        if (pe) { console.error('[Funds] could not save price', name, pe.message); continue; }
-        prices++;
+        // A price confirmed from the portal for the same day is never overwritten by what the website says.
+        try { if (await savePrice(fund.id, date, nav, 'WEBSITE', JSON.stringify({ yields }))) prices++; }
+        catch (pe: any) { console.error('[Funds] could not save price', name, pe?.message); continue; }
         if (!asOf || date > asOf) asOf = date;
     }
-    return { funds, prices, asOf };
+    // Longhorn's feed can stop moving for weeks; say so loudly instead of looking healthy while holdings are valued on old prices.
+    const feedStale = !asOf || (Date.parse(today) - Date.parse(asOf)) / DAY > 4;
+    if (feedStale) console.warn(`[Funds] Longhorn's published prices are stale (latest ${asOf ?? 'none'}); confirm values from the portal on the Portfolio page.`);
+    return { funds, prices, asOf, feedStale };
 }
 
 let started = false;
