@@ -139,7 +139,7 @@ export default function Index() {
         return <BrandSplash />;
     }
 
-    if (!session) return <Redirect href={signedInBefore() ? '/(auth)/login' : '/(auth)/welcome'} />;
+    if (!session) return <Redirect href={(signedInBefore() ? '/(auth)/signin' : '/(auth)/welcome') as any} />;
     try { cacheStoreSync.setItem(SIGNED_IN_BEFORE_KEY, '1'); } catch { /* the carousel may show again; harmless */ }
 
     if (userStatus === 'PENDING_APPROVAL') {

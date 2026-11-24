@@ -27,7 +27,7 @@ export default function LoginScreen() {
 
     // /(auth)/choose sends ?mode=signup&type=INDIVIDUAL|BUSINESS; the welcome screen's "I already have an account" sends nothing.
     const params = useLocalSearchParams<{ mode?: string; type?: string }>();
-    const [mode, setMode] = useState<Mode>(params.mode === 'signup' ? 'signup' : 'login');
+    const [mode, setMode] = useState<Mode>(params.mode === 'signup' ? 'signup' : params.mode === 'forgot' ? 'forgot' : 'login');
     const [accountType, setAccountType] = useState<AccountType>(params.type === 'BUSINESS' ? 'BUSINESS' : 'INDIVIDUAL');
     const [signupOrgMode, setSignupOrgMode] = useState<SignupOrgMode>('CREATE');
     const [showPassword, setShowPassword] = useState(false);
@@ -159,6 +159,8 @@ export default function LoginScreen() {
     };
 
     const backToLogin = () => {
+        // Opened from the sign-in screen's "Forgot password?": go back to it rather than into this older form.
+        if (params.mode === 'forgot') { router.back(); return; }
         setMode('login');
         setForgotSent(false);
         setForgotEmail('');

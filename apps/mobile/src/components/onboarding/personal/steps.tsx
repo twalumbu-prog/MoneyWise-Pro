@@ -64,8 +64,8 @@ export function StepDob({ ctx }: { ctx: StepContext }) {
 export const Field = React.forwardRef<TextInput, {
     label: string; value: string; error?: string; onChangeText: (t: string) => void; autoFocus?: boolean;
     textContentType?: any; autoComplete?: any; returnKeyType?: any; onSubmitEditing?: () => void; autoCapitalize?: any;
-    keyboardType?: any; placeholder?: string; maxLength?: number; prefix?: React.ReactNode; inputStyle?: any;
-}>(({ label, value, error, onChangeText, autoFocus, textContentType, autoComplete, returnKeyType, onSubmitEditing, autoCapitalize = 'none', keyboardType, placeholder, maxLength = 50, prefix, inputStyle }, ref) => {
+    keyboardType?: any; placeholder?: string; maxLength?: number; prefix?: React.ReactNode; inputStyle?: any; secureTextEntry?: boolean; suffix?: React.ReactNode;
+}>(({ label, value, error, onChangeText, autoFocus, textContentType, autoComplete, returnKeyType, onSubmitEditing, autoCapitalize = 'none', keyboardType, placeholder, maxLength = 50, prefix, inputStyle, secureTextEntry, suffix }, ref) => {
     // Without a placeholder the label is the placeholder: it sits inside the empty field and floats up once you focus or type.
     const floating = placeholder === undefined;
     const [focused, setFocused] = useState(false);
@@ -104,9 +104,11 @@ export const Field = React.forwardRef<TextInput, {
                     onSubmitEditing={onSubmitEditing}
                     keyboardType={keyboardType}
                     maxLength={maxLength}
+                    secureTextEntry={secureTextEntry}
                     accessibilityLabel={label}
                     style={[fieldStyles.input, inputStyle]}
                 />
+                {suffix}
             </View>
             {!!error && <Text style={fieldStyles.error}>{error}</Text>}
         </View>

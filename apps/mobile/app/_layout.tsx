@@ -26,11 +26,14 @@ import { AppLockProvider } from '../src/context/AppLockContext';
 import { SendResultHost } from '../src/components/payments/SendResultHost';
 import { ClipboardCapturePrompt } from '../src/components/ClipboardCapturePrompt';
 import '../src/lib/appOrigin';
+import { installTextScaling } from '../src/lib/responsive';
 import { colors } from '../src/theme/tokens';
 
 // Hand `core` its native implementations before any service call can fire.
 // Module scope, not an effect: services are reachable from the first render.
 initCore();
+// iPhone SE-sized screens: shrink type to fit (does nothing on larger phones).
+installTextScaling();
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 

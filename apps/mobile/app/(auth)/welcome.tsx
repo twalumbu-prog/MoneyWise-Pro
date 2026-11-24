@@ -10,6 +10,8 @@ import { SocialButtons } from '../../src/components/auth/SocialButtons';
 import { MoneywiseMark } from '../../src/components/icons/MoneywiseMark';
 import { WelcomeHero, SLIDE_DWELL_MS, type WelcomeSlideKey } from '../../src/components/auth/WelcomeHero';
 import { track } from '../../src/lib/analytics';
+import { cacheStoreSync } from '../../src/platform/storage';
+import { PENDING_ACCOUNT_TYPE_KEY } from '../../src/lib/pendingAccountType';
 import { colors, fonts } from '../../src/theme/tokens';
 
 /**
@@ -41,7 +43,11 @@ export default function WelcomeScreen() {
     const [areaH, setAreaH] = useState(0);
     const [error, setError] = useState('');
 
-    useEffect(() => { track('welcome_viewed'); }, []);
+    useEffect(() => {
+        track('welcome_viewed');
+        // A Personal/Pro pick made for a social sign-in that never finished must not leak into a later one.
+        try { cacheStoreSync.removeItem(PENDING_ACCOUNT_TYPE_KEY); } catch { /* nothing stored */ }
+    }, []);
 
     // Auto-advance every 5 s; paused while a finger is down, and off for reduced motion.
     useEffect(() => {
@@ -105,9 +111,14 @@ export default function WelcomeScreen() {
             </View>
 
             <View style={[styles.actions, { paddingBottom: Math.max(insets.bottom, 14) }]}>
-                <SocialButtons compact onError={setError} onEmail={() => { track('welcome_email_tapped'); router.push('/(auth)/choose'); }} />
+                <SocialButtons
+                    compact
+                    onError={setError}
+                    onProvider={(p) => { track('welcome_social_tapped', { provider: p }); router.push({ pathname: '/(auth)/choose', params: { via: p } } as any); }}
+                    onEmail={() => { track('welcome_email_tapped'); router.push({ pathname: '/(auth)/choose', params: { via: 'email' } } as any); }}
+                />
                 {!!error && <Text style={styles.error}>{error}</Text>}
-                <Pressable onPress={() => router.push('/(auth)/login')} hitSlop={8} accessibilityRole="button" style={styles.haveAccount}>
+                <Pressable onPress={() => router.push('/(auth)/signin' as any)} hitSlop={8} accessibilityRole="button" style={styles.haveAccount}>
                     <Text style={styles.haveAccountText}>I already have an account</Text>
                 </Pressable>
                 <Text style={styles.legal}>

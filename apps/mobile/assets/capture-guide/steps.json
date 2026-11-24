@@ -1,0 +1,105 @@
+{
+  "pointsWidth": 402,
+  "pointsHeight": 874,
+  "steps": [
+    {
+      "key": "new",
+      "image": "01-automation.jpg",
+      "caption": "Tap **New Automation**",
+      "tip": "Open the Automation tab at the bottom first. Already have automations? Tap + at the top right.",
+      "x": 201,
+      "y": 552
+    },
+    {
+      "key": "message",
+      "image": "02-message.jpg",
+      "caption": "Tap **Message**",
+      "tip": "Scroll down a little if you can’t see it.",
+      "x": 130,
+      "y": 673
+    },
+    {
+      "key": "choose",
+      "image": "03-when.jpg",
+      "caption": "Tap **Choose** next to Message Contains",
+      "tip": "Leave Sender as Any Sender.",
+      "x": 336,
+      "y": 302
+    },
+    {
+      "key": "zmw",
+      "image": "04-zmw.jpg",
+      "caption": "Type **ZMW**, then tap **Done**",
+      "tip": "Capital letters, no spaces.",
+      "x": 275,
+      "y": 529
+    },
+    {
+      "key": "immediately",
+      "image": "05-run-immediately.jpg",
+      "caption": "Tap **Run Immediately**",
+      "tip": "Otherwise iPhone asks you every time a message arrives.",
+      "x": 130,
+      "y": 440
+    },
+    {
+      "key": "next",
+      "image": "06-next.jpg",
+      "caption": "Tap **Next**",
+      "x": 351,
+      "y": 100
+    },
+    {
+      "key": "create",
+      "image": "07-pick.jpg",
+      "caption": "Tap **Create New Shortcut**",
+      "x": 100,
+      "y": 323
+    },
+    {
+      "key": "search",
+      "image": "08-search-actions.jpg",
+      "caption": "Tap **Search Actions** and type **MoneyWise**",
+      "x": 170,
+      "y": 471
+    },
+    {
+      "key": "action",
+      "image": "08-search.jpg",
+      "caption": "Tap **Capture mobile money message**",
+      "x": 201,
+      "y": 376
+    },
+    {
+      "key": "input",
+      "image": "09-input.jpg",
+      "caption": "Tap the word **Message**",
+      "tip": "The step people miss: it tells MoneyWise which message to read.",
+      "x": 166,
+      "y": 251
+    },
+    {
+      "key": "variable",
+      "image": "10-variable.jpg",
+      "caption": "Tap **Select Variable**",
+      "tip": "It’s just above the keyboard.",
+      "x": 90,
+      "y": 836
+    },
+    {
+      "key": "shortcutInput",
+      "image": "11-shortcut-input.jpg",
+      "caption": "Tap **Shortcut Input**",
+      "x": 201,
+      "y": 225
+    },
+    {
+      "key": "save",
+      "image": "12-save.jpg",
+      "caption": "Tap **✓** to save",
+      "tip": "That’s everything in Shortcuts. Come back to MoneyWise to test it.",
+      "x": 364,
+      "y": 100
+    }
+  ]
+}
