@@ -1895,8 +1895,16 @@ CREATE INDEX IF NOT EXISTS idx_marketplace_orders_link ON public.marketplace_ord
 
         // Refresh PostgREST schema cache
         // Salon staff category (hairdresser / nail technician). Mirrors supabase/migrations/20261126100000_salon_staff_role.sql.
-        await migrationPool.query("ALTER TABLE public.salon_staff_profiles ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'HAIRDRESSER';");
-        await migrationPool.query(`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'salon_staff_profiles_role_check') THEN ALTER TABLE public.salon_staff_profiles ADD CONSTRAINT salon_staff_profiles_role_check CHECK (role IN ('HAIRDRESSER', 'NAIL_TECH')); END IF; END $$;`);
+        // Skipped on a database that has no salon tables (they're created outside this repo); otherwise the whole startup
+        // migration stopped here on every cold start and nothing after it ever ran.
+        await migrationPool.query(`DO $$ BEGIN
+            IF to_regclass('public.salon_staff_profiles') IS NOT NULL THEN
+                ALTER TABLE public.salon_staff_profiles ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'HAIRDRESSER';
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'salon_staff_profiles_role_check') THEN
+                    ALTER TABLE public.salon_staff_profiles ADD CONSTRAINT salon_staff_profiles_role_check CHECK (role IN ('HAIRDRESSER', 'NAIL_TECH'));
+                END IF;
+            END IF;
+        END $$;`);
 
         // Stock loss tracking (kind of loss + who was in charge). Mirrors supabase/migrations/20261127100000_stock_loss_tracking.sql.
         await migrationPool.query('ALTER TABLE public.stock_movements ADD COLUMN IF NOT EXISTS loss_kind TEXT;');
