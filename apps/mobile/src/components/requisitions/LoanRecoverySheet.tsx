@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Modal, View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Alert } from 'react-native';
+import { View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react-native';
 import { requisitionService, formatKwacha } from 'core';
 import { colors, fonts, radius } from '../../theme/tokens';
+import { SheetModal } from '../SheetModal';
 
 /**
  * An admin acknowledges that (part of) a salary advance or staff loan has been paid back outside payroll — cash handed over, a
@@ -49,8 +50,7 @@ export const LoanRecoverySheet: React.FC<{ visible: boolean; requisitionId: stri
     };
 
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-            <Pressable style={styles.backdrop} onPress={onClose} />
+        <SheetModal visible={visible} onRequestClose={onClose}>
             <KeyboardAvoidingView behavior="padding" style={styles.wrap} pointerEvents="box-none">
                 <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
                     <View style={styles.handle} />
@@ -85,7 +85,7 @@ export const LoanRecoverySheet: React.FC<{ visible: boolean; requisitionId: stri
                     )}
                 </View>
             </KeyboardAvoidingView>
-        </Modal>
+        </SheetModal>
     );
 };
 

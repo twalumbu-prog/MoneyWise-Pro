@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, ScrollView } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
@@ -7,6 +7,7 @@ import { X, Check, LogOut } from 'lucide-react-native';
 import { OrgAvatar } from '../OrgAvatar';
 import { useAuth } from '../../context/AuthContext';
 import { colors, fonts, radius } from '../../theme/tokens';
+import { SheetModal } from '../SheetModal';
 
 interface Props {
     visible: boolean;
@@ -86,8 +87,7 @@ export const AccountMenuSheet: React.FC<Props> = ({ visible, onClose }) => {
     const currentOrg = userOrganizations.find((uo) => uo.organization?.id === organizationId)?.organization;
 
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-            <Pressable style={styles.backdrop} onPress={onClose} />
+        <SheetModal visible={visible} onRequestClose={onClose}>
             <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}>
                 <View style={styles.handle} />
 
@@ -196,7 +196,7 @@ export const AccountMenuSheet: React.FC<Props> = ({ visible, onClose }) => {
                     </Pressable>
                 </ScrollView>
             </View>
-        </Modal>
+        </SheetModal>
     );
 };
 

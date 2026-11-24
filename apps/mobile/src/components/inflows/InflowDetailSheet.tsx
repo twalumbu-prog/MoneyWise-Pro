@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, Pressable, ScrollView, Modal, ActivityIndicator, Image, StyleSheet, Share, Alert, Linking } from 'react-native';
+import { View, Text, Pressable, ScrollView, ActivityIndicator, Image, StyleSheet, Share, Alert, Linking } from 'react-native';
 import {
     X, Package, MapPin, Truck, ShoppingBag, AlertCircle, CheckCircle2, Clock, RotateCcw, AlertTriangle,
     Download, User, Phone, CreditCard, BookOpen, PackageCheck,
@@ -10,6 +10,7 @@ import {
 import type { ProductSale, InflowDetail } from 'core';
 import { inflowTitle, type InflowRow } from './inflowUtils';
 import { colors, fonts, radius } from '../../theme/tokens';
+import { SheetModal } from '../SheetModal';
 
 const STATUS_MAP: Record<string, { label: string; icon: any; color: string }> = {
     COMPLETED: { label: 'Completed', icon: CheckCircle2, color: '#059669' },
@@ -101,8 +102,7 @@ export const InflowDetailSheet: React.FC<{ inflow: InflowRow | null; onClose: ()
     };
 
     return (
-        <Modal visible={!!inflow} transparent animationType="slide" onRequestClose={onClose}>
-            <Pressable style={styles.backdrop} onPress={onClose} />
+        <SheetModal visible={!!inflow} onRequestClose={onClose}>
             <View style={styles.sheet}>
                 <View style={styles.header}>
                     <View style={{ flex: 1 }}>
@@ -282,7 +282,7 @@ export const InflowDetailSheet: React.FC<{ inflow: InflowRow | null; onClose: ()
                     </Pressable>
                 </View>
             </View>
-        </Modal>
+        </SheetModal>
     );
 };
 

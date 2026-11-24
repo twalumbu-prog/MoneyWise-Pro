@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Modal, ScrollView } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Check, X, Minus } from 'lucide-react-native';
 import { AnimatedCheck } from './AnimatedCheck';
 import { hapticTick } from '../../lib/haptics';
 import { PersonalArt, ProArt } from './AccountIllustrations';
 import { colors, fonts, radius } from '../../theme/tokens';
+import { SheetModal } from '../SheetModal';
 
 /**
  * "MoneyWise Personal or Pro" (docs/personal-onboarding-plan.md, step 2): two cards with what each is for, and a
@@ -76,8 +77,7 @@ export function AccountTypeChooser({ value, onChange, owned }: {
                 <Text style={styles.compare}>Compare Personal and Pro</Text>
             </Pressable>
 
-            <Modal visible={compareOpen} transparent animationType="slide" onRequestClose={() => setCompareOpen(false)}>
-                <Pressable style={styles.scrim} onPress={() => setCompareOpen(false)} accessibilityLabel="Close comparison" />
+            <SheetModal visible={compareOpen} onRequestClose={() => setCompareOpen(false)}>
                 <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 20) }]}>
                     <View style={styles.sheetHead}>
                         <Text style={styles.sheetTitle}>Personal or Pro?</Text>
@@ -99,7 +99,7 @@ export function AccountTypeChooser({ value, onChange, owned }: {
                     </ScrollView>
                     <Text style={styles.footnote}>You can add the other one later from Menu, with the same login.</Text>
                 </View>
-            </Modal>
+            </SheetModal>
         </View>
     );
 }

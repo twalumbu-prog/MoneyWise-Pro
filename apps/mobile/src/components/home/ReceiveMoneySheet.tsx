@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Modal, View, Text, Pressable, StyleSheet, ActivityIndicator, Share } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator, Share } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
@@ -10,6 +10,7 @@ import { organizationService } from 'core';
 import { WEB_ORIGIN } from '../../platform';
 import { useAuth } from '../../context/AuthContext';
 import { colors, fonts, radius } from '../../theme/tokens';
+import { SheetModal } from '../SheetModal';
 
 /** Receive money: the person's own pay link as a QR code and a copyable / shareable link — anyone can pay it with mobile money. */
 export const ReceiveMoneySheet: React.FC<{ visible: boolean; onClose: () => void }> = ({ visible, onClose }) => {
@@ -34,8 +35,7 @@ export const ReceiveMoneySheet: React.FC<{ visible: boolean; onClose: () => void
     };
 
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-            <Pressable style={styles.backdrop} onPress={onClose} />
+        <SheetModal visible={visible} onRequestClose={onClose}>
             <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
                 <View style={styles.handle} />
                 <View style={styles.header}>
@@ -83,7 +83,7 @@ export const ReceiveMoneySheet: React.FC<{ visible: boolean; onClose: () => void
                     )}
                 </View>
             </View>
-        </Modal>
+        </SheetModal>
     );
 };
 

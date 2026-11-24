@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Modal, Alert, Linking, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Alert, Linking, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -8,6 +8,7 @@ import { PersonalStepShell } from './PersonalStepShell';
 import type { StepContext, AvatarDraft } from './stepContext';
 import { UserAvatar, PresetFace, AVATAR_PRESETS } from '../../UserAvatar';
 import { colors, fonts, radius } from '../../../theme/tokens';
+import { SheetModal } from '../../SheetModal';
 
 /**
  * Step "avatar": a photo (camera or library, cropped square and compressed before upload), the Google/Apple photo
@@ -73,8 +74,7 @@ export function StepAvatar({ ctx }: { ctx: StepContext }) {
                 <Text style={styles.hint}>Tap to choose a photo or a character</Text>
             </View>
 
-            <Modal visible={sheet} transparent animationType="slide" onRequestClose={() => setSheet(false)}>
-                <Pressable style={styles.scrim} onPress={() => setSheet(false)} accessibilityLabel="Close" />
+            <SheetModal visible={sheet} onRequestClose={() => setSheet(false)}>
                 <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 20) }]}>
                     <View style={styles.sheetHead}>
                         <Text style={styles.sheetTitle}>Your picture</Text>
@@ -94,7 +94,7 @@ export function StepAvatar({ ctx }: { ctx: StepContext }) {
                     </View>
                     <Option icon={<RotateCcw size={20} color={colors.text} />} label="Use my initials" onPress={() => choose({ kind: 'initials' })} />
                 </View>
-            </Modal>
+            </SheetModal>
         </PersonalStepShell>
     );
 }

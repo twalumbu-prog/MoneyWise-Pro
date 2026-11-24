@@ -1,4 +1,4 @@
-import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ArrowRight, CheckCircle2, Circle, Trophy, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -6,6 +6,7 @@ import { useWalkthroughCore } from '../../hooks/useWalkthrough';
 import { TOURS, tour } from '../../lib/tour';
 import { useWalkthroughUi, walkthroughUi } from '../../lib/walkthroughUi';
 import { colors, fonts, radius } from '../../theme/tokens';
+import { SheetModal } from '../SheetModal';
 
 /** The two sheets behind the Inbox walkthrough card: one step's guide, and the full checklist. Mount once on the Inbox. */
 export const WalkthroughModals: React.FC = () => {
@@ -30,7 +31,7 @@ export const WalkthroughModals: React.FC = () => {
     return (
         <>
             {/* ── One step ── */}
-            <Modal visible={!!step} animationType="slide" transparent onRequestClose={walkthroughUi.closeStep} statusBarTranslucent>
+            <SheetModal visible={!!step} onRequestClose={walkthroughUi.closeStep}>
                 <Pressable style={styles.overlay} onPress={walkthroughUi.closeStep}>
                     <Pressable style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]} onPress={() => undefined}>
                         {step && (
@@ -75,10 +76,10 @@ export const WalkthroughModals: React.FC = () => {
                         )}
                     </Pressable>
                 </Pressable>
-            </Modal>
+            </SheetModal>
 
             {/* ── The whole checklist ── */}
-            <Modal visible={ui.list} animationType="slide" transparent onRequestClose={walkthroughUi.closeList} statusBarTranslucent>
+            <SheetModal visible={ui.list} onRequestClose={walkthroughUi.closeList}>
                 <Pressable style={styles.overlay} onPress={walkthroughUi.closeList}>
                     <Pressable style={[styles.sheet, styles.listSheet, { paddingBottom: insets.bottom + 12 }]} onPress={() => undefined}>
                         <View style={styles.sheetTop}>
@@ -118,13 +119,13 @@ export const WalkthroughModals: React.FC = () => {
                         </View>
                     </Pressable>
                 </Pressable>
-            </Modal>
+            </SheetModal>
         </>
     );
 };
 
 const styles = StyleSheet.create({
-    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+    overlay: { flex: 1, justifyContent: 'flex-end' },
     sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: 22, gap: 12 },
     listSheet: { maxHeight: '86%' },
     sheetTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },

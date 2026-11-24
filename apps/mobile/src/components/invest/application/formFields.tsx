@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { KB_DONE_ID } from '../../KeyboardDoneBar';
 import {
-    View, Text, TextInput, Pressable, Modal, FlatList, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Image,
+    View, Text, TextInput, Pressable, FlatList, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { requireCapability, DOC_LIMITS, toIsoDate, splitIsoDate } from 'core';
@@ -12,6 +12,7 @@ import {
 import { captureImage } from '../../../platform/files';
 import { uploadToBucket } from '../../../lib/uploads';
 import { colors, fonts, radius } from '../../../theme/tokens';
+import { SheetModal } from '../../SheetModal';
 
 /* ── Select ───────────────────────────────────────────────────────────────── */
 
@@ -61,8 +62,7 @@ export const SelectField: React.FC<{
             </Pressable>
             {!!error && <Text style={styles.error}>{error}</Text>}
 
-            <Modal visible={open} transparent animationType="slide" onRequestClose={close} statusBarTranslucent>
-                <Pressable style={styles.backdrop} onPress={close} />
+            <SheetModal visible={open} onRequestClose={close}>
                 <KeyboardAvoidingView behavior="padding" style={styles.sheetWrap} pointerEvents="box-none">
                     <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}>
                         <View style={styles.handle} />
@@ -105,7 +105,7 @@ export const SelectField: React.FC<{
                         />
                     </View>
                 </KeyboardAvoidingView>
-            </Modal>
+            </SheetModal>
         </View>
     );
 };
@@ -276,8 +276,7 @@ export const DocUploadCard: React.FC<{
             </Pressable>
             {!!shownError && <Text style={styles.error}>{shownError}</Text>}
 
-            <Modal visible={sheet} transparent animationType="slide" onRequestClose={() => setSheet(false)} statusBarTranslucent>
-                <Pressable style={styles.backdrop} onPress={() => setSheet(false)} />
+            <SheetModal visible={sheet} onRequestClose={() => setSheet(false)}>
                 <View style={styles.sheetWrap} pointerEvents="box-none">
                     <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
                         <View style={styles.handle} />
@@ -298,7 +297,7 @@ export const DocUploadCard: React.FC<{
                         </View>
                     </View>
                 </View>
-            </Modal>
+            </SheetModal>
         </View>
     );
 };

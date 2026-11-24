@@ -17,14 +17,14 @@ import { colors, fonts, radius } from '../../theme/tokens';
 import { PaymentWaitingScreen } from '../payments/PaymentWaitingScreen';
 import { useMobileMoneyCollection } from '../../hooks/useMobileMoneyCollection';
 import { MobileMoneyNumberField, useMomoHolder } from '../payments/MobileMoneyNumberField';
+import { SheetModal } from '../SheetModal';
 
 /* ── Shared bottom sheet ─────────────────────────────────────────────────── */
 
 const Sheet: React.FC<{ visible: boolean; onClose: () => void; title: string; children: React.ReactNode }> = ({ visible, onClose, title, children }) => {
     const insets = useSafeAreaInsets();
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-            <Pressable style={styles.backdrop} onPress={onClose} />
+        <SheetModal visible={visible} onRequestClose={onClose}>
             <KeyboardAvoidingView behavior="padding" style={styles.wrap} pointerEvents="box-none">
                 <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
                     <View style={styles.handle} />
@@ -37,7 +37,7 @@ const Sheet: React.FC<{ visible: boolean; onClose: () => void; title: string; ch
                     </ScrollView>
                 </View>
             </KeyboardAvoidingView>
-        </Modal>
+        </SheetModal>
     );
 };
 

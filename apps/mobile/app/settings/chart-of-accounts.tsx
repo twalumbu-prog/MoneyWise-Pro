@@ -14,6 +14,7 @@ import { PRESET_EMOJIS, extractEmojiAndName, getAccountEmoji } from '../../src/u
 import { AccountGlyph } from '../../src/components/AccountGlyph';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 import { useGoBack } from '../../src/hooks/useGoBack';
+import { SheetModal } from '../../src/components/SheetModal';
 
 type ManagementTab = 'NET_WORTH' | 'PROFIT_LOSS';
 
@@ -343,8 +344,8 @@ export default function ChartOfAccountsScreen() {
             </ScrollView>
 
             {/* Add / Edit Modal */}
-            <Modal visible={modalVisible} transparent animationType="slide">
-                <View style={styles.modalOverlay}>
+            <SheetModal visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
+                <View style={styles.modalOverlay} pointerEvents="box-none">
                     <View style={styles.modalContent}>
                         <View style={styles.modalHeader}>
                             <Text style={styles.modalTitle}>
@@ -457,7 +458,7 @@ export default function ChartOfAccountsScreen() {
                         </View>
                     </View>
                 </View>
-            </Modal>
+            </SheetModal>
         </View>
     );
 }
@@ -512,7 +513,7 @@ const styles = StyleSheet.create({
     emptyAddBtn: { backgroundColor: colors.blue, paddingHorizontal: 16, paddingVertical: 10, borderRadius: radius.md },
     emptyAddBtnText: { fontFamily: fonts.bodyBold, fontSize: 13, color: '#FFFFFF' },
 
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+    modalOverlay: { flex: 1, justifyContent: 'flex-end' },
     modalContent: {
         backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
         padding: 20, gap: 12,

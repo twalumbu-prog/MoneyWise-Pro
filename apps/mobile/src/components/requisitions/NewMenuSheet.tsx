@@ -1,7 +1,8 @@
-import { Modal, View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { X, ShoppingBag, FileText, History, Plus, TrendingUp, Send, PenLine, HandCoins } from 'lucide-react-native';
 import { canDisburse, isRequestorRole } from 'core';
 import { colors, fonts, radius } from '../../theme/tokens';
+import { SheetModal } from '../SheetModal';
 
 interface Props {
     visible: boolean;
@@ -36,8 +37,7 @@ export const NewMenuSheet: React.FC<Props> = ({
             : 'New Requisition';
 
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-            <Pressable style={styles.backdrop} onPress={onClose} />
+        <SheetModal visible={visible} onRequestClose={onClose}>
             <View style={styles.sheet}>
                 <View style={styles.handle} />
                 <View style={styles.header}>
@@ -83,7 +83,7 @@ export const NewMenuSheet: React.FC<Props> = ({
                     )}
                 </View>
             </View>
-        </Modal>
+        </SheetModal>
     );
 };
 

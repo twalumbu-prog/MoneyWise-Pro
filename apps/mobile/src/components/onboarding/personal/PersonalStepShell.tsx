@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { SlideContext } from './slide';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, useReducedMotion } from 'react-native-reanimated';
-import { View, Text, Pressable, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft, HelpCircle, X, AlertCircle } from 'lucide-react-native';
 import { PERSONAL_CHAPTERS, type PersonalStepDef } from 'core';
 import { colors, fonts, radius } from '../../../theme/tokens';
+import { SheetModal } from '../../SheetModal';
 
 /** Where the bar stood on the previous step, so the next step's bar springs on from there instead of starting over. */
 let lastProgress: number | null = null;
@@ -111,8 +112,7 @@ export function PersonalStepShell({
                 </Pressable>
             </View>
 
-            <Modal visible={helpOpen} transparent animationType="slide" onRequestClose={() => setHelpOpen(false)}>
-                <Pressable style={styles.scrim} onPress={() => setHelpOpen(false)} accessibilityLabel="Close help" />
+            <SheetModal visible={helpOpen} onRequestClose={() => setHelpOpen(false)}>
                 <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 20) }]}>
                     <View style={styles.sheetHead}>
                         <Text style={styles.sheetTitle}>{def.title}</Text>
@@ -122,7 +122,7 @@ export function PersonalStepShell({
                     </View>
                     <Text style={styles.sheetBody}>{def.help}</Text>
                 </View>
-            </Modal>
+            </SheetModal>
         </KeyboardAvoidingView>
     );
 }

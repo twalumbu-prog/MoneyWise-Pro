@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Modal, View, Text, Pressable, StyleSheet, TextInput, FlatList } from 'react-native';
+import { View, Text, Pressable, StyleSheet, TextInput, FlatList } from 'react-native';
 import { Search, Check, X } from 'lucide-react-native';
 import { colors, fonts, radius } from '../../theme/tokens';
+import { SheetModal } from '../SheetModal';
 
 export interface PickableAccount {
     id: string;
@@ -27,8 +28,7 @@ export const AccountPickerModal: React.FC<{
         (a.subtitle || '').toLowerCase().includes(search.toLowerCase()));
 
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-            <Pressable style={styles.backdrop} onPress={onClose} />
+        <SheetModal visible={visible} onRequestClose={onClose}>
             <View style={styles.sheet}>
                 <View style={styles.sheetHeader}>
                     <Text style={styles.sheetTitle}>{title}</Text>
@@ -61,7 +61,7 @@ export const AccountPickerModal: React.FC<{
                     )}
                 />
             </View>
-        </Modal>
+        </SheetModal>
     );
 };
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Modal, Pressable, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { Trophy, CheckCircle2, Play, X, Zap } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import {
@@ -8,6 +8,7 @@ import {
     OnboardingAchievement,
 } from 'core';
 import { colors, fonts, radius } from '../../theme/tokens';
+import { SheetModal } from '../SheetModal';
 
 interface Props {
     visible: boolean;
@@ -63,8 +64,8 @@ export const GuidedMissionsModal: React.FC<Props> = ({ visible, onClose }) => {
     };
 
     return (
-        <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-            <View style={styles.overlay}>
+        <SheetModal visible={visible} onRequestClose={onClose}>
+            <View style={styles.overlay} pointerEvents="box-none">
                 <View style={styles.card}>
                     {/* Header */}
                     <View style={styles.header}>
@@ -135,14 +136,13 @@ export const GuidedMissionsModal: React.FC<Props> = ({ visible, onClose }) => {
                     </ScrollView>
                 </View>
             </View>
-        </Modal>
+        </SheetModal>
     );
 };
 
 const styles = StyleSheet.create({
     overlay: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.5)',
         justifyContent: 'flex-end',
     },
     card: {

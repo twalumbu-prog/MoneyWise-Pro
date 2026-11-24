@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Image, Modal, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Image, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowUpRight, ArrowDownRight, Minus, X, TrendingUp } from 'lucide-react-native';
 import { investmentService, formatKwacha, type PortfolioHolding } from 'core';
 import { colors, fonts, radius } from '../../../theme/tokens';
+import { SheetModal } from '../../SheetModal';
 
 export const INVESTMENTS_KEY = ['home-investments'] as const;
 
@@ -72,8 +73,7 @@ const ValueSheet: React.FC<{ holding: PortfolioHolding | null; onClose: () => vo
     };
 
     return (
-        <Modal visible={!!holding} transparent animationType="slide" onRequestClose={close}>
-            <Pressable style={styles.backdrop} onPress={close} />
+        <SheetModal visible={!!holding} onRequestClose={close}>
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.kav} pointerEvents="box-none">
                 <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
                     <View style={styles.handle} />
@@ -91,7 +91,7 @@ const ValueSheet: React.FC<{ holding: PortfolioHolding | null; onClose: () => vo
                     </View>
                 </View>
             </KeyboardAvoidingView>
-        </Modal>
+        </SheetModal>
     );
 };
 

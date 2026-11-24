@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-    View, Text, TextInput, Pressable, StyleSheet, Modal, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator,
+    View, Text, TextInput, Pressable, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X, Plus, Check, Search, Trash2, ChevronDown } from 'lucide-react-native';
@@ -12,6 +12,7 @@ import { KB_DONE_ID } from '../KeyboardDoneBar';
 import { PRESET_EMOJIS, extractEmojiAndName, getAccountEmoji } from '../../utils/emoji';
 import { hapticTick } from '../../lib/haptics';
 import { colors, fonts, radius } from '../../theme/tokens';
+import { SheetModal } from '../SheetModal';
 
 export interface BudgetDraft { amount: string; basis: BudgetBasis; due: number | null }
 
@@ -121,9 +122,8 @@ export function BudgetSheet({
     const name = account ? extractEmojiAndName(account.name).cleanName : null;
 
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-            <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-                <Pressable style={styles.scrim} onPress={onClose} accessibilityLabel="Close" />
+        <SheetModal visible={visible} onRequestClose={onClose}>
+            <KeyboardAvoidingView style={{ flex: 1, justifyContent: 'flex-end' }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} pointerEvents="box-none">
                 <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}>
                     <View style={styles.grabber} />
                     <View style={styles.head}>
@@ -315,7 +315,7 @@ export function BudgetSheet({
                     </Pressable>
                 </View>
             </KeyboardAvoidingView>
-        </Modal>
+        </SheetModal>
     );
 }
 

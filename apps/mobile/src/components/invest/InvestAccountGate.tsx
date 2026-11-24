@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-    Modal, View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, KeyboardAvoidingView, ScrollView,
+    View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, KeyboardAvoidingView, ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -10,6 +10,7 @@ import type { MyInvestorAccount } from 'core';
 import type { InvestProvider } from '../../data/investCatalog';
 import { InvestLogo } from './InvestLogo';
 import { colors, fonts, radius } from '../../theme/tokens';
+import { SheetModal } from '../SheetModal';
 
 /**
  * What the Invest button shows when the investor can't pay yet.
@@ -147,8 +148,7 @@ export const InvestAccountGate: React.FC<{
     }
 
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-            <Pressable style={styles.backdrop} onPress={onClose} />
+        <SheetModal visible={visible} onRequestClose={onClose}>
             <KeyboardAvoidingView behavior="padding" style={styles.wrap} pointerEvents="box-none">
                 <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
                     <View style={styles.handle} />
@@ -158,7 +158,7 @@ export const InvestAccountGate: React.FC<{
                     </ScrollView>
                 </View>
             </KeyboardAvoidingView>
-        </Modal>
+        </SheetModal>
     );
 };
 

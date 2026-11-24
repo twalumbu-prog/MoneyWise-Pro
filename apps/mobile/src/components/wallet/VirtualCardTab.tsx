@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Modal, Platform } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ShieldCheck, Snowflake, Globe, Gauge, CreditCard, Lock, MoreHorizontal, ChevronRight, Receipt, X } from 'lucide-react-native';
 import { AppleLogo, GoogleG, MastercardLogo } from './PayLogos';
 import { CardDetailsReveal } from './CardDetailsReveal';
 import { colors, fonts, radius } from '../../theme/tokens';
+import { SheetModal } from '../SheetModal';
 
 /** Flip to true once cards can be issued: the payment history then appears under the wallet. */
 const CARD_ACTIVATED = false;
@@ -111,7 +112,7 @@ export function VirtualCardTab() {
 
             <CardDetailsReveal visible={detailsOpen} onClose={() => setDetailsOpen(false)} />
 
-            <Modal visible={moreOpen} transparent animationType="slide" onRequestClose={() => setMoreOpen(false)}>
+            <SheetModal visible={moreOpen} onRequestClose={() => setMoreOpen(false)}>
                 <Pressable style={s.backdrop} onPress={() => setMoreOpen(false)}>
                     <Pressable style={s.sheet} onPress={() => undefined}>
                         <View style={s.sheetHead}>
@@ -129,7 +130,7 @@ export function VirtualCardTab() {
                         </View>
                     </Pressable>
                 </Pressable>
-            </Modal>
+            </SheetModal>
         </View>
     );
 }
@@ -168,7 +169,7 @@ const s = StyleSheet.create({
     perkIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#EAF1FF', alignItems: 'center', justifyContent: 'center' },
     perkTitle: { fontFamily: fonts.bodyBold, fontSize: 13.5, color: colors.text },
     perkText: { fontFamily: fonts.body, fontSize: 12, color: colors.textMuted, lineHeight: 17, marginTop: 2 },
-    backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+    backdrop: { flex: 1, justifyContent: 'flex-end' },
     sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 34, gap: 6 },
     sheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
     sheetTitle: { fontFamily: fonts.bodyBold, fontSize: 17, color: colors.text },

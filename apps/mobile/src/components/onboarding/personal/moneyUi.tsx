@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Modal, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, TextInput } from 'react-native';
+import { View, Text, Pressable, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X, AlertCircle } from 'lucide-react-native';
 import { BankAvatar } from '../../BankAvatar';
 import { MtnLogo, AirtelLogo, ZamtelLogo } from './ProviderLogos';
 import { getLocalLogoKey, getBankColor, getBankInitials } from '../../../data/bankLogos';
 import { colors, fonts, radius } from '../../../theme/tokens';
+import { SheetModal } from '../../SheetModal';
 
 /** Shared bits for the "Your money" steps: money formatting and input, a bottom sheet, provider logos. */
 
@@ -53,9 +54,8 @@ export function Sheet({ visible, title, onClose, children, primary, secondary, b
 }) {
     const insets = useSafeAreaInsets();
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-            <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-                <Pressable style={styles.scrim} onPress={onClose} accessibilityLabel="Close" />
+        <SheetModal visible={visible} onRequestClose={onClose}>
+            <KeyboardAvoidingView style={{ flex: 1, justifyContent: 'flex-end' }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} pointerEvents="box-none">
                 <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}>
                     <View style={styles.sheetHead}>
                         <Text style={styles.sheetTitle} accessibilityRole="header">{title}</Text>
@@ -81,7 +81,7 @@ export function Sheet({ visible, title, onClose, children, primary, secondary, b
                     </View>}
                 </View>
             </KeyboardAvoidingView>
-        </Modal>
+        </SheetModal>
     );
 }
 

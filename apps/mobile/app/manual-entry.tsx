@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { KB_DONE_ID } from '../src/components/KeyboardDoneBar';
 import {
-    View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Modal, FlatList,
+    View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator, KeyboardAvoidingView, FlatList,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
@@ -15,6 +15,7 @@ import { AccountGlyph } from '../src/components/AccountGlyph';
 import { SelectField, DateField, type SelectOption } from '../src/components/invest/application/formFields';
 import { colors, fonts, radius } from '../src/theme/tokens';
 import { useGoBack } from '../src/hooks/useGoBack';
+import { SheetModal } from '../src/components/SheetModal';
 
 const today = () => new Date().toISOString().split('T')[0];
 const money = (n: number) => `K${n.toLocaleString('en-ZM', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -258,8 +259,7 @@ const ResultView: React.FC<{
             <Pressable onPress={onDone} style={({ pressed }) => [styles.saveBtn, pressed && { opacity: 0.85 }]}><Text style={styles.saveText}>Done</Text></Pressable>
             <Pressable onPress={onAnother} style={styles.anotherBtn}><Text style={styles.anotherText}>Add another entry</Text></Pressable>
 
-            <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)} statusBarTranslucent>
-                <Pressable style={styles.backdrop} onPress={() => setOpen(false)} />
+            <SheetModal visible={open} onRequestClose={() => setOpen(false)}>
                 <View style={styles.sheetWrap} pointerEvents="box-none">
                     <View style={[styles.sheet, { paddingBottom: Math.max(insetsBottom, 16) }]}>
                         <View style={styles.handle} />
@@ -280,7 +280,7 @@ const ResultView: React.FC<{
                         />
                     </View>
                 </View>
-            </Modal>
+            </SheetModal>
         </View>
     );
 };

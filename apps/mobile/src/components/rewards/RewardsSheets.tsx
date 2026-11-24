@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Modal, View, Text, Pressable, StyleSheet, ActivityIndicator, Share, TextInput, Alert, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator, Share, TextInput, Alert, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
@@ -8,12 +8,12 @@ import { X, Copy, Check, Share2, Gift } from 'lucide-react-native';
 import { rewardsService, type RewardCard, type RewardOption } from 'core';
 import { ProgrammeLogo, ProgressBar, fmtPoints } from './RewardsUI';
 import { colors, fonts, radius } from '../../theme/tokens';
+import { SheetModal } from '../SheetModal';
 
 const Sheet: React.FC<{ visible: boolean; title: string; onClose: () => void; children: React.ReactNode }> = ({ visible, title, onClose, children }) => {
     const insets = useSafeAreaInsets();
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-            <Pressable style={styles.backdrop} onPress={onClose} />
+        <SheetModal visible={visible} onRequestClose={onClose}>
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.kav} pointerEvents="box-none">
                 <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
                     <View style={styles.handle} />
@@ -24,7 +24,7 @@ const Sheet: React.FC<{ visible: boolean; title: string; onClose: () => void; ch
                     {children}
                 </View>
             </KeyboardAvoidingView>
-        </Modal>
+        </SheetModal>
     );
 };
 

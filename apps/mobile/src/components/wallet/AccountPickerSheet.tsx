@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react';
 import {
-    Modal, View, Text, Pressable, TextInput, FlatList, StyleSheet,
+    View, Text, Pressable, TextInput, FlatList, StyleSheet,
 } from 'react-native';
 import { Search, X, Check, Building2 } from 'lucide-react-native';
 import { colors, fonts, radius } from '../../theme/tokens';
+import { SheetModal } from '../SheetModal';
 
 export interface AccountOption {
     id: string;
@@ -34,9 +35,8 @@ export const AccountPickerSheet: React.FC<{
     }, [accounts, query]);
 
     return (
-        <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-            <View style={styles.overlay}>
-                <Pressable style={styles.backdrop} onPress={onClose} />
+        <SheetModal visible={visible} onRequestClose={onClose}>
+            <View style={styles.overlay} pointerEvents="box-none">
                 <View style={styles.sheet}>
                     <View style={styles.handle} />
 
@@ -109,12 +109,12 @@ export const AccountPickerSheet: React.FC<{
                     />
                 </View>
             </View>
-        </Modal>
+        </SheetModal>
     );
 };
 
 const styles = StyleSheet.create({
-    overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
+    overlay: { flex: 1, justifyContent: 'flex-end' },
     backdrop: { ...StyleSheet.absoluteFillObject },
     sheet: {
         backgroundColor: colors.surface,
