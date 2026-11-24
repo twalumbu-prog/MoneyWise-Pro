@@ -9,6 +9,8 @@ export interface Budget {
     period_type: 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY';
     start_date: string;
     end_date: string;
+    /** Quarterly / yearly budgets paid all at once: the month within the period it falls due (0 = first). Null = spread evenly. */
+    due_offset?: number | null;
     created_at?: string;
     updated_at?: string;
 }
@@ -20,6 +22,7 @@ export interface SetBudgetPayload {
     period_type: string;
     start_date: string;
     end_date: string;
+    due_offset?: number | null;
 }
 
 export const budgetService = {

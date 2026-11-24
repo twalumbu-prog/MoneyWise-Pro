@@ -34,6 +34,13 @@ export const setBudget = async (req: any, res: any): Promise<any> => {
         const organization_id = (req as any).user.organization_id;
         const user_id = (req as any).user.id;
         const { qb_account_id, qb_account_name, amount, period_type, start_date, end_date } = req.body;
+        // Quarterly / yearly budgets paid all at once: month within the period it falls due. Only written when sent,
+        // so older clients keep working (and the column is only needed once a client uses it).
+        const hasDue = Object.prototype.hasOwnProperty.call(req.body, 'due_offset');
+        const due = req.body.due_offset === null || req.body.due_offset === undefined ? null : Number(req.body.due_offset);
+        if (hasDue && due !== null && (!Number.isInteger(due) || due < 0 || due > 11)) {
+            return res.status(400).json({ error: 'due_offset must be a whole month 0-11' });
+        }
 
         if (!organization_id) {
             return res.status(400).json({ error: 'Organization context missing' });
@@ -54,7 +61,8 @@ export const setBudget = async (req: any, res: any): Promise<any> => {
                 start_date,
                 end_date,
                 created_by: user_id,
-                updated_at: new Date().toISOString()
+                updated_at: new Date().toISOString(),
+                ...(hasDue ? { due_offset: due } : {}),
             }, {
                 onConflict: 'organization_id, qb_account_id, period_type, start_date'
             })

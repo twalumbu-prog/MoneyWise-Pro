@@ -22,7 +22,7 @@ import {
 } from '../components/animate-ui/components/radix/accordion';
 
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
-import { buildReportGroups, computeReportTotals, getPercentageChange } from 'core';
+import { buildReportGroups, computeReportTotals, getPercentageChange, budgetsForRange, effectiveBudget } from 'core';
 
 type PeriodType = 'MONTHLY' | 'WEEKLY' | 'QUARTERLY';
 type ModeType = 'EXPENSE' | 'CASH_OUTFLOW';
@@ -231,7 +231,8 @@ export const Reporting: React.FC = () => {
         queryFn: async () => {
             const [expData, budData, accData, prevExpData] = await Promise.all([
                 reportService.getExpenditures(periodData.start, periodData.end, mode),
-                budgetService.getBudgets(periodData.start, periodData.end, periodType),
+                // Every row: budgets carry forward from earlier periods and are prorated to the range below.
+                budgetService.getBudgets(),
                 accountService.getAll(),
                 reportService.getExpenditures(prevPeriodData.start, prevPeriodData.end, mode),
             ]);
@@ -242,7 +243,8 @@ export const Reporting: React.FC = () => {
     });
     const expenditures: ExpenditureAggregation[] = reportData?.expData ?? [];
     const prevExpenditures: ExpenditureAggregation[] = reportData?.prevExpData ?? [];
-    const budgets: Budget[] = reportData?.budData ?? [];
+    const budgetRows: Budget[] = reportData?.budData ?? [];
+    const budgets: Budget[] = useMemo(() => budgetsForRange(budgetRows as any, periodData.start, periodData.end) as any, [budgetRows, periodData.start, periodData.end]);
     const allAccounts: Account[] = reportData?.accData ?? [];
     const loading = (isFetching && !reportData) || !orgId;
 
@@ -2099,7 +2101,7 @@ export const Reporting: React.FC = () => {
                         type: periodData.type,
                         label: periodData.label
                     }}
-                    existingAmount={budgets.find(b => b.qb_account_id === selectedAccountForBudget.id)?.amount}
+                    existingAmount={effectiveBudget(budgetRows as any, selectedAccountForBudget.id, periodData.type as any, periodData.start).amount || undefined}
                     onSuccess={loadData}
                 />
             )}

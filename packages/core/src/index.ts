@@ -66,6 +66,8 @@ export type { Account } from './services/account.service';
 
 export { budgetService } from './services/budget.service';
 export type { Budget, SetBudgetPayload } from './services/budget.service';
+export { BUDGET_BASES, periodContaining, shiftPeriod, accountBasis, effectiveBudget, budgetsForRange, isoToday, amountInMonth, budgetForMonth, dueOffset } from './budgets/periods';
+export type { BudgetBasis, BudgetPeriod, EffectiveBudget } from './budgets/periods';
 
 export { departmentService } from './services/department.service';
 export type { Department, DepartmentConfig } from './services/department.service';

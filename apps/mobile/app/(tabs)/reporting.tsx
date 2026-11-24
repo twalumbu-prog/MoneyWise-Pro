@@ -12,7 +12,7 @@ import {
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-    reportService, budgetService, accountService, isPersonalOrgName,
+    reportService, budgetService, budgetsForRange, accountService, isPersonalOrgName,
     buildReportGroups, computeReportTotals, formatKwacha,
 } from 'core';
 import type { ReportView, ExpenditureMode, ExpenditureItem } from 'core';
@@ -90,11 +90,6 @@ function buildChartPeriods(tf: ChartTimeframe): { startDate: string; endDate: st
 const toLocalISODate = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-/** Budgets are always current-month (matching how the Budgets screen saves
- * them), independent of whatever date range the report itself is showing —
- * fetching with the report's own range excludes the in-progress month, since
- * its end_date (the last day of the month) hasn't happened yet and fails a
- * "budget ends on/before <today>" filter on the backend. */
 type ReportPeriod = 'week' | 'month' | 'quarter' | 'year' | 'ytd' | 'custom';
 const PERIOD_LABELS: Record<ReportPeriod, string> = {
     week: 'This week', month: 'This month', quarter: 'This quarter', year: 'This year', ytd: 'Year to date', custom: 'Custom',
@@ -137,13 +132,6 @@ function periodRange(period: ReportPeriod, offset = 0) {
         title = offset === 0 ? `Year to date ${y}` : `Jan 1 – ${shortDate(end)} ${y + offset}`;
     }
     return { start: toLocalISODate(start), end: toLocalISODate(end), label: PERIOD_LABELS[period], title };
-}
-
-function currentMonthRange() {
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    return { start: toLocalISODate(start), end: toLocalISODate(end) };
 }
 
 /**
@@ -242,13 +230,14 @@ export default function ReportingScreen() {
         queryKey: ['report', organizationId, view, range.start, range.end],
         queryFn: async () => {
             const mode: ExpenditureMode = view === 'PROFIT_LOSS' ? 'EXPENSE' : 'CASH_OUTFLOW';
-            const monthRange = currentMonthRange();
-            const [expData, budData, accData, prevExpData] = await Promise.all([
+            const [expData, budRows, accData, prevExpData] = await Promise.all([
                 reportService.getExpenditures(range.start, range.end, mode),
-                budgetService.getBudgets(monthRange.start, monthRange.end, 'MONTHLY'),
+                // Every row: budgets carry forward from earlier periods and are prorated to the range being viewed.
+                budgetService.getBudgets(),
                 accountService.getAll(),
                 reportService.getExpenditures(prevRange.start, prevRange.end, mode),
             ]);
+            const budData = budgetsForRange(budRows, range.start, range.end);
             return { expData, budData, accData, prevExpData };
         },
     });
