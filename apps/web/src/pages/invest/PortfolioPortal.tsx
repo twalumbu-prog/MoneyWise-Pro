@@ -34,6 +34,7 @@ const FundBlock: React.FC<{ f: PortalFund; onChanged: () => void }> = ({ f, onCh
     const saveTotals = () => run('totals', { asOf, validDeposits: deposits, totalUnits: units, availableValue: value }, (r) => {
         const c = r.checks, out = [`Saved. Price per unit ${fmtNav(r.nav)} for ${prettyDate(r.asOf)}.`];
         if (c.deposits) out.push(c.deposits.ok ? 'Deposits tie to MoneyWise.' : `Deposits differ: portal ${k(c.deposits.portal)} vs MoneyWise ${k(c.deposits.moneywise)} (${k(c.deposits.diff)}).`);
+        for (const l of r.ledger ?? []) out.push(l.status === 'posted' ? `Ledger updated: ${l.posted >= 0 ? 'gain' : 'loss'} of ${k(Math.abs(l.posted))} booked so Reports and net worth show ${k(l.value)}.` : l.status === 'needs_review' ? `Ledger NOT updated: ${l.note}` : l.status === 'in_step' ? 'Ledger already matches.' : '');
         out.push(c.units.moneywise == null ? c.units.note : c.units.ok ? 'Units tie to the order book.' : `Units differ: portal ${c.units.portal} vs order book ${c.units.moneywise} (${c.units.diff}).`);
         return out;
     });

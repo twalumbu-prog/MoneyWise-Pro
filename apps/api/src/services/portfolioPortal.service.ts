@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { revalueOrg } from './investmentRevaluation.service';
 
 /**
  * Portal confirmations. The investment company's own portal (e.g. Longhorn's) is the source of truth for what an investor holds. The investor
@@ -78,8 +79,9 @@ export async function recordTotals(orgId: string, userId: string, b: PortalTotal
     });
     if (error) throw new Error(error.message);
 
+    const ledger = await revalueOrg(orgId, userId).catch((e: any) => { console.error('[Portal] revaluation failed:', e?.message ?? e); return null; });
     return {
-        fund: fund.name, asOf, nav: r6(nav),
+        fund: fund.name, asOf, nav: r6(nav), ledger,
         checks: {
             deposits: deposits == null ? null : { portal: r2(deposits), moneywise: moneywiseDeposits, diff: r2(deposits - moneywiseDeposits), ok: Math.abs(deposits - moneywiseDeposits) < 0.5 },
             units: orderUnits == null ? { portal: r4(units), moneywise: null, diff: null, ok: false, note: 'Paste the order book to confirm units deposit by deposit.' } : { portal: r4(units), moneywise: orderUnits, diff: r4(units - orderUnits), ok: Math.abs(units - orderUnits) < 0.05 },
@@ -130,7 +132,8 @@ export async function recordOrderBook(orgId: string, userId: string, b: { target
         matched.push({ investmentId: cand.id, flowCode: r.flowCode ?? null, date: r.date, amount, units: r4(units), moneywiseAmount: cand.amount });
     }
     const notInPortal = order.filter((o) => !used.has(o.id)).map((o) => ({ investmentId: o.id, date: o.date, amount: o.amount }));
-    return { fund: fund.name, matched, missingInMoneywise, notInPortal, allTied: missingInMoneywise.length === 0 && notInPortal.length === 0 };
+    const ledger = await revalueOrg(orgId, userId).catch((e: any) => { console.error('[Portal] revaluation failed:', e?.message ?? e); return null; });
+    return { fund: fund.name, ledger, matched, missingInMoneywise, notInPortal, allTied: missingInMoneywise.length === 0 && notInPortal.length === 0 };
 }
 
 /** What the investor sees: per fund, the position, the latest portal confirmation, the order book and the verified-price history. */

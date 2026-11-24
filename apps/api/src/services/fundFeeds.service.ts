@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { savePrice } from './portfolioPortal.service';
+import { revalueTarget } from './investmentRevaluation.service';
 
 /**
  * Reads the fund data Longhorn Associates publishes on its own website, so Longhorn's funds on MoneyWise carry its real prices without anyone
@@ -80,6 +81,7 @@ export async function pullLonghorn(): Promise<{ funds: number; prices: number; a
         catch (pe: any) { console.error('[Funds] could not save price', name, pe?.message); continue; }
         if (!asOf || date > asOf) asOf = date;
     }
+    if (prices > 0) await revalueTarget(target.id).catch((e: any) => console.error('[Funds] revaluation failed:', e?.message ?? e));
     // Longhorn's feed can stop moving for weeks; say so loudly instead of looking healthy while holdings are valued on old prices.
     const feedStale = !asOf || (Date.parse(today) - Date.parse(asOf)) / DAY > 4;
     if (feedStale) console.warn(`[Funds] Longhorn's published prices are stale (latest ${asOf ?? 'none'}); confirm values from the portal on the Portfolio page.`);
