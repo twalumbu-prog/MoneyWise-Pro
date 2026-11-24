@@ -65,6 +65,7 @@ import developerRoutes from './routes/developer.routes';
 import publicApiRoutes from './routes/publicApi.routes';
 import oauthRoutes from './routes/oauth.routes';
 import momoCaptureRoutes from './routes/momoCapture.routes';
+import capturesRoutes from './routes/captures.routes';
 import marketplaceRoutes from './routes/marketplace.routes';
 import loansRoutes from './routes/loans.routes';
 import { broadcastAfterWrite } from './lib/realtimeBroadcast';
@@ -82,7 +83,7 @@ import pool from './db';
 // each cold Vercel instance otherwise opened a fresh direct connection and reran
 // ~15 sequential DDL statements just to find out they were all no-ops, which is
 // what was exhausting Postgres's connection limit under concurrent traffic.
-const MIGRATION_VERSION = 48;
+const MIGRATION_VERSION = 49;
 
 const runMigration = async () => {
     const directUrl = process.env.DIRECT_DATABASE_URL;
@@ -175,7 +176,7 @@ const runMigration = async () => {
 
             ALTER TABLE cashbook_entries
             ADD CONSTRAINT cashbook_entries_entry_type_check 
-            CHECK (entry_type IN ('DISBURSEMENT', 'RETURN', 'ADJUSTMENT', 'OPENING_BALANCE', 'CLOSING_BALANCE', 'INFLOW'));
+            CHECK (entry_type IN ('DISBURSEMENT', 'RETURN', 'ADJUSTMENT', 'OPENING_BALANCE', 'CLOSING_BALANCE', 'INFLOW', 'EXPENSE'));
         `);
 
         console.log('[Migration] Checking for QuickBooks integration table and columns...');
@@ -606,6 +607,14 @@ const runMigration = async () => {
         } catch (storageErr: any) {
             console.warn('[Migration] investor-kyc bucket/policy not applied — run the storage section of 20261005120000_investor_accounts.sql in the Supabase SQL editor:', storageErr.message);
         }
+
+        // A plain "what's my balance" message (dial code reply) carries no transaction, but its figure is the most
+        // trustworthy anchor for the running wallet balance momo-capture shows — better than inferring one only from
+        // transaction messages. One per provider per user; momo_capture_settings already exists.
+        await migrationPool.query(`
+            ALTER TABLE momo_capture_settings
+            ADD COLUMN IF NOT EXISTS balance_checks JSONB DEFAULT '{}'::jsonb;
+        `);
 
         // Marketplace opt-in: a seller lists individual products. Off by default.
         await migrationPool.query(`
@@ -1908,8 +1917,16 @@ CREATE INDEX IF NOT EXISTS idx_marketplace_orders_link ON public.marketplace_ord
 
         // Refresh PostgREST schema cache
         // Salon staff category (hairdresser / nail technician). Mirrors supabase/migrations/20261126100000_salon_staff_role.sql.
-        await migrationPool.query("ALTER TABLE public.salon_staff_profiles ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'HAIRDRESSER';");
-        await migrationPool.query(`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'salon_staff_profiles_role_check') THEN ALTER TABLE public.salon_staff_profiles ADD CONSTRAINT salon_staff_profiles_role_check CHECK (role IN ('HAIRDRESSER', 'NAIL_TECH')); END IF; END $$;`);
+        // Skipped on a database that has no salon tables (they're created outside this repo); otherwise the whole startup
+        // migration stopped here on every cold start and nothing after it ever ran.
+        await migrationPool.query(`DO $$ BEGIN
+            IF to_regclass('public.salon_staff_profiles') IS NOT NULL THEN
+                ALTER TABLE public.salon_staff_profiles ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'HAIRDRESSER';
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'salon_staff_profiles_role_check') THEN
+                    ALTER TABLE public.salon_staff_profiles ADD CONSTRAINT salon_staff_profiles_role_check CHECK (role IN ('HAIRDRESSER', 'NAIL_TECH'));
+                END IF;
+            END IF;
+        END $$;`);
 
         // Stock loss tracking (kind of loss + who was in charge). Mirrors supabase/migrations/20261127100000_stock_loss_tracking.sql.
         await migrationPool.query('ALTER TABLE public.stock_movements ADD COLUMN IF NOT EXISTS loss_kind TEXT;');
@@ -1960,6 +1977,10 @@ app.use(cors({
 // so requests here never reach the global parser.
 app.use('/webhooks', express.raw({ type: '*/*', limit: '5mb' }), webhooksRoutes);
 
+// Receipt uploads arrive as base64 JSON (≤10 MB file); parsed here so the global 100 kb limit still applies everywhere else.
+app.use('/captures/upload', express.json({ limit: '15mb' }));
+// Meta posts the data-deletion callback as a form.
+app.use('/integrations/meta/data-deletion', express.urlencoded({ extended: false }));
 // A photo search sends a (downsized) picture, which is bigger than the default body limit.
 app.use('/marketplace/image-search', express.json({ limit: '2mb' }));
 app.use('/accounting/import', express.json({ limit: '25mb' }));
@@ -2036,6 +2057,7 @@ app.use('/developer', developerRoutes);
 app.use('/v1', publicApiRoutes);
 app.use('/oauth', oauthRoutes);
 app.use('/momo-capture', momoCaptureRoutes);
+app.use('/captures', capturesRoutes);
 app.use('/marketplace', marketplaceRoutes);
 app.use('/loans', loansRoutes);
 app.use('/accounting', accountingRoutes);

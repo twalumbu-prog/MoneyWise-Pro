@@ -2,13 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, Switch, Alert, Platform, AppState, ActivityIndicator } from 'react-native';
 import { Stack, router, useFocusEffect } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, MessageSquare, Workflow, Inbox, ChevronRight, Check, ClipboardPaste, Unplug } from 'lucide-react-native';
-import { momoCaptureService } from 'core';
+import { Bell, MessageSquare, Workflow, Inbox, ChevronRight, Check, ClipboardPaste, Unplug, ScanLine, Wallet, History } from 'lucide-react-native';
+import { captureService, momoCaptureService } from 'core';
 import type { MomoCaptureSettings } from 'core';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 import {
-    androidCaptureAvailable, iosCaptureAvailable, iosIntentAvailable, getIosStatus, getAndroidStatus, setAndroidSources, isIosShortcutSetUp, disconnectCapture, MOMO_SETTINGS_KEY,
+    androidCaptureAvailable, iosCaptureAvailable, iosIntentAvailable, getIosStatus, getAndroidStatus, setAndroidSources, isIosShortcutSetUp, disconnectCapture,
+    importRecentMessages, requestSmsPermission, MOMO_SETTINGS_KEY, MOMO_CAPTURES_KEY,
 } from '../../src/lib/momoCapture';
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -32,6 +33,11 @@ const ago = (iso: string | null) => {
 export default function MomoCaptureSettingsScreen() {
     const qc = useQueryClient();
     const settings = useQuery({ queryKey: MOMO_SETTINGS_KEY, queryFn: () => momoCaptureService.getSettings() });
+    // Capture is free on every plan. The server still says whether the combined list can open (planEligible),
+    // so a failed lookup just hides the row.
+    const captureSettings = useQuery({ queryKey: ['captures', 'settings'], queryFn: () => captureService.settings(), retry: false });
+    const allCapturesAvailable = !!captureSettings.data?.planEligible;
+    const balances = useQuery({ queryKey: ['momo-capture', 'balances'], queryFn: () => momoCaptureService.balances(), retry: false });
     const [android, setAndroid] = useState(getAndroidStatus());
     const [iosDone, setIosDone] = useState(false);
 
@@ -40,6 +46,7 @@ export default function MomoCaptureSettingsScreen() {
         // With the built-in action, "set up" also needs the key still on this phone (a 401 drops it).
         void isIosShortcutSetUp().then((done) => setIosDone(done && (!iosIntentAvailable || !!getIosStatus()?.hasToken)));
         void qc.invalidateQueries({ queryKey: MOMO_SETTINGS_KEY });
+        void qc.invalidateQueries({ queryKey: ['momo-capture', 'balances'] });
     }, [qc]);
 
     useFocusEffect(refreshDevice);
@@ -68,6 +75,22 @@ export default function MomoCaptureSettingsScreen() {
         } catch (e: any) { Alert.alert('Could not change capture', e.message); }
         refreshDevice();
     };
+
+    const reimport = useMutation({
+        mutationFn: async () => {
+            if (!android?.smsPermission) {
+                const res = await requestSmsPermission();
+                if (res !== 'granted') throw new Error('MoneyWise needs SMS access to catch up on recent messages. You can use notification capture or paste messages instead.');
+            }
+            return importRecentMessages(100);
+        },
+        onSuccess: (n) => {
+            Alert.alert(n ? 'Import complete' : 'Nothing new', n ? `Found ${n} message(s) among your newest 100. Already-captured ones were skipped — review the rest in Review captured.` : 'No new mobile money messages among your newest 100 texts.');
+            refreshDevice();
+            void qc.invalidateQueries({ queryKey: MOMO_CAPTURES_KEY });
+        },
+        onError: (e: Error) => Alert.alert('Could not import', e.message),
+    });
 
     const disconnect = () => Alert.alert(
         'Turn off capture?',
@@ -126,10 +149,46 @@ export default function MomoCaptureSettingsScreen() {
                 </View>
                 {!!lastSeen && <Text style={styles.hint}>{lastSeen}.</Text>}
                 {Platform.OS === 'android' && !!android?.queued && <Text style={styles.hint}>{android.queued} message(s) waiting for a connection.</Text>}
+                {Platform.OS === 'android' && !!android && anyOn && (
+                    <>
+                        {!android.hasToken && <Text style={[styles.hint, { color: colors.warn }]}>This phone has no capture key. Switch a source off and on again to reconnect.</Text>}
+                        {!!android.lastError && <Text style={[styles.hint, { color: colors.warn }]}>Last send failed: {android.lastError}</Text>}
+                        {android.smsEnabled && <Text style={styles.hint}>Last SMS seen: {android.smsSeenAt ? `${ago(new Date(android.smsSeenAt).toISOString())}. ${android.smsSeenResult ?? ''}` : 'none yet'}</Text>}
+                        {android.notificationsEnabled && <Text style={styles.hint}>Last SMS alert seen: {android.notifSeenAt ? `${ago(new Date(android.notifSeenAt).toISOString())}. ${android.notifSeenResult ?? ''}` : 'none yet'}{android.listenerState ? ` (listener ${android.listenerState.toLowerCase()})` : ''}</Text>}
+                        {android.canPrompt === false && <Text style={[styles.hint, { color: colors.warn }]}>Notifications are off for MoneyWise, so it can’t ask you to record a transaction when it happens. Turn them on in your phone’s settings.</Text>}
+                        {!!android.promptResult && <Text style={styles.hint}>Last prompt: {android.promptResult}</Text>}
+                    </>
+                )}
+
+                {!!balances.data?.length && (
+                    <>
+                        <Text style={[styles.sectionLabel, { marginTop: 24 }]}>WALLET BALANCES</Text>
+                        <Text style={styles.intro}>
+                            What each mobile money account holds in MoneyWise. It only changes when you record a transaction —
+                            messages waiting for review don't count until you confirm them.
+                        </Text>
+                        <View style={styles.card}>
+                            {balances.data.map((b, i) => (
+                                <Row
+                                    key={b.provider} border={i > 0} icon={<Wallet size={18} color={colors.blue} />} label={b.name}
+                                    sub="Recorded in MoneyWise"
+                                    right={<Text style={styles.balance}>K{b.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>}
+                                />
+                            ))}
+                        </View>
+                    </>
+                )}
 
                 <Text style={[styles.sectionLabel, { marginTop: 24 }]}>CAPTURED TRANSACTIONS</Text>
                 <View style={styles.card}>
-                    <Row
+                    {allCapturesAvailable && (
+                        <Row
+                            icon={<ScanLine size={18} color={colors.blue} />} label="All captured transactions"
+                            sub="Receipts and messages in one list" onPress={() => router.push('/captures')}
+                            right={<ChevronRight size={18} color={colors.textFaint} />}
+                        />
+                    )}
+                    <Row border={allCapturesAvailable}
                         icon={<Inbox size={18} color={colors.blue} />} label="Review captured" onPress={() => router.push('/momo-captures')}
                         sub={s ? (s.pendingCount ? `${s.pendingCount} waiting for you to confirm` : 'Nothing waiting') : ' '}
                         right={<ChevronRight size={18} color={colors.textFaint} />}
@@ -139,6 +198,13 @@ export default function MomoCaptureSettingsScreen() {
                         sub="Copy a confirmation SMS and add it by hand" onPress={() => router.push({ pathname: '/momo-captures', params: { paste: '1' } })}
                         right={<ChevronRight size={18} color={colors.textFaint} />}
                     />
+                    {Platform.OS === 'android' && androidCaptureAvailable && (
+                        <Row
+                            border icon={<History size={18} color={colors.blue} />} label="Import recent messages"
+                            sub="Catch up on the newest 100 — already captured ones are skipped" onPress={() => reimport.mutate()}
+                            right={reimport.isPending ? <ActivityIndicator color={colors.blue} /> : <ChevronRight size={18} color={colors.textFaint} />}
+                        />
+                    )}
                 </View>
 
                 {settings.isLoading ? <ActivityIndicator style={{ marginTop: 24 }} color={colors.blue} /> : s ? (
@@ -202,6 +268,7 @@ const styles = StyleSheet.create({
     rowLabel: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text },
     badge: { fontFamily: fonts.bodyBold, fontSize: 10, color: colors.positiveInk, backgroundColor: '#E7FBF2', paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.pill, overflow: 'hidden' },
     rowSub: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint, lineHeight: 17 },
+    balance: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.text },
     hint: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint, marginTop: 8, marginLeft: 4, lineHeight: 17 },
     radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
     radioOn: { backgroundColor: colors.blue, borderColor: colors.blue },

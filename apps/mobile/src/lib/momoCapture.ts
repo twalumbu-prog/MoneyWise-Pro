@@ -29,6 +29,15 @@ interface NativeStatus {
     queued: number;
     lastSentAt: number | null;
     lastError: string | null;
+    /** What each listener last saw and did with it. Absent on a binary built before these were added. */
+    smsSeenAt?: number | null;
+    smsSeenResult?: string | null;
+    notifSeenAt?: number | null;
+    notifSeenResult?: string | null;
+    listenerState?: string | null;
+    /** Whether Android lets MoneyWise show the Record / Dismiss prompt, and what happened to the last one. */
+    canPrompt?: boolean;
+    promptResult?: string | null;
 }
 
 interface MomoCaptureNative {
@@ -101,13 +110,26 @@ export function getAndroidStatus(): NativeStatus | null {
 /**
  * Turns Android sources on/off. Fetches a capture key the first time (or when the server rejected the old one —
  * the native layer drops a rejected key).
+ *
+ * Switching a source on must take effect on the phone even when the network is down: issuing a key is the only part
+ * that needs one. If that fails, the switch still turns on locally (capture itself stays off, since the native side
+ * won't send without a key) and the screen's own "no capture key" hint explains why — rather than the toggle
+ * silently doing nothing, which is what it looked like before this always ran. `flushQueued` retries the key on the
+ * next foreground, so it recovers on its own once the connection is back.
  */
-export async function setAndroidSources(sources: { notifications: boolean; sms: boolean }) {
+export async function setAndroidSources(sources: { notifications: boolean; sms: boolean }, opts: { askToPrompt?: boolean } = {}) {
     if (!native) throw new Error('This version of the app can’t capture messages yet. Update MoneyWise from the Play Store.');
     const status = native.getStatus();
     const anyOn = sources.notifications || sources.sms;
     let token: string | undefined;
-    if (anyOn && !status.hasToken) token = (await momoCaptureService.rotateToken()).token;
+    if (anyOn && !status.hasToken) {
+        try { token = (await momoCaptureService.rotateToken()).token; }
+        catch (e) { console.warn('[MoMo capture] could not issue a capture key; will retry later:', e); }
+    }
+    // The Record / Dismiss prompt is an ordinary notification, which Android 13+ only shows with this permission.
+    if (anyOn && opts.askToPrompt !== false && Number(Platform.Version) >= 33) {
+        try { await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS); } catch { /* capture still works without the prompt */ }
+    }
     native.configure({
         apiUrl: API_URL, token, smsEnabled: sources.sms, notificationsEnabled: sources.notifications,
         senderPattern: SENDER_PATTERN, providerPackages: PROVIDER_PACKAGES,
@@ -129,14 +151,35 @@ export const openNotificationAccessSettings = () => native?.openNotificationAcce
 export const openAppSettings = () => (native ? native.openAppSettings() : Linking.openSettings());
 
 /** Queues the last [days] of provider SMS from the inbox. Server-side dedupe makes re-running safe. */
-export async function importSmsHistory(days = 30): Promise<number> {
+export async function importSmsHistory(days = 30, max = 500): Promise<number> {
     if (!native) return 0;
-    const n = await native.importSmsHistory(Date.now() - days * 24 * 3600 * 1000, 500);
+    const n = await native.importSmsHistory(Date.now() - days * 24 * 3600 * 1000, max);
     return n;
 }
 
-/** Retries anything the background listeners couldn't send (no signal at the time). */
+/**
+ * Catches the phone back up: queues the newest [max] matching SMS regardless of how long ago they are (the
+ * original import only ever ran once, during setup, so anything since has no way back into Review captured short
+ * of this). Safe to run as often as wanted — a message already booked, dismissed, or waiting is never duplicated,
+ * both locally (the same text within 15 minutes is dropped before it's even queued) and on the server (a message
+ * with the same transaction id, or the same wording within 15 minutes, is rejected outright).
+ */
+export async function importRecentMessages(max = 100): Promise<number> {
+    return importSmsHistory(3650, max);
+}
+
+/**
+ * Retries anything the background listeners couldn't send (no signal at the time). If a source is switched on but the
+ * phone has lost its capture key (the server rejected it), a new key is issued first: otherwise capture stays silently
+ * off while the switches still read on.
+ */
 export async function flushQueued(): Promise<void> {
+    try {
+        const s = native?.getStatus();
+        if (s && !s.hasToken && (s.smsEnabled || s.notificationsEnabled)) {
+            await setAndroidSources({ notifications: s.notificationsEnabled, sms: s.smsEnabled }, { askToPrompt: false });
+        }
+    } catch { /* signed out or offline: the next foreground tries again */ }
     try { await (native ?? iosNative)?.flush(); } catch { /* next foreground tries again */ }
 }
 

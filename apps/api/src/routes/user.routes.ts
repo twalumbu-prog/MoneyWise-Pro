@@ -3,7 +3,7 @@ import { requireAuth } from '../middleware/auth';
 import { 
     getUsers, getNotificationsSummary, createUser, updateUser, deleteUser, 
     resendInvite, getMyProfile, updatePaymentInfo, registerPushToken, 
-    unregisterPushToken, searchRecipients, verifyRecipient,
+    unregisterPushToken, sendTestPush, searchRecipients, verifyRecipient,
     getMyPreferences, updateMyPreferences, getMyEmployers, requestPinRecovery, verifyPinRecovery,
     getMyGrowPlan, saveMyGrowPlan, deleteMyGrowPlan 
 } from '../controllers/user.controller';
@@ -25,6 +25,7 @@ router.post('/me/pin-recovery/request', requestPinRecovery);
 router.post('/me/pin-recovery/verify', verifyPinRecovery);
 router.post('/me/push-token', registerPushToken);
 router.delete('/me/push-token', unregisterPushToken);
+router.post('/me/push-test', sendTestPush);
 router.get('/search-recipients', searchRecipients);
 router.post('/verify-recipient', verifyRecipient);
 router.get('/', getUsers);

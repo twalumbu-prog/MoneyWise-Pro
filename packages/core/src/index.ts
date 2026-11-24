@@ -56,6 +56,7 @@ export type {
     UserPreferences,
     PreferencesResponse,
     NotifyChannel,
+    PushTopic,
     SalaryDestination,
     MyProfile,
     MoneyWiseRecipient,
@@ -158,8 +159,10 @@ export { rewardsService } from './services/rewards.service';
 export { payLinkService } from './services/payLink.service';
 export type { PayTarget, PayResult } from './services/payLink.service';
 export type { RewardCard, RewardsOverview, RewardDetail, RewardPointEntry, RewardAchievement, RewardInvite, RewardVoucher, RewardProgramSettings, RewardOption, RewardItem, RewardItemInput, RewardType, PurchaseClaim, PurchasePreview, VoucherCheck } from './services/rewards.service';
+export { captureService } from './services/capture.service';
+export type { CaptureRow, CaptureDetail, CaptureConversation, CaptureSettings, CaptureStatus, CustomerCapture } from './services/capture.service';
 export { momoCaptureService } from './services/momoCapture.service';
-export type { MomoBalanceCheck, MomoCaptureActivity, MomoDiagnosis, MomoIgnoredMessage, MomoCapture, MomoCaptureSettings, MomoCaptureSource, MomoCaptureStatus } from './services/momoCapture.service';
+export type { MomoBalance, MomoBalanceCheck, MomoCaptureActivity, MomoDiagnosis, MomoIgnoredMessage, MomoCapture, MomoCaptureSettings, MomoCaptureSource, MomoCaptureStatus } from './services/momoCapture.service';
 export type {
     SavingsKind, SavingsFrequency, SavingsItem, SavingsOverview, SavingsDetail, SavingsMember, SavingsContribution, SavingsMemberSummary,
     SavingsInvitePreview, SavingsPerson,

@@ -32,6 +32,18 @@ export interface MomoCapture {
     status: MomoCaptureStatus;
     cashbook_entry_id: string | null;
     matched_entry_id: string | null;
+    /** Waiting captures only: the category last used with this contact, if any. */
+    suggested_account_id?: string | null;
+    /** Waiting captures only: the person's most-used categories for this direction, most used first. */
+    ranked_account_ids?: string[];
+}
+
+/** A wallet's balance as the operator last stated it in a message. */
+export interface MomoBalance {
+    provider: MomoCapture['provider'];
+    name: string;
+    balance: number;
+    asOf: string;
 }
 
 /** A balance enquiry reply that differs from the provider account in MoneyWise. */
@@ -58,6 +70,9 @@ export type MomoDiagnosis =
     | { kind: 'IGNORED'; reason: string; sensitive: boolean };
 
 export const momoCaptureService = {
+    balances(): Promise<MomoBalance[]> {
+        return apiJson('/momo-capture/balances');
+    },
     getSettings(): Promise<MomoCaptureSettings> {
         return apiJson('/momo-capture/settings');
     },

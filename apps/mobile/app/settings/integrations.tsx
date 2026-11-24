@@ -69,6 +69,15 @@ export default function IntegrationsScreen() {
             <ScrollView contentContainerStyle={styles.scroll} refreshControl={undefined}>
                 <Text style={styles.sectionSub}>Manage connections to external services.</Text>
 
+                <Pressable onPress={() => router.push('/captures')} style={styles.card}>
+                    <Text style={styles.cardTitle}>Transaction capture</Text>
+                    <Text style={styles.cardSub}>Receipts and messages become entries you approve</Text>
+                </Pressable>
+                <Pressable onPress={() => router.push('/settings/momo-capture')} style={styles.card}>
+                    <Text style={styles.cardTitle}>Mobile money capture</Text>
+                    <Text style={styles.cardSub}>Pick up MTN, Airtel and Zamtel messages on this phone</Text>
+                </Pressable>
+
                 {isLoading ? (
                     <View style={styles.centre}><ActivityIndicator color={colors.blue} /></View>
                 ) : (

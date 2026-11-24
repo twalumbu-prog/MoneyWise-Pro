@@ -1,9 +1,9 @@
-import { View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator, Alert, Switch, Platform } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, Smartphone, Mail, Wallet, Check, MessageSquareText, ChevronRight } from 'lucide-react-native';
+import { Bell, Smartphone, Mail, Wallet, Check, MessageSquareText, ChevronRight, TrendingUp, HandCoins, ListChecks } from 'lucide-react-native';
 import { userService } from 'core';
-import type { NotifyChannel, SalaryDestination, PreferencesResponse } from 'core';
+import type { NotifyChannel, SalaryDestination, PreferencesResponse, PushTopic } from 'core';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { InlineSearchSelect } from '../../src/components/InlineSearchSelect';
 import { colors, fonts, radius } from '../../src/theme/tokens';
@@ -31,7 +31,11 @@ export default function PreferencesScreen() {
                 qc.setQueryData<PreferencesResponse>(PREFS_KEY, {
                     ...prev,
                     preferences: {
-                        notifications: { ...prev.preferences.notifications, ...patch.notifications } as any,
+                        notifications: {
+                            ...prev.preferences.notifications,
+                            ...patch.notifications,
+                            topics: { ...prev.preferences.notifications.topics, ...patch.notifications?.topics },
+                        } as any,
                         ai: { ...prev.preferences.ai, ...patch.ai },
                         payroll: { ...prev.preferences.payroll, account_id: null, ...patch.payroll } as any,
                     },
@@ -43,7 +47,21 @@ export default function PreferencesScreen() {
         onSettled: () => { void qc.invalidateQueries({ queryKey: PREFS_KEY }); },
     });
 
+    const test = useMutation({
+        mutationFn: (topic: PushTopic) => userService.sendTestPush(topic),
+        onSuccess: (r) => {
+            if (r.devices === 0) Alert.alert('No phone to send to', 'This phone has not registered for notifications yet. Allow notifications for MoneyWise, then sign out and back in.');
+        },
+        onError: (e: Error) => Alert.alert('Could not send a test', e.message),
+    });
+
     const p = data?.preferences;
+    const pushOff = p?.notifications.channel === 'EMAIL';
+    const topics: { id: PushTopic; label: string; sub: string; icon: React.ReactNode }[] = [
+        { id: 'to_confirm', label: 'Transactions to confirm', sub: 'A daily nudge to categorise captured transactions', icon: <ListChecks size={18} color={colors.blue} /> },
+        { id: 'reminders', label: 'Money owed', sub: 'When someone owes you, or you owe someone', icon: <HandCoins size={18} color={colors.blue} /> },
+        { id: 'insights', label: 'Progress updates', sub: 'How your spending, saving and growth are going', icon: <TrendingUp size={18} color={colors.blue} /> },
+    ];
     const channels: { id: NotifyChannel; label: string; sub: string; icon: React.ReactNode }[] = [
         { id: 'BOTH', label: 'App and email', sub: 'Get a push notification and an email', icon: <Bell size={18} color={colors.blue} /> },
         { id: 'APP', label: 'App only', sub: 'Push notifications on your phone, no emails', icon: <Smartphone size={18} color={colors.blue} /> },
@@ -80,6 +98,39 @@ export default function PreferencesScreen() {
                         ))}
                     </View>
                     <Text style={styles.hint}>Applies to updates about your personal account — payments in, money sent and requests.</Text>
+
+                    <Text style={[styles.sectionLabel, { marginTop: 24 }]}>PUSH NOTIFICATIONS ABOUT</Text>
+                    <View style={styles.card}>
+                        {topics.map((t, i) => {
+                            const on = p.notifications.topics?.[t.id] !== false;
+                            const testing = test.isPending && test.variables === t.id;
+                            return (
+                                <View key={t.id} style={[styles.row, i > 0 && styles.rowBorder, pushOff && { opacity: 0.45 }]}>
+                                    {t.icon}
+                                    <View style={styles.rowMain}>
+                                        <Text style={styles.rowLabel}>{t.label}</Text>
+                                        <Text style={styles.rowSub}>{t.sub}</Text>
+                                        {on && !pushOff && (
+                                            <Pressable onPress={() => test.mutate(t.id)} disabled={test.isPending} hitSlop={6} style={({ pressed }) => [styles.testBtn, pressed && { opacity: 0.6 }]}>
+                                                {testing ? <ActivityIndicator size="small" color={colors.blue} /> : <Text style={styles.testText}>Send a test</Text>}
+                                            </Pressable>
+                                        )}
+                                    </View>
+                                    <Switch
+                                        value={on && !pushOff}
+                                        disabled={pushOff}
+                                        onValueChange={(v) => save.mutate({ notifications: { topics: { [t.id]: v } } })}
+                                        trackColor={{ true: colors.blue, false: colors.borderStrong }}
+                                        thumbColor={Platform.OS === 'android' ? '#FFFFFF' : undefined}
+                                        accessibilityLabel={t.label}
+                                    />
+                                </View>
+                            );
+                        })}
+                    </View>
+                    <Text style={styles.hint}>
+                        {pushOff ? 'You chose email only, so no push notifications are sent. Choose "App only" or "App and email" to use these.' : 'You can also mute each of these from your phone’s notification settings.'}
+                    </Text>
 
                     <Text style={[styles.sectionLabel, { marginTop: 24 }]}>MOBILE MONEY CAPTURE</Text>
                     <View style={styles.card}>
@@ -174,6 +225,8 @@ const styles = StyleSheet.create({
     radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
     radioOn: { backgroundColor: colors.blue, borderColor: colors.blue },
     hint: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint, marginTop: 8, marginLeft: 4, lineHeight: 17 },
+    testBtn: { alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 12, paddingVertical: 5, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.blue, minWidth: 92, alignItems: 'center' },
+    testText: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.blue },
     aiHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     aiTitle: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text },
     aiSub: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint, marginTop: 3, marginBottom: 10 },

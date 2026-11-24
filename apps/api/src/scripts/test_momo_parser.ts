@@ -5,7 +5,7 @@
  * add it here (with names/numbers changed) before adjusting the parser.
  */
 import assert from 'assert';
-import { parseMomoMessage, parseBalanceMessage } from '../services/momoCapture/parser';
+import { parseMomoMessage, parseBalanceOnly, parseBalanceMessage, isPersonalNumber } from '../services/momoCapture/parser';
 
 type Expect = Partial<ReturnType<typeof parseMomoMessage> & {}> | null;
 const cases: { text: string; sender?: string; expect: Expect }[] = [
@@ -33,12 +33,82 @@ const cases: { text: string; sender?: string; expect: Expect }[] = [
         expect: { provider: 'ZAMTEL', direction: 'OUT', amount: 500, balanceAfter: 20, reference: '99887766' },
     },
     { text: 'BANDA JOHN has sent you ZMW 40.00. Ref ABC123456', sender: 'MoMo', expect: { direction: 'IN', amount: 40 } },
+    // A promo or help line after a real confirmation must not hide it.
+    {
+        text: 'You have received ZMW 250.00 from JOHN BANDA 260971234567. Your new balance is ZMW 1,320.50. Transaction ID: 12345678901. Dial *115# to check your balance.',
+        sender: 'MoMo',
+        expect: { direction: 'IN', amount: 250, balanceAfter: 1320.5, reference: '12345678901' },
+    },
+    {
+        text: 'Txn ID: CO261027.1402.B123. You have withdrawn ZMW 200.00 from agent 123456 KABWE STORES. Fee ZMW 5.00. Bal ZMW 10.00. Transact and win big!',
+        sender: 'AirtelMoney',
+        expect: { provider: 'AIRTEL', direction: 'OUT', amount: 200, fee: 5, balanceAfter: 10, reference: 'CO261027.1402.B123' },
+    },
+    {
+        text: 'Txn. ID : PP261027.1402.A12345. You have received ZMW 50.00 from 971234567 JOHN BANDA. Your available balance is ZMW 60.00.',
+        sender: 'AirtelMoney',
+        expect: { direction: 'IN', amount: 50, balanceAfter: 60, reference: 'PP261027.1402.A12345' },
+    },
+    {
+        text: 'You have deposited ZMW 500.00 into your account via agent LUSAKA KIOSK. New balance ZMW 512.00. Txn ID 11223344556',
+        sender: 'MoMo',
+        expect: { direction: 'IN', amount: 500, balanceAfter: 512, reference: '11223344556' },
+    },
+    // Real messages from a test phone (names changed).
+    {
+        text: 'Money sent to JANE PHIRI on 12/11/2026.Amount ZMW 10.00. Your bal is ZMW 4.44.TID: PP261112.1807.F61078.',
+        sender: 'AirtelMoney',
+        expect: { provider: 'AIRTEL', direction: 'OUT', amount: 10, balanceAfter: 4.44, reference: 'PP261112.1807.F61078' },
+    },
+    {
+        text: 'Money received ZMW 40.00 from 100200300 NFS SETTLEMENT ACCOUNT. Dial *115# to check balance. Deposits are free. TID: CI261112.1720.H05308',
+        sender: 'AirtelMoney',
+        expect: { provider: 'AIRTEL', direction: 'IN', amount: 40, reference: 'CI261112.1720.H05308' },
+    },
+    // The help line runs straight on from the confirmation, with no space after the full stop.
+    {
+        text: 'You have received ZMW 5.00 from 970000001 JOHN BANDA.Dial *115# to check your new Bal. TID: PP261113.0858.J46616.',
+        sender: 'AirtelMoney',
+        expect: { provider: 'AIRTEL', direction: 'IN', amount: 5, balanceAfter: null, counterparty: '970000001 JOHN BANDA', reference: 'PP261113.0858.J46616' },
+    },
+    // MTN: currency after the number in the balance, and a sender note that quotes a bundle notice.
+    {
+        text: "Y'ello. Payment of ZMW 10.00 to Mobile Money successful at 2026-10-16 14:53:07.Message:- Y'ello! You have successfully purchased K10: 1GB - 30Days for 260960000001 valid until 2026-11-15. Your new balance: 0.36 ZMW.Financial Transaction ID: 24680135791.",
+        sender: 'MoMo',
+        expect: { provider: 'MTN', direction: 'OUT', amount: 10, balanceAfter: 0.36, reference: '24680135791' },
+    },
+    {
+        text: 'Yello, Payment of ZMW 15.00 to Mobile Money Data Bundle successful at 2026-10-16 14:53:07. Message -: CBP. Your new balance:0.36 ZMW. Financial Transaction ID:13579246801. Thank you',
+        sender: 'MoMo',
+        expect: { direction: 'OUT', amount: 15, balanceAfter: 0.36, counterparty: 'Mobile Money Data Bundle', reference: '13579246801' },
+    },
+    // What the sender typed must not decide anything.
+    {
+        text: 'Yello.You have received ZMW 80.00 from JOHN BANDA on your mobile money account at 2026-10-15 11:42:05. Message from sender: refund for cancelled order, failed delivery. Financial Transaction ID: 11122233344.',
+        sender: 'MoMo',
+        expect: { direction: 'IN', amount: 80, counterparty: 'JOHN BANDA', reference: '11122233344' },
+    },
+    // Money in, worded with an "out" verb.
+    { text: 'Payment of ZMW 20.00 received from MARY PHIRI. Txn ID 55566677788. New balance ZMW 25.00', sender: 'MoMo', expect: { direction: 'IN', amount: 20, balanceAfter: 25 } },
+    { text: 'You have been paid ZMW 500.00 by ACME LTD. Ref 99911122233. Balance ZMW 512.00', sender: 'MoMo', expect: { direction: 'IN', amount: 500, balanceAfter: 512 } },
+    { text: 'JOHN BANDA has transferred ZMW 50.00 to your account. TID: CI261113.1001.A11111', sender: 'AirtelMoney', expect: { direction: 'IN', amount: 50 } },
+    // A note after "Ref" is not a transaction id, and without a real one this is read as not a transaction at all —
+    // a genuine confirmation always carries one; a message that merely mentions an amount must not be trusted.
+    { text: 'You have received ZMW 30.00 from JOHN BANDA. Ref: School fees. Balance of ZMW 45.00', sender: 'MoMo', expect: null },
+    // Till payment and withdrawal name the other party differently.
+    { text: 'Payment of ZMW 2.00 Till Number CORNER SHOP LUSAKA. Airtel Money bal is ZMW 0.44. TID : MP261113.0725.D88498.', sender: 'AirtelMoney', expect: { direction: 'OUT', amount: 2, balanceAfter: 0.44, counterparty: 'CORNER SHOP LUSAKA' } },
+    { text: 'You have withdrawn ZMW 50.00 from 123456 JANE PHIRI. Bal is ZMW 83.81. TID: CO261017.1047.E96746.', sender: 'AirtelMoney', expect: { direction: 'OUT', amount: 50, balanceAfter: 83.81, counterparty: '123456 JANE PHIRI' } },
     // Real Airtel receipt (2026-11-21): "Dial *115#" is a footer here, and the sender is not named.
     {
         text: 'Money received ZMW 14.00 from 0245972 NFS SETTLEMENT ACCOUNT. Dial *115# to check balance. Deposits are free. TID: CI261121.0928.Z14917',
         expect: { provider: 'AIRTEL', direction: 'IN', amount: 14, counterparty: '0245972 NFS SETTLEMENT ACCOUNT', reference: 'CI261121.0928.Z14917' },
     },
     // Not transactions — must be ignored.
+    { text: "Y'ello! You have received K10: 1GB - 30Days from 260960000001 valid until 2026-11-15 14:53:07.123.", sender: 'MTN-ZM', expect: null },
+    { text: "Y'ello! You have successfully purchased K10: 1GB - 30Days for 260960000001 valid until 2026-11-15 14:53:07.123.", sender: 'MTN-ZM', expect: null },
+    { text: 'Did you know you can get 50Mbps uncapped data at K1,000 for 30 days and a FREE 5G Router? Call 111 or visit https://home.mtn.zm/ to purchase today!', sender: 'MTNHome', expect: null },
+    { text: 'Y\'ello! You have received a bonus offer. Dial *117# to buy bundles from K5.', sender: 'MoMo', expect: null },
+    { text: 'Enter PIN to approve the payment of ZMW 50.00 to SHOP X.', sender: 'MoMo', expect: null },
     { text: 'Your MoMo OTP is 482911. Do not share it with anyone.', expect: null },
     { text: 'Transaction of ZMW 300.00 to MARY PHIRI failed due to insufficient funds.', expect: null },
     { text: 'JOHN BANDA has requested ZMW 200.00 from you. Dial *115# to approve.', expect: null },
@@ -61,6 +131,37 @@ for (const c of cases) {
     }
 }
 const balanceCases: { text: string; sender?: string; expect: { provider: string; balance: number } | null }[] = [
+    { text: 'Your Mobile Money balance is ZMW 14.28.', sender: 'MoMo', expect: { provider: 'MTN', balance: 14.28 } },
+    { text: 'Your Airtel Money balance is ZMW 62.00. Dial *115# for more options.', sender: 'AirtelMoney', expect: { provider: 'AIRTEL', balance: 62 } },
+    { text: 'Balance: ZMW 14.28', sender: 'MoMo', expect: { provider: 'MTN', balance: 14.28 } },
+    // A real transaction must never be read as a plain balance check.
+    { text: 'You have received ZMW 5.00 from JOHN BANDA. New balance ZMW 20.00. TID 12345678901', sender: 'MoMo', expect: null },
+    { text: 'Your MoMo OTP is 482911. Do not share it with anyone.', expect: null },
+];
+balanceCases.push(
+    // The real bug: a promo stating a "balance" figure, from a sender that names no mobile money provider at all,
+    // once created a wallet with that figure as its balance. Neither name a provider, so neither may anchor one.
+    { text: 'Your new K700 Wallet Balance is ready! Dial *123# to check and win more.', sender: 'Promo', expect: null },
+    { text: 'Reward balance: K700. Redeem before it expires!', sender: '228', expect: null },
+    // The other real bug: a generic carrier sender's airtime/call-cost notice once overrode a correct mobile money
+    // balance with an unrelated airtime figure — same sender name as real mobile money texts, so it must be told
+    // apart by what the message actually says, not who it came from.
+    { text: 'Your last call cost was K2.00. Your Current Balance is K15.00.', sender: 'MTNZM', expect: null },
+    { text: 'Your MTN Airtime Balance is K15.00.', sender: 'MTNZM', expect: null },
+);
+for (const c of balanceCases) {
+    const got = parseBalanceOnly(c.text, c.sender);
+    try {
+        if (c.expect === null) assert.strictEqual(got, null);
+        else assert.deepStrictEqual(got, c.expect);
+        console.log(`✓ [balance-only] ${c.text.slice(0, 60)}`);
+    } catch (e: any) {
+        failed++;
+        console.log(`✗ [balance-only] ${c.text.slice(0, 60)}\n    ${e.message}\n    got: ${JSON.stringify(got)}`);
+    }
+}
+
+const balanceMessageCases: { text: string; sender?: string; expect: { provider: string; balance: number } | null }[] = [
     { text: 'Your MTN MoMo balance is ZMW 105.00. Dial *115# for more.', expect: { provider: 'MTN', balance: 105 } },
     { text: 'Airtel Money: Your available balance is K1,250.50', expect: { provider: 'AIRTEL', balance: 1250.5 } },
     { text: 'Zamtel Kwacha balance: ZMW 20.00', expect: { provider: 'ZAMTEL', balance: 20 } },
@@ -70,7 +171,7 @@ const balanceCases: { text: string; sender?: string; expect: { provider: string;
     { text: 'Your MoMo OTP is 482911. Balance ZMW 5.00', expect: null },
     { text: 'Hi, are we still meeting at 5?', expect: null },
 ];
-for (const c of balanceCases) {
+for (const c of balanceMessageCases) {
     const got = parseBalanceMessage(c.text, c.sender);
     // a message the transaction parser takes must never also look like a balance check
     try {
@@ -79,5 +180,20 @@ for (const c of balanceCases) {
         console.log(`✓ balance: ${c.text.slice(0, 55)}`);
     } catch (e: any) { failed++; console.log(`✗ balance: ${c.text.slice(0, 55)}\n    ${e.message}\n    got: ${JSON.stringify(got)}`); }
 }
+
+// A scam: a real-looking MTN confirmation typed into an ordinary text from a personal number. The wording parses, so
+// the sender is what rules it out (ingest rejects personal numbers before parsing).
+const scam = 'MoMo Yello.You have received ZMW 1000.00 from Mambwe maggie on your mobile money account at 2026-02-1 20:02 Message from sender: 1111. Financial Transaction ID: 7537307803. Dial *115# to view balance. Thank you for using Momo from MTN.';
+const senderCases: [string | null, boolean][] = [
+    ['+260971234567', true], ['0971234567', true], ['+260 97 123 4567', true], ['097-123-4567', true],
+    ['MoMo', false], ['AirtelMoney', false], ['MTNZM', false], ['115', false], ['8080', false], ['Zanaco', false], [null, false], ['', false],
+];
+for (const [sender, personal] of senderCases) {
+    try { assert.strictEqual(isPersonalNumber(sender), personal); console.log(`✓ personal number? ${JSON.stringify(sender)} → ${personal}`); }
+    catch (e: any) { failed++; console.log(`✗ personal number? ${JSON.stringify(sender)}\n    ${e.message}`); }
+}
+try { assert.ok(isPersonalNumber('+260977000111') && parseMomoMessage(scam, '+260977000111')); console.log('✓ scam from a personal number is caught by its sender, not its wording'); }
+catch (e: any) { failed++; console.log(`✗ scam example\n    ${e.message}`); }
+
 console.log(failed ? `\n${failed} failing` : '\nall passed');
 process.exit(failed ? 1 : 0);

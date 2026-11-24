@@ -1,7 +1,7 @@
 import { mergePaymentInfo, presentPaymentInfo, accountsOf, getOrgPaymentInfo, saveOrgPaymentInfo, getAllPaymentInfo } from '../services/paymentInfo.service';
 import {
     getPreferences, updatePreferences, isStaffWithPayroll, getPersonalOrgForUser, getEmployersForUser, CATEGORIZATION_MODELS,
-    getGrowPlan, saveGrowPlan,
+    getGrowPlan, saveGrowPlan, PUSH_TOPICS, PushTopic,
 } from '../services/userPreferences.service';
 import { ASSISTANT_MODELS } from '../services/agent/models';
 import { pinRecoveryService, PinRecoveryError } from '../services/pinRecovery.service';
@@ -726,6 +726,20 @@ export const registerPushToken = async (req: AuthRequest, res: any): Promise<any
     } catch (error: any) {
         console.error('Error registering push token:', error);
         res.status(500).json({ error: 'Failed to register push token', details: error.message });
+    }
+};
+
+/** Settings → Preferences → "Send a test": one sample push of a topic to the person's own devices. */
+export const sendTestPush = async (req: AuthRequest, res: any): Promise<any> => {
+    try {
+        const topic = req.body?.topic;
+        if (!(PUSH_TOPICS as readonly string[]).includes(topic)) return res.status(400).json({ error: 'Choose which kind of notification to test.' });
+        const prefs = await getPreferences((req as any).user.id);
+        if (!prefs.notifications.topics[topic as PushTopic]) return res.status(409).json({ error: 'That kind of notification is switched off. Turn it on to test it.' });
+        res.json(await pushService.sendTestPush((req as any).user.id, topic as PushTopic));
+    } catch (error: any) {
+        console.error('Error sending test push:', error);
+        res.status(500).json({ error: 'Failed to send a test notification', details: error.message });
     }
 };
 

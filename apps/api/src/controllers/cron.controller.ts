@@ -5,6 +5,11 @@ import { pullLonghorn } from '../services/fundFeeds.service';
 import { healMissingPlatformFeesWithinBudget, runDailyBalanceCheck, checkUnlinkedLencoAccounts, RECON_TOLERANCE } from '../services/reconciliation.service';
 import { trackingHealth, assessTrackingHealth } from '../services/posthogQuery.service';
 import { autoCompleteRequisition, sendAutoCategorizationReminder } from './requisition.controller';
+import { drainCaptureJobs } from '../services/capture/capture.worker';
+import { sendCaptureDigests } from '../services/capture/capture.digest';
+import { sendMomoConfirmDigests } from '../services/momoCapture/confirmDigest';
+import { sendWeeklyProgress, sendDailyProgress } from '../services/progressPush.service';
+import { checkMetaTokens, purgeOldEvidence } from '../services/capture/capture.maintenance';
 
 /**
  * Handlers for the internal scheduler (public.internal_cron_call -> these routes). All secret-gated with
@@ -191,6 +196,47 @@ export const getCronHealth = async (_req: any, res: any) => {
         return res.status(500).json({ error: 'Failed to load scheduler health', details: e.message });
     }
 };
+
+// Transaction capture worker (Meta messages, uploaded receipts, re-matching). Logic lives in capture.worker.
+const CAPTURE_WORKER_BUDGET_MS = 15_000;
+
+export const captureWorker = async (req: any, res: any) => {
+    if (!isCronCall(req)) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+        const r = await drainCaptureJobs(CAPTURE_WORKER_BUDGET_MS);
+        return res.json({ success: true, budget_ms: CAPTURE_WORKER_BUDGET_MS, ...r });
+    } catch (e: any) {
+        console.error('[CaptureWorker] Worker execution failed:', e?.message);
+        return res.status(500).json({ success: false, error: e?.message });
+    }
+};
+
+export const captureDigest = async (req: any, res: any) => {
+    if (!isCronCall(req)) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+        return res.json({ success: true, ...(await sendCaptureDigests(45_000)) });
+    } catch (e: any) {
+        console.error('[CaptureDigest] failed:', e?.message);
+        return res.status(500).json({ success: false, error: e?.message });
+    }
+};
+
+const cronTask = (label: string, run: () => Promise<Record<string, any>>) => async (req: any, res: any) => {
+    if (!isCronCall(req)) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+        return res.json({ success: true, ...(await run()) });
+    } catch (e: any) {
+        console.error(`[${label}] failed:`, e?.message);
+        return res.status(500).json({ success: false, error: e?.message });
+    }
+};
+
+export const metaTokenHealth = cronTask('MetaTokenHealth', checkMetaTokens);
+export const captureRetention = cronTask('CaptureRetention', () => purgeOldEvidence(45_000));
+// POST /cron/momo-confirm-digest — evening "N transactions to confirm" push for captured mobile money transactions.
+export const momoConfirmDigest = cronTask('MomoConfirmDigest', () => sendMomoConfirmDigests(45_000));
+export const progressWeekly = cronTask('ProgressWeekly', () => sendWeeklyProgress(45_000));
+export const progressDaily = cronTask('ProgressDaily', () => sendDailyProgress(45_000));
 
 // POST /cron/daily-recon — every morning: MoneyWise wallet totals vs live Lenco balance for every linked org.
 // Stores the snapshot (app_settings.daily_recon_last, with the previous run kept for trend) and emails super-admins

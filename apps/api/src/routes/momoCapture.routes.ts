@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import * as momo from '../services/momoCapture/momoCapture.service';
+import { nudgeIfWaiting } from '../services/momoCapture/confirmDigest';
 
 /**
  * Mobile money capture. `/ingest` is the one unauthenticated-by-session route: background senders (the Android native
@@ -24,6 +25,27 @@ router.post('/ingest', async (req: any, res: any) => {
     } catch (error) { fail(res, error, 'ingest'); }
 });
 
+/**
+ * Record / Dismiss from the prompt the phone shows when a message arrives. The app may be closed, so these also take
+ * the capture key. The key can only settle a message that belongs to its own owner and is still waiting.
+ */
+const settleWithKey = (label: string, fn: (userId: string, orgId: string, id: string) => Promise<any>) => async (req: any, res: any) => {
+    try {
+        const owner = await momo.resolveToken(String(req.get('x-capture-token') || ''));
+        if (!owner) return res.status(401).json({ error: 'Capture key is missing or was turned off. Set capture up again in MoneyWise.' });
+        res.json(await fn(owner.userId, owner.orgId, req.params.id));
+    } catch (error) { fail(res, error, label); }
+};
+// After settling one from the prompt, others still waiting get the same "N transactions to confirm" push as the daily
+// one (opens the quick-confirm queue), at most every few hours. Never allowed to fail the settle itself.
+const thenNudge = async <T>(userId: string, orgId: string, done: Promise<T>): Promise<T> => {
+    const r = await done;
+    await nudgeIfWaiting(userId, orgId).catch((e: any) => console.error('[MoMo capture] waiting nudge failed:', e?.message));
+    return r;
+};
+router.post('/ingest/:id/post', settleWithKey('prompt post', (userId, orgId, id) => thenNudge(userId, orgId, momo.post(userId, orgId, id))));
+router.post('/ingest/:id/dismiss', settleWithKey('prompt dismiss', (userId, orgId, id) => thenNudge(userId, orgId, momo.dismiss(userId, orgId, id))));
+
 router.use(requireAuth);
 
 const handle = (label: string, fn: (req: any) => Promise<any>) => async (req: any, res: any) => {
@@ -37,6 +59,7 @@ router.get('/settings', handle('settings', (req) => momo.getSettings(req.user.id
 router.put('/settings', handle('settings', (req) => momo.updateSettings(req.user.id, req.user.organization_id, req.body ?? {})));
 router.post('/token', handle('token', async (req) => ({ token: await momo.rotateToken(req.user.id, req.user.organization_id) })));
 router.delete('/token', handle('token', async (req) => { await momo.revokeToken(req.user.id); return { ok: true }; }));
+router.get('/balances', handle('balances', (req) => momo.balances(req.user.id, req.user.organization_id)));
 router.get('/', handle('list', (req) => momo.list(req.user.id, req.user.organization_id, req.query.status)));
 router.post('/paste', handle('paste', (req) => momo.ingest({ userId: req.user.id, orgId: req.user.organization_id, source: 'PASTE', text: req.body?.text })));
 router.get('/activity', handle('activity', (req) => momo.listWithEntries(req.user.id, req.user.organization_id, req.query.status)));

@@ -24,6 +24,8 @@ import { Requisition as RequisitionType, REQUISITION_STATUS_CONFIG, getStatusCon
 import { departmentService } from '../services/department.service';
 import { SegmentedControl } from '../components/AnimatedTabs';
 import { InflowInbox, inflowTitle, InflowRow } from '../components/InflowInbox';
+import { CapturedInbox } from '../components/capture/CapturedInbox';
+import { captureApi } from '../components/capture/captureApi';
 import { InvoiceInbox } from '../components/InvoiceInbox';
 import { CreditInvoiceInbox } from '../components/CreditInvoiceInbox';
 import { CreditInvoiceDetailModal } from '../components/CreditInvoiceDetailModal';
@@ -114,7 +116,10 @@ export const RequisitionList: React.FC = () => {
     // Outflows = requisitions (existing) · Inflows = money-in ledger entries (sales, deposits, cash inflows)
     const [inboxMode, setInboxMode] = useState<'outflows' | 'inflows' | 'messages'>('outflows');
     // Within the Inflows view: cash payments vs. sent invoice links
-    const [inflowSubMode, setInflowSubMode] = useState<'cash' | 'invoices'>('cash');
+    const [inflowSubMode, setInflowSubMode] = useState<'cash' | 'invoices' | 'captured'>('cash');
+    // Captured = transaction capture review queue (receipts, MoMo messages). Badge counts items waiting for review.
+    const [capturedCount, setCapturedCount] = useState(0);
+    useEffect(() => { captureApi.count().then(r => setCapturedCount(r.needsReview)).catch(() => undefined); }, []);
     const [selectedInvoice, setSelectedInvoice] = useState<PaymentLink | null>(null);
     const [selectedCreditInvoice, setSelectedCreditInvoice] = useState<CustomerInvoice | null>(null);
     const [editingInvoice, setEditingInvoice] = useState<PaymentLink | null>(null);
@@ -278,6 +283,7 @@ export const RequisitionList: React.FC = () => {
     }, [searchParams]);
 
     const isRequestor = userRole === 'REQUESTOR';
+    const canReviewCaptures = ['OWNER', 'ADMIN', 'ACCOUNTANT'].includes(userRole || '');
 
     // "New since last visit" glow — one tracker per tab so an unread inflow
     // doesn't also light up outflow rows and vice versa.
@@ -788,6 +794,7 @@ export const RequisitionList: React.FC = () => {
                                     {([
                                         { value: 'cash', label: 'Cash', count: sortedInflows.length },
                                         { value: 'invoices', label: 'Invoices', count: invoiceTabCount },
+                                        { value: 'captured', label: 'Captured', count: capturedCount },
                                     ] as const).map(tab => (
                                         <button
                                             key={tab.value}
@@ -918,6 +925,11 @@ export const RequisitionList: React.FC = () => {
                                             />
                                         )}
                                     </>)}
+
+                                    {/* Captured transactions (review queue) */}
+                                    {inflowSubMode === 'captured' && (
+                                        <CapturedInbox canReview={canReviewCaptures} onCountChange={setCapturedCount} />
+                                    )}
                                 </>
                             )}
                         </InboxCard>
@@ -1041,7 +1053,7 @@ export const RequisitionList: React.FC = () => {
                                 <SegmentedControl
                                     variant="capsule"
                                     value={inflowSubMode}
-                                    onChange={(v) => setInflowSubMode(v as 'cash' | 'invoices')}
+                                    onChange={(v) => setInflowSubMode(v as 'cash' | 'invoices' | 'captured')}
                                     options={[
                                         {
                                             value: 'cash',
@@ -1058,6 +1070,15 @@ export const RequisitionList: React.FC = () => {
                                                 <span className="inline-flex items-center gap-1.5">
                                                     Invoices
                                                     <span className="text-[9px] opacity-60">({invoiceTabCount})</span>
+                                                </span>
+                                            ),
+                                        },
+                                        {
+                                            value: 'captured',
+                                            label: (
+                                                <span className="inline-flex items-center gap-1.5">
+                                                    Captured
+                                                    {capturedCount > 0 && <span className="text-[9px] opacity-60">({capturedCount})</span>}
                                                 </span>
                                             ),
                                         },
@@ -1139,6 +1160,13 @@ export const RequisitionList: React.FC = () => {
                                 </div>
                             )}
                         </>)}
+
+                        {/* Mobile: Captured transactions */}
+                        {inflowSubMode === 'captured' && (
+                            <div className="md:hidden px-5">
+                                <CapturedInbox canReview={canReviewCaptures} onCountChange={setCapturedCount} />
+                            </div>
+                        )}
 
                         {/* Mobile: Invoice inflows */}
                         {inflowSubMode === 'invoices' && (

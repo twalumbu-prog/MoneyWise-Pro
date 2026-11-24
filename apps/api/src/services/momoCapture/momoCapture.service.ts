@@ -9,12 +9,17 @@
  * account ("MTN MoMo", "Airtel Money", …) or the Cash account, per the user's setting. A message whose movement is
  * already in the ledger through Lenco (same amount, same direction, within half an hour on the MoneyWise wallet) is
  * marked MATCHED and never booked: those payments are real Lenco transactions and the sync owns them.
+ *
+ * Capturing a message never moves money by itself — a wallet's ledger balance changes only when its capture is
+ * booked (or auto-posted, which is still an explicit per-user setting). "Wallet balances" in the app is read-only:
+ * the operator's own running total from messages, shown next to the ledger figure, not written into it.
  */
 import crypto from 'crypto';
 import { supabase } from '../../lib/supabase';
 import { recordManualEntry, ensureCashWallet, listExternalWallets, ManualEntryError } from '../manualEntry.service';
 import { cashbookService } from '../cashbook.service';
-import { parseMomoMessage, parseBalanceMessage, diagnoseMessage, balanceDedupeKey, dedupeKey, describe, type MomoProvider, type ParsedMomoMessage } from './parser';
+import { parseMomoMessage, parseBalanceOnly, parseBalanceMessage, diagnoseMessage, balanceDedupeKey, dedupeKey, describe, isPersonalNumber, type MomoProvider, type ParsedMomoMessage } from './parser';
+import { mirrorMomoCapture, findBookedCaptureEntry } from '../capture/capture.momoMirror';
 
 export class MomoCaptureError extends Error {
     constructor(message: string, public httpStatus = 400) { super(message); }
@@ -25,6 +30,7 @@ const SOURCES: CaptureSource[] = ['ANDROID_SMS', 'ANDROID_NOTIFICATION', 'IOS_SH
 
 const PROVIDER_WALLET: Record<MomoProvider, string> = { MTN: 'MTN MoMo', AIRTEL: 'Airtel Money', ZAMTEL: 'Zamtel Kwacha', OTHER: 'Mobile Money' };
 const LENCO_MATCH_WINDOW_MS = 30 * 60 * 1000;
+const SAME_MESSAGE_WINDOW_MS = 15 * 60 * 1000;
 const hashToken = (t: string) => crypto.createHash('sha256').update(t).digest('hex');
 /** Ledger dates are Zambian calendar days (CAT, UTC+2). */
 const lusakaDate = (iso: string) => new Date(new Date(iso).getTime() + 2 * 3600 * 1000).toISOString().slice(0, 10);
@@ -87,7 +93,9 @@ export async function revokeToken(userId: string) {
 
 export async function resolveToken(token: string): Promise<{ userId: string; orgId: string } | null> {
     if (typeof token !== 'string' || !token.startsWith('mwc_') || token.length > 100) return null;
-    const { data } = await supabase.from('momo_capture_settings').select('user_id, organization_id').eq('token_hash', hashToken(token)).maybeSingle();
+    const { data, error } = await supabase.from('momo_capture_settings').select('user_id, organization_id').eq('token_hash', hashToken(token)).maybeSingle();
+    // A failed lookup is not a rejected key: answering 401 makes the phone throw its key away and stop capturing.
+    if (error) throw new MomoCaptureError('Capture is temporarily unavailable', 503);
     return data ? { userId: data.user_id, orgId: data.organization_id } : null;
 }
 
@@ -110,13 +118,21 @@ export interface IngestInput {
 export async function ingest(input: IngestInput) {
     const source = SOURCES.includes(input.source as CaptureSource) ? (input.source as CaptureSource) : null;
     if (!source) throw new MomoCaptureError('Unknown capture source');
-    const text = typeof input.text === 'string' ? input.text.trim() : '';
+    // Postgres rejects a NUL character, which would fail the same message on every retry.
+    const text = typeof input.text === 'string' ? input.text.replace(/\u0000/g, '').trim() : '';
     if (!text) throw new MomoCaptureError('Message text is required');
     const sender = typeof input.sender === 'string' ? input.sender.slice(0, 60) : null;
     const when = typeof input.occurredAt === 'string' || typeof input.occurredAt === 'number' ? new Date(input.occurredAt) : new Date();
     // A device clock can be off; anything implausible is stamped with the time it reached us.
     const occurredAt = (Number.isNaN(when.getTime()) || when.getTime() > Date.now() + 10 * 60 * 1000 || when.getTime() < Date.now() - 400 * 24 * 3600 * 1000)
         ? new Date().toISOString() : when.toISOString();
+
+    // A confirmation from an ordinary phone number is a scam, not a transaction (see isPersonalNumber). Checked here as
+    // well as on the phone, so older app versions are covered too.
+    if (isPersonalNumber(sender)) {
+        await logIgnored(input.userId, input.orgId, source, text, sender, 'Sent from a personal phone number, not a mobile money provider or bank — possibly a scam');
+        return { accepted: false as const, reason: 'PERSONAL_NUMBER' as const };
+    }
 
     const parsed = parseMomoMessage(text, sender);
     await supabase.from('momo_capture_settings')
@@ -126,33 +142,62 @@ export async function ingest(input: IngestInput) {
         found !== 'OTHER' ? found : (((await settingsRow(input.userId, input.orgId)).default_provider as MomoProvider | null) ?? 'OTHER');
     if (parsed) parsed.provider = await fallbackProvider(parsed.provider);
     if (!parsed) {
-        // Not a money movement — it may be a balance enquiry reply, which is compared with the ledger instead.
+        // Not a transaction. A balance enquiry reply is compared with the ledger and offers a one-tap adjustment, but
+        // is never booked by itself: an account's balance only moves when the person records something.
+        const reading = parseBalanceOnly(text, sender);
         const bal = parseBalanceMessage(text, sender);
         if (bal) return { accepted: true as const, balanceCheck: await recordBalanceCheck(input.userId, input.orgId, source, text, await fallbackProvider(bal.provider), bal.balance, occurredAt) };
+        if (reading) return { accepted: false as const, reason: 'BALANCE_ONLY' as const };
         await logIgnored(input.userId, input.orgId, source, text, sender);
-        return { accepted: false as const, reason: 'NOT_A_TRANSACTION' };
+        return { accepted: false as const, reason: 'NOT_A_TRANSACTION' as const };
     }
 
-    const twin = await findLencoTwin(input.orgId, parsed, occurredAt);
-    const { data: row, error } = await supabase.from('momo_captures').insert({
+    // Already in the ledger: through Lenco, or because a screenshot of this same confirmation was approved first.
+    const twin = await findLencoTwin(input.orgId, parsed, occurredAt)
+        ?? await findBookedCaptureEntry(input.orgId, dedupeKey(parsed, text));
+    // A message with no transaction id is recognised by its wording. The same wording within a few minutes is the
+    // same message arriving twice (SMS and its notification); hours or days apart it is another transaction of the
+    // same amount from the same person, which must not be thrown away as a duplicate.
+    let key = dedupeKey(parsed, text);
+    if (!parsed.reference) {
+        const t = new Date(occurredAt).getTime();
+        const { data: near } = await supabase.from('momo_captures').select('id')
+            .eq('organization_id', input.orgId).like('dedupe_key', `${key}%`)
+            .gte('occurred_at', new Date(t - SAME_MESSAGE_WINDOW_MS).toISOString())
+            .lte('occurred_at', new Date(t + SAME_MESSAGE_WINDOW_MS).toISOString()).limit(1);
+        if (near?.length) return { accepted: true as const, duplicate: true };
+        key = `${key}:${Math.floor(t / 60000)}`;
+    }
+    const insert = (dedupe_key: string) => supabase.from('momo_captures').insert({
         organization_id: input.orgId, user_id: input.userId, source, provider: parsed.provider, sender,
         raw_text: text.slice(0, 1200), direction: parsed.direction, amount: parsed.amount, fee: parsed.fee,
         balance_after: parsed.balanceAfter, counterparty: parsed.counterparty, provider_reference: parsed.reference,
-        occurred_at: occurredAt, dedupe_key: dedupeKey(parsed, text),
+        occurred_at: occurredAt, dedupe_key,
         status: twin ? 'MATCHED' : 'PENDING', matched_entry_id: twin,
     }).select('*').single();
-    if (error) {
-        if (error.code === '23505') return { accepted: true as const, duplicate: true };
-        throw new MomoCaptureError(`Could not save the message: ${error.message}`, 500);
+    let { data: row, error } = await insert(key);
+    if (error?.code === '23505' && parsed.reference) {
+        // The same transaction id going the other way is a second movement, not a repeat: a reversal quotes the id
+        // of the payment it undoes, and a transfer between two of your own lines shows the id on both sides.
+        const { data: existing } = await supabase.from('momo_captures').select('direction')
+            .eq('organization_id', input.orgId).eq('dedupe_key', key).limit(1);
+        if (existing?.length && existing[0].direction !== parsed.direction) ({ data: row, error } = await insert(`${key}:${parsed.direction}`));
+    }
+    if (error || !row) {
+        if (error?.code === '23505') return { accepted: true as const, duplicate: true };
+        throw new MomoCaptureError(`Could not save the message: ${error?.message}`, 500);
     }
 
     if (!twin) {
         const settings = await settingsRow(input.userId, input.orgId);
         if (settings.auto_post) {
-            try { return { accepted: true as const, capture: await post(input.userId, input.orgId, row.id) }; }
+            try { return { accepted: true as const, capture: await post(input.userId, input.orgId, row.id, {}, { autoPosted: true }) }; }
             catch (e: any) { console.error('[MoMo capture] auto-post failed, left for review:', e.message); }
         }
     }
+    // The message is saved. Nothing after this may fail the request: the phone would retry, be told "duplicate",
+    // and never show its prompt.
+    try { await mirrorMomoCapture(row); } catch (e: any) { console.error('[MoMo capture] mirror failed:', e?.message); }
     return { accepted: true as const, capture: row };
 }
 
@@ -162,7 +207,104 @@ export async function list(userId: string, orgId: string, status?: unknown) {
     if (typeof status === 'string' && ['PENDING', 'POSTED', 'MATCHED', 'DISMISSED'].includes(status)) q = q.eq('status', status);
     const { data, error } = await q;
     if (error) throw new MomoCaptureError(error.message, 500);
-    return data ?? [];
+    const rows = data ?? [];
+    // Waiting ones get a suggested category, so confirming them can be one tap (or none) plus Next.
+    if (status !== 'PENDING' || rows.length === 0) return rows;
+    const s = await categorySuggestions(userId, orgId).catch((e) => {
+        console.warn('[MoMo capture] suggestions failed:', e?.message);
+        return null;
+    });
+    if (!s) return rows;
+    return rows.map((r: any) => ({
+        ...r,
+        suggested_account_id: (() => { const k = contactKey(r.direction, r.counterparty); return k ? s.byContact.get(k) ?? null : null; })(),
+        ranked_account_ids: s.ranked[r.direction as 'IN' | 'OUT'] ?? [],
+    }));
+}
+
+/**
+ * Who a transaction was with, as a stable key: the phone number when the message has one (names are spelt and
+ * truncated differently from one message to the next), else the name. Null when there is nothing to go on.
+ */
+// Not the SMS sender: that is the operator ("MoMo", "Airtel"), never the other party.
+export function contactKey(direction: string, counterparty: string | null | undefined): string | null {
+    const text = counterparty || '';
+    const digits = (text.match(/\+?\d[\d ]{6,}/)?.[0] || '').replace(/\D/g, '');
+    if (digits.length >= 9) return `${direction}|tel:${digits.slice(-9)}`;
+    const name = text.toLowerCase().replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (name.length >= 3) return `${direction}|name:${name}`;
+    return null;
+}
+
+/**
+ * Learnt from the person's own booked captures: the category last used with each contact, and the categories they
+ * use most, per direction (to order the chips). Only choices that reached the ledger count.
+ */
+export async function categorySuggestions(userId: string, orgId: string) {
+    const { data: booked, error } = await supabase.from('momo_captures')
+        .select('direction, counterparty, cashbook_entry_id, occurred_at')
+        .eq('user_id', userId).eq('organization_id', orgId).eq('status', 'POSTED').not('cashbook_entry_id', 'is', null)
+        .order('occurred_at', { ascending: false }).limit(400);
+    if (error) throw new Error(error.message);
+    const ids = (booked ?? []).map((b: any) => b.cashbook_entry_id as string);
+    const accountOf = new Map<string, string>();
+    for (let i = 0; i < ids.length; i += 200) {
+        const { data: entries } = await supabase.from('cashbook_entries').select('id, account_id')
+            .eq('organization_id', orgId).in('id', ids.slice(i, i + 200)).not('account_id', 'is', null);
+        for (const e of entries ?? []) accountOf.set((e as any).id, (e as any).account_id);
+    }
+    // Most-used categories come from everything in the books, not just mobile money: someone new to capture still gets
+    // their usual categories first. Last 120 days, so habits that changed fade out.
+    const { data: ledger } = await supabase.from('cashbook_entries').select('entry_type, account_id')
+        .eq('organization_id', orgId).not('account_id', 'is', null).in('entry_type', ['INFLOW', 'EXPENSE', 'DISBURSEMENT'])
+        .gte('date', new Date(Date.now() - 120 * 86400_000).toISOString().slice(0, 10))
+        .order('date', { ascending: false }).limit(1000);
+    return buildSuggestions(
+        (booked ?? []).map((b: any) => ({ ...b, account_id: accountOf.get(b.cashbook_entry_id) ?? null })),
+        (ledger ?? []).map((e: any) => ({ direction: e.entry_type === 'INFLOW' ? 'IN' : 'OUT', account_id: e.account_id })),
+    );
+}
+
+/**
+ * Pure part of categorySuggestions. `history` (booked captures, newest first) gives the category last used with each
+ * contact; the ranking counts `ledger` (every categorised entry) when given, else `history`.
+ */
+export function buildSuggestions(
+    history: { direction: string; counterparty: string | null; account_id: string | null }[],
+    ledger?: { direction: string; account_id: string | null }[],
+) {
+    const byContact = new Map<string, string>();
+    const counts: Record<'IN' | 'OUT', Map<string, number>> = { IN: new Map(), OUT: new Map() };
+    const count = (direction: string, accountId: string) => {
+        if (direction === 'IN' || direction === 'OUT') counts[direction].set(accountId, (counts[direction].get(accountId) ?? 0) + 1);
+    };
+    for (const h of history) {
+        if (!h.account_id || (h.direction !== 'IN' && h.direction !== 'OUT')) continue;
+        const key = contactKey(h.direction, h.counterparty);
+        if (key && !byContact.has(key)) byContact.set(key, h.account_id);   // newest wins
+        if (!ledger) count(h.direction, h.account_id);
+    }
+    for (const e of ledger ?? []) if (e.account_id) count(e.direction, e.account_id);
+    const top = (m: Map<string, number>) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([id]) => id);
+    return { byContact, ranked: { IN: top(counts.IN), OUT: top(counts.OUT) } };
+}
+
+/**
+ * What each mobile money account holds in MoneyWise: the booked ledger balance of its provider account, and nothing
+ * else. A balance only moves when the person records a transaction (or taps "Adjust" on a balance check) — never from
+ * a message alone, whether it is still waiting for review, dismissed, or just states a balance. Providers with no
+ * account yet are left out rather than shown as zero.
+ */
+export async function balances(_userId: string, orgId: string) {
+    const wallets = await listExternalWallets(orgId);
+    const out: { provider: MomoProvider; name: string; balance: number; asOf: string }[] = [];
+    for (const [provider, name] of Object.entries(PROVIDER_WALLET) as [MomoProvider, string][]) {
+        const wallet = wallets.find((w) => w.name.toLowerCase() === name.toLowerCase());
+        if (!wallet) continue;
+        const balance = await cashbookService.getCurrentBalance(orgId, wallet.id);
+        out.push({ provider, name: wallet.name, balance: Math.round(Number(balance) * 100) / 100, asOf: new Date().toISOString() });
+    }
+    return out;
 }
 
 /** Every capture with where it ended up in the ledger (account, category, status) — for the web review page. */
@@ -196,13 +338,14 @@ export async function listWithEntries(userId: string, orgId: string, status?: un
 const IGNORED_KEEP_DAYS = 30;
 
 /** Remembers a message the parser ignored, and why. Never allowed to break ingest. */
-async function logIgnored(userId: string, orgId: string, source: CaptureSource, text: string, sender: string | null) {
+async function logIgnored(userId: string, orgId: string, source: CaptureSource, text: string, sender: string | null, reason?: string) {
     try {
         const d = diagnoseMessage(text, sender);
-        if (d.kind !== 'IGNORED') return;
+        if (!reason && d.kind !== 'IGNORED') return;
+        const sensitive = d.kind === 'IGNORED' && d.sensitive;
         await supabase.from('momo_ignored_messages').insert({
-            organization_id: orgId, user_id: userId, source, reason: d.reason,
-            raw_text: d.sensitive ? '[hidden: looks like a one-time code]' : text.slice(0, 300),
+            organization_id: orgId, user_id: userId, source, reason: reason ?? (d.kind === 'IGNORED' ? d.reason : 'Ignored'),
+            raw_text: sensitive ? '[hidden: looks like a one-time code]' : text.slice(0, 300),
         });
         await supabase.from('momo_ignored_messages').delete().eq('user_id', userId)
             .lt('created_at', new Date(Date.now() - IGNORED_KEEP_DAYS * 24 * 3600 * 1000).toISOString());
@@ -246,10 +389,13 @@ async function walletFor(orgId: string, provider: MomoProvider, destination: str
  * Books a capture. The PENDING → POSTED flip happens first and conditionally, so two taps (or a tap racing auto-post)
  * can't book it twice; a failed booking puts it back to PENDING.
  */
-export async function post(userId: string, orgId: string, id: string, overrides: { direction?: unknown; amount?: unknown; accountId?: unknown; description?: unknown } = {}) {
+export async function post(userId: string, orgId: string, id: string, overrides: { direction?: unknown; amount?: unknown; accountId?: unknown; description?: unknown } = {}, mirror: { autoPosted?: boolean } = {}) {
     const { data: claimed } = await supabase.from('momo_captures').update({ status: 'POSTED', updated_at: new Date().toISOString() })
         .eq('id', id).eq('user_id', userId).eq('organization_id', orgId).in('status', ['PENDING', 'MATCHED']).select('*').maybeSingle();
     if (!claimed) throw new MomoCaptureError('This message was already handled or no longer exists', 409);
+    // The row comes back already flipped to POSTED, so what it was before has to be worked out: a failed booking
+    // must put it back in the review list, not leave it looking recorded with nothing in the ledger.
+    const previousStatus = claimed.matched_entry_id ? 'MATCHED' : 'PENDING';
 
     try {
         const settings = await settingsRow(userId, orgId);
@@ -260,18 +406,34 @@ export async function post(userId: string, orgId: string, id: string, overrides:
             ? overrides.description.trim()
             : describe({ ...claimed, direction, counterparty: claimed.counterparty } as ParsedMomoMessage);
         const date = lusakaDate(claimed.occurred_at);
-        const accountId = typeof overrides.accountId === 'string' ? overrides.accountId : null;
+        // No category chosen (the prompt's quick Record, or auto-record): the one last used with this contact, if any;
+        // otherwise recordManualEntry suggests one as before.
+        let accountId = typeof overrides.accountId === 'string' ? overrides.accountId : null;
+        if (!accountId) {
+            const key = contactKey(direction, claimed.counterparty);
+            if (key) accountId = (await categorySuggestions(userId, orgId).catch(() => null))?.byContact.get(key) ?? null;
+        }
 
         const entry = await recordManualEntry({ orgId, userId, direction, amount, description, date, externalWalletId: wallet.id, accountId });
-        // The operator's charge leaves the same wallet, so it's booked beside the movement it belongs to.
-        if (claimed.fee && Number(claimed.fee) > 0) {
-            await recordManualEntry({ orgId, userId, direction: 'OUT', amount: Number(claimed.fee), description: `${description} · fee`, date, externalWalletId: wallet.id });
-        }
+        // From here the movement is in the ledger, so nothing below may send the capture back to PENDING (the catch
+        // would, and a second tap would then book it twice).
         const { data: done } = await supabase.from('momo_captures')
             .update({ cashbook_entry_id: entry.entryId, updated_at: new Date().toISOString() }).eq('id', id).select('*').single();
+        // The operator's charge leaves the same wallet, so it's booked beside the movement it belongs to.
+        if (claimed.fee && Number(claimed.fee) > 0) {
+            try {
+                await recordManualEntry({ orgId, userId, direction: 'OUT', amount: Number(claimed.fee), description: `${description} · fee`, date, externalWalletId: wallet.id });
+            } catch (e: any) {
+                console.error(`[MoMo capture] fee of ${claimed.fee} for capture ${id} was not booked:`, e.message);
+            }
+        }
+        // The balance the newest recorded message states wins. Never allowed to undo the booking above.
+        await syncToLatestBalance(orgId, userId, claimed.provider, settings.destination)
+            .catch((e: any) => console.error(`[MoMo capture] balance sync after ${id} failed:`, e?.message));
+        await mirrorMomoCapture(done, mirror);
         return { ...done, entry };
     } catch (e: any) {
-        await supabase.from('momo_captures').update({ status: claimed.status, updated_at: new Date().toISOString() }).eq('id', id);
+        await supabase.from('momo_captures').update({ status: previousStatus, updated_at: new Date().toISOString() }).eq('id', id);
         if (e instanceof ManualEntryError) throw new MomoCaptureError(e.message, e.httpStatus);
         throw e;
     }
@@ -281,9 +443,63 @@ export async function dismiss(userId: string, orgId: string, id: string) {
     const { data } = await supabase.from('momo_captures').update({ status: 'DISMISSED', updated_at: new Date().toISOString() })
         .eq('id', id).eq('user_id', userId).eq('organization_id', orgId).in('status', ['PENDING', 'MATCHED']).select('*').maybeSingle();
     if (!data) throw new MomoCaptureError('This message was already handled or no longer exists', 409);
+    await mirrorMomoCapture(data);
     return data;
 }
 
+
+// ── The latest message's balance wins (only once recorded) ─────────────────
+
+export interface RecordedCapture { direction: string; amount: number | string; fee: number | string | null; balance_after: number | string | null; occurred_at: string }
+
+/**
+ * What a provider account should hold, from the person's RECORDED captures (newest first): the balance stated by the
+ * most recent message that states one — the operator's own figure, so it beats anything worked out from our records —
+ * plus whatever recorded transactions happened after it (an MTN deposit message, say, states no balance). Ordered by
+ * the time in the message, not by when it was recorded, so recording an older message later never rolls the
+ * balance back. Null when no recorded message states a balance: then the booked total stands as it is. Pure.
+ */
+export function latestBalanceTarget(rows: RecordedCapture[]): { balance: number; asOf: string } | null {
+    const sorted = [...rows].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at));
+    const anchor = sorted.findIndex((r) => r.balance_after !== null && r.balance_after !== undefined && Number.isFinite(Number(r.balance_after)));
+    if (anchor === -1) return null;
+    let balance = Number(sorted[anchor].balance_after);
+    for (const r of sorted.slice(0, anchor)) {
+        balance += (r.direction === 'IN' ? 1 : -1) * Number(r.amount) - (Number(r.fee) > 0 ? Number(r.fee) : 0);
+    }
+    return { balance: Math.round(balance * 100) / 100, asOf: sorted[anchor].occurred_at };
+}
+
+/**
+ * After a capture is recorded: brings the provider account to latestBalanceTarget with one ADJUSTMENT entry (not
+ * income or spending, so Grow and the reports never count it). Runs only from recording — a message that is merely
+ * captured, waiting or dismissed never moves a balance. Not for captures booked to Cash.
+ */
+async function syncToLatestBalance(orgId: string, userId: string, provider: MomoProvider, destination: string) {
+    if (destination === 'CASH' || provider === 'OTHER') return null;
+    const { data, error } = await supabase.from('momo_captures')
+        .select('direction, amount, fee, balance_after, occurred_at')
+        .eq('organization_id', orgId).eq('provider', provider).eq('status', 'POSTED').not('cashbook_entry_id', 'is', null)
+        .order('occurred_at', { ascending: false }).limit(500);
+    if (error) throw new Error(error.message);
+    const target = latestBalanceTarget((data ?? []) as RecordedCapture[]);
+    if (!target) return null;
+    const wallet = await walletFor(orgId, provider, 'PROVIDER');
+    const current = round2(Number(await cashbookService.getCurrentBalance(orgId, wallet.id)));
+    const diff = round2(target.balance - current);
+    if (Math.abs(diff) < EPS) return null;
+    const when = new Date(target.asOf).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Lusaka' });
+    await cashbookService.createEntry(orgId, {
+        entry_type: 'ADJUSTMENT',
+        description: `${PROVIDER_WALLET[provider]} · Balance set to K${target.balance.toFixed(2)} from the ${when} message`,
+        debit: diff > 0 ? diff : 0,
+        credit: diff < 0 ? -diff : 0,
+        date: lusakaDate(new Date().toISOString()),
+        created_by: userId,
+        account_type: wallet.id,
+    } as any);
+    return { balance: target.balance, adjustedBy: diff };
+}
 
 // ── Balance checks ──────────────────────────────────────────────────────────
 

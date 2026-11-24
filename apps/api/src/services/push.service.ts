@@ -12,7 +12,7 @@
  */
 
 import { supabase } from '../lib/supabase';
-import { filterUserIdsForPush, orgIsPersonal, PERSONAL_SUPPRESSED_EVENTS } from './userPreferences.service';
+import { filterUserIdsForPush, filterUserIdsForTopic, orgIsPersonal, PERSONAL_SUPPRESSED_EVENTS, PushTopic } from './userPreferences.service';
 import { getBadgeTotal } from './notificationCounts.service';
 
 // expo-server-sdk ships ESM-only, and this project's CJS build target
@@ -35,7 +35,26 @@ interface ExpoPushMessage {
     data: Record<string, any>;
     /** The red number on the app icon (iOS) — this person's total of things needing attention. */
     badge?: number;
+    /** Android notification channel. Must be one the app created (src/lib/notificationSetup.ts), else Android uses a fallback. */
+    channelId?: string;
+    /** Which set of action buttons to show. Must be one the app registered (src/lib/notificationSetup.ts). */
+    categoryId?: string;
+    priority?: 'default' | 'normal' | 'high';
 }
+
+/**
+ * Action-button sets the app registers, and the button ids inside each. Kept in sync by hand with
+ * apps/mobile/src/lib/notificationSetup.ts (the two run in different runtimes).
+ */
+export const PUSH_CATEGORIES = {
+    /** Someone owes the person money: "Send reminder" opens WhatsApp/SMS with the message ready. */
+    OWED_TO_ME: 'debt_owed_to_me',
+    /** The person owes someone: "Pay back" opens the send-money screen, filled in. */
+    I_OWE: 'debt_i_owe',
+    /** Transactions waiting for a category: "Review now" opens the quick-confirm queue. */
+    TO_CONFIRM: 'to_confirm',
+} as const;
+export type PushCategory = typeof PUSH_CATEGORIES[keyof typeof PUSH_CATEGORIES];
 
 interface ExpoPushTicket {
     status: 'ok' | 'error';
@@ -74,15 +93,27 @@ interface PushPayload {
      * personal account be honoured; business events are never filtered by that choice.
      */
     orgId?: string;
+    /**
+     * What kind of push this is. Decides the Android channel (each topic is its own channel, so it can be muted on the
+     * phone), and drops anyone who switched this topic off in Settings → Preferences. Without one, the push goes on
+     * the "default" channel and only the app/email choice applies — every push sent before topics existed.
+     */
+    topic?: PushTopic;
+    /** Action buttons to show, from PUSH_CATEGORIES. */
+    category?: PushCategory;
 }
+
+/** Reminders ask for something now, so they pop up; insights and the confirm queue can wait in the shade. */
+const TOPIC_PRIORITY: Record<PushTopic, ExpoPushMessage['priority']> = { insights: 'normal', reminders: 'high', to_confirm: 'normal' };
 
 // ── Token registry ───────────────────────────────────────────────────────────
 
 interface TokenRow { token: string; user_id: string }
 
-async function getTokenRows(userIds: string[], orgId?: string | null): Promise<TokenRow[]> {
+async function getTokenRows(userIds: string[], orgId?: string | null, topic?: PushTopic): Promise<TokenRow[]> {
     if (userIds.length === 0) return [];
-    const allowed = await filterUserIdsForPush(userIds, orgId).catch(() => userIds);
+    let allowed = await filterUserIdsForPush(userIds, orgId).catch(() => userIds);
+    if (topic) allowed = await filterUserIdsForTopic(allowed, topic).catch(() => allowed);
     if (allowed.length === 0) return [];
     const { data, error } = await supabase
         .from('push_tokens')
@@ -119,6 +150,9 @@ async function sendToTokens(rows: TokenRow[], payload: PushPayload): Promise<voi
         body: payload.body,
         data: payload.data ?? {},
         badge: badgeByUser.get(r.user_id) ?? 0,
+        channelId: payload.topic ?? 'default',
+        ...(payload.category ? { categoryId: payload.category } : {}),
+        ...(payload.topic ? { priority: TOPIC_PRIORITY[payload.topic] } : {}),
     }));
 
     const chunks = chunkMessages(messages);
@@ -161,11 +195,44 @@ export const pushService = {
     },
 
     async sendToUser(userId: string, payload: PushPayload): Promise<void> {
-        await sendToTokens(await getTokenRows([userId], payload.orgId), payload);
+        await sendToTokens(await getTokenRows([userId], payload.orgId, payload.topic), payload);
     },
 
     async sendToUsers(userIds: string[], payload: PushPayload): Promise<void> {
-        await sendToTokens(await getTokenRows(userIds, payload.orgId), payload);
+        await sendToTokens(await getTokenRows(userIds, payload.orgId, payload.topic), payload);
+    },
+
+    /**
+     * A sample of each new kind of push, sent to the person's own devices from Settings → Preferences. Proves the whole
+     * path end to end — Firebase on Android, the channel, the buttons and where a tap lands — before any real
+     * reminder or insight depends on it. Respects the topic switch like a real one would.
+     */
+    async sendTestPush(userId: string, topic: PushTopic): Promise<{ devices: number }> {
+        const samples: Record<PushTopic, PushPayload> = {
+            insights: {
+                topic: 'insights',
+                title: 'Test: your week in money',
+                body: 'This is how progress updates on spending, saving and growth will look.',
+                data: { type: 'insights', test: true },
+            },
+            reminders: {
+                topic: 'reminders',
+                category: PUSH_CATEGORIES.OWED_TO_ME,
+                title: 'Test: someone owes you money',
+                body: 'This is how a reminder will look. Real ones offer to remind the person for you.',
+                data: { type: 'debt', test: true },
+            },
+            to_confirm: {
+                topic: 'to_confirm',
+                category: PUSH_CATEGORIES.TO_CONFIRM,
+                title: 'Test: transactions to confirm',
+                body: 'This is how the daily "confirm your transactions" prompt will look.',
+                data: { type: 'momo_confirm', test: true },
+            },
+        };
+        const rows = await getTokenRows([userId], null, topic);
+        await sendToTokens(rows, samples[topic]);
+        return { devices: rows.filter((r) => isExpoPushToken(r.token)).length };
     },
 
     /**

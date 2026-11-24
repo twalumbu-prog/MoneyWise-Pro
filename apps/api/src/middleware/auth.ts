@@ -10,7 +10,15 @@ export type AuthRequest = any;
 // endpoint, which was previously hit on every single API request. Falls
 // back to the remote getUser() check below when this isn't configured, so
 // deployments that haven't set it yet don't hard-break.
-const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
+//
+// Set it to "disabled" to force the remote check. Vercel won't store an empty
+// value, so that is how a preview branch overrides an inherited secret when its
+// Supabase project signs tokens with asymmetric keys (ES256), which the HS256
+// check below can never verify.
+const SUPABASE_JWT_SECRET =
+    process.env.SUPABASE_JWT_SECRET && process.env.SUPABASE_JWT_SECRET.trim().toLowerCase() !== 'disabled'
+        ? process.env.SUPABASE_JWT_SECRET
+        : undefined;
 
 // Decoded shape of a Supabase access token payload (subset we use).
 interface SupabaseAccessTokenPayload {

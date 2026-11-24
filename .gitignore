@@ -57,6 +57,9 @@ Thumbs.db
 # Optional eslint cache
 .eslintcache
 
+# Office lock files (created while a .docx/.xlsx is open)
+~$*
+
 # Misc
 .cache
 .temp
