@@ -184,8 +184,8 @@ export async function processAttachmentJob(job: { attachment_id: string; organiz
     const { data: msg } = att.source_table === 'messaging_messages' && att.source_id
         ? await supabase.from('messaging_messages').select('id, platform, contact_phone, contact_name, conversation_id, sent_at').eq('id', att.source_id).eq('organization_id', orgId).maybeSingle()
         : { data: null as any };
-    const { data: mail } = att.source_table === 'inbound_emails' && att.source_id
-        ? await supabase.from('inbound_emails').select('id, received_at, from_address').eq('id', att.source_id).eq('organization_id', orgId).maybeSingle()
+    const { data: mail } = att.source_table === 'capture_inbound_emails' && att.source_id
+        ? await supabase.from('capture_inbound_emails').select('id, received_at, from_address').eq('id', att.source_id).eq('organization_id', orgId).maybeSingle()
         : { data: null as any };
     if (msg) Object.assign(draft, {
         direction: 'IN', intent: draft.amount ? 'PAYMENT_PROOF' : null, counterparty_phone: msg.contact_phone ?? null,
@@ -784,7 +784,7 @@ export async function detail(orgId: string, id: string) {
             .eq('organization_id', orgId).eq('conversation_id', cap.conversation_id).order('sent_at', { ascending: true }).limit(30)
         : { data: [] as any[] };
     const { data: emailRows } = ids.length
-        ? await supabase.from('inbound_emails').select('id, from_address, subject, text').eq('organization_id', orgId).in('id', ids)
+        ? await supabase.from('capture_inbound_emails').select('id, from_address, subject, text').eq('organization_id', orgId).in('id', ids)
         : { data: [] as any[] };
     const candIds = (cap.match_candidates || []).filter((c: any) => c.kind === 'LENCO_ENTRY').map((c: any) => c.id);
     if (cap.matched_cashbook_entry_id) candIds.push(cap.matched_cashbook_entry_id);

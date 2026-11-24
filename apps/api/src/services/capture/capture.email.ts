@@ -36,7 +36,7 @@ export async function emailCaptureStatus(orgId: string) {
         if (!alias) throw new CaptureError('Could not create your capture address', 500);
     }
     // Gmail confirms a forwarding address by emailing a code to it, so the person needs to see that message here.
-    const { data: confirm } = await supabase.from('inbound_emails').select('text').eq('organization_id', orgId)
+    const { data: confirm } = await supabase.from('capture_inbound_emails').select('text').eq('organization_id', orgId)
         .ilike('from_address', '%forwarding-noreply@google.com%').gte('received_at', new Date(Date.now() - 86400_000).toISOString())
         .order('received_at', { ascending: false }).limit(1).maybeSingle();
     return {
@@ -87,7 +87,7 @@ async function storeInboundEmail(d: any) {
 
     const now = new Date().toISOString();
     await supabase.from('capture_settings').update({ email_last_received_at: now }).eq('organization_id', orgId);
-    const { data: email, error } = await supabase.from('inbound_emails').insert({
+    const { data: email, error } = await supabase.from('capture_inbound_emails').insert({
         organization_id: orgId, resend_id: d.email_id, message_id: d.message_id || d.email_id,
         from_address: typeof d.from === 'string' ? d.from.slice(0, 300) : null, subject: typeof d.subject === 'string' ? d.subject.slice(0, 500) : null,
         received_at: d.created_at || now,
@@ -102,14 +102,14 @@ export async function processEmailJob(job: { job_id: string; organization_id: st
     const orgId = job.organization_id;
     const { data: link, error: linkErr } = await supabase.from('capture_jobs').select('inbound_email_id').eq('id', job.job_id).maybeSingle();
     if (linkErr || !link?.inbound_email_id) throw new Error('Email job has no email');
-    const { data: email } = await supabase.from('inbound_emails').select('*').eq('id', link.inbound_email_id).eq('organization_id', orgId).maybeSingle();
+    const { data: email } = await supabase.from('capture_inbound_emails').select('*').eq('id', link.inbound_email_id).eq('organization_id', orgId).maybeSingle();
     if (!email) return { skipped: 'email_missing' };
 
     const resend = client();
     const { data: full, error } = await resend.emails.receiving.get(email.resend_id);
     if (error || !full) throw new Error(`Could not read email: ${error?.message}`);
     const text = (full.text || String(full.html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')).slice(0, MAX_TEXT);
-    await supabase.from('inbound_emails').update({ text }).eq('id', email.id).eq('organization_id', orgId);
+    await supabase.from('capture_inbound_emails').update({ text }).eq('id', email.id).eq('organization_id', orgId);
 
     const hasAttachments = (full.attachments?.length ?? 0) > 0;
     if (!shouldExtractEmail({ from: full.from, subject: full.subject, text, headers: full.headers, hasAttachment: hasAttachments })) return { skipped: 'prefilter' };
@@ -123,7 +123,7 @@ export async function processEmailJob(job: { job_id: string; organization_id: st
             const file = await fetch(a.download_url);
             if (!file.ok) throw new Error(`Could not download attachment (${file.status})`);
             const stored = await saveEvidenceFile({
-                orgId, buf: Buffer.from(await file.arrayBuffer()), mime: a.content_type, sourceTable: 'inbound_emails', sourceId: email.id,
+                orgId, buf: Buffer.from(await file.arrayBuffer()), mime: a.content_type, sourceTable: 'capture_inbound_emails', sourceId: email.id,
             });
             if (stored) saved++;
         }

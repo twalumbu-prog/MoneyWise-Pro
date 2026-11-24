@@ -182,7 +182,7 @@ async function main() {
 
         await step('S2: the anon key reads nothing from capture tables', async () => {
             const anon = createClient(process.env.SUPABASE_URL as string, process.env.SUPABASE_ANON_KEY as string);
-            for (const t of ['capture_settings', 'capture_attachments', 'transaction_captures', 'capture_jobs', 'inbound_emails', 'capture_conversations', 'capture_ai_usage', 'messaging_connections', 'messaging_messages', 'meta_deletion_requests']) {
+            for (const t of ['capture_settings', 'capture_attachments', 'transaction_captures', 'capture_jobs', 'capture_inbound_emails', 'capture_conversations', 'capture_ai_usage', 'messaging_connections', 'messaging_messages', 'meta_deletion_requests']) {
                 const { data } = await anon.from(t).select('*').limit(1);
                 assert.strictEqual((data || []).length, 0, t);
             }

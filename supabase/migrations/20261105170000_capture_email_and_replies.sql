@@ -7,7 +7,7 @@ ALTER TABLE public.capture_settings ADD COLUMN IF NOT EXISTS replies_enabled BOO
 CREATE UNIQUE INDEX IF NOT EXISTS capture_settings_email_alias_key
     ON public.capture_settings (email_alias) WHERE email_alias IS NOT NULL;
 
-CREATE TABLE IF NOT EXISTS public.inbound_emails (
+CREATE TABLE IF NOT EXISTS public.capture_inbound_emails (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
     resend_id       TEXT NOT NULL,
@@ -17,15 +17,15 @@ CREATE TABLE IF NOT EXISTS public.inbound_emails (
     text            TEXT,
     received_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT inbound_emails_org_message_key UNIQUE (organization_id, message_id)
+    CONSTRAINT capture_inbound_emails_org_message_key UNIQUE (organization_id, message_id)
 );
 
-ALTER TABLE public.inbound_emails ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE public.inbound_emails FROM PUBLIC, anon, authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.inbound_emails TO service_role;
+ALTER TABLE public.capture_inbound_emails ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.capture_inbound_emails FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.capture_inbound_emails TO service_role;
 
 -- capture_jobs gains an EMAIL kind.
-ALTER TABLE public.capture_jobs ADD COLUMN IF NOT EXISTS inbound_email_id UUID REFERENCES public.inbound_emails(id) ON DELETE CASCADE;
+ALTER TABLE public.capture_jobs ADD COLUMN IF NOT EXISTS inbound_email_id UUID REFERENCES public.capture_inbound_emails(id) ON DELETE CASCADE;
 ALTER TABLE public.capture_jobs DROP CONSTRAINT IF EXISTS capture_jobs_kind_source_chk;
 ALTER TABLE public.capture_jobs ADD CONSTRAINT capture_jobs_kind_source_chk CHECK (
     (kind = 'META_MESSAGE' AND message_id IS NOT NULL AND attachment_id IS NULL AND inbound_email_id IS NULL)

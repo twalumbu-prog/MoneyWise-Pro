@@ -149,7 +149,7 @@ Updated 2026-11-05. Nothing has run against a database yet (see PROGRESS.md). Pa
 - Reuse P1-6 to P1-8 for `FACEBOOK` / `INSTAGRAM`. There is no phone, so matching relies on single-candidate merges or a CRM link.
 
 **P2-3 Email forwarding** · Needs D2
-- Migration: `inbound_emails` table, plus `capture_settings.email_alias` (unique).
+- Migration: `capture_inbound_emails` table, plus `capture_settings.email_alias` (unique).
 - `POST /integrations/email/inbound` checks the provider signature, resolves the org from the alias, stores the email, and queues an `EMAIL` job. Attachments go to `capture_attachments`. Drop known newsletter senders.
 - `capture.extract.ts` handles email text; PDFs go through the existing ATTACHMENT path. Lenco window ±24 h.
 - New `components/settings/integrations/EmailCaptureSetup.tsx`: copy the address, Gmail and Outlook steps, and a "Send test email" check.

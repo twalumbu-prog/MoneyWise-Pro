@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS public.capture_attachments (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
     uploaded_by     UUID REFERENCES public.users(id) ON DELETE SET NULL,
-    source_table    TEXT NOT NULL DEFAULT 'UPLOAD' CHECK (source_table IN ('UPLOAD', 'messaging_messages', 'inbound_emails')),
+    source_table    TEXT NOT NULL DEFAULT 'UPLOAD' CHECK (source_table IN ('UPLOAD', 'messaging_messages', 'capture_inbound_emails')),
     source_id       UUID,
     storage_path    TEXT NOT NULL,
     mime            TEXT NOT NULL,

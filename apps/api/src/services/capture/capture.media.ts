@@ -40,7 +40,7 @@ export async function storeMessageMedia(msg: any): Promise<{ attachmentId: strin
 }
 
 /** Stores a file once per org and queues it for OCR. Returns null for types we can't read (voice notes, video). */
-export async function saveEvidenceFile(f: { orgId: string; buf: Buffer; mime: string; sourceTable: 'messaging_messages' | 'inbound_emails'; sourceId: string }): Promise<{ attachmentId: string } | null> {
+export async function saveEvidenceFile(f: { orgId: string; buf: Buffer; mime: string; sourceTable: 'messaging_messages' | 'capture_inbound_emails'; sourceId: string }): Promise<{ attachmentId: string } | null> {
     const mime = f.mime.split(';')[0].trim().toLowerCase();
     if (!MIME_EXT[mime] || f.buf.length === 0 || f.buf.length > MAX_BYTES) return null;
 
