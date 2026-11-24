@@ -2983,7 +2983,7 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
 
                 // A wallet-to-wallet investment / savings transfer we already booked ourselves: don't log it twice.
                 if (await matchesRecordedInternalTransfer(orgId, walletId, {
-                    id: txnId, type: txnType, amount: txnType === 'credit' ? txnAmount : txnGross, date: txnDate,
+                    id: txnId, type: txnType, amount: txnType === 'credit' ? txnAmount : txnGross, date: txnDate, datetime: txn.datetime, description: txnDesc,
                 })) {
                     continue;
                 }
@@ -2998,7 +2998,7 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
 
                 // A wallet-to-wallet investment / savings transfer we already booked ourselves: don't log it twice.
                 if (await matchesRecordedInternalTransfer(orgId, walletId, {
-                    id: txnId, type: txnType, amount: txnType === 'credit' ? txnAmount : txnGross, date: txnDate, description: txnDesc,
+                    id: txnId, type: txnType, amount: txnType === 'credit' ? txnAmount : txnGross, date: txnDate, datetime: txn.datetime, description: txnDesc,
                 })) {
                     continue;
                 }

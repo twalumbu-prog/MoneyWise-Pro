@@ -12,14 +12,37 @@
  * one Lenco transaction and a repeat sync stays a no-op.
  */
 import { supabase } from '../lib/supabase';
+import { extractSubRef } from '../utils/subscriptionRef';
 
 const TXN_KEY = (txnId: string) => `onus_txn:${txnId}`;
 const ENTRY_KEY = (entryId: string) => `onus_entry:${entryId}`;
 
+/**
+ * A ledger row we booked ourselves is created right AFTER Lenco confirms the transfer, so it can only represent a
+ * Lenco transaction that happened shortly before it. Without this the sync re-reads older transactions every run and
+ * pairs them, by amount alone, with a brand-new row (24 Nov 2026: yesterday's K1,000 subscription credit used up
+ * today's K1,000 MWPAY- row, so the real credit was booked a second time).
+ */
+export const PAIR_BEFORE_MS = 5 * 60 * 1000;   // clock skew
+export const PAIR_AFTER_MS = 6 * 60 * 60 * 1000; // booking waits for Lenco to confirm; has been slow, never days
+export function pairingWindowOk(txnDatetime: string | undefined, rowCreatedAt: string | undefined): boolean {
+    const t = Date.parse(txnDatetime || '');
+    const c = Date.parse(rowCreatedAt || '');
+    if (!Number.isFinite(t) || !Number.isFinite(c)) return true; // no timestamps → fall back to the amount match
+    return c >= t - PAIR_BEFORE_MS && c <= t + PAIR_AFTER_MS;
+}
+
+/** True when this Lenco transaction is already in the ledger under its own id or a PG-SUB reference in its narration. */
+async function alreadyBooked(orgId: string, txn: { id: string; description?: string }): Promise<boolean> {
+    const refs = [txn.id, extractSubRef(txn.description || '')].filter(Boolean);
+    const { data } = await supabase.from('cashbook_entries').select('id').eq('organization_id', orgId).in('external_reference', refs).limit(1);
+    return !!data?.length;
+}
+
 export async function matchesRecordedInternalTransfer(
     orgId: string,
     _walletId: string,
-    txn: { id: string; type: 'credit' | 'debit' | string; amount: number; date: string; description?: string },
+    txn: { id: string; type: 'credit' | 'debit' | string; amount: number; date: string; datetime?: string; description?: string },
 ): Promise<boolean> {
     try {
         if (!txn.id || !(txn.amount > 0)) return false;
@@ -27,11 +50,14 @@ export async function matchesRecordedInternalTransfer(
         const { data: seen } = await supabase.from('app_settings').select('key').eq('key', TXN_KEY(txn.id)).maybeSingle();
         if (seen) return true;
 
+        // Already in the ledger: never spend a pairing row on it (the normal flow dedups it as before).
+        if (await alreadyBooked(orgId, txn)) return false;
+
         const amountCol = txn.type === 'credit' ? 'debit' : 'credit';
         const since = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
         const { data: rows } = await supabase
             .from('cashbook_entries')
-            .select('id')
+            .select('id, created_at')
             .eq('organization_id', orgId)
             // Any wallet of the org: Lenco only knows the org's one account, while savings contributions
             // are booked into the goal's own sub-wallet (not the main wallet the sync is looking at).
@@ -43,7 +69,7 @@ export async function matchesRecordedInternalTransfer(
             .gte('created_at', since)
             .order('created_at', { ascending: true })
             .limit(10);
-        let candidates: { id: string }[] = rows ?? [];
+        let candidates: { id: string }[] = (rows ?? []).filter(r => pairingWindowOk(txn.datetime, (r as any).created_at));
 
         // A MoneyWise Pay payment carrying a MoneyWise fee: the payer sends amount + fee, Lenco credits the recipient the whole of it
         // (K1.03) and then sweeps the fee, while we book the recipient NET (K1.00 — "the wallet mirrors the Lenco balance after the
@@ -53,7 +79,7 @@ export async function matchesRecordedInternalTransfer(
             const slack = Math.max(1, txn.amount * 0.035);
             const { data: netRows } = await supabase
                 .from('cashbook_entries')
-                .select('id')
+                .select('id, created_at')
                 .eq('organization_id', orgId)
                 .eq('account_type', 'MONEYWISE_WALLET')
                 .like('external_reference', 'MWPAY-%')
@@ -63,7 +89,7 @@ export async function matchesRecordedInternalTransfer(
                 .gte('created_at', since)
                 .order('created_at', { ascending: true })
                 .limit(10);
-            for (const r of netRows ?? []) if (!candidates.some(c => c.id === r.id)) candidates.push(r);
+            for (const r of netRows ?? []) if (pairingWindowOk(txn.datetime, (r as any).created_at) && !candidates.some(c => c.id === r.id)) candidates.push(r);
         }
         if (!candidates.length) return deferIfBookingPending(txn);
 
