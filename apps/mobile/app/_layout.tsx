@@ -161,6 +161,7 @@ export default function RootLayout() {
                         <Stack.Screen name="products/[id]" options={{ animation: 'slide_from_bottom' }} />
                         <Stack.Screen name="settings/profile" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="settings/kyc-profile" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="kyc-capture" options={{ animation: 'slide_from_right', headerShown: false }} />
                         <Stack.Screen name="settings/preferences" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="settings/customer-rewards" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="settings/security" options={{ animation: 'slide_from_right' }} />
