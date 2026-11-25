@@ -50,7 +50,18 @@ export async function getSettings(userId: string, orgId: string) {
         .eq('user_id', userId).eq('organization_id', orgId).eq('status', 'PENDING');
     const { count: openChecks } = await supabase.from('momo_balance_checks').select('id', { count: 'exact', head: true })
         .eq('user_id', userId).eq('organization_id', orgId).eq('status', 'OPEN');
+    // The key belongs to the person and lands messages in ONE workspace (the one it was last set up in). Say so, and
+    // count what already went to their other workspaces, so nothing seems to vanish.
+    const captureOrgId = (row.organization_id as string) ?? orgId;
+    const [{ count: elsewhereCaptures }, { count: elsewhereIgnored }, captureWorkspaceName] = await Promise.all([
+        supabase.from('momo_captures').select('id', { count: 'exact', head: true }).eq('user_id', userId).neq('organization_id', orgId),
+        supabase.from('momo_ignored_messages').select('id', { count: 'exact', head: true }).eq('user_id', userId).neq('organization_id', orgId),
+        workspaceName(captureOrgId),
+    ]);
     return {
+        captureWorkspace: { id: captureOrgId, name: captureWorkspaceName },
+        capturingHere: captureOrgId === orgId,
+        elsewhere: { captures: elsewhereCaptures ?? 0, ignored: elsewhereIgnored ?? 0 },
         autoPost: !!row.auto_post,
         destination: row.destination as 'PROVIDER' | 'CASH',
         hasToken: !!row.token_hash,
@@ -69,6 +80,15 @@ export async function updateSettings(userId: string, orgId: string, patch: { aut
     if (patch.destination === 'PROVIDER' || patch.destination === 'CASH') update.destination = patch.destination;
     if (patch.defaultProvider === null || ['MTN', 'AIRTEL', 'ZAMTEL'].includes(patch.defaultProvider as string)) update.default_provider = patch.defaultProvider;
     await supabase.from('momo_capture_settings').update(update).eq('user_id', userId);
+    return getSettings(userId, orgId);
+}
+
+/** Points the existing key at the workspace the person is in now. The key itself is unchanged, so the phone needs nothing. */
+export async function moveCaptureHere(userId: string, orgId: string) {
+    await settingsRow(userId, orgId);
+    const { error } = await supabase.from('momo_capture_settings').update({ organization_id: orgId, updated_at: new Date().toISOString() }).eq('user_id', userId);
+    if (error) throw new MomoCaptureError(`Could not move capture: ${error.message}`, 500);
+    workspaceNames.delete(orgId);
     return getSettings(userId, orgId);
 }
 
@@ -170,9 +190,8 @@ export async function ingest(input: IngestInput) {
         const reading = parseBalanceOnly(text, sender);
         const bal = parseBalanceMessage(text, sender);
         if (bal) return { accepted: true as const, balanceCheck: await recordBalanceCheck(input.userId, input.orgId, source, text, await fallbackProvider(bal.provider), bal.balance, occurredAt) };
-        if (reading) return { accepted: false as const, reason: 'BALANCE_ONLY' as const };
         await logIgnored(input.userId, input.orgId, source, text, sender);
-        return { accepted: false as const, reason: 'NOT_A_TRANSACTION' as const };
+        return { accepted: false as const, reason: reading ? 'BALANCE_ONLY' as const : 'NOT_A_TRANSACTION' as const };
     }
 
     // Already in the ledger: through Lenco, or because a screenshot of this same confirmation was approved first.
@@ -364,10 +383,9 @@ const IGNORED_KEEP_DAYS = 30;
 async function logIgnored(userId: string, orgId: string, source: CaptureSource, text: string, sender: string | null, reason?: string) {
     try {
         const d = diagnoseMessage(text, sender);
-        if (!reason && d.kind !== 'IGNORED') return;
         const sensitive = d.kind === 'IGNORED' && d.sensitive;
         await supabase.from('momo_ignored_messages').insert({
-            organization_id: orgId, user_id: userId, source, reason: reason ?? (d.kind === 'IGNORED' ? d.reason : 'Ignored'),
+            organization_id: orgId, user_id: userId, source, reason: reason ?? (d.kind === 'IGNORED' ? d.reason : 'Not booked'),
             raw_text: sensitive ? '[hidden: looks like a one-time code]' : text.slice(0, 300),
         });
         await supabase.from('momo_ignored_messages').delete().eq('user_id', userId)
@@ -375,11 +393,15 @@ async function logIgnored(userId: string, orgId: string, source: CaptureSource, 
     } catch (e: any) { console.error('[MoMo capture] could not log ignored message:', e?.message); }
 }
 
+/** Every message the phone sent that wasn't booked, across all of the person's workspaces (each tagged with its own). */
 export async function listIgnored(userId: string, orgId: string) {
     const { data, error } = await supabase.from('momo_ignored_messages').select('*')
-        .eq('user_id', userId).eq('organization_id', orgId).order('created_at', { ascending: false }).limit(100);
+        .eq('user_id', userId).order('created_at', { ascending: false }).limit(100);
     if (error) throw new MomoCaptureError(error.message, 500);
-    return data ?? [];
+    const rows = data ?? [];
+    const names = new Map<string, string | null>();
+    for (const id of new Set(rows.map((r: any) => r.organization_id as string))) names.set(id, await workspaceName(id));
+    return rows.map((r: any) => ({ ...r, workspace: names.get(r.organization_id) ?? null, elsewhere: r.organization_id !== orgId }));
 }
 
 /** Dry run for the web tester: how a pasted message would be read, nothing saved. */

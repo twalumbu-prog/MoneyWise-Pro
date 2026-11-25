@@ -10,6 +10,11 @@ import { parseMomoMessage, parseBalanceOnly, parseBalanceMessage, isPersonalNumb
 type Expect = Partial<ReturnType<typeof parseMomoMessage> & {}> | null;
 const cases: { text: string; sender?: string; expect: Expect }[] = [
     {
+        // A card purchase: no "paid"/"sent" wording, a four-decimal amount.
+        text: 'SUCCESS: ZMW 92.0200 incl. FX fee at SUPABASE card *2863 21-11-2026 17:19. Bal: ZMW 13.05 TID 598956',
+        expect: { direction: 'OUT', amount: 92.02, balanceAfter: 13.05, reference: '598956' },
+    },
+    {
         // Zamtel Kwacha: the transaction id is all letters.
         text: 'Dear Stephen Kapambwe, you have received ZMW 3.00 from CLIVE NGANDU - 770676303 on 25-11-2026 14:51:14 under Txn ID: FLPFCKRP. Your account balance is now ZMW 7.74. Manage your money smarter download the MyZamtel App today!',
         expect: { provider: 'ZAMTEL', direction: 'IN', amount: 3, balanceAfter: 7.74, reference: 'FLPFCKRP' },

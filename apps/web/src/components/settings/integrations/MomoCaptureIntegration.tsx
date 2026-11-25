@@ -54,6 +54,11 @@ export const MomoCaptureIntegration: React.FC<{ onBack: () => void }> = ({ onBac
         onSuccess: refresh,
         onError: (e: Error) => window.alert(e.message),
     });
+    const moveHere = useMutation({
+        mutationFn: () => momoCaptureService.captureHere(),
+        onSuccess: refresh,
+        onError: (e: Error) => window.alert(e.message),
+    });
     return (
         <div className="space-y-6">
             <button onClick={onBack} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800">
@@ -64,8 +69,27 @@ export const MomoCaptureIntegration: React.FC<{ onBack: () => void }> = ({ onBac
                 <p className="text-sm text-gray-500">Everything your phone sends from mobile money messages: what was received, how it was read and where it was booked. Set the phone up in the mobile app under Preferences → Mobile money capture.</p>
             </div>
 
+            {s && (!s.capturingHere || s.elsewhere.captures + s.elsewhere.ignored > 0) && (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex flex-wrap items-center gap-3">
+                    <div className="flex-1 min-w-[240px]">
+                        <p className="text-sm font-semibold text-amber-900">
+                            {s.capturingHere ? 'Some messages went to another workspace' : `Your phone is sending messages to ${s.captureWorkspace.name ?? 'another workspace'}, not this one`}
+                        </p>
+                        <p className="text-xs text-amber-800">
+                            A capture key delivers into the one workspace it was set up in. {s.elsewhere.captures + s.elsewhere.ignored} message{s.elsewhere.captures + s.elsewhere.ignored === 1 ? '' : 's'} already {s.elsewhere.captures + s.elsewhere.ignored === 1 ? 'went' : 'went'} to your other workspaces (the Ignored tab lists them all, with where each went).
+                        </p>
+                    </div>
+                    {!s.capturingHere && (
+                        <button onClick={() => moveHere.mutate()} disabled={moveHere.isPending}
+                            className="px-4 py-2 rounded-lg bg-brand-navy text-white text-sm font-semibold disabled:opacity-60">
+                            {moveHere.isPending ? 'Moving…' : 'Capture into this workspace'}
+                        </button>
+                    )}
+                </div>
+            )}
+
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <Stat label="Capture key" value={s ? (s.hasToken ? 'Active' : 'Off') : '…'} good={!!s?.hasToken} />
+                <Stat label="Capture key" value={s ? (s.hasToken ? 'Active' : 'Off') : '…'} sub={s?.hasToken ? `delivers to ${s.captureWorkspace.name ?? 'a workspace'}` : undefined} good={!!s?.hasToken} />
                 <Stat label="Last message" value={s?.lastCaptureAt ? when(s.lastCaptureAt) : 'None yet'} sub={s?.lastCaptureSource ? SOURCE[s.lastCaptureSource] : undefined} />
                 <Stat label="Waiting for you" value={s ? String(s.pendingCount) : '…'} />
                 <Stat label="Booking" value={s ? (s.autoPost ? 'Automatic' : 'After review') : '…'} sub={s ? (s.destination === 'CASH' ? 'to Cash' : 'to provider account') : undefined} />
@@ -123,7 +147,7 @@ export const MomoCaptureIntegration: React.FC<{ onBack: () => void }> = ({ onBac
                     {!ignored.isLoading && (ignored.data?.length ?? 0) === 0 && <Empty text="Nothing ignored yet." />}
                     {ignored.data?.map((m) => (
                         <div key={m.id} className="p-4 bg-white border border-gray-200 rounded-xl space-y-1">
-                            <div className="flex justify-between gap-2 text-xs text-gray-500"><span>{SOURCE[m.source]}</span><span>{when(m.created_at)}</span></div>
+                            <div className="flex justify-between gap-2 text-xs text-gray-500"><span>{SOURCE[m.source]}{m.elsewhere && <span className="ml-2 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold">in {m.workspace ?? 'another workspace'}</span>}</span><span>{when(m.created_at)}</span></div>
                             <p className="text-sm text-gray-800 break-words">{m.raw_text}</p>
                             <p className="text-xs text-amber-700">Why: {m.reason}</p>
                         </div>

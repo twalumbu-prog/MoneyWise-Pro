@@ -5,6 +5,8 @@
  *   npx ts-node --transpile-only src/scripts/link_mew3_deposits.ts            # dry run, 15–17 Nov pairs
  *   npx ts-node --transpile-only src/scripts/link_mew3_deposits.ts --apply    # book them (production!)
  *   ... --pairs earlier                                                       # the 11–14 Nov pairs instead
+ *   ... --pairs nov21                                                         # #178 ⇄ CR-2026-0087, #159 ⇄ CR-2026-0090
+ *   ... --pairs banza                                                         # #176 ⇄ CR-2026-0072 (K1,800 sale, K1,777 deposit)
  */
 import 'dotenv/config';
 import { linkDepositTransfer } from '../services/depositTransfer.service';
@@ -12,6 +14,8 @@ import { linkDepositTransfer } from '../services/depositTransfer.service';
 const ORG = '73937936-5b95-4351-b5a8-174563362173'; // MEW3 Apartments
 const SETS: Record<string, Array<[string, string]>> = {
     default: [['kaizen:mew3:2026-11-14:r173', 'CR-2026-0068'], ['kaizen:mew3:2026-11-16:r174', 'CR-2026-0069'], ['kaizen:mew3:2026-11-17:r175', 'CR-2026-0071']],
+    banza: [['kaizen:mew3:2026-11-20:r176', 'CR-2026-0072']],
+    nov21: [['kaizen:mew3:2026-11-21:r178', 'CR-2026-0087'], ['kaizen:mew3:2026-11-21:r159', 'CR-2026-0090']],
     earlier: [['kaizen:mew3:2026-11-10:r170', 'CR-2026-0065'], ['kaizen:mew3:2026-11-14:r171', 'CR-2026-0066'], ['kaizen:mew3:2026-11-14:r172', 'CR-2026-0067']],
 };
 

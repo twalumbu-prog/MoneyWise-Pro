@@ -62,6 +62,7 @@ const handle = (label: string, fn: (req: any) => Promise<any>) => async (req: an
 
 router.get('/settings', handle('settings', (req) => momo.getSettings(req.user.id, req.user.organization_id)));
 router.put('/settings', handle('settings', (req) => momo.updateSettings(req.user.id, req.user.organization_id, req.body ?? {})));
+router.post('/settings/capture-here', handle('capture-here', (req) => momo.moveCaptureHere(req.user.id, req.user.organization_id)));
 router.post('/token', handle('token', async (req) => ({ token: await momo.rotateToken(req.user.id, req.user.organization_id) })));
 router.delete('/token', handle('token', async (req) => { await momo.revokeToken(req.user.id); return { ok: true }; }));
 router.get('/balances', handle('balances', (req) => momo.balances(req.user.id, req.user.organization_id)));

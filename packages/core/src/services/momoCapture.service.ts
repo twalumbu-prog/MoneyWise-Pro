@@ -5,6 +5,12 @@ export type MomoCaptureSource = 'ANDROID_SMS' | 'ANDROID_NOTIFICATION' | 'IOS_SH
 export type MomoCaptureStatus = 'PENDING' | 'POSTED' | 'MATCHED' | 'DISMISSED';
 
 export interface MomoCaptureSettings {
+    /** The workspace this person's capture key delivers into (the one it was last set up in). */
+    captureWorkspace: { id: string; name: string | null };
+    /** True when that is the workspace being viewed. */
+    capturingHere: boolean;
+    /** Messages that went to the person's other workspaces. */
+    elsewhere: { captures: number; ignored: number };
     autoPost: boolean;
     destination: 'PROVIDER' | 'CASH';
     hasToken: boolean;
@@ -63,7 +69,7 @@ export interface MomoBalanceCheck {
 export interface MomoCaptureActivity extends MomoCapture {
     entry: { reference_number: string | null; status: string | null; date: string | null; account: string | null; category: { id: string; code: string; name: string } | null } | null;
 }
-export interface MomoIgnoredMessage { id: string; source: MomoCaptureSource; raw_text: string; reason: string; created_at: string }
+export interface MomoIgnoredMessage { id: string; source: MomoCaptureSource; raw_text: string; reason: string; created_at: string; workspace?: string | null; elsewhere?: boolean }
 export type MomoDiagnosis =
     | { kind: 'TRANSACTION'; parsed: { provider: string; direction: 'IN' | 'OUT'; amount: number; fee: number | null; balanceAfter: number | null; counterparty: string | null; reference: string | null } }
     | { kind: 'BALANCE'; balance: { provider: string; balance: number } }
@@ -78,6 +84,10 @@ export const momoCaptureService = {
     },
     updateSettings(patch: Partial<Pick<MomoCaptureSettings, 'autoPost' | 'destination' | 'defaultProvider'>>): Promise<MomoCaptureSettings> {
         return apiJson('/momo-capture/settings', { method: 'PUT', body: JSON.stringify(patch) });
+    },
+    /** Delivers captured messages into the workspace being viewed. The key itself is unchanged. */
+    captureHere(): Promise<MomoCaptureSettings> {
+        return apiJson('/momo-capture/settings/capture-here', { method: 'POST' });
     },
     /** A new capture key; the previous one stops working. Shown/handed over once — the server keeps only its hash. */
     rotateToken(): Promise<{ token: string }> {

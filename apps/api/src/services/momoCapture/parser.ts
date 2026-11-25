@@ -70,9 +70,9 @@ const IN_WORDS = /\b(you have received|you received|received|has sent you|sent y
 // from", "X has transferred ZMW 50 to your account").
 const STRONG_IN = /\b(has sent you|sent you|received from|payment received|money received|paid you|been (paid|credited)|credited (to|with)|(in)?to your (account|wallet|number|mobile money))\b/i;
 const YOU_DID_IT = /\byou(?: have)? (sent|paid|withdrawn|withdrew|transferred|bought|purchased)\b/i;
-const OUT_WORDS = /\b(you have sent|you sent|sent|paid|payment (of|to)|you have paid|withdr[ae]wn?|withdrawal|debited|cash[- ]?out|transferred|transfer of|purchase[ds]?|bought|airtime)\b/i;
+const OUT_WORDS = /\b(success:?[^.]{0,80}\bcard\b|\bat [^.]{2,60}\bcard\s*\*?\d{4}|you have sent|you sent|sent|paid|payment (of|to)|you have paid|withdr[ae]wn?|withdrawal|debited|cash[- ]?out|transferred|transfer of|purchase[ds]?|bought|airtime)\b/i;
 
-const NUM = '([0-9]{1,3}(?:,[0-9]{3})+(?:\\.[0-9]{1,2})?|[0-9]+(?:\\.[0-9]{1,2})?)';
+const NUM = '([0-9]{1,3}(?:,[0-9]{3})+(?:\\.[0-9]{1,4})?|[0-9]+(?:\\.[0-9]{1,4})?)';
 // "ZMW 1,250.00", "ZMW1250", "K 50", "K50.00", "ZK 20" — and "Amt: 100.00" / "amount 100" without a currency.
 // MTN puts the currency after the number in places ("Your new balance:0.36 ZMW").
 const MONEY = new RegExp(`(?:\\b(?:ZMW|ZK)\\s?|(?<![A-Za-z0-9])K\\s?)${NUM}|\\b(?:amount|amt)\\s*[:.]?\\s*(?:ZMW|ZK|K)?\\s?${NUM}|(?<![A-Za-z0-9.,])${NUM}\\s?(?:ZMW|ZK)\\b`, 'gi');

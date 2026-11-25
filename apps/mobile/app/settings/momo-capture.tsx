@@ -39,12 +39,12 @@ export default function MomoCaptureSettingsScreen() {
     const allCapturesAvailable = !!captureSettings.data?.planEligible;
     const balances = useQuery({ queryKey: ['momo-capture', 'balances'], queryFn: () => momoCaptureService.balances(), retry: false });
     const [android, setAndroid] = useState(getAndroidStatus());
-    const [iosDone, setIosDone] = useState(false);
+    const [iosFlag, setIosFlag] = useState(false);
 
     const refreshDevice = useCallback(() => {
         setAndroid(getAndroidStatus());
         // With the built-in action, "set up" also needs the key still on this phone (a 401 drops it).
-        void isIosShortcutSetUp().then((done) => setIosDone(done && (!iosIntentAvailable || !!getIosStatus()?.hasToken)));
+        void isIosShortcutSetUp().then(setIosFlag);
         void qc.invalidateQueries({ queryKey: MOMO_SETTINGS_KEY });
         void qc.invalidateQueries({ queryKey: ['momo-capture', 'balances'] });
     }, [qc]);
@@ -103,6 +103,16 @@ export default function MomoCaptureSettingsScreen() {
 
     const s = settings.data;
     const lastSeen = s?.lastCaptureAt ? `Last message ${ago(s.lastCaptureAt)} by ${SOURCE_LABEL[s.lastCaptureSource ?? ''] ?? 'capture'}` : null;
+    // "Set up" is what actually happened, not a flag that sign-out or a reinstall can wipe: this iPhone holds a key AND
+    // either the walkthrough was finished or the server has already received a message from the iPhone automation.
+    const iosEverSet = iosFlag || s?.lastCaptureSource === 'IOS_SHORTCUT';
+    const iosDone = iosEverSet && (!iosIntentAvailable || !!getIosStatus()?.hasToken);
+    const moveHere = useMutation({
+        mutationFn: () => momoCaptureService.captureHere(),
+        onSuccess: (data) => { qc.setQueryData(MOMO_SETTINGS_KEY, data); void qc.invalidateQueries({ queryKey: MOMO_CAPTURES_KEY }); },
+        onError: (e: Error) => Alert.alert('Could not move capture', e.message),
+    });
+    const elsewhere = (s?.elsewhere.captures ?? 0) + (s?.elsewhere.ignored ?? 0);
     const anyOn = Platform.OS === 'android' ? !!(android?.notificationsEnabled || android?.smsEnabled) : iosDone;
 
     return (
@@ -148,6 +158,12 @@ export default function MomoCaptureSettingsScreen() {
                     )}
                 </View>
                 {!!lastSeen && <Text style={styles.hint}>{lastSeen}.</Text>}
+                {!!s && !s.capturingHere && (
+                    <Pressable onPress={() => moveHere.mutate()} disabled={moveHere.isPending} style={({ pressed }) => [styles.hintBox, pressed && { opacity: 0.7 }]}>
+                        <Text style={[styles.hint, { color: colors.warn, marginTop: 0 }]}>Your phone is sending messages to {s.captureWorkspace.name ?? 'another workspace'}, not this one{elsewhere ? ` (${elsewhere} already there)` : ''}.</Text>
+                        <Text style={[styles.hint, { color: colors.blue, fontFamily: fonts.bodyBold }]}>{moveHere.isPending ? 'Moving…' : 'Tap to capture into this workspace'}</Text>
+                    </Pressable>
+                )}
                 {Platform.OS === 'android' && !!android?.queued && <Text style={styles.hint}>{android.queued} message(s) waiting for a connection.</Text>}
                 {Platform.OS === 'ios' && iosIntentAvailable && (() => {
                     const ios = getIosStatus();
@@ -155,7 +171,7 @@ export default function MomoCaptureSettingsScreen() {
                     return (
                         <>
                             {!!ios.queued && <Text style={styles.hint}>{ios.queued} message{ios.queued === 1 ? '' : 's'} saved on this iPhone, waiting for a connection. They send by themselves.</Text>}
-                            {!ios.hasToken && iosDone && <Text style={[styles.hint, { color: colors.warn }]}>This iPhone’s capture key was turned off. Open Shortcuts automation to set it up again. Saved messages wait until then.</Text>}
+                            {!ios.hasToken && iosEverSet && <Text style={[styles.hint, { color: colors.warn }]}>This iPhone’s capture key was turned off. Open Shortcuts automation to set it up again. Saved messages wait until then.</Text>}
                             {!!ios.lastError && !!ios.queued && <Text style={[styles.hint, { color: colors.warn }]}>Last try: {ios.lastError}</Text>}
                             {!!ios.filteredCount && <Text style={styles.hint}>{ios.filteredCount} other message{ios.filteredCount === 1 ? '' : 's'} checked and kept on your phone (not money messages).</Text>}
                         </>
@@ -282,6 +298,7 @@ const styles = StyleSheet.create({
     rowSub: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint, lineHeight: 17 },
     balance: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.text },
     hint: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint, marginTop: 8, marginLeft: 4, lineHeight: 17 },
+    hintBox: { marginTop: 4 },
     radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
     radioOn: { backgroundColor: colors.blue, borderColor: colors.blue },
     danger: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 28, paddingVertical: 12 },
