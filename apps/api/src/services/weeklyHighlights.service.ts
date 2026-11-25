@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { emailService } from './email.service';
+import { peopleForEmails } from './emailPersonal';
 import {
     getPeriodSummary,
     getUnseenAchievements,
@@ -173,6 +174,10 @@ export interface WeeklyHighlightsData {
     previous: PeriodSummary;
     achievements: Achievement[];
     concerns: Concern[];
+    /** The admin this copy is for. */
+    firstName?: string | null;
+    /** Their current run of active days, when known. */
+    streak?: number | null;
 }
 
 /**
@@ -182,7 +187,7 @@ export interface WeeklyHighlightsData {
  * that survives Gmail's CSS stripping and Outlook's Word rendering engine.
  */
 export function renderWeeklyHighlightsEmail(data: WeeklyHighlightsData): string {
-    const { orgName, current, previous, achievements, concerns } = data;
+    const { orgName, current, previous, achievements, concerns, firstName, streak } = data;
 
     const revenueChange = pctChange(current.revenue, previous.revenue);
     const profitUp = current.profit >= previous.profit;
@@ -224,12 +229,13 @@ export function renderWeeklyHighlightsEmail(data: WeeklyHighlightsData): string 
             <!-- Hero -->
             <div style="padding:34px 44px 26px; text-align:center;">
                 <div style="font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.12em; color:${FAINT};">${esc(orgName)} · ${range}</div>
-                <div style="font-size:15px; font-weight:700; color:${BLUE}; margin-top:16px;">Your profit this week</div>
+                <div style="font-size:15px; font-weight:700; color:${BLUE}; margin-top:16px;">${firstName ? `${esc(firstName)}, here’s your profit this week` : 'Your profit this week'}</div>
                 <div style="font-size:58px; font-weight:900; letter-spacing:-0.035em; line-height:1.05; margin-top:8px; color:${current.profit >= 0 ? INK : '#C0392B'}; font-variant-numeric:tabular-nums;">
                     ${signedMoney(current.profit)}
                 </div>
                 <div style="margin-top:14px;">
                     ${trendPill(`${Math.abs(pctChange(current.profit, previous.profit))}% vs last week`, profitUp)}
+                    ${streak && streak >= 2 ? `<span style="display:inline-block; margin-left:6px; padding:4px 10px; border-radius:999px; background:#FFF4E5; color:${AMBER}; font-size:12px; font-weight:800;">🔥 ${streak}-day streak</span>` : ''}
                 </div>
             </div>
 
@@ -327,6 +333,7 @@ export async function sendWeeklyHighlights(
 
     const { orgName, emails } = await emailService.getOrgNotificationRecipients(organizationId);
     const recipients = options.overrideRecipients?.length ? options.overrideRecipients : emails;
+    const people = await peopleForEmails(recipients);
 
     if (recipients.length === 0) {
         return { sent: false, recipients: [], reason: 'no admin recipients' };
@@ -353,22 +360,25 @@ export async function sendWeeklyHighlights(
         console.error(`[WeeklyHighlights] Achievement lookup failed for org ${organizationId}:`, err?.message || err);
     }
 
-    const html = renderWeeklyHighlightsEmail({
-        orgName,
-        current,
-        previous,
-        achievements,
-        concerns: buildConcerns(current, previous),
-    });
+    const concerns = buildConcerns(current, previous);
+    const streaks = new Map<string, number>();
+    const ids = people.map((p) => p.userId).filter((x): x is string => !!x);
+    if (ids.length) {
+        const { data } = await supabase.from('user_progress').select('user_id, streak').in('user_id', ids);
+        (data ?? []).forEach((r: any) => streaks.set(r.user_id, Number(r.streak) || 0));
+    }
 
-    await emailService.sendEmail({
-        to: recipients,
-        subject: `Your week at ${orgName} — ${signedMoney(current.profit)} profit`,
-        html,
-    });
+    // One email per admin, each opening with their own name (and their own streak).
+    const sent = await emailService.sendToEach(people, (p) => ({
+        subject: `${p.firstName ? `${p.firstName}, your` : 'Your'} week at ${orgName}: ${signedMoney(current.profit)} profit`,
+        html: renderWeeklyHighlightsEmail({
+            orgName, current, previous, achievements, concerns,
+            firstName: p.firstName, streak: p.userId ? streaks.get(p.userId) ?? null : null,
+        }),
+    }));
 
-    console.log(`[WeeklyHighlights] Sent ${start}..${end} summary for org ${organizationId} to ${recipients.join(', ')}`);
-    return { sent: true, recipients };
+    console.log(`[WeeklyHighlights] Sent ${start}..${end} summary for org ${organizationId} to ${sent} of ${recipients.length} admins`);
+    return { sent: sent > 0, recipients };
 }
 
 /**

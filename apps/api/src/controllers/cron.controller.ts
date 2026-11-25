@@ -9,6 +9,8 @@ import { drainCaptureJobs } from '../services/capture/capture.worker';
 import { sendCaptureDigests } from '../services/capture/capture.digest';
 import { sendMomoConfirmDigests } from '../services/momoCapture/confirmDigest';
 import { sendWeeklyProgress, sendDailyProgress } from '../services/progressPush.service';
+import { runNudgeEmails } from '../services/nudgeEmail.service';
+import { sendInflowDigests } from '../services/inflowDigest.service';
 import { checkMetaTokens, purgeOldEvidence } from '../services/capture/capture.maintenance';
 
 /**
@@ -237,6 +239,13 @@ export const captureRetention = cronTask('CaptureRetention', () => purgeOldEvide
 export const momoConfirmDigest = cronTask('MomoConfirmDigest', () => sendMomoConfirmDigests(45_000));
 export const progressWeekly = cronTask('ProgressWeekly', () => sendWeeklyProgress(45_000));
 export const progressDaily = cronTask('ProgressDaily', () => sendDailyProgress(45_000));
+// POST /cron/inflow-digest — 19:00 Lusaka: one email summarising the day's deposits for people who were over the daily email cap.
+export const inflowDigest = cronTask('InflowDigest', async () => { const r = await sendInflowDigests({ budgetMs: 45_000 }); return { orgs: r.orgs, sent: r.sent, skipped: r.skipped, errors: r.errors }; });
+// POST /cron/nudge-emails — 07:00 Lusaka: personal nudge emails (bills due, setup steps, Sunday progress, Friday team recap).
+export const nudgeEmails = cronTask('NudgeEmails', async () => {
+    const r = await runNudgeEmails({ budgetMs: 45_000 });
+    return { people: r.people, sent: r.sent, skipped: r.skipped, errors: r.errors };
+});
 
 // POST /cron/daily-recon — every morning: MoneyWise wallet totals vs live Lenco balance for every linked org.
 // Stores the snapshot (app_settings.daily_recon_last, with the previous run kept for trend) and emails super-admins

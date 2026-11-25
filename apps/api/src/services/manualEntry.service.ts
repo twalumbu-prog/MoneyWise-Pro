@@ -90,6 +90,23 @@ export async function recordManualEntry(p: ManualEntryInput) {
     const { data: wallet } = await supabase.from('external_wallets').select('id, name').eq('id', p.externalWalletId).eq('organization_id', p.orgId).maybeSingle();
     if (!wallet) throw new ManualEntryError('Choose one of your external accounts', 404);
 
+    // Already booked under this reference (a retry of an entry made offline)? Return it instead of booking twice.
+    if (p.externalReference) {
+        const { data: prior } = await supabase.from('cashbook_entries').select('id, reference_number, debit, credit, date, account_id')
+            .eq('organization_id', p.orgId).eq('external_reference', p.externalReference).limit(1).maybeSingle();
+        if (prior) {
+            const pr: any = prior;
+            let cat: any = null;
+            if (pr.account_id) cat = (await supabase.from('accounts').select('id, code, name, emoji').eq('id', pr.account_id).maybeSingle()).data;
+            return {
+                entryId: pr.id as string, referenceNumber: (pr.reference_number as string | null) ?? null, direction: p.direction,
+                amount: Number(pr.debit) || Number(pr.credit) || value, date: (pr.date as string) ?? entryDate,
+                externalWallet: { id: wallet.id, name: wallet.name },
+                category: cat ? { id: cat.id, code: cat.code, name: cat.name, emoji: cat.emoji ?? null, source: 'USER' as const, reasoning: null, confidence: null } : null,
+            };
+        }
+    }
+
     let chosen: any = null;
     let source: 'USER' | 'AI' | null = null;
     let reasoning: string | null = null;

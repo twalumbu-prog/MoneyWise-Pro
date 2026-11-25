@@ -83,6 +83,8 @@ const PLUGINS: ExpoConfig['plugins'] = [
     './modules/momo-capture/plugin/withMomoCaptureIntents',
     // The iPhone capture guide plays its how-to video in a floating picture-in-picture window over Shortcuts.
     ['expo-video', { supportsPictureInPicture: true, supportsBackgroundPlayback: true }],
+    // Builds the Live Activity widget extension from targets/offline-activity (Dynamic Island / lock screen offline indicator).
+    '@bacons/apple-targets',
     // App PIN with Face ID / fingerprint unlock (Settings → Security).
     ['expo-local-authentication', { faceIDPermission: 'MoneyWise uses Face ID to unlock the app.' }],
     [
@@ -118,7 +120,8 @@ const config: ExpoConfig = {
     // 0.4.0: adds the local tap-nfc native module (Android shares a payment request by NFC tap).
     // 0.6.0: momo-capture gets an iOS side (App Intent "Capture mobile money message", Keychain key, clipboard checks).
     // 0.7.0: iOS capture saves on the phone first, filters on the phone, notifies, retries in the background (BGTask).
-    version: '0.7.0',
+    // 0.8.0: adds the offline-activity native module and its widget extension (the Dynamic Island / lock screen "MoneyWise is offline" Live Activity). Native, so 0.7.x binaries never get it.
+    version: '0.8.0',
     orientation: 'portrait',
     scheme: 'moneywise',
     userInterfaceStyle: 'light',
@@ -154,6 +157,8 @@ const config: ExpoConfig = {
             NSFaceIDUsageDescription:
                 'MoneyWise uses Face ID to unlock the app without re-entering your password.',
             ITSAppUsesNonExemptEncryption: false,
+            // Lets the app show the "MoneyWise is offline" Live Activity in the Dynamic Island / on the lock screen.
+            NSSupportsLiveActivities: true,
         },
     },
 

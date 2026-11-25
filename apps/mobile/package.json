@@ -12,6 +12,7 @@
     "bundle:check": "expo export --platform ios --output-dir .expo-export-check"
   },
   "dependencies": {
+    "@bacons/apple-targets": "4.0.7",
     "@expo-google-fonts/dm-sans": "^0.4.2",
     "@expo/metro-runtime": "~6.1.2",
     "@shopify/react-native-skia": "2.2.12",

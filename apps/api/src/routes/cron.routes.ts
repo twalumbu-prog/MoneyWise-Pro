@@ -15,6 +15,8 @@ import {
     momoConfirmDigest,
     progressWeekly,
     progressDaily,
+    nudgeEmails,
+    inflowDigest,
 } from '../controllers/cron.controller';
 
 const router = Router();
@@ -35,5 +37,7 @@ router.post('/tracking-health', trackingHealthCron);
 router.post('/momo-confirm-digest', momoConfirmDigest);
 router.post('/progress-weekly', progressWeekly);
 router.post('/progress-daily', progressDaily);
+router.post('/nudge-emails', nudgeEmails);
+router.post('/inflow-digest', inflowDigest);
 
 export default router;

@@ -5,7 +5,7 @@ import {
     RefreshControl, Modal, TextInput, Alert, KeyboardAvoidingView, 
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
     Plus, X, Play, RotateCcw, Calendar, MoreVertical, Check, Mail, ChevronRight, ChevronLeft, List,
@@ -19,6 +19,8 @@ import { ScreenHeader } from '../src/components/ScreenHeader';
 import { ScheduleSuggestionsCard } from '../src/components/schedules/ScheduleSuggestionsCard';
 import { DebtsList } from '../src/components/debts/DebtsList';
 import { useAuth } from '../src/context/AuthContext';
+import { isNetworkError, isOnline, markOffline } from '../src/lib/offline/connectivity';
+import { enqueueBill, newUuid } from '../src/lib/offline/outbox';
 import { AnimatedSegmented, AnimatedTabContent } from '../src/components/AnimatedTabs';
 import { colors, fonts, radius } from '../src/theme/tokens';
 
@@ -163,6 +165,9 @@ export default function SchedulesScreen() {
     const [viewMode, setViewMode] = useState<'list' | 'calendar' | 'debts'>('list');
     const [category, setCategory] = useState<ScheduleCategory | 'ALL'>('ALL');
     const [addOpen, setAddOpen] = useState(false);
+    // Home's + button sends people here with ?new=1 to open the new-bill form straight away.
+    const { new: openNew } = useLocalSearchParams<{ new?: string }>();
+    useEffect(() => { if (openNew === '1') { setEditItem(null); setAddOpen(true); } }, [openNew]);
     const [editItem, setEditItem] = useState<ScheduledItem | null>(null);
     const [detailItem, setDetailItem] = useState<ScheduledItem | null>(null);
     const [actionMenuItem, setActionMenuItem] = useState<ScheduledItem | null>(null);
@@ -489,6 +494,7 @@ export default function SchedulesScreen() {
 const ScheduleFormModal: React.FC<{ initial?: ScheduledItem | null; onClose: () => void }> = ({ initial, onClose }) => {
     const insets = useSafeAreaInsets();
     const qc = useQueryClient();
+    const { user, organizationId } = useAuth();
 
     const [title, setTitle] = useState(initial?.title ?? '');
     const [amount, setAmount] = useState(initial?.amount ? String(initial.amount) : '');
@@ -555,7 +561,22 @@ const ScheduleFormModal: React.FC<{ initial?: ScheduledItem | null; onClose: () 
             if (initial) {
                 return scheduleService.update(initial.id, payload as any);
             }
-            return scheduleService.create(payload as any);
+            // A NEW bill can be made without a connection: it is kept on the phone and added once MoneyWise can be reached.
+            // (It has an id of its own, so sending it twice still adds it once.)
+            const id = newUuid();
+            const keep = () => {
+                if (!user) throw new Error('Sign in to save this bill.');
+                enqueueBill({ userId: user.id, orgId: organizationId }, { ...(payload as any), id, description: description || undefined });
+                Alert.alert('Saved on your phone', 'There is no connection right now. This bill will be added as soon as you are back online.');
+                return null as any;
+            };
+            if (!isOnline()) return keep();
+            try {
+                return await scheduleService.create({ ...(payload as any), id });
+            } catch (e) {
+                if (isNetworkError(e)) { markOffline(); return keep(); }
+                throw e;
+            }
         },
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ['schedules'] });

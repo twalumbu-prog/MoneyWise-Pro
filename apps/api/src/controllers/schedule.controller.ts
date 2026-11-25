@@ -68,9 +68,17 @@ export async function createScheduledItem(req: Request, res: Response) {
             return res.status(400).json({ error: 'title, amount, and next_due_date are required' });
         }
 
+        // A bill saved offline on the phone carries its own id, so a retry after a dropped connection adds it once.
+        const clientId = typeof req.body.id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.body.id) ? req.body.id : null;
+        if (clientId) {
+            const { data: existing } = await supabase.from('scheduled_items').select('*').eq('id', clientId).eq('organization_id', organization_id).maybeSingle();
+            if (existing) return res.status(200).json(existing);
+        }
+
         const { data: item, error: insertErr } = await supabase
             .from('scheduled_items')
             .insert({
+                ...(clientId ? { id: clientId } : {}),
                 organization_id, created_by, title, amount,
                 category: category ?? 'GENERAL_EXPENSES',
                 cadence: cadence ?? 'MONTHLY',

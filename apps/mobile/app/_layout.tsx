@@ -19,6 +19,8 @@ import {
 import { initCore } from '../src/platform';
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
 import { queryClient, persister, MAX_CACHE_AGE_MS } from '../src/lib/queryClient';
+import { useOfflineSync } from '../src/hooks/useOfflineSync';
+import { OfflineIndicator } from '../src/components/OfflineIndicator';
 import { useNotificationNavigation } from '../src/hooks/useNotificationNavigation';
 import { useBadgeSync } from '../src/hooks/useBadgeSync';
 import { useMomoCaptureFlush } from '../src/hooks/useMomoCaptureFlush';
@@ -88,6 +90,12 @@ const PushNotificationTapHandler: React.FC = () => {
 /** Keeps the iOS app-icon badge in step with what needs the person's attention. No UI of its own. */
 const BadgeSync: React.FC = () => {
     useBadgeSync();
+    return null;
+};
+
+/** Watches the connection and sends what was saved on the phone while offline. No UI of its own. */
+const OfflineSync: React.FC = () => {
+    useOfflineSync();
     return null;
 };
 
@@ -188,6 +196,8 @@ export default function RootLayout() {
                     <PushNotificationTapHandler />
                     <BadgeSync />
                     <MomoCaptureFlush />
+                    <OfflineSync />
+                    <OfflineIndicator />
                     <ClipboardCapturePrompt />
                     </AppLockProvider>
                 </AuthProvider>

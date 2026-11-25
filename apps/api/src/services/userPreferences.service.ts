@@ -32,14 +32,15 @@ export type PushTopicSettings = Record<PushTopic, boolean>;
 const DEFAULT_TOPICS: PushTopicSettings = { insights: true, reminders: true, to_confirm: true };
 
 export interface UserPreferences {
-    notifications: { channel: NotifyChannel; topics: PushTopicSettings };
+    /** nudge_emails: progress tips and reminders by email; off once someone unsubscribes. */
+    notifications: { channel: NotifyChannel; topics: PushTopicSettings; nudge_emails: boolean };
     ai: { assistant_model: string | null; categorization_model: string | null };
     /** account_id: which saved bank / mobile-money account (from the profile) when the destination is one of those. */
     payroll: { destination: SalaryDestination; account_id: string | null };
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
-    notifications: { channel: 'BOTH', topics: { ...DEFAULT_TOPICS } },
+    notifications: { channel: 'BOTH', topics: { ...DEFAULT_TOPICS }, nudge_emails: true },
     ai: { assistant_model: null, categorization_model: null },
     payroll: { destination: 'BANK', account_id: null },
 };
@@ -75,7 +76,7 @@ export function normalizePreferences(raw: any): UserPreferences {
     const cat = CATEGORIZATION_MODELS.some((m) => m.id === src.ai?.categorization_model) ? src.ai.categorization_model : null;
     const dest = SALARY_DESTINATIONS.includes(src.payroll?.destination) ? src.payroll.destination : DEFAULT_PREFERENCES.payroll.destination;
     const accountId = typeof src.payroll?.account_id === 'string' && dest !== 'PERSONAL_WALLET' ? src.payroll.account_id : null;
-    return { notifications: { channel, topics: normalizeTopics(src.notifications?.topics) }, ai: { assistant_model: assistant, categorization_model: cat }, payroll: { destination: dest, account_id: accountId } };
+    return { notifications: { channel, topics: normalizeTopics(src.notifications?.topics), nudge_emails: src.notifications?.nudge_emails !== false }, ai: { assistant_model: assistant, categorization_model: cat }, payroll: { destination: dest, account_id: accountId } };
 }
 
 export async function getPreferences(userId: string): Promise<UserPreferences> {
@@ -94,6 +95,10 @@ export async function updatePreferences(userId: string, patch: any): Promise<Use
     if (patch?.notifications?.channel !== undefined) {
         if (!NOTIFY_CHANNELS.includes(patch.notifications.channel)) bad('Choose app, email or both for notifications.');
         next.notifications.channel = patch.notifications.channel;
+    }
+    if (patch?.notifications?.nudge_emails !== undefined) {
+        if (typeof patch.notifications.nudge_emails !== 'boolean') bad('Choose whether to get progress tips by email.');
+        next.notifications.nudge_emails = patch.notifications.nudge_emails;
     }
     if (patch?.notifications?.topics !== undefined) {
         const t = patch.notifications.topics;

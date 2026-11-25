@@ -293,6 +293,8 @@ export const cashbookService = {
     /** Records a transaction that happened on an external account; the server's AI picks the category. */
     async recordManualEntry(payload: {
         direction: 'IN' | 'OUT'; amount: number; description: string; date?: string; externalWalletId: string; accountId?: string;
+        /** Phone-generated id: makes a retry of the same entry safe (booked once). */
+        clientId?: string;
     }): Promise<ManualEntryResult> {
         const response = await apiFetch('/cashbook/manual-entry', { method: 'POST', body: JSON.stringify(payload) });
         return response.json();

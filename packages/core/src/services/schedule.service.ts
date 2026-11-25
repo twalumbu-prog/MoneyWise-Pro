@@ -48,6 +48,8 @@ export interface ScheduledItemRun {
 export type CategoryCounts = Record<string, number>;
 
 export interface CreateScheduledItemPayload {
+    /** Phone-generated UUID: makes a retry of the same new bill safe (added once). */
+    id?: string;
     title: string;
     amount: number;
     category: ScheduleCategory;

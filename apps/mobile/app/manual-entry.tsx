@@ -6,7 +6,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, X, Sparkles, Plus, AlertCircle, Pencil } from 'lucide-react-native';
+import { Check, X, Sparkles, Plus, AlertCircle, Pencil, CloudOff } from 'lucide-react-native';
 import { cashbookService, accountService } from 'core';
 import type { ManualEntryResult } from 'core';
 import { AnimatedSegmented } from '../src/components/AnimatedTabs';
@@ -16,6 +16,9 @@ import { SelectField, DateField, type SelectOption } from '../src/components/inv
 import { colors, fonts, radius } from '../src/theme/tokens';
 import { useGoBack } from '../src/hooks/useGoBack';
 import { SheetModal } from '../src/components/SheetModal';
+import { useAuth } from '../src/context/AuthContext';
+import { isNetworkError, isOnline, markOffline } from '../src/lib/offline/connectivity';
+import { enqueueCategoryChange, enqueueManualEntry } from '../src/lib/offline/outbox';
 
 const today = () => new Date().toISOString().split('T')[0];
 const money = (n: number) => `K${n.toLocaleString('en-ZM', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -31,6 +34,9 @@ export default function ManualEntryScreen() {
     const qc = useQueryClient();
     const insets = useSafeAreaInsets();
     const params = useLocalSearchParams<{ direction?: string }>();
+    const { user, organizationId } = useAuth();
+    // Set when the entry was saved on the phone because MoneyWise could not be reached.
+    const [savedOffline, setSavedOffline] = useState<{ amount: number; direction: 'IN' | 'OUT'; wallet: string } | null>(null);
 
     const [direction, setDirection] = useState<'IN' | 'OUT'>(params.direction === 'out' ? 'OUT' : 'IN');
     const [amount, setAmount] = useState('');
@@ -57,10 +63,27 @@ export default function ManualEntryScreen() {
     );
 
     const save = useMutation({
-        mutationFn: () => cashbookService.recordManualEntry({
-            direction, amount: Number(amount), description: description.trim(), date, externalWalletId: walletId,
-        }),
+        mutationFn: async (): Promise<ManualEntryResult | { queued: true }> => {
+            const payload = { direction, amount: Number(amount), description: description.trim(), date, externalWalletId: walletId };
+            // No connection: keep it on the phone. It is sent, once, as soon as MoneyWise can be reached again.
+            const keep = () => {
+                if (!user) throw new Error('Sign in to save this entry.');
+                enqueueManualEntry({ userId: user.id, orgId: organizationId }, { ...payload, walletName: wallets.find((w) => w.id === walletId)?.name });
+                return { queued: true as const };
+            };
+            if (!isOnline()) return keep();
+            try {
+                return await cashbookService.recordManualEntry(payload);
+            } catch (e) {
+                if (isNetworkError(e)) { markOffline(); return keep(); }
+                throw e;
+            }
+        },
         onSuccess: (res) => {
+            if ('queued' in res) {
+                setSavedOffline({ amount: Number(amount), direction, wallet: wallets.find((w) => w.id === walletId)?.name ?? 'your account' });
+                return;
+            }
             setResult(res);
             // Balances, the inbox and every report that reads the ledger.
             qc.invalidateQueries();
@@ -80,6 +103,24 @@ export default function ManualEntryScreen() {
         setBanner(null);
         save.mutate();
     };
+
+    if (savedOffline) {
+        return (
+            <View style={[styles.root, { paddingTop: insets.top + 48, paddingBottom: Math.max(insets.bottom, 16) + 12, paddingHorizontal: 24 }]}>
+                <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
+                <View style={{ alignItems: 'center' }}>
+                    <View style={[styles.tick, { backgroundColor: '#FFF4E0' }]}><CloudOff size={38} color="#B45309" /></View>
+                    <Text style={styles.doneTitle}>Saved on your phone</Text>
+                    <Text style={[styles.doneAmount, { color: savedOffline.direction === 'IN' ? colors.positiveInk : colors.text }]}>{savedOffline.direction === 'IN' ? '+' : '−'}{money(savedOffline.amount)}</Text>
+                    <Text style={styles.doneSub}>{savedOffline.direction === 'IN' ? 'into' : 'from'} {savedOffline.wallet}</Text>
+                    <Text style={[styles.reason, { textAlign: 'center', marginTop: 18 }]}>There is no connection right now. It will be added to your books on its own as soon as you are back online, and sorted into a category then.</Text>
+                </View>
+                <View style={{ flex: 1 }} />
+                <Pressable onPress={() => safeBack()} style={({ pressed }) => [styles.saveBtn, pressed && { opacity: 0.85 }]}><Text style={styles.saveText}>Done</Text></Pressable>
+                <Pressable onPress={() => { setSavedOffline(null); setAmount(''); setDescription(''); setErrors({}); }} style={styles.anotherBtn}><Text style={styles.anotherText}>Add another entry</Text></Pressable>
+            </View>
+        );
+    }
 
     if (result) {
         return (
@@ -201,6 +242,7 @@ const ResultView: React.FC<{
     insetsTop: number; insetsBottom: number;
 }> = ({ result, onDone, onAnother, onCategoryChanged, insetsTop, insetsBottom }) => {
     const qc = useQueryClient();
+    const { user, organizationId } = useAuth();
     const [open, setOpen] = useState(false);
     const [saving, setSaving] = useState(false);
     const [err, setErr] = useState<string | null>(null);
@@ -213,7 +255,15 @@ const ResultView: React.FC<{
     const choose = async (a: (typeof choices)[number]) => {
         setSaving(true); setErr(null);
         try {
-            await cashbookService.setEntryAccount(result.entryId, a.id);
+            try {
+                if (!isOnline()) throw new TypeError('offline');
+                await cashbookService.setEntryAccount(result.entryId, a.id);
+            } catch (e) {
+                // No connection: show the new category now and send the change when MoneyWise can be reached (safe to repeat).
+                if (!isNetworkError(e) || !user) throw e;
+                markOffline();
+                enqueueCategoryChange({ userId: user.id, orgId: organizationId }, { entryId: result.entryId, accountId: a.id, name: a.name });
+            }
             onCategoryChanged({ id: a.id, code: a.code, name: a.name, emoji: null, source: 'USER', reasoning: null, confidence: null });
             qc.invalidateQueries();
             setOpen(false);

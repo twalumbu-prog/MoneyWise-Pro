@@ -2,6 +2,18 @@ import { filterEmailsForOrg, orgIsPersonal, PERSONAL_SUPPRESSED_EVENTS } from '.
 import { Resend } from 'resend';
 import { recordUsage } from './usage.service';
 import { getFrontendUrl } from '../utils/frontendUrl';
+import { Person, peopleForEmails, unsubscribeHeaders, firstNameOf, esc as escHtml, personalLayout, statRow, para, kwacha2 } from './emailPersonal';
+import { requisitionEmail, ReqEventType } from './requisitionEmails';
+import { claimImmediateInflow } from './inflowDigest.service';
+
+/** "Charley, Mary paid you K1,200" — says who and how much before the email is even opened. */
+const paidSubject = (firstName: string | null, amount: number, payer?: string | null) => {
+    const who = String(payer ?? '').trim();
+    const named = who && !/^customer$/i.test(who) ? who : null;
+    const money = kwacha2(amount);
+    if (firstName) return named ? `${firstName}, ${named} paid you ${money}` : `${firstName}, you just got paid ${money}`;
+    return named ? `${named} paid you ${money}` : `You just got paid ${money}`;
+};
 import { supabase } from '../lib/supabase';
 import PDFDocument from 'pdfkit';
 import fs from 'fs';
@@ -65,6 +77,10 @@ interface EmailParams {
     attachments?: { filename: string; content: Buffer | string }[];
     /** Set for notifications about an organization: a person who chose app-only notifications for their personal account is skipped. */
     orgId?: string;
+    /** Extra headers, e.g. List-Unsubscribe for mail the person can opt out of. */
+    headers?: Record<string, string>;
+    /** Overrides the sender's display name (the address stays the verified one). */
+    fromName?: string;
 }
 
 // A bare HTML body with no plain-text alternative is a well-known spam signal —
@@ -226,111 +242,24 @@ export const emailService = {
             const personal = await orgIsPersonal(requisition.organization_id).catch(() => false);
             if (personal && PERSONAL_SUPPRESSED_EVENTS.has(type)) return;
 
-            // 2. Determine recipients and content based on type
+            // 2. Who should hear about it
             let recipients: string[] = [];
-            let subject = '';
-            let body = '';
-
             switch (type) {
-                case 'NEW_REQUISITION':
-                    recipients = await this.getEmailsByRoles(requisition.organization_id, ['AUTHORISER', 'ACCOUNTANT', 'ADMIN']);
-                    subject = `New Requisition Submitted: ${ref}`;
-                    body = `
-                        <h2>New Requisition Pending Review</h2>
-                        <p><strong>Requestor:</strong> ${requisition.requestor.name}</p>
-                        <p><strong>Description:</strong> ${requisition.description}</p>
-                        <p><strong>Estimated Total:</strong> K${Number(requisition.estimated_total).toLocaleString()}</p>
-                        <p>Please review and authorise the requisition to proceed.</p>
-                        <a href="${requisitionLink}" style="display:inline-block;padding:12px 24px;background-color:#006AFF;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">View Requisition</a>
-                    `;
-                    break;
-
-                case 'REQUISITION_APPROVED':
-                    recipients = await this.getUserEmail(requisition.requestor_id);
-                    subject = `Requisition Approved: ${ref}`;
-                    body = `
-                        <h2>Your Requisition has been Approved!</h2>
-                        <p><strong>Description:</strong> ${requisition.description}</p>
-                        <p>Your requisition has been authorised. You will be notified once the funds are ready for collection.</p>
-                        <a href="${requisitionLink}" style="display:inline-block;padding:12px 24px;background-color:#006AFF;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">Track Progress</a>
-                    `;
-                    break;
-
-                case 'REQUISITION_REJECTED':
-                    recipients = await this.getUserEmail(requisition.requestor_id);
-                    subject = `Requisition Rejected: ${ref}`;
-                    body = `
-                        <h2 style="color:#002E3B;">Requisition Rejected</h2>
-                        <p><strong>Description:</strong> ${requisition.description}</p>
-                        <p>Unfortunately, your requisition was not approved at this time.</p>
-                        <a href="${requisitionLink}" style="display:inline-block;padding:12px 24px;background-color:#002E3B;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">View Details</a>
-                    `;
-                    break;
-
-                case 'CASH_DISBURSED':
-                    recipients = await this.getUserEmail(requisition.requestor_id);
-                    if (personal) {
-                        subject = `Money sent: K${Number(requisition.estimated_total).toLocaleString()}`;
-                        body = `
-                        <h2>Money sent</h2>
-                        <p><strong>${requisition.description}</strong></p>
-                        <p>Your payment of K${Number(requisition.estimated_total).toLocaleString()} has been sent.</p>
-                        <a href="${requisitionLink}" style="display:inline-block;padding:12px 24px;background-color:#006AFF;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">View Details</a>
-                    `;
-                        break;
-                    }
-                    if (requisition.payment_method === 'MONEYWISE_PAY') {
-                        subject = `Funds sent to your MoneyWise account: ${ref}`;
-                        body = `
-                        <h2>Funds sent</h2>
-                        <p><strong>Description:</strong> ${requisition.description}</p>
-                        <p>K${Number(requisition.estimated_total).toLocaleString()} has been sent to your MoneyWise personal account.</p>
-                        <a href="${requisitionLink}" style="display:inline-block;padding:12px 24px;background-color:#006AFF;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">View Details</a>
-                    `;
-                        break;
-                    }
-                    subject = `Funds Ready for Collection: ${ref}`;
-                    body = `
-                        <h2>Cash Disbursed</h2>
-                        <p><strong>Description:</strong> ${requisition.description}</p>
-                        <p>Funds for your requisition have been prepared and are ready for collection at the cashier's desk.</p>
-                        <p>Please remember to acknowledge receipt in the app after collecting the cash.</p>
-                        <a href="${requisitionLink}" style="display:inline-block;padding:12px 24px;background-color:#006AFF;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">Acknowledge Receipt</a>
-                    `;
-                    break;
-
-                case 'CHANGE_SUBMITTED':
-                    recipients = await this.getEmailsByRoles(requisition.organization_id, ['CASHIER', 'ACCOUNTANT', 'ADMIN']);
-                    subject = `Change Submitted for Verification: ${ref}`;
-                    body = `
-                        <h2>Returned Cash Verification Required</h2>
-                        <p><strong>Requestor:</strong> ${requisition.requestor.name}</p>
-                        <p>The requestor has submitted their final expenditure and returned the unused cash.</p>
-                        <p>Please verify the denominations and finalize the ledger entry.</p>
-                        <a href="${requisitionLink}" style="display:inline-block;padding:12px 24px;background-color:#006AFF;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">Verify & Finalize</a>
-                    `;
-                    break;
-
-                case 'REQUISITION_COMPLETED':
-                    recipients = await this.getUserEmail(requisition.requestor_id);
-                    subject = `Requisition Cycle Completed: ${ref}`;
-                    body = `
-                        <h2>Transaction Finalized</h2>
-                        <p><strong>Description:</strong> ${requisition.description}</p>
-                        <p>Your requisition cycle is now complete. The final expenditure has been verified and recorded.</p>
-                        <a href="${requisitionLink}" style="display:inline-block;padding:12px 24px;background-color:#006AFF;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">View Final Record</a>
-                    `;
-                    break;
+                case 'NEW_REQUISITION': recipients = await this.getEmailsByRoles(requisition.organization_id, ['AUTHORISER', 'ACCOUNTANT', 'ADMIN']); break;
+                case 'CHANGE_SUBMITTED': recipients = await this.getEmailsByRoles(requisition.organization_id, ['CASHIER', 'ACCOUNTANT', 'ADMIN']); break;
+                default: recipients = await this.getUserEmail(requisition.requestor_id);
             }
 
+            // 3. One email per person, written for them
             if (recipients.length > 0) {
-                await this.sendEmail({
-                    to: recipients,
-                    subject,
-                    html: this.wrapTemplate(body),
-                    orgId: requisition.organization_id,
-                });
-                console.log(`[EmailService] Notification sent successfully to ${recipients.join(', ')} for type ${type}`);
+                const people = await peopleForEmails(recipients);
+                const ctx = {
+                    ref, description: requisition.description || '', total: Number(requisition.estimated_total) || 0,
+                    requestor: firstNameOf({ name: requisition.requestor?.name }) || 'Someone',
+                    personal, moneywisePay: requisition.payment_method === 'MONEYWISE_PAY', link: requisitionLink,
+                };
+                const n = await this.sendToEach(people, (p) => requisitionEmail(type as ReqEventType, ctx, p.firstName)!, { orgId: requisition.organization_id });
+                console.log(`[EmailService] Notification sent to ${n} of ${people.length} people for type ${type}`);
             } else {
                 console.warn(`[EmailService] No recipients found for notification type ${type} on requisition ${requisitionId}`);
             }
@@ -376,25 +305,25 @@ export const emailService = {
 
         // 1. Admin notification.
         try {
-            const { emails } = await this.getOrgNotificationRecipients(organizationId);
-            if (emails.length === 0) {
+            const { people } = await this.getOrgNotificationPeople(organizationId);
+            if (people.length === 0) {
                 console.warn(`[EmailService] No admin email or ACTIVE admins found for org ${organizationId}; skipping admin payment-link notification.`);
             } else {
-                const html = this.renderPaymentEmail({
-                    amount,
-                    customerName: link.customer_name || 'Customer',
-                    customerPhone: link.customer_phone || undefined,
-                    serviceLabel: productLabel,
-                    reference,
-                    when: new Date(),
-                });
-                await this.sendEmail({
-                    to: emails,
-                    subject: `You just got paid — K${amount.toLocaleString()}`,
-                    html,
-                    orgId: organizationId,
-                });
-                console.log(`[EmailService] Payment-link notification sent to ${emails.join(', ')} for ref ${reference}`);
+                const payer = link.customer_name || 'Customer';
+                const when = new Date();
+                const n = await this.sendToEach(people, (p) => ({
+                    subject: paidSubject(p.firstName, amount, link.customer_name),
+                    html: this.renderPaymentEmail({
+                        amount,
+                        customerName: payer,
+                        customerPhone: link.customer_phone || undefined,
+                        serviceLabel: productLabel,
+                        reference,
+                        when,
+                        firstName: p.firstName,
+                    }),
+                }), { orgId: organizationId });
+                console.log(`[EmailService] Payment-link notification sent to ${n} of ${people.length} admins for ref ${reference}`);
             }
         } catch (error) {
             console.error(`[EmailService] Failed to send admin payment-link notification for ref ${reference}:`, error);
@@ -459,25 +388,24 @@ export const emailService = {
                 .join(', ');
 
             // 1. Admin notification (skipped, not fatal, when no admin recipients).
-            const { emails } = await this.getOrgNotificationRecipients(organizationId);
-            if (emails.length === 0) {
+            const { people } = await this.getOrgNotificationPeople(organizationId);
+            if (people.length === 0) {
                 console.warn(`[EmailService] No admin email or ACTIVE admins found for org ${organizationId}; skipping admin sale notification.`);
             } else {
-                const html = this.renderPaymentEmail({
-                    amount: total,
-                    customerName,
-                    customerPhone: customerPhone || undefined,
-                    serviceLabel: lines,
-                    reference,
-                    when: new Date(),
-                });
-                await this.sendEmail({
-                    to: emails,
-                    subject: `You just got paid — K${total.toLocaleString()}`,
-                    html,
-                    orgId: organizationId,
-                });
-                console.log(`[EmailService] Sale notification sent to ${emails.join(', ')} for ref ${reference} (${sales.length} item(s))`);
+                const when = new Date();
+                const n = await this.sendToEach(people, (p) => ({
+                    subject: paidSubject(p.firstName, total, (sales[0] as any).customer_name),
+                    html: this.renderPaymentEmail({
+                        amount: total,
+                        customerName,
+                        customerPhone: customerPhone || undefined,
+                        serviceLabel: lines,
+                        reference,
+                        when,
+                        firstName: p.firstName,
+                    }),
+                }), { orgId: organizationId });
+                console.log(`[EmailService] Sale notification sent to ${n} of ${people.length} admins for ref ${reference} (${sales.length} item(s))`);
             }
 
             // 2. Buyer receipt (+ digital-product delivery) when an email was captured.
@@ -537,9 +465,9 @@ export const emailService = {
         date: string;
     }) {
         try {
-            const { emails } = await this.getOrgNotificationRecipients(organizationId);
+            const { people } = await this.getOrgNotificationPeople(organizationId);
 
-            if (emails.length === 0) {
+            if (people.length === 0) {
                 console.warn(`[EmailService] No admin email or ACTIVE admins found for org ${organizationId}; skipping inflow notification.`);
                 return;
             }
@@ -551,23 +479,30 @@ export const emailService = {
                 ? 'MoneyWise Wallet'
                 : (entry.account_type || 'External Account').replace(/_/g, ' ');
             const ref = entry.reference_number || entry.external_reference || 'N/A';
+            const what = String(entry.description || '').split(' | Ref:')[0].trim();
 
-            const body = `
-                <h2>New Inflow Recorded</h2>
-                <p>A new inflow of <strong>K${amount.toLocaleString()}</strong> was recorded in your ${accountLabel}.</p>
-                <p><strong>Description:</strong> ${entry.description}</p>
-                <p><strong>Date:</strong> ${entry.date}</p>
-                <p><strong>Reference:</strong> ${ref}</p>
-                <a href="${FRONTEND_URL}/cashbook" style="display:inline-block;padding:12px 24px;background-color:#006AFF;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">View in Cashbook</a>
-            `;
+            // Busy accounts: only the first couple of small deposits a day (and any big one) get their own email; the rest wait for the evening digest.
+            const keep: Person[] = [];
+            for (const p of people) {
+                if (!p.userId || await claimImmediateInflow(p.userId, organizationId, amount).catch(() => true)) keep.push(p);
+            }
+            if (keep.length === 0) return;
 
-            await this.sendEmail({
-                to: emails,
-                subject: `New Inflow: K${amount.toLocaleString()} — ${accountLabel}`,
-                html: this.wrapTemplate(body),
-                orgId: organizationId,
-            });
-            console.log(`[EmailService] Inflow notification sent to ${emails.join(', ')} for ${accountLabel} (K${amount})`);
+            const n = await this.sendToEach(keep, (p) => {
+                const body = personalLayout({
+                    preheader: `${what || 'A deposit'} · ${accountLabel} · ${entry.date}`,
+                    heading: `${kwacha2(amount)} just came into your ${escHtml(accountLabel)}`,
+                    firstName: p.firstName,
+                    bodyHtml:
+                        para(what ? `It was recorded as <strong>${escHtml(what)}</strong>.` : 'A new deposit was recorded.') +
+                        statRow([{ label: 'Amount', value: kwacha2(amount), tone: 'good' }, { label: 'Date', value: String(entry.date) }]) +
+                        (ref !== 'N/A' ? para(`<span style="color:#9AA0A7; font-size:13px;">Reference ${escHtml(ref)}</span>`) : ''),
+                    cta: { label: 'See it in your cashbook', url: `${FRONTEND_URL}/cashbook` },
+                    reason: 'You get this because you manage this account on MoneyWise.',
+                });
+                return { subject: p.firstName ? `${p.firstName}, ${kwacha2(amount)} just came in` : `${kwacha2(amount)} just came into your ${accountLabel}`, html: body };
+            }, { orgId: organizationId });
+            console.log(`[EmailService] Inflow notification sent to ${n} of ${people.length} admins (${people.length - keep.length} held for the digest) for ${accountLabel} (K${amount})`);
         } catch (error) {
             console.error(`[EmailService] Failed to send inflow notification:`, error);
         }
@@ -585,8 +520,10 @@ export const emailService = {
         serviceLabel: string;
         reference: string;
         when: Date;
+        /** The admin this copy is for; their name opens the email. */
+        firstName?: string | null;
     }) {
-        const { amount, customerName, customerPhone, serviceLabel, reference, when } = params;
+        const { amount, customerName, customerPhone, serviceLabel, reference, when, firstName } = params;
         const [whole, decimals = '00'] = amount.toFixed(2).split('.');
         const formattedWhole = Number(whole).toLocaleString();
         const formattedWhen = when.toLocaleString('en-US', {
@@ -626,7 +563,7 @@ export const emailService = {
                         </div>
 
                         <div style="padding:26px 44px 38px; text-align:center;">
-                            <div style="font-size:15px; font-weight:700; color:#006AFF; letter-spacing:0.02em;">🎉 You just got paid</div>
+                            <div style="font-size:15px; font-weight:700; color:#006AFF; letter-spacing:0.02em;">🎉 ${firstName ? `${escHtml(firstName)}, you` : 'You'} just got paid</div>
                             <div style="margin:16px auto 6px;">
                                 <div style="font-size:64px; font-weight:900; letter-spacing:-0.035em; line-height:1; font-variant-numeric:tabular-nums;">K${formattedWhole}<span style="font-size:34px; font-weight:800; color:#7A8189;">.${decimals}</span></div>
                             </div>
@@ -1632,6 +1569,36 @@ export const emailService = {
     },
 
     /**
+     * Same recipients as getOrgNotificationRecipients, but with who each one is, so every admin gets their own message
+     * that starts with their name instead of one shared message to all of them.
+     */
+    async getOrgNotificationPeople(organizationId: string): Promise<{ orgName: string; people: Person[] }> {
+        const { orgName, emails } = await this.getOrgNotificationRecipients(organizationId);
+        return { orgName, people: await peopleForEmails(emails) };
+    },
+
+    /**
+     * One email per person (each built for them), never one message to a list. A failure for one person is logged and does
+     * not stop the others. Returns how many went out.
+     */
+    async sendToEach(people: Person[], build: (p: Person) => { subject: string; html: string; text?: string }, opts: { orgId?: string; headers?: boolean } = {}): Promise<number> {
+        let sent = 0;
+        for (const p of people) {
+            try {
+                const m = build(p);
+                const ok = await this.sendEmail({
+                    to: p.email, subject: m.subject, html: m.html, text: m.text, orgId: opts.orgId,
+                    ...(opts.headers && p.userId ? { headers: unsubscribeHeaders(p.userId) } : {}),
+                });
+                if (ok) sent++;
+            } catch (e: any) {
+                console.error(`[EmailService] Could not email ${p.email}:`, e?.message || e);
+            }
+        }
+        return sent;
+    },
+
+    /**
      * Get email address for a specific user ID
      */
     async getUserEmail(userId: string): Promise<string[]> {
@@ -1697,12 +1664,15 @@ export const emailService = {
             recipients = Array.isArray(params.to) ? allowed : allowed[0];
         }
 
+        const address = /<([^>]+)>/.exec(FROM_ADDRESS)?.[1] || FROM_ADDRESS;
+        const from = params.fromName ? `${params.fromName.replace(/["<>\r\n]/g, '').trim() || 'MoneyWise'} <${address}>` : FROM_ADDRESS;
         const { data, error } = await resend.emails.send({
-            from: FROM_ADDRESS, // Use verified domain in prod
+            from, // Use verified domain in prod
             to: recipients,
             subject: params.subject,
             html: params.html,
             text: params.text || htmlToPlainText(params.html),
+            ...(params.headers ? { headers: params.headers } : {}),
             ...(params.replyTo ? { replyTo: params.replyTo } : {}),
             ...(params.attachments?.length ? { attachments: params.attachments } : {}),
         });

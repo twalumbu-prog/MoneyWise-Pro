@@ -275,10 +275,12 @@ export const recordManualSale = async (req: any, res: any): Promise<any> => {
  */
 export const recordManualEntry = async (req: any, res: any): Promise<any> => {
     try {
-        const { direction, amount, description, date, externalWalletId, accountId } = req.body ?? {};
+        const { direction, amount, description, date, externalWalletId, accountId, clientId } = req.body ?? {};
+        // An entry made offline carries an id the phone generated, so sending it twice (a retry after a dropped connection) books it once.
+        const safeClientId = typeof clientId === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(clientId) ? clientId : null;
         const organizationId = req.user.organization_id;
         if (!organizationId) return res.status(400).json({ error: 'User organization context missing' });
-        const result = await recordManualEntryService({ orgId: organizationId, userId: req.user.id, direction, amount, description, date, externalWalletId, accountId });
+        const result = await recordManualEntryService({ orgId: organizationId, userId: req.user.id, direction, amount, description, date, externalWalletId, accountId, ...(safeClientId ? { externalReference: `MOBILE-${safeClientId}` } : {}) });
         res.status(201).json(result);
     } catch (error: any) {
         if (error instanceof ManualEntryError) return res.status(error.httpStatus).json({ error: error.message });

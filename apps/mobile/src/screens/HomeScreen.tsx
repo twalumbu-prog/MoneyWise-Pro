@@ -15,6 +15,7 @@ import { AccountsCard } from '../components/home/AccountsCard';
 import { HomeInsightsCard } from '../components/home/HomeInsightsCard';
 import { OtherServicesCard } from '../components/home/OtherServicesCard';
 import { ReceiveMoneySheet } from '../components/home/ReceiveMoneySheet';
+import { QuickAddMenu } from '../components/home/QuickAddSheet';
 import { cardShadow } from '../components/home/HomeCard';
 import { AccountMenuSheet } from '../components/requisitions/AccountMenuSheet';
 import { WalkthroughCard } from '../components/walkthrough/WalkthroughCard';
@@ -35,6 +36,7 @@ export function HomeScreen() {
     const qc = useQueryClient();
     const attention = useAttentionCount();
     const [receiveOpen, setReceiveOpen] = useState(false);
+    const [quickAddOpen, setQuickAddOpen] = useState(false);
     const [accountMenuOpen, setAccountMenuOpen] = useState(false);
     const [question, setQuestion] = useState('');
     const [refreshing, setRefreshing] = useState(false);
@@ -190,6 +192,8 @@ export function HomeScreen() {
             )}
             </AnimatedTabContent>
 
+            {/* The + and the bubble menu that grows out of it (Home only, not Grow) */}
+            {mode === 'home' && <QuickAddMenu open={quickAddOpen} onOpenChange={setQuickAddOpen} bottom={88} />}
             <ReceiveMoneySheet visible={receiveOpen} onClose={() => setReceiveOpen(false)} />
             <AccountMenuSheet visible={accountMenuOpen} onClose={() => setAccountMenuOpen(false)} />
         </KeyboardAvoidingView>
@@ -230,6 +234,13 @@ const styles = StyleSheet.create({
     quickHalf: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 20 },
     quickText: { fontFamily: fonts.bodyMedium, fontSize: 14, color: '#000000' },
     quickDivider: { width: StyleSheet.hairlineWidth * 2, height: 22, backgroundColor: '#D4D4D4' },
+    // Same look as the Schedules + button; sits just above the Assistant box, on the right.
+    fab: {
+        position: 'absolute', right: 20, bottom: 88, width: 56, height: 56, borderRadius: 28,
+        backgroundColor: colors.blue, alignItems: 'center', justifyContent: 'center',
+        shadowColor: colors.blue, shadowOpacity: 0.35, shadowRadius: 8, shadowOffset: { width: 0, height: 4 },
+        elevation: 6,
+    },
     assistantWrap: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12 },
     assistant: {
         flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFFFFF', borderRadius: 32, minHeight: 56, paddingLeft: 24, paddingRight: 11,
