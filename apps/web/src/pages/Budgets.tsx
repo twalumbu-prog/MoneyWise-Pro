@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check } from 'lucide-react';
-import { accountService, budgetService, formatKwacha, reportService } from 'core';
+import { accountService, budgetService, formatKwacha, reportService, budgetForMonth, accountBasis } from 'core';
 import type { Account } from 'core';
 import { PagePanel } from '../components/ui/PagePanel';
 import { PlanTabs } from '../components/ui/PlanTabs';
@@ -38,7 +38,7 @@ export const Budgets: React.FC = () => {
         queryFn: async () => {
             const [accounts, budgets, spent] = await Promise.all([
                 accountService.getAll(),
-                budgetService.getBudgets(month.start, month.end, 'MONTHLY'),
+                budgetService.getBudgets(), // every row: a month without its own row inherits the latest earlier one
                 reportService.getExpenditures(month.start, month.end, 'EXPENSE').catch(() => [] as any[]),
             ]);
             return { accounts, budgets, spent };
@@ -54,21 +54,34 @@ export const Budgets: React.FC = () => {
     const expense = useMemo(() => (data?.accounts ?? []).filter((a: Account) => a.is_active && a.type === 'EXPENSE').sort((a, b) => plainName(a.name).localeCompare(plainName(b.name))), [data?.accounts]);
     const income = useMemo(() => (data?.accounts ?? []).filter((a: Account) => a.is_active && a.type === 'INCOME').sort((a, b) => plainName(a.name).localeCompare(plainName(b.name))), [data?.accounts]);
 
+    // What each account is budgeted for this month, carry-forward included (same rule as Reports and the mobile app).
+    const existing = useMemo(() => {
+        const m = new Map<string, number>();
+        const nonMonthly = new Set<string>();
+        const ids = new Set((data?.budgets ?? []).map((b) => b.qb_account_id));
+        for (const id of ids) {
+            const l = budgetForMonth(data!.budgets, id, month.start);
+            if (l.thisMonth > 0) m.set(id, Math.round(l.thisMonth * 100) / 100);
+            if (accountBasis(data!.budgets, id) !== 'MONTHLY') nonMonthly.add(id);
+        }
+        return { amounts: m, nonMonthly };
+    }, [data?.budgets, month.start]);
+
     useEffect(() => {
         if (!data?.budgets) return;
         const seeded: Record<string, string> = {};
-        for (const b of data.budgets) seeded[b.qb_account_id] = String(b.amount);
+        for (const [id, v] of existing.amounts) seeded[id] = String(v);
         setAmounts(seeded);
-    }, [data?.budgets]);
+    }, [data?.budgets, existing]);
 
-    const existing = useMemo(() => new Map((data?.budgets ?? []).map((b) => [b.qb_account_id, b.amount])), [data?.budgets]);
     const all = useMemo(() => [...income, ...expense], [income, expense]);
     const changed = all.filter((a) => {
-        const parsed = amounts[a.id] ? parseFloat(amounts[a.id]) : 0;
-        return parsed > 0 && parsed !== (existing.get(a.id) ?? -1);
+        if (existing.nonMonthly.has(a.id)) return false; // quarterly / yearly lines are edited in the mobile app
+        const parsed = amounts[a.id] ? parseFloat(amounts[a.id]) || 0 : 0;
+        return parsed !== (existing.amounts.get(a.id) ?? 0);
     });
 
-    const totalBudget = expense.reduce((s, a) => s + (existing.get(a.id) ?? 0), 0);
+    const totalBudget = expense.reduce((s, a) => s + (existing.amounts.get(a.id) ?? 0), 0);
     const totalSpent = expense.reduce((s, a) => s + (spentBy.get(a.id) ?? 0), 0);
 
     const save = async () => {
@@ -77,7 +90,7 @@ export const Budgets: React.FC = () => {
             await Promise.all(changed.map((a) => budgetService.setBudget({
                 qb_account_id: a.id,
                 qb_account_name: a.name,
-                amount: parseFloat(amounts[a.id]),
+                amount: parseFloat(amounts[a.id]) || 0,
                 period_type: 'MONTHLY',
                 start_date: month.start,
                 end_date: month.end,
@@ -124,6 +137,8 @@ export const Budgets: React.FC = () => {
                         value={amounts[a.id] ?? ''}
                         onChange={(e) => { setSaved(false); setAmounts((prev) => ({ ...prev, [a.id]: e.target.value.replace(/[^0-9.]/g, '') })); }}
                         placeholder="0.00"
+                        disabled={existing.nonMonthly.has(a.id)}
+                        title={existing.nonMonthly.has(a.id) ? 'Quarterly or yearly budget: edit it in the mobile app' : undefined}
                     />
                 </div>
             </li>
