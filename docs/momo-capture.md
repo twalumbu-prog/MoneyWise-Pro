@@ -32,15 +32,17 @@ Every plan, personal and business accounts alike. `/momo-capture` has no plan ch
 - Unsent messages queue in app-private storage and go with the next message or when the app comes to the foreground.
 - Needs a new native build (version bumped to 0.3.0). An OTA update to an older binary just shows "Update needed".
 
-## iOS (0.6.0+): built-in Shortcuts action
+## iOS (0.7.0+): built-in Shortcuts action, phone-side filter, save first
 
-Apple lets no app read SMS or create Shortcuts automations, so iPhone capture is "one automation the person adds, running an action MoneyWise provides":
+Apple lets no app read SMS or create Shortcuts automations, so iPhone capture is "one automation the person adds, running an action MoneyWise provides". Since 0.7.0 the automation is **Message Contains `.`** (a full stop). iOS refuses an empty trigger (Next stays disabled with Any Sender + no phrase), and a full stop matches almost every SMS. The phone decides what to keep.
 
-- **App Intent** `Capture mobile money message` (`modules/momo-capture/app-target/MoneyWiseCaptureIntent.swift`) plus an `AppShortcutsProvider`, so Shortcuts lists it as soon as the app is installed. It must be compiled into the app target (Shortcuts doesn't discover intents in pods), so `modules/momo-capture/plugin/withMomoCaptureIntents.js` copies it in at prebuild.
-- **MomoCapture pod** (`modules/momo-capture/ios`): `MomoCaptureStore` keeps the capture key in the Keychain (`AfterFirstUnlockThisDeviceOnly`, so locked-phone messages still send), posts to `/momo-capture/ingest`, queues on no signal (flushed with the next message or on app foreground), and drops the key on a 401. The RN module also exposes clipboard checks (`changeCount`, `detectPatterns`) that never trigger the paste banner.
-- **Setup** (`app/settings/momo-capture-setup.tsx`, `mode=ios`): *Connect this iPhone* issues a key straight into the Keychain (nothing to paste), then five illustrated taps: Automation → New Automation → Message, contains `ZMW` → Run Immediately → Create New Shortcut, search MoneyWise → *Capture mobile money message* → Message → Select Variable → *Shortcut Input*. (Checked on the iOS 26.5 Simulator: the action is listed after install, Run Immediately is offered, but the automation's quick-pick list doesn't show it and the Message parameter isn't filled automatically.) A verify step watches for the first send.
-- **Zero-setup fallback**: `ClipboardCapturePrompt` offers "Copied a mobile money message? Capture" when the app opens after a likely SMS was copied; the text is only read after the tap.
-- Binaries before 0.6.0 fall back to the hand-made iCloud shortcut (`EXPO_PUBLIC_MOMO_SHORTCUT_URL` + pasted key).
+- **App Intent** `Capture mobile money message` (`modules/momo-capture/app-target/MoneyWiseCaptureIntent.swift`) plus an `AppShortcutsProvider`, listed in Shortcuts after install. It is compiled into the app target (Shortcuts doesn't discover intents in pods): `modules/momo-capture/plugin/withMomoCaptureIntents.js` copies it in and adds the BGTask permission + `fetch` background mode.
+- **Filter on the phone** (`MomoCaptureStore.looksLikeMoneyMessage`): keep only text with an amount AND an operator/bank marker (ZMW code, provider or bank name, TID/Txn/Ref, a balance). Everything else never leaves the iPhone; only a count is kept. The rules ship in the app and are overridden from `GET /momo-capture/device-rules` (`DEVICE_RULES` in the service, refreshed on app foreground every 6 h), so new wording is a deploy. Keep the Swift defaults and `DEVICE_RULES` identical.
+- **Save first, send second.** The intent writes the message to a local queue before any network call, then sends the queue in order with ≤8 s timeouts within an 8 s budget, and returns. Items leave the queue only when the server answers. The old code waited on the network first, so iOS could kill the run mid-request and the message was lost. Leftovers go out with the next message, on app foreground, or in a `BGAppRefreshTask` (`MomoCaptureAppDelegate`, best-effort; iOS decides when). A 401 drops the key but keeps the messages until the app reconnects.
+- **Notifications** after each capture say what happened and name the workspace (`ingest` now returns `workspace`): "New: K2.00 received", "Already in MoneyWise", "Saved on your phone…", "Sent 3 saved messages…". They need notification permission (asked in Connect this iPhone).
+- **Setup**: *Connect this iPhone* (key into the Keychain, notification permission, rules), then the guide (`app/capture-guide.tsx`, screenshots in `assets/capture-guide`, video via `scripts/capture-guide/make-video.swift`).
+- **Zero-setup fallback**: `ClipboardCapturePrompt` offers to capture a copied SMS when the app opens.
+- Tests: the store compiles on macOS with a test `main.swift` + a fake ingest server (filter, offline queue, ordering, 401, rules override).
 
 ## Before going live
 

@@ -21,9 +21,14 @@ router.post('/ingest', async (req: any, res: any) => {
         const owner = await momo.resolveToken(String(req.get('x-capture-token') || ''));
         if (!owner) return res.status(401).json({ error: 'Capture key is missing or was turned off. Set capture up again in MoneyWise.' });
         const b = req.body ?? {};
-        res.json(await momo.ingest({ ...owner, source: b.source, text: b.text, sender: b.sender, occurredAt: b.occurredAt }));
+        const result = await momo.ingest({ ...owner, source: b.source, text: b.text, sender: b.sender, occurredAt: b.occurredAt });
+        // The iPhone's "captured" notification names the workspace, so it's clear where the message went.
+        res.json({ ...result, workspace: await momo.workspaceName(owner.orgId) });
     } catch (error) { fail(res, error, 'ingest'); }
 });
+
+/** On-phone filter rules for the iOS capture action (key-authenticated so the phone can refresh them by itself). */
+router.get('/device-rules', (_req: any, res: any) => res.json(momo.DEVICE_RULES));
 
 /**
  * Record / Dismiss from the prompt the phone shows when a message arrives. The app may be closed, so these also take

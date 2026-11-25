@@ -2,7 +2,7 @@
  * Copies the App Intent (app-target/*.swift) into the generated iOS app target at prebuild. Shortcuts only discovers
  * App Intents compiled into the app itself, so this can't live in the MomoCapture pod with the rest of the module.
  */
-const { withDangerousMod, withXcodeProject, IOSConfig } = require('@expo/config-plugins');
+const { withDangerousMod, withXcodeProject, withInfoPlist, IOSConfig } = require('@expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
@@ -27,4 +27,16 @@ const withProject = (config) => withXcodeProject(config, (cfg) => {
     return cfg;
 });
 
-module.exports = (config) => withProject(withCopy(config));
+// Background retry of messages saved while offline (MomoCaptureAppDelegate registers the task).
+const FLUSH_TASK_ID = 'cloud.blueopus.moneywise.momo-capture.flush';
+const withBackgroundRetry = (config) => withInfoPlist(config, (cfg) => {
+    const ids = new Set(cfg.modResults.BGTaskSchedulerPermittedIdentifiers || []);
+    ids.add(FLUSH_TASK_ID);
+    cfg.modResults.BGTaskSchedulerPermittedIdentifiers = [...ids];
+    const modes = new Set(cfg.modResults.UIBackgroundModes || []);
+    modes.add('fetch');
+    cfg.modResults.UIBackgroundModes = [...modes];
+    return cfg;
+});
+
+module.exports = (config) => withBackgroundRetry(withProject(withCopy(config)));

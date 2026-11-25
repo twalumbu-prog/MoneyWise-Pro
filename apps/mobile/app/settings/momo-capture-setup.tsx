@@ -220,7 +220,7 @@ function IosFlow() {
         <>
             <Hero icon={<Smartphone size={28} color={colors.blue} />} title="Capture on iPhone" body="MoneyWise adds a “Capture mobile money message” action to the Shortcuts app. You tell iPhone to run it when a mobile money message arrives. It takes about a minute, once." />
             <Disclosure points={[
-                'It only runs on messages containing “ZMW”, and MoneyWise ignores anything that isn’t a mobile money transaction or balance.',
+                'It looks at each new SMS on your iPhone and keeps only mobile money and bank messages. Everything else stays on your phone and is never sent.',
                 'It uses a private key kept on this iPhone. The key can only add messages to your account. Turning capture off cancels it.',
             ]} />
             <PrimaryButton loading={busy} onPress={connect}>Connect this iPhone</PrimaryButton>
@@ -294,7 +294,7 @@ function LegacyIosFlow() {
         <>
             <Hero icon={<Workflow size={28} color={colors.blue} />} title="Capture on iPhone" body="Apple doesn’t let apps read your messages, so iPhone uses a Shortcuts automation that you set up once. It takes about two minutes." />
             <Disclosure points={[
-                'The automation only runs on messages containing “ZMW”, and MoneyWise ignores anything that isn’t a mobile money transaction.',
+                'The automation looks at each new SMS. MoneyWise keeps only mobile money messages; everything else is ignored.',
                 'It uses a private capture key that can only add messages to your account. Turning capture off cancels the key.',
             ]} />
             <PrimaryButton onPress={() => setStep('install')}>Start</PrimaryButton>
@@ -319,11 +319,10 @@ function LegacyIosFlow() {
             <Steps items={[
                 'Open Shortcuts and tap the Automation tab.',
                 'Tap + (New Automation), then choose Message.',
-                'Leave Sender empty. Under Message Contains, type ZMW.',
+                'Leave Sender empty. Under Message Contains, type a single full stop (.).',
                 'Choose Run Immediately, so it runs without asking each time. Tap Next.',
                 'Choose MoneyWise MoMo Capture. That’s it.',
             ]} />
-            <Text style={styles.tip}>Tip: if your provider writes amounts as “K 50” instead of “ZMW 50”, add a second automation the same way with Message Contains set to Bal.</Text>
             <PrimaryButton onPress={openShortcutsApp}>Open Shortcuts</PrimaryButton>
             <GhostButton onPress={() => setStep('verify')}>I’ve added the automation</GhostButton>
         </>

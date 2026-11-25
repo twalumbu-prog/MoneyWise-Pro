@@ -149,6 +149,18 @@ export default function MomoCaptureSettingsScreen() {
                 </View>
                 {!!lastSeen && <Text style={styles.hint}>{lastSeen}.</Text>}
                 {Platform.OS === 'android' && !!android?.queued && <Text style={styles.hint}>{android.queued} message(s) waiting for a connection.</Text>}
+                {Platform.OS === 'ios' && iosIntentAvailable && (() => {
+                    const ios = getIosStatus();
+                    if (!ios) return null;
+                    return (
+                        <>
+                            {!!ios.queued && <Text style={styles.hint}>{ios.queued} message{ios.queued === 1 ? '' : 's'} saved on this iPhone, waiting for a connection. They send by themselves.</Text>}
+                            {!ios.hasToken && iosDone && <Text style={[styles.hint, { color: colors.warn }]}>This iPhone’s capture key was turned off. Open Shortcuts automation to set it up again. Saved messages wait until then.</Text>}
+                            {!!ios.lastError && !!ios.queued && <Text style={[styles.hint, { color: colors.warn }]}>Last try: {ios.lastError}</Text>}
+                            {!!ios.filteredCount && <Text style={styles.hint}>{ios.filteredCount} other message{ios.filteredCount === 1 ? '' : 's'} checked and kept on your phone (not money messages).</Text>}
+                        </>
+                    );
+                })()}
                 {Platform.OS === 'android' && !!android && anyOn && (
                     <>
                         {!android.hasToken && <Text style={[styles.hint, { color: colors.warn }]}>This phone has no capture key. Switch a source off and on again to reconnect.</Text>}

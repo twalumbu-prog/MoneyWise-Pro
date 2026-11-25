@@ -110,6 +110,10 @@ export const momoCaptureService = {
     testParse(text: string): Promise<MomoDiagnosis> {
         return apiJson('/momo-capture/test-parse', { method: 'POST', body: JSON.stringify({ text }) });
     },
+    /** On-iPhone filter rules (which messages the capture action keeps). */
+    deviceRules(): Promise<{ version: number; amount: string; money: string; allow?: string }> {
+        return apiJson('/momo-capture/device-rules');
+    },
     balanceChecks(): Promise<MomoBalanceCheck[]> {
         return apiJson('/momo-capture/balance-checks');
     },

@@ -16,7 +16,8 @@ import { track } from '../src/lib/analytics';
 import { colors, fonts, radius } from '../src/theme/tokens';
 
 /**
- * The iPhone capture guide: adding "When I get a message containing ZMW → Capture mobile money message" in Shortcuts.
+ * The iPhone capture guide: adding "When I get a message containing . → Capture mobile money message" in Shortcuts.
+ * The full stop makes it run for (almost) every SMS; the app's filter keeps only money messages on the phone.
  *   1. Intro: the how-to video. "Open Shortcuts" keeps it playing in a floating window over Shortcuts.
  *   2. One screen per tap: the real Shortcuts screen, zoomed to the spot, with a pulsing ring on it.
  *   3. Check it works: a test message to yourself, caught live. If it isn't, the usual causes, each linked to its step,

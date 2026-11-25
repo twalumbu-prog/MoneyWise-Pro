@@ -117,7 +117,8 @@ const config: ExpoConfig = {
     // 0.5.0: adds @shopify/react-native-skia (the Grow chart draws on the GPU). Native, so 0.4.0 binaries never get it.
     // 0.4.0: adds the local tap-nfc native module (Android shares a payment request by NFC tap).
     // 0.6.0: momo-capture gets an iOS side (App Intent "Capture mobile money message", Keychain key, clipboard checks).
-    version: '0.6.0',
+    // 0.7.0: iOS capture saves on the phone first, filters on the phone, notifies, retries in the background (BGTask).
+    version: '0.7.0',
     orientation: 'portrait',
     scheme: 'moneywise',
     userInterfaceStyle: 'light',

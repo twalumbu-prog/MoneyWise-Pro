@@ -115,6 +115,29 @@ export interface IngestInput {
     userId: string; orgId: string; source: unknown; text: unknown; sender?: unknown; occurredAt?: unknown;
 }
 
+/**
+ * What the iPhone keeps (MomoCaptureStore.looksLikeMoneyMessage): an amount AND something only an operator or bank
+ * writes. The phone ships the same defaults; these override them, so a new bank's wording is a deploy here, not an app
+ * release. Patterns are ICU regexes (NSRegularExpression). Anything not matched never leaves the phone.
+ */
+export const DEVICE_RULES = {
+    version: 1,
+    amount: String.raw`(?i)(?:\b(?:ZMW|ZK)\s?\d|(?<![A-Za-z0-9])K\s?\d|\b(?:amount|amt)\s*[:.]?\s*(?:ZMW|ZK|K)?\s?\d)`,
+    money: String.raw`(?i)(?:\b(?:ZMW|ZK)\b|\b(?:airtel|mtn|momo|zamtel|kwacha|zanaco|fnb|absa|stanbic|indo\s?zambia|izb|atlas\s?mara|ecobank|uba|lenco|natsave|investrust|first\s?capital|access\s?bank|bank)\b|\b(?:tid|txn|transaction\s?id|trans\.?\s?id|financial\s?transaction|ref(?:erence)?\s?(?:no)?\s?[:#.])|\b(?:bal|balance|avail(?:able)?\s?bal))`,
+    allow: String.raw`(?i)^\s*MoneyWise test`,
+};
+
+const workspaceNames = new Map<string, { name: string | null; at: number }>();
+/** The organisation's display name, cached for a few minutes (asked on every captured message). */
+export async function workspaceName(orgId: string): Promise<string | null> {
+    const hit = workspaceNames.get(orgId);
+    if (hit && Date.now() - hit.at < 5 * 60 * 1000) return hit.name;
+    const { data } = await supabase.from('organizations').select('name').eq('id', orgId).maybeSingle();
+    const name = (data?.name as string | undefined) ?? null;
+    workspaceNames.set(orgId, { name, at: Date.now() });
+    return name;
+}
+
 export async function ingest(input: IngestInput) {
     const source = SOURCES.includes(input.source as CaptureSource) ? (input.source as CaptureSource) : null;
     if (!source) throw new MomoCaptureError('Unknown capture source');

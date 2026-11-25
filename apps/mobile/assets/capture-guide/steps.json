@@ -29,8 +29,8 @@
     {
       "key": "zmw",
       "image": "04-zmw.jpg",
-      "caption": "Type **ZMW**, then tap **Done**",
-      "tip": "Capital letters, no spaces.",
+      "caption": "Type a full stop **.** then tap **Done**",
+      "tip": "Just one full stop, nothing else. It lets MoneyWise see every message; only money messages are kept, the rest never leave your iPhone.",
       "x": 275,
       "y": 529
     },

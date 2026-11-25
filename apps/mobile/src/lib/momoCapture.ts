@@ -56,12 +56,20 @@ interface MomoCaptureNative {
 /** null on iOS, and on an Android binary built before the module existed (an OTA can't add native code). */
 const native: MomoCaptureNative | null = Platform.OS === 'android' ? requireOptionalNativeModule<MomoCaptureNative>('MomoCapture') : null;
 
-export interface IosCaptureStatus { hasToken: boolean; queued: number; lastSentAt: number | null; lastError: string | null; intentAvailable: boolean }
+export interface IosCaptureStatus {
+    hasToken: boolean; queued: number; lastSentAt: number | null; lastError: string | null; intentAvailable: boolean;
+    /** Messages the automation handed over that the phone's filter kept off the server (personal texts). 0.7.0+. */
+    filteredCount?: number;
+}
+interface DeviceRules { amount: string; money: string; allow?: string }
 interface MomoCaptureIosNative {
-    configure(options: { apiUrl: string; token?: string }): void;
+    configure(options: { apiUrl: string; token?: string; rules?: DeviceRules; notify?: boolean }): void;
     clear(): void;
     getStatus(): IosCaptureStatus;
     flush(): Promise<number>;
+    // 0.7.0+: on-phone filter rules, "captured" notifications.
+    setRules?(rules: DeviceRules): void;
+    requestNotificationPermission?(): Promise<boolean>;
     pasteboardChangeCount(): number;
     pasteboardMightBeMessage(): Promise<boolean>;
 }
@@ -98,6 +106,18 @@ export async function connectIphone(): Promise<void> {
     if (!iosNative) throw new Error('Update MoneyWise to set up capture on this iPhone.');
     const { token } = await momoCaptureService.rotateToken();
     iosNative.configure({ apiUrl: API_URL, token });
+    // The "captured: K2.00 received…" notification after each message. Declining is fine: capture still works.
+    try { await iosNative.requestNotificationPermission?.(); } catch { /* ignore */ }
+    await refreshIosRules();
+}
+
+/**
+ * The phone keeps only messages that look like mobile money / bank messages (everything else never leaves it). The
+ * rules ship with the app; the server's copy overrides them so new wording is a deploy, not an app release.
+ */
+export async function refreshIosRules(): Promise<void> {
+    if (!iosNative?.setRules) return;
+    try { iosNative.setRules(await momoCaptureService.deviceRules()); } catch { /* keep the last rules */ }
 }
 
 export const pasteboardChangeCount = (): number | null => { try { return iosNative?.pasteboardChangeCount() ?? null; } catch { return null; } };
@@ -181,6 +201,13 @@ export async function flushQueued(): Promise<void> {
         }
     } catch { /* signed out or offline: the next foreground tries again */ }
     try { await (native ?? iosNative)?.flush(); } catch { /* next foreground tries again */ }
+}
+
+let rulesFetchedAt = 0;
+/** App foreground (iOS): send what's waiting, and refresh the on-phone filter rules at most every 6 hours. */
+export async function onIosForeground(): Promise<void> {
+    await flushQueued();
+    if (Date.now() - rulesFetchedAt > 6 * 3600 * 1000) { rulesFetchedAt = Date.now(); await refreshIosRules(); }
 }
 
 // ── iOS Shortcut ─────────────────────────────────────────────────────────────

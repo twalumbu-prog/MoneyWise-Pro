@@ -1,9 +1,19 @@
 {
-  "platforms": ["android", "apple"],
+  "platforms": [
+    "android",
+    "apple"
+  ],
   "android": {
-    "modules": ["expo.modules.momocapture.MomoCaptureModule"]
+    "modules": [
+      "expo.modules.momocapture.MomoCaptureModule"
+    ]
   },
   "apple": {
-    "modules": ["MomoCaptureModule"]
+    "modules": [
+      "MomoCaptureModule"
+    ],
+    "appDelegateSubscribers": [
+      "MomoCaptureAppDelegate"
+    ]
   }
 }
