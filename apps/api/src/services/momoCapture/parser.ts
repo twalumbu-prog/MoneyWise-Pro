@@ -90,7 +90,7 @@ function moneyHits(text: string): MoneyHit[] {
     return hits;
 }
 
-const isBalance = (before: string) => /\b(bal(ance)?|avail(able)?)\b(\s+(is|of|now|was))?[^a-z]*$/.test(before);
+const isBalance = (before: string) => /\b(bal(ance)?|avail(able)?)\b(\s+(is|of|now|was))*[^a-z]*$/.test(before);
 const isFee = (before: string) => /\b(fee|charge[ds]?|cost|levy|tax)\b(\s+(is|of|was))?[^a-z]*$/.test(before);
 
 function firstMatchIndex(re: RegExp, text: string): number {
@@ -108,12 +108,18 @@ function counterpartyAfter(text: string, word: 'from' | 'to'): string | null {
     return name.slice(0, 80);
 }
 
-const REFERENCE = /\b(?:financial transaction id|transaction id|trans(?:action)?\.?\s*id|txn\.?\s*id|txn|tid|ref(?:erence)?(?:\s*no)?\.?)\s*[:#.]?\s*([A-Z0-9][A-Z0-9.\-]{5,})/gi;
-/** A transaction id always carries a digit; "Ref: School fees" is a note, and using it would make every later message with the same note look like a duplicate. */
+const REFERENCE = /\b(financial transaction id|transaction id|trans(?:action)?\.?\s*id|txn\.?\s*id|txn|tid|ref(?:erence)?(?:\s*no)?\.?)\s*[:#.]?\s*([A-Z0-9][A-Z0-9.\-]{5,})/gi;
+/**
+ * A transaction id normally carries a digit; "Ref: School fees" is a note, and using it would make every later message
+ * with the same note look like a duplicate. The exception is an id introduced by an explicit transaction-id label and
+ * written in capitals — Zamtel's are all letters ("Txn ID: FLPFCKRP").
+ */
 function findReference(text: string): string | null {
     for (const m of text.matchAll(REFERENCE)) {
-        const ref = m[1].replace(/\.$/, '');
+        const ref = m[2].replace(/\.$/, '');
         if (/[0-9]/.test(ref)) return ref;
+        const labelledId = !/^ref/i.test(m[1]);
+        if (labelledId && /^[A-Z]{6,}$/.test(ref)) return ref;
     }
     return null;
 }

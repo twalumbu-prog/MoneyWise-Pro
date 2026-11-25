@@ -10,6 +10,11 @@ import { parseMomoMessage, parseBalanceOnly, parseBalanceMessage, isPersonalNumb
 type Expect = Partial<ReturnType<typeof parseMomoMessage> & {}> | null;
 const cases: { text: string; sender?: string; expect: Expect }[] = [
     {
+        // Zamtel Kwacha: the transaction id is all letters.
+        text: 'Dear Stephen Kapambwe, you have received ZMW 3.00 from CLIVE NGANDU - 770676303 on 25-11-2026 14:51:14 under Txn ID: FLPFCKRP. Your account balance is now ZMW 7.74. Manage your money smarter download the MyZamtel App today!',
+        expect: { provider: 'ZAMTEL', direction: 'IN', amount: 3, balanceAfter: 7.74, reference: 'FLPFCKRP' },
+    },
+    {
         text: 'You have received ZMW 250.00 from JOHN BANDA (260971234567) on 27/10/2026 14:02. Financial Transaction Id: 12345678901. New balance: ZMW 1,320.50.',
         sender: 'MoMo',
         expect: { provider: 'MTN', direction: 'IN', amount: 250, balanceAfter: 1320.5, counterparty: 'JOHN BANDA', reference: '12345678901' },
