@@ -12,7 +12,7 @@ import MomoCapture
  */
 struct CaptureMobileMoneyMessage: AppIntent {
     static var title: LocalizedStringResource = "Capture mobile money message"
-    static var description = IntentDescription("Keeps mobile money and bank SMS for MoneyWise. Other messages are ignored and never leave your iPhone.")
+    static var description = IntentDescription("Keeps mobile money and bank SMS for MoneyWise. Other messages are ignored and never leave your phone.")
     static var openAppWhenRun: Bool = false
 
     // Shortcuts doesn't fill this from the automation's input by itself (checked on iOS 26.5), so setup tells the
