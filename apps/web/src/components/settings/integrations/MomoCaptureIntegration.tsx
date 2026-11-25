@@ -75,17 +75,17 @@ export const MomoCaptureIntegration: React.FC<{ onBack: () => void }> = ({ onBac
                 <p className="text-sm text-gray-500">Everything your phone sends from mobile money messages: what was received, how it was read and where it was booked. Set the phone up in the mobile app under Preferences → Mobile money capture.</p>
             </div>
 
-            {s && (!s.capturingHere || s.elsewhere.captures + s.elsewhere.ignored > 0) && (
+            {s && (s.capturingHere === false || (s.elsewhere?.captures ?? 0) + (s.elsewhere?.ignored ?? 0) > 0) && (
                 <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex flex-wrap items-center gap-3">
                     <div className="flex-1 min-w-[240px]">
                         <p className="text-sm font-semibold text-amber-900">
-                            {s.capturingHere ? 'Some messages went to another workspace' : `Your phone is sending messages to ${s.captureWorkspace.name ?? 'another workspace'}, not this one`}
+                            {s.capturingHere ? 'Some messages went to another workspace' : `Your phone is sending messages to ${s.captureWorkspace?.name ?? 'another workspace'}, not this one`}
                         </p>
                         <p className="text-xs text-amber-800">
-                            A capture key delivers into the one workspace it was set up in. {s.elsewhere.captures + s.elsewhere.ignored} message{s.elsewhere.captures + s.elsewhere.ignored === 1 ? '' : 's'} already {s.elsewhere.captures + s.elsewhere.ignored === 1 ? 'went' : 'went'} to your other workspaces (the Ignored tab lists them all, with where each went).
+                            A capture key delivers into the one workspace it was set up in. {((s.elsewhere?.captures ?? 0) + (s.elsewhere?.ignored ?? 0))} message{((s.elsewhere?.captures ?? 0) + (s.elsewhere?.ignored ?? 0)) === 1 ? '' : 's'} already {((s.elsewhere?.captures ?? 0) + (s.elsewhere?.ignored ?? 0)) === 1 ? 'went' : 'went'} to your other workspaces (the Ignored tab lists them all, with where each went).
                         </p>
                     </div>
-                    {!s.capturingHere && (
+                    {s.capturingHere === false && (
                         <button onClick={() => moveHere.mutate()} disabled={moveHere.isPending}
                             className="px-4 py-2 rounded-lg bg-brand-navy text-white text-sm font-semibold disabled:opacity-60">
                             {moveHere.isPending ? 'Moving…' : 'Capture into this workspace'}
@@ -95,7 +95,7 @@ export const MomoCaptureIntegration: React.FC<{ onBack: () => void }> = ({ onBac
             )}
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <Stat label="Capture key" value={s ? (s.hasToken ? 'Active' : 'Off') : '…'} sub={s?.hasToken ? `delivers to ${s.captureWorkspace.name ?? 'a workspace'}` : undefined} good={!!s?.hasToken} />
+                <Stat label="Capture key" value={s ? (s.hasToken ? 'Active' : 'Off') : '…'} sub={s?.hasToken ? `delivers to ${s.captureWorkspace?.name ?? 'a workspace'}` : undefined} good={!!s?.hasToken} />
                 <Stat label="Last message" value={s?.lastCaptureAt ? when(s.lastCaptureAt) : 'None yet'} sub={s?.lastCaptureSource ? SOURCE[s.lastCaptureSource] : undefined} />
                 <Stat label="Waiting for you" value={s ? String(s.pendingCount) : '…'} />
                 <Stat label="Booking" value={s ? (s.autoPost ? 'Automatic' : 'After review') : '…'} sub={s ? (s.destination === 'CASH' ? 'to Cash' : 'to provider account') : undefined} />
@@ -103,8 +103,8 @@ export const MomoCaptureIntegration: React.FC<{ onBack: () => void }> = ({ onBac
 
             <div className="p-3 bg-white border border-gray-200 rounded-xl space-y-2">
                 <p className="text-sm font-semibold text-gray-900">Phones sending to this account</p>
-                {(s?.devices.length ?? 0) === 0 && <p className="text-xs text-gray-500">No phone has its own key yet. Set up capture in the mobile app on each phone; every phone you set up keeps working alongside the others.</p>}
-                {s?.devices.map((d) => (
+                {(s?.devices?.length ?? 0) === 0 && <p className="text-xs text-gray-500">No phone has its own key yet. Set up capture in the mobile app on each phone; every phone you set up keeps working alongside the others.</p>}
+                {s?.devices?.map((d) => (
                     <div key={d.id} className="flex items-center justify-between gap-2 text-sm">
                         <span className="text-gray-800">{d.label || (d.platform === 'android' ? 'Android' : d.platform === 'ios' ? 'iPhone' : 'Phone')} <span className="text-xs text-gray-500">· {d.lastSeenAt ? `last sent ${when(d.lastSeenAt)}` : 'nothing sent yet'}</span></span>
                         <button onClick={() => { if (window.confirm('Turn off capture on this phone?')) removeDevice.mutate(d.id); }} className="text-xs text-red-600 hover:underline">Turn off</button>
