@@ -242,7 +242,11 @@ export async function ingest(input: IngestInput) {
         // is never booked by itself: an account's balance only moves when the person records something.
         const reading = parseBalanceOnly(text, sender);
         const bal = parseBalanceMessage(text, sender);
-        if (bal) return { accepted: true as const, balanceCheck: await recordBalanceCheck(input.deviceId ?? null, input.userId, input.orgId, source, text, await fallbackProvider(bal.provider), bal.balance, occurredAt) };
+        if (bal) {
+            const balanceCheck = await recordBalanceCheck(input.deviceId ?? null, input.userId, input.orgId, source, text, await fallbackProvider(bal.provider), bal.balance, occurredAt);
+            if ('duplicate' in balanceCheck) await logIgnored(input.deviceId ?? null, input.userId, input.orgId, source, text, sender, 'Balance reading already captured (same figure within a few minutes)');
+            return { accepted: true as const, balanceCheck };
+        }
         await logIgnored(input.deviceId ?? null, input.userId, input.orgId, source, text, sender);
         return { accepted: false as const, reason: reading ? 'BALANCE_ONLY' as const : 'NOT_A_TRANSACTION' as const };
     }
@@ -260,7 +264,7 @@ export async function ingest(input: IngestInput) {
             .eq('organization_id', input.orgId).like('dedupe_key', `${key}%`)
             .gte('occurred_at', new Date(t - SAME_MESSAGE_WINDOW_MS).toISOString())
             .lte('occurred_at', new Date(t + SAME_MESSAGE_WINDOW_MS).toISOString()).limit(1);
-        if (near?.length) return { accepted: true as const, duplicate: true };
+        if (near?.length) { await logIgnored(input.deviceId ?? null, input.userId, input.orgId, source, text, sender, 'Already captured — the same message arrived again (from this or another phone)'); return { accepted: true as const, duplicate: true }; }
         key = `${key}:${Math.floor(t / 60000)}`;
     }
     const insert = (dedupe_key: string) => supabase.from('momo_captures').insert({
@@ -279,7 +283,7 @@ export async function ingest(input: IngestInput) {
         if (existing?.length && existing[0].direction !== parsed.direction) ({ data: row, error } = await insert(`${key}:${parsed.direction}`));
     }
     if (error || !row) {
-        if (error?.code === '23505') return { accepted: true as const, duplicate: true };
+        if (error?.code === '23505') { await logIgnored(input.deviceId ?? null, input.userId, input.orgId, source, text, sender, 'Already captured — the same message arrived again (from this or another phone)'); return { accepted: true as const, duplicate: true }; }
         throw new MomoCaptureError(`Could not save the message: ${error?.message}`, 500);
     }
 
