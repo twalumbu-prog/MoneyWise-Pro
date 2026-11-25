@@ -209,27 +209,19 @@ async function markFailure(table: string, id: string, message: string) {
     }).eq('id', id);
 }
 
-async function syncEmail(conn: any, deadline: number): Promise<ComposioSyncResult> {
-    const result: ComposioSyncResult = { connectionId: conn.id, kind: 'email', fetched: 0, stored: 0, classified: 0 };
-    try {
-        if (!conn.composio_account_id) throw new Error('Composio connection is missing; reconnect it.');
-
-        // Resume an unfinished backfill (same query window + page token), else start a new window.
-        const resume = CURSOR.exec(conn.last_history_id ?? '');
-        const startedMs = resume ? Number(resume[2]) : Date.now();
-        const sinceSec = resume ? Number(resume[1])
-            : Math.floor((conn.last_synced_at ? Date.parse(conn.last_synced_at) - 3_600_000 : Date.now() - FIRST_SYNC_DAYS * 86_400_000) / 1000);
-        let pageToken: string | null = resume ? resume[3] : null;
-        const fresh: { id: string; organization_id: string }[] = [];
-
-        // Phase 1 — fetch and STORE everything (bulk writes, no AI), so running out of time never loses mail.
-        for (let page = 0; page < MAX_EMAIL_PAGES && Date.now() < deadline - 3_000; page++) {
-            const data = await runTool(conn.organization_id, 'GMAIL_FETCH_EMAILS', conn.composio_account_id, {
-                user_id: 'me',
-                query: `after:${sinceSec} -in:spam -in:trash -in:drafts`,
-                max_results: MAX_EMAILS_PER_PAGE, include_payload: true, verbose: true,
-                ...(pageToken ? { page_token: pageToken } : {}),
-            });
+/**
+ * Fetches pages of mail for one Gmail query and STORES them (bulk writes, no AI), so running out of time never loses mail. Returns the token to resume
+ * from, or null when Gmail has no further page. Shared by the regular sync and by the deeper look back (mailboxBackfill).
+ */
+export async function pullEmailPages(conn: any, query: string, startToken: string | null, deadline: number, result: ComposioSyncResult, fresh: { id: string; organization_id: string }[]): Promise<string | null> {
+    let pageToken: string | null = startToken;
+    for (let page = 0; page < MAX_EMAIL_PAGES && Date.now() < deadline - 3_000; page++) {
+        const data = await runTool(conn.organization_id, 'GMAIL_FETCH_EMAILS', conn.composio_account_id, {
+            user_id: 'me',
+            query,
+            max_results: MAX_EMAILS_PER_PAGE, include_payload: true, verbose: true,
+            ...(pageToken ? { page_token: pageToken } : {}),
+        });
             const { messages, nextPageToken } = gmailPage(data);
 
             const rows: any[] = [];
@@ -272,6 +264,24 @@ async function syncEmail(conn: any, deadline: number): Promise<ComposioSyncResul
             pageToken = nextPageToken;
             if (!pageToken) break;
         }
+    return pageToken;
+}
+
+async function syncEmail(conn: any, deadline: number): Promise<ComposioSyncResult> {
+    const result: ComposioSyncResult = { connectionId: conn.id, kind: 'email', fetched: 0, stored: 0, classified: 0 };
+    try {
+        if (!conn.composio_account_id) throw new Error('Composio connection is missing; reconnect it.');
+
+        // Resume an unfinished backfill (same query window + page token), else start a new window.
+        const resume = CURSOR.exec(conn.last_history_id ?? '');
+        const startedMs = resume ? Number(resume[2]) : Date.now();
+        const sinceSec = resume ? Number(resume[1])
+            : Math.floor((conn.last_synced_at ? Date.parse(conn.last_synced_at) - 3_600_000 : Date.now() - FIRST_SYNC_DAYS * 86_400_000) / 1000);
+        let pageToken: string | null = resume ? resume[3] : null;
+        const fresh: { id: string; organization_id: string }[] = [];
+
+        // Phase 1 — fetch and STORE everything (bulk writes, no AI), so running out of time never loses mail.
+        pageToken = await pullEmailPages(conn, `after:${sinceSec} -in:spam -in:trash -in:drafts`, pageToken, deadline, result, fresh);
 
         // Done only when Gmail has no further page. Otherwise remember where to resume and keep the old sync time.
         await supabase.from('email_connections').update(pageToken

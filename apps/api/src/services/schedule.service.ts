@@ -10,7 +10,7 @@
  * moves money by itself, a human still approves it.
  */
 
-import { addDays, addWeeks, addMonths, addQuarters, format, parseISO } from 'date-fns';
+import { addDays, addWeeks, addMonths, addQuarters, addYears, format, parseISO } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { emailService } from './email.service';
 import { pushService } from './push.service';
@@ -28,6 +28,7 @@ export function advanceDueDate(currentDate: string, cadence: string): string {
         case 'WEEKLY':    next = addWeeks(d, 1);    break;
         case 'BIWEEKLY':  next = addWeeks(d, 2);    break;
         case 'QUARTERLY': next = addQuarters(d, 1); break;
+        case 'YEARLY':    next = addYears(d, 1);    break;
         case 'MONTHLY':
         default:          next = addMonths(d, 1);   break;
     }

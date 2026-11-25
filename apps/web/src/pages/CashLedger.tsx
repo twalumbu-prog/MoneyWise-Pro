@@ -45,6 +45,9 @@ import TransferToWalletModal from '../components/TransferToWalletModal';
 import ShareWalletLinkModal from '../components/ShareWalletLinkModal';
 import { useAuth } from '../context/AuthContext';
 import { CaptureEvidenceLink } from '../components/capture/CaptureEvidenceLink';
+import { usePersonalAccount } from '../hooks/usePersonalAccount';
+import { DebtTagModal } from '../components/debts/DebtTagModal';
+import { useDebtTags, debtOptionsFor, DebtTagDef } from '../components/debts/debtTags';
 import { getStatusConfig, requisitionService } from '../services/requisition.service';
 import { accountService, Account } from '../services/account.service';
 import { onboardingService, WalletStatus } from '../services/onboarding.service';
@@ -248,6 +251,10 @@ const CashLedger: React.FC = () => {
     const [selectedEntry, setSelectedEntry] = useState<CashbookEntry | null>(null);
     // Inflow being classified as Accounts Receivable → pick the customer invoice(s) it settles.
     const [applyPayment, setApplyPayment] = useState<{ entry: CashbookEntry; accountId: string } | null>(null);
+    // Personal accounts can tag a transaction as a loan, advance or repayment, from the same category list.
+    const { isPersonal } = usePersonalAccount();
+    const debtTags = useDebtTags(isPersonal).data;
+    const [debtTagging, setDebtTagging] = useState<{ entry: CashbookEntry; tag: DebtTagDef } | null>(null);
     // Which line-item/entry account dropdown currently has a save in flight —
     // drives the inline spinner in SearchableAccountSelect for instant feedback.
     const [savingAccountKey, setSavingAccountKey] = useState<string | null>(null);
@@ -2449,6 +2456,8 @@ Status: VERIFIED`;
                 onStatusChange={handleStatusChange}
             />
 
+            {debtTagging && <DebtTagModal entry={debtTagging.entry} tag={debtTagging.tag} onClose={() => setDebtTagging(null)} onDone={() => { loadData(); }} />}
+
             <ApplyPaymentModal
                 isOpen={!!applyPayment}
                 entry={applyPayment?.entry ?? null}
@@ -2955,9 +2964,15 @@ Status: VERIFIED`;
                                             </div>
                                             {/* Account select */}
                                             <SearchableAccountSelect
-                                                value={entry.account_id || ''}
-                                                options={accounts}
+                                                value={entry.debt_tag ? `debt:${entry.debt_tag}` : entry.account_id || ''}
+                                                options={isPersonal ? [...debtOptionsFor(debtTags, entry), ...accounts] : accounts}
                                                 onChange={(val) => {
+                                                    // A debt tag (loan received, repayment made, ...): ask who it is with, then tag it.
+                                                    if (val.startsWith('debt:')) {
+                                                        const tag = (debtTags ?? []).find((t) => t.key === val.slice(5));
+                                                        if (tag) setDebtTagging({ entry, tag });
+                                                        return;
+                                                    }
                                                     // Money received and classified to Accounts Receivable: choose which customer/invoice it settles.
                                                     if (entry.entry_type === 'INFLOW' && isReceivableAccount(accounts.find(a => a.id === val))) {
                                                         setApplyPayment({ entry, accountId: val });

@@ -7,7 +7,7 @@ export type ScheduleCategory =
     | 'LOAN_REPAYMENTS'
     | 'GENERAL_EXPENSES';
 
-export type ScheduleCadence = 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'QUARTERLY';
+export type ScheduleCadence = 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY';
 
 export interface ScheduledItem {
     id: string;
@@ -27,6 +27,11 @@ export interface ScheduledItem {
     pop_enabled?: boolean;
     pop_method?: string | null;
     pop_email?: string | null;
+    /** Where the item came from: made by hand, added from an email, or from a payment pattern. */
+    source?: 'MANUAL' | 'EMAIL' | 'HISTORY';
+    /** A bill in another currency: its amount in that currency (amount is the kwacha figure). */
+    currency?: string;
+    foreign_amount?: number | null;
 }
 
 export interface ScheduledItemRun {

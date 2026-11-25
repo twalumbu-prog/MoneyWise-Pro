@@ -12,7 +12,8 @@ import { FinancialHighlights } from '../components/FinancialHighlights';
 import { BucketProgressBar } from '../components/BucketProgressBar';
 
 import { StaffPortfolio } from './StaffPortfolio';
-import { FinancialStatements, STATEMENT_TABS, StatementTab } from '../components/FinancialStatements';
+import { FinancialStatements, STATEMENT_TABS, StatementTab, PERSONAL_HIDDEN_STATEMENTS } from '../components/FinancialStatements';
+import { usePersonalAccount } from '../hooks/usePersonalAccount';
 import { useSearchParams } from 'react-router-dom';
 import {
   Accordion,
@@ -65,13 +66,16 @@ export const Reporting: React.FC = () => {
     const [filterEndInput, setFilterEndInput] = useState('');
     
     const queryClient = useQueryClient();
+    // A personal account doesn't get the bookkeeping statements (cash flow, changes in equity, general ledger, journal report).
+    const { isPersonal } = usePersonalAccount();
+    const reportViews = useMemo(() => REPORT_VIEWS.filter(r => !(isPersonal && (PERSONAL_HIDDEN_STATEMENTS as string[]).includes(r.id))), [isPersonal]);
     const [searchParams, setSearchParams] = useSearchParams();
     const initialView = useMemo<ReportView>(() => {
         const p = (searchParams.get('tab') || searchParams.get('view') || '').toUpperCase();
-        if (p === 'STATEMENTS') return 'CASHFLOW';
-        if (REPORT_VIEWS.some(r => r.id === p)) return p as ReportView;
+        if (p === 'STATEMENTS') return isPersonal ? 'TRIAL' : 'CASHFLOW';
+        if (reportViews.some(r => r.id === p)) return p as ReportView;
         return 'PROFIT_LOSS';
-    }, [searchParams]);
+    }, [searchParams, reportViews, isPersonal]);
 
     const [reportView, setReportView] = useState<ReportView>(initialView);
 
@@ -807,7 +811,7 @@ export const Reporting: React.FC = () => {
                                         onChange={selectView}
                                         trackClassName="flex items-center gap-1"
                                         indicatorClassName="bg-white rounded-lg shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)]"
-                                        tabs={REPORT_VIEWS.map(t => ({
+                                        tabs={reportViews.map(t => ({
                                             value: t.id,
                                             buttonClassName: 'px-3.5 h-6 rounded-lg flex justify-center items-center shrink-0',
                                             label: (
@@ -1284,7 +1288,7 @@ export const Reporting: React.FC = () => {
                             onChange={selectView}
                             trackClassName="flex items-center gap-1"
                             indicatorClassName="bg-white rounded-lg shadow-sm"
-                            tabs={REPORT_VIEWS.map(t => ({
+                            tabs={reportViews.map(t => ({
                                 value: t.id,
                                 buttonClassName: 'px-3 py-1.5 rounded-lg flex justify-center items-center shrink-0',
                                 label: (

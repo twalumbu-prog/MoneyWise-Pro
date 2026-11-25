@@ -34,6 +34,7 @@ import lencoRoutes from './routes/lenco.routes';
 import lipilaRoutes from './routes/lipila.routes';
 import tapRoutes from './routes/tap.routes';
 import mtnRoutes from './routes/mtn.routes';
+import debtsRoutes from './routes/debts.routes';
 import productRoutes from './routes/product.routes';
 import paymentLinkRoutes from './routes/payment_link.routes';
 import departmentRoutes from './routes/department.routes';
@@ -83,7 +84,7 @@ import pool from './db';
 // each cold Vercel instance otherwise opened a fresh direct connection and reran
 // ~15 sequential DDL statements just to find out they were all no-ops, which is
 // what was exhausting Postgres's connection limit under concurrent traffic.
-const MIGRATION_VERSION = 49;
+const MIGRATION_VERSION = 52;
 
 const runMigration = async () => {
     const directUrl = process.env.DIRECT_DATABASE_URL;
@@ -1936,6 +1937,46 @@ CREATE INDEX IF NOT EXISTS idx_marketplace_orders_link ON public.marketplace_ord
         // Supplier name on stock purchases. Mirrors supabase/migrations/20261128100000_stock_supplier_name.sql.
         await migrationPool.query('ALTER TABLE public.stock_movements ADD COLUMN IF NOT EXISTS supplier_name TEXT;');
 
+        // Debt tracking (personal workspaces). Mirrors supabase/migrations/20261129100000_debts.sql.
+        await migrationPool.query(`CREATE TABLE IF NOT EXISTS public.debts (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(), organization_id UUID NOT NULL,
+            side TEXT NOT NULL CHECK (side IN ('OWE', 'OWED')),
+            counterparty_type TEXT NOT NULL DEFAULT 'PERSON' CHECK (counterparty_type IN ('PERSON', 'COMPANY')),
+            counterparty_name TEXT NOT NULL, counterparty_org_id UUID, due_date DATE, note TEXT, created_by UUID,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());`);
+        await migrationPool.query('CREATE UNIQUE INDEX IF NOT EXISTS uq_debts_party ON public.debts (organization_id, side, lower(counterparty_name));');
+        await migrationPool.query('CREATE INDEX IF NOT EXISTS idx_debts_org ON public.debts (organization_id);');
+        await migrationPool.query('CREATE INDEX IF NOT EXISTS idx_debts_counterparty_org ON public.debts (counterparty_org_id) WHERE counterparty_org_id IS NOT NULL;');
+        await migrationPool.query('ALTER TABLE public.cashbook_entries ADD COLUMN IF NOT EXISTS debt_id UUID;');
+        await migrationPool.query('ALTER TABLE public.cashbook_entries ADD COLUMN IF NOT EXISTS debt_tag TEXT;');
+        await migrationPool.query('CREATE INDEX IF NOT EXISTS idx_cashbook_debt ON public.cashbook_entries (debt_id) WHERE debt_id IS NOT NULL;');
+        await migrationPool.query('ALTER TABLE public.debts ENABLE ROW LEVEL SECURITY;');
+        await migrationPool.query('GRANT ALL ON public.debts TO service_role;');
+
+        // Schedules that add themselves (from an email or a payment pattern). Mirrors supabase/migrations/20261130100000_schedule_auto_add.sql.
+        await migrationPool.query('ALTER TABLE public.inbound_emails ADD COLUMN IF NOT EXISTS intent_due_date DATE;');
+        await migrationPool.query('ALTER TABLE public.inbound_emails ADD COLUMN IF NOT EXISTS intent_cadence TEXT;');
+        await migrationPool.query('ALTER TABLE public.inbound_emails ADD COLUMN IF NOT EXISTS scheduled_item_id UUID;');
+        await migrationPool.query("ALTER TABLE public.scheduled_items ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'MANUAL';");
+        await migrationPool.query('ALTER TABLE public.scheduled_items ADD COLUMN IF NOT EXISTS source_email_id UUID;');
+        await migrationPool.query('ALTER TABLE public.scheduled_items ADD COLUMN IF NOT EXISTS payee_key TEXT;');
+        await migrationPool.query("ALTER TABLE public.scheduled_items ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'ZMW';");
+        await migrationPool.query('ALTER TABLE public.scheduled_items ADD COLUMN IF NOT EXISTS foreign_amount NUMERIC(15,2);');
+        await migrationPool.query('CREATE INDEX IF NOT EXISTS idx_scheduled_items_payee ON public.scheduled_items (organization_id, payee_key) WHERE payee_key IS NOT NULL;');
+        await migrationPool.query('ALTER TABLE public.inbound_emails ADD COLUMN IF NOT EXISTS schedule_scanned_at TIMESTAMPTZ;');
+        await migrationPool.query('ALTER TABLE public.scheduled_items DROP CONSTRAINT IF EXISTS scheduled_items_cadence_check;');
+        await migrationPool.query("ALTER TABLE public.scheduled_items ADD CONSTRAINT scheduled_items_cadence_check CHECK (cadence IN ('DAILY', 'WEEKLY', 'BIWEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY'));");
+
+        // Debt opening balances. Mirrors supabase/migrations/20261201100000_debt_opening_balances.sql.
+        await migrationPool.query(`CREATE TABLE IF NOT EXISTS public.debt_opening_balances (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(), organization_id UUID NOT NULL, debt_id UUID NOT NULL REFERENCES public.debts(id) ON DELETE CASCADE,
+            amount NUMERIC(14,2) NOT NULL CHECK (amount > 0), as_of DATE NOT NULL DEFAULT CURRENT_DATE, note TEXT, source TEXT, source_id UUID, created_by UUID,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());`);
+        await migrationPool.query('CREATE INDEX IF NOT EXISTS idx_debt_opening_debt ON public.debt_opening_balances (debt_id);');
+        await migrationPool.query('CREATE UNIQUE INDEX IF NOT EXISTS uq_debt_opening_source ON public.debt_opening_balances (organization_id, source, source_id) WHERE source_id IS NOT NULL;');
+        await migrationPool.query('ALTER TABLE public.debt_opening_balances ENABLE ROW LEVEL SECURITY;');
+        await migrationPool.query('GRANT ALL ON public.debt_opening_balances TO service_role;');
+
         console.log('[Migration] Reloading PostgREST schema cache...');
         await migrationPool.query("NOTIFY pgrst, 'reload config';");
 
@@ -2042,6 +2083,7 @@ app.use('/lenco', lencoRoutes);
 app.use('/lipila', lipilaRoutes);
 app.use('/tap', tapRoutes);
 app.use('/mtn', mtnRoutes);
+app.use('/debts', debtsRoutes);
 app.use('/payroll', payrollRoutes);
 app.use('/crm', crmRoutes);
 app.use('/invoices', invoiceRoutes);

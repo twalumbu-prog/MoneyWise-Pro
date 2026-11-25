@@ -322,6 +322,7 @@ function App() {
                         <Route path="/marketplace/import-desk" element={<ProtectedRoute><ImportsDesk /></ProtectedRoute>} />
                         <Route path="/messages" element={<Navigate to="/requisitions?inbox=messages" replace />} />
                         <Route path="/invest/portfolio" element={<ProtectedRoute><PortfolioPortal /></ProtectedRoute>} />
+                        <Route path="/debts" element={<Navigate to="/schedules?view=debts" replace />} />
                         <Route path="/invest/prices" element={<ProtectedRoute><FundPrices /></ProtectedRoute>} />
                         <Route path="/invest/blue-opus" element={<ProtectedRoute><BlueOpusShares /></ProtectedRoute>} />
                         <Route path="/loans" element={<ProtectedRoute><Loans /></ProtectedRoute>} />

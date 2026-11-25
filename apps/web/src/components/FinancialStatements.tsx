@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { accountService } from '../services/account.service';
 import { statementsService, journalService, JournalEntry } from '../services/journal.service';
 import { JournalEntryModal } from './accounting/JournalEntryModal';
+import { usePersonalAccount } from '../hooks/usePersonalAccount';
 
 export type StatementTab = 'TRIAL' | 'CASHFLOW' | 'EQUITY' | 'LEDGER' | 'JOURNAL';
 export const STATEMENT_TABS: { id: StatementTab; label: string }[] = [
@@ -14,6 +15,9 @@ export const STATEMENT_TABS: { id: StatementTab; label: string }[] = [
     { id: 'LEDGER', label: 'General Ledger' },
     { id: 'JOURNAL', label: 'Journal Report' },
 ];
+
+/** Statements that only make sense with double-entry bookkeeping: a personal account doesn't show them (it keeps Trial Balance). */
+export const PERSONAL_HIDDEN_STATEMENTS: StatementTab[] = ['CASHFLOW', 'EQUITY', 'LEDGER', 'JOURNAL'];
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const num = (n: number) => (n < 0 ? `(${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})` : n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
@@ -366,13 +370,14 @@ export const FinancialStatements: React.FC<{
     const activeEnd = endProp ?? range.end;
     const valid = /^\d{4}-\d{2}-\d{2}$/.test(activeStart) && /^\d{4}-\d{2}-\d{2}$/.test(activeEnd) && activeStart <= activeEnd;
     const canPost = userRole === 'ACCOUNTANT' || userRole === 'ADMIN';
+    const { isPersonal } = usePersonalAccount();
 
     return (
         <div className="font-['DM_Sans'] space-y-4 p-1 md:p-2">
             <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
                 {(showTabs || tabProp === undefined) && (
                     <div className="flex gap-1 p-1 bg-[#F8FAFD] rounded-[10px] overflow-x-auto no-scrollbar max-w-full">
-                        {STATEMENT_TABS.map(t => (
+                        {STATEMENT_TABS.filter(t => !(isPersonal && PERSONAL_HIDDEN_STATEMENTS.includes(t.id))).map(t => (
                             <button
                                 key={t.id}
                                 onClick={() => setTab(t.id)}

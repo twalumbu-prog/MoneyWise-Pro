@@ -19,6 +19,7 @@ export const SCHEDULE_CADENCES: { value: ScheduleCadence; label: string }[] = [
     { value: 'BIWEEKLY',  label: 'Bi-weekly' },
     { value: 'MONTHLY',   label: 'Monthly' },
     { value: 'QUARTERLY', label: 'Quarterly' },
+    { value: 'YEARLY', label: 'Yearly' },
 ];
 
 export function scheduleCategoryLabel(value: string): string {

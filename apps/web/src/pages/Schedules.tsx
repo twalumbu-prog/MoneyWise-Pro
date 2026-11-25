@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef, useLayoutEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Layout } from '../components/Layout';
+import { ScheduleSuggestions, ScanEmailsButton } from '../components/schedules/ScheduleSuggestions';
+import { DebtsPanel } from '../components/debts/DebtsPanel';
 import { useNavigate } from 'react-router-dom';
 import {
     Plus, MoreVertical, Calendar, RotateCcw, FileText,
@@ -77,6 +79,11 @@ function isPhoneComplete(phone: string): boolean {
 }
 
 function categoryLabel(cat: string) { return CATEGORIES.find(c => c.value === cat)?.label ?? cat; }
+/** Marks an item that added itself: from an email, or from a payment pattern you accepted. */
+const SourceMark: React.FC<{ item: ScheduledItem }> = ({ item }) => item.source === 'EMAIL'
+    ? <span title="Added from an email. Archive or delete it if it is not right." className="inline-flex items-center gap-1 rounded-full bg-[#E8F0FE] px-2 py-0.5 text-[10px] font-bold text-[#1967D2]"><Mail size={9} /> From email</span>
+    : item.source === 'HISTORY' ? <span className="inline-flex items-center rounded-full bg-[#F1F3F4] px-2 py-0.5 text-[10px] font-bold text-[#5F6368]">From your payments</span> : null;
+
 function cadenceLabel(cad: string)  { return CADENCES.find(c => c.value === cad)?.label ?? cad; }
 const formatCurrency = formatKwacha;
 function formatDueDate(dateStr: string) {
@@ -755,8 +762,8 @@ const ItemMenu: React.FC<{ onEdit: () => void; onArchive: () => void; onDelete: 
 // ── Mobile Schedules (self-contained so it can own its own refs/state) ────────
 
 interface MobileSchedulesProps {
-    view: 'list' | 'calendar';
-    setView: (v: 'list' | 'calendar') => void;
+    view: 'list' | 'calendar' | 'debts';
+    setView: (v: 'list' | 'calendar' | 'debts') => void;
     activeCategory: 'ALL' | ScheduleCategory;
     setActiveCategory: (v: 'ALL' | ScheduleCategory) => void;
     filterTabs: { key: string; label: string }[];
@@ -857,9 +864,10 @@ const MobileSchedules: React.FC<MobileSchedulesProps> = ({
                             </span>
                         ),
                     },
+                    { value: 'debts', label: <span className="inline-flex items-center justify-center gap-1.5"><span>Debts</span></span> },
                 ]}
                 value={view}
-                onChange={(v) => setView(v as 'list' | 'calendar')}
+                onChange={(v) => setView(v as 'list' | 'calendar' | 'debts')}
             />
 
             {/* Card — fills remaining space */}
@@ -917,7 +925,9 @@ const MobileSchedules: React.FC<MobileSchedulesProps> = ({
                     index={view === 'calendar' ? 999 : filterTabs.findIndex(t => t.key === activeCategory)}
                     className="flex-1 min-h-0 overflow-y-auto"
                 >
-                    {view === 'calendar' ? (
+                    {view === 'debts' ? (
+                        <DebtsPanel />
+                    ) : view === 'calendar' ? (
                         <CalendarView items={allItems} />
                     ) : isLoading ? (
                         <div className="flex justify-center items-center py-16">
@@ -944,6 +954,7 @@ const MobileSchedules: React.FC<MobileSchedulesProps> = ({
                                             <span className="flex items-center gap-1 text-[10px] text-gray-500"><Calendar size={10} /> Due {formatDueDate(item.next_due_date)}</span>
                                         </div>
                                         <span className={`inline-flex mt-0.5 text-[10px] font-bold px-2 py-0.5 rounded-full ${CATEGORY_COLORS[item.category]}`}>{categoryLabel(item.category)}</span>
+                                        <SourceMark item={item} />
                                     </div>
                                     <p className="text-sm font-bold text-black flex-shrink-0">{formatCurrency(item.amount)}</p>
                                     <div onClick={e => e.stopPropagation()}>
@@ -976,7 +987,7 @@ const MobileSchedules: React.FC<MobileSchedulesProps> = ({
 
 export const Schedules: React.FC = () => {
     const qc = useQueryClient();
-    const [view, setView]                     = useState<'list' | 'calendar'>('list');
+    const [view, setView]                     = useState<'list' | 'calendar' | 'debts'>(() => (new URLSearchParams(window.location.search).get('view') === 'debts' ? 'debts' : 'list'));
     const [activeCategory, setActiveCategory] = useState<'ALL' | ScheduleCategory>('ALL');
     const [showAddModal, setShowAddModal]     = useState(false);
     const [editItem, setEditItem]             = useState<ScheduledItem | null>(null);
@@ -1069,19 +1080,19 @@ export const Schedules: React.FC = () => {
             <div className="hidden md:flex flex-col h-full md:px-4 md:pb-4">
                 {/* View-toggle tabs — active tab shares the card stroke */}
                 <div className="flex items-end gap-1">
-                    {(['list', 'calendar'] as const).map(v => (
+                    {(['list', 'calendar', 'debts'] as const).map(v => (
                         <button key={v} type="button" onClick={() => setView(v)}
                             className={`px-5 py-2 text-xs rounded-t-xl capitalize transition-all border border-b-0 ${
                                 view === v ? 'bg-white font-bold text-gray-900 border-gray-200 -mb-px relative z-10' : 'border-transparent font-normal text-gray-500 hover:text-gray-700'
                             }`}>
-                            {v === 'list' ? 'List View' : 'Calendar View'}
+                            {v === 'list' ? 'List View' : v === 'calendar' ? 'Calendar View' : 'Debts'}
                         </button>
                     ))}
                 </div>
 
                 {/* Main card — stroke continues around the active tab */}
                 <div className="flex-1 bg-white rounded-tr-[20px] rounded-bl-[20px] rounded-br-[20px] border border-gray-200 flex flex-col overflow-hidden">
-                    <div className="px-4 pt-4 pb-3 flex items-center gap-4 flex-shrink-0">
+                    {view !== 'debts' && <div className="px-4 pt-4 pb-3 flex items-center gap-4 flex-shrink-0">
                         <div className="flex items-center gap-1 bg-gray-100 md:bg-[#F8FAFD] rounded-xl p-1 overflow-x-auto flex-shrink-0">
                             {filterTabs.map(tab => {
                                 const isActive = activeCategory === tab.key;
@@ -1103,6 +1114,7 @@ export const Schedules: React.FC = () => {
                             })}
                         </div>
                         <div className="flex-1" />
+                        <ScanEmailsButton />
                         <button type="button"
                             data-tour-target="new-schedule-btn"
                             onClick={() => { setEditItem(null); setShowAddModal(true); }}
@@ -1110,10 +1122,13 @@ export const Schedules: React.FC = () => {
                             <Plus size={13} className="text-white" />
                             <span className="text-white text-xs font-bold">Add to Schedule</span>
                         </button>
-                    </div>
+                    </div>}
 
-                    <div className="flex-1 overflow-y-auto px-4 pb-4">
-                        {view === 'calendar' ? (
+                    <div className={`flex-1 overflow-y-auto px-4 pb-4 ${view === 'debts' ? 'pt-4' : ''}`}>
+                        {view === 'list' && <ScheduleSuggestions />}
+                        {view === 'debts' ? (
+                            <DebtsPanel />
+                        ) : view === 'calendar' ? (
                             <CalendarView items={allItems} />
                         ) : isLoading ? (
                             <div className="flex justify-center items-center py-20">
@@ -1151,9 +1166,10 @@ export const Schedules: React.FC = () => {
                                                     <span className="flex items-center gap-1 text-[11px] text-gray-500"><RotateCcw size={10} /> {cadenceLabel(item.cadence)}</span>
                                                     <span className="flex items-center gap-1 text-[11px] text-gray-500"><Calendar size={10} /> Due {formatDueDate(item.next_due_date)}</span>
                                                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${CATEGORY_COLORS[item.category]}`}>{categoryLabel(item.category)}</span>
+                                                    <SourceMark item={item} />
                                                 </div>
                                             </div>
-                                            <p className="text-sm font-bold text-gray-900 flex-shrink-0">{formatCurrency(item.amount)}</p>
+                                            <p className="text-sm font-bold text-gray-900 flex-shrink-0 text-right">{formatCurrency(item.amount)}{item.currency === 'USD' && item.foreign_amount ? <span className="block text-[10px] font-medium text-gray-500">${item.foreign_amount}</span> : null}</p>
                                             <div onClick={e => e.stopPropagation()}>
                                                 <ItemMenu
                                                     onEdit={() => { setEditItem(item); setShowAddModal(true); }}

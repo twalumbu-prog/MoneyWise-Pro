@@ -16,6 +16,8 @@ import {
 } from 'core';
 import type { ScheduledItem, ScheduleCategory, ScheduleCadence, ScheduledItemRun } from 'core';
 import { ScreenHeader } from '../src/components/ScreenHeader';
+import { ScheduleSuggestionsCard } from '../src/components/schedules/ScheduleSuggestionsCard';
+import { DebtsList } from '../src/components/debts/DebtsList';
 import { useAuth } from '../src/context/AuthContext';
 import { AnimatedSegmented, AnimatedTabContent } from '../src/components/AnimatedTabs';
 import { colors, fonts, radius } from '../src/theme/tokens';
@@ -158,7 +160,7 @@ export default function SchedulesScreen() {
     const insets = useSafeAreaInsets();
     const qc = useQueryClient();
     const { organizationId } = useAuth();
-    const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+    const [viewMode, setViewMode] = useState<'list' | 'calendar' | 'debts'>('list');
     const [category, setCategory] = useState<ScheduleCategory | 'ALL'>('ALL');
     const [addOpen, setAddOpen] = useState(false);
     const [editItem, setEditItem] = useState<ScheduledItem | null>(null);
@@ -218,7 +220,7 @@ export default function SchedulesScreen() {
             {/* List View / Calendar View tab toggle */}
             <AnimatedSegmented
                 value={viewMode}
-                onChange={(v) => setViewMode(v as 'list' | 'calendar')}
+                onChange={(v) => setViewMode(v as 'list' | 'calendar' | 'debts')}
                 trackStyle={styles.viewModeRow}
                 indicatorStyle={styles.viewModeIndicator}
                 itemStyle={styles.viewModeBtn}
@@ -241,6 +243,16 @@ export default function SchedulesScreen() {
                                 <Calendar size={14} color={viewMode === 'calendar' ? colors.blue : colors.textFaint} />
                                 <Text style={[styles.viewModeText, viewMode === 'calendar' && styles.viewModeTextActive]}>
                                     Calendar View
+                                </Text>
+                            </View>
+                        ),
+                    },
+                    {
+                        value: 'debts',
+                        content: (
+                            <View style={styles.viewModeBtnContent}>
+                                <Text style={[styles.viewModeText, viewMode === 'debts' && styles.viewModeTextActive]}>
+                                    Debts
                                 </Text>
                             </View>
                         ),
@@ -280,8 +292,12 @@ export default function SchedulesScreen() {
                 </View>
             )}
 
-            <AnimatedTabContent tabKey={viewMode} index={viewMode === 'calendar' ? 1 : 0} style={{ flex: 1 }}>
-                {viewMode === 'calendar' ? (
+            {viewMode === 'list' && <ScheduleSuggestionsCard />}
+
+            <AnimatedTabContent tabKey={viewMode} index={viewMode === 'calendar' ? 1 : viewMode === 'debts' ? 2 : 0} style={{ flex: 1 }}>
+                {viewMode === 'debts' ? (
+                    <DebtsList />
+                ) : viewMode === 'calendar' ? (
                     <View style={[styles.mainCardContainer, { marginBottom: insets.bottom + 16 }]}>
                         <ScrollView contentContainerStyle={styles.calScroll}>
                             <CalendarView items={allItems} onSelectItem={(item) => setDetailItem(item)} />

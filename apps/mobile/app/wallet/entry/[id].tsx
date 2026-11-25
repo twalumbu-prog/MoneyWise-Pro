@@ -9,6 +9,7 @@ import { cashbookService, requisitionService, integrationService, accountService
 import type { CashbookEntry } from 'core';
 import { ScreenHeader } from '../../../src/components/ScreenHeader';
 import { AccountPickerSheet, type AccountOption } from '../../../src/components/wallet/AccountPickerSheet';
+import { DebtTagSheet, useDebtTags, debtOptionsFor, type DebtTagDef } from '../../../src/components/wallet/DebtTagSheet';
 import { useAuth } from '../../../src/context/AuthContext';
 import { colors, fonts, radius } from '../../../src/theme/tokens';
 
@@ -28,6 +29,7 @@ export default function EntryDetailScreen() {
     const [activePickerTarget, setActivePickerTarget] = useState<'PAYMENT' | string | null>(null);
     const [selectedPaymentAccount, setSelectedPaymentAccount] = useState<AccountOption | null>(null);
     const [localClassifications, setLocalClassifications] = useState<Record<string, AccountOption>>({});
+    const [debtTagging, setDebtTagging] = useState<DebtTagDef | null>(null);
     const [isClassifying, setIsClassifying] = useState(false);
     const [isPosting, setIsPosting] = useState(false);
 
@@ -104,6 +106,9 @@ export default function EntryDetailScreen() {
         );
     }, [allAccounts]);
 
+    // Personal accounts can tag a transaction as a loan, advance or repayment from the same category list.
+    const debtTags = useDebtTags(isPersonalAccount).data;
+    const debtLabel = entry?.debt_tag ? debtTags?.find((t) => t.key === entry.debt_tag)?.label : undefined;
     const isInflow = (entry?.debit ?? 0) > 0;
     const amount = isInflow ? entry?.debit : entry?.credit;
     const req = reqData || entry?.requisitions;
@@ -162,6 +167,13 @@ export default function EntryDetailScreen() {
     };
 
     const handleSelectAccount = (acc: AccountOption) => {
+        // A debt tag (loan received, repayment made, ...): ask who it is with, then tag it.
+        if (acc.id.startsWith('debt:')) {
+            const tag = (debtTags ?? []).find((t) => t.key === acc.id.slice(5));
+            setActivePickerTarget(null);
+            if (tag) setDebtTagging(tag);
+            return;
+        }
         if (activePickerTarget === 'PAYMENT') {
             setSelectedPaymentAccount(acc);
         } else if (activePickerTarget) {
@@ -356,9 +368,9 @@ export default function EntryDetailScreen() {
                                             onPress={() => setActivePickerTarget('SINGLE')}
                                             disabled={isPosted}
                                         >
-                                            <Building2 size={13} color={(localClassifications.SINGLE?.name || entry.accounts?.name) ? colors.blue : colors.textFaint} />
-                                            <Text style={[styles.accountChipText, !!(localClassifications.SINGLE?.name || entry.accounts?.name) && styles.accountChipTextActive]} numberOfLines={1}>
-                                                {localClassifications.SINGLE?.name || entry.accounts?.name || 'Assign General Ledger Account…'}
+                                            <Building2 size={13} color={(localClassifications.SINGLE?.name || debtLabel || entry.accounts?.name) ? colors.blue : colors.textFaint} />
+                                            <Text style={[styles.accountChipText, !!(localClassifications.SINGLE?.name || debtLabel || entry.accounts?.name) && styles.accountChipTextActive]} numberOfLines={1}>
+                                                {localClassifications.SINGLE?.name || (debtLabel ? `Debt · ${debtLabel}` : undefined) || entry.accounts?.name || 'Assign General Ledger Account…'}
                                             </Text>
                                             {!isPosted && <Text style={styles.accountChipChangeText}>Change</Text>}
                                         </Pressable>
@@ -457,10 +469,20 @@ export default function EntryDetailScreen() {
                 </ScrollView>
             )}
 
+            {entry && (
+                <DebtTagSheet
+                    visible={!!debtTagging}
+                    tag={debtTagging}
+                    entry={{ id: entry.id, description: entry.description, amount: amount ?? 0 }}
+                    onClose={() => setDebtTagging(null)}
+                    onDone={() => { setDebtTagging(null); qc.invalidateQueries({ queryKey: ['cashbook-entries'] }); qc.invalidateQueries({ queryKey: ['debts'] }); }}
+                />
+            )}
+
             {/* Account Picker Modal Sheet */}
             <AccountPickerSheet
                 visible={!!activePickerTarget}
-                accounts={activePickerTarget === 'PAYMENT' ? paymentAccounts : (isInflow && !reqId && incomeAccounts.length > 0 ? incomeAccounts : expenseAccounts)}
+                accounts={activePickerTarget === 'PAYMENT' ? paymentAccounts : [...(isPersonalAccount && activePickerTarget === 'SINGLE' && !reqId ? debtOptionsFor(debtTags, isInflow) : []), ...(isInflow && !reqId && incomeAccounts.length > 0 ? incomeAccounts : expenseAccounts)]}
                 selectedId={
                     activePickerTarget === 'PAYMENT'
                         ? selectedPaymentAccount?.id

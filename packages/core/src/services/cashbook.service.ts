@@ -14,6 +14,9 @@ export interface CashbookEntry {
     status?: 'PENDING' | 'COMPLETED' | 'ACCOUNTED' | 'UNACCOUNTED';
     reference_number?: string;
     account_id?: string;
+    /** Set when the transaction is tagged as part of a debt (loan received, repayment made, ...). */
+    debt_id?: string | null;
+    debt_tag?: string | null;
     external_reference?: string;
     organization_id?: string;
     accounts?: { id: string; name: string; code: string };
