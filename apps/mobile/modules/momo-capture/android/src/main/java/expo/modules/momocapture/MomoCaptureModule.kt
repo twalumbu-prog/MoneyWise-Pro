@@ -32,6 +32,7 @@ class MomoCaptureModule : Module() {
                 notificationsEnabled = options["notificationsEnabled"] as? Boolean ?: false,
                 senderPattern = options["senderPattern"] as? String,
                 extraPackages = (options["providerPackages"] as? List<String>) ?: emptyList(),
+                captureAll = options["captureAll"] as? Boolean ?: false,
             )
         }
 

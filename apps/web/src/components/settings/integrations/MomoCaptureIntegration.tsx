@@ -27,16 +27,17 @@ const Pill: React.FC<{ status: string }> = ({ status }) => (
 );
 const when = (iso: string) => new Date(iso).toLocaleString([], { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
-type Tab = 'captured' | 'balances' | 'ignored' | 'test';
+type Tab = 'all' | 'captured' | 'balances' | 'ignored' | 'test';
 
 export const MomoCaptureIntegration: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const qc = useQueryClient();
-    const [tab, setTab] = useState<Tab>('captured');
+    const [tab, setTab] = useState<Tab>('all');
     const [filter, setFilter] = useState<MomoCaptureStatus | 'ALL'>('ALL');
 
     const settings = useQuery({ queryKey: ['momo-web', 'settings'], queryFn: () => momoCaptureService.getSettings(), refetchInterval: 15_000 });
     const captured = useQuery({ queryKey: ['momo-web', 'activity', filter], queryFn: () => momoCaptureService.activity(filter === 'ALL' ? undefined : filter), refetchInterval: 15_000, enabled: tab === 'captured' });
     const balances = useQuery({ queryKey: ['momo-web', 'balances'], queryFn: () => momoCaptureService.allBalanceChecks(), refetchInterval: 15_000, enabled: tab === 'balances' });
+    const everything = useQuery({ queryKey: ['momo-web', 'everything'], queryFn: () => momoCaptureService.everything(300), refetchInterval: 10_000, enabled: tab === 'all' });
     const ignored = useQuery({ queryKey: ['momo-web', 'ignored'], queryFn: () => momoCaptureService.ignored(), refetchInterval: 15_000, enabled: tab === 'ignored' });
 
     const refresh = () => { void qc.invalidateQueries({ queryKey: ['momo-web'] }); void qc.invalidateQueries({ queryKey: ['cashbook-entries'] }); };
@@ -51,6 +52,11 @@ export const MomoCaptureIntegration: React.FC<{ onBack: () => void }> = ({ onBac
     const s = settings.data;
     const setProvider = useMutation({
         mutationFn: (p: 'MTN' | 'AIRTEL' | 'ZAMTEL' | null) => momoCaptureService.updateSettings({ defaultProvider: p }),
+        onSuccess: refresh,
+        onError: (e: Error) => window.alert(e.message),
+    });
+    const removeDevice = useMutation({
+        mutationFn: (id: string) => momoCaptureService.removeDevice(id),
         onSuccess: refresh,
         onError: (e: Error) => window.alert(e.message),
     });
@@ -95,6 +101,17 @@ export const MomoCaptureIntegration: React.FC<{ onBack: () => void }> = ({ onBac
                 <Stat label="Booking" value={s ? (s.autoPost ? 'Automatic' : 'After review') : '…'} sub={s ? (s.destination === 'CASH' ? 'to Cash' : 'to provider account') : undefined} />
             </div>
 
+            <div className="p-3 bg-white border border-gray-200 rounded-xl space-y-2">
+                <p className="text-sm font-semibold text-gray-900">Phones sending to this account</p>
+                {(s?.devices.length ?? 0) === 0 && <p className="text-xs text-gray-500">No phone has its own key yet. Set up capture in the mobile app on each phone; every phone you set up keeps working alongside the others.</p>}
+                {s?.devices.map((d) => (
+                    <div key={d.id} className="flex items-center justify-between gap-2 text-sm">
+                        <span className="text-gray-800">{d.label || (d.platform === 'android' ? 'Android' : d.platform === 'ios' ? 'iPhone' : 'Phone')} <span className="text-xs text-gray-500">· {d.lastSeenAt ? `last sent ${when(d.lastSeenAt)}` : 'nothing sent yet'}</span></span>
+                        <button onClick={() => { if (window.confirm('Turn off capture on this phone?')) removeDevice.mutate(d.id); }} className="text-xs text-red-600 hover:underline">Turn off</button>
+                    </div>
+                ))}
+            </div>
+
             <div className="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-xl">
                 <div className="flex-1">
                     <p className="text-sm font-semibold text-gray-900">This phone's mobile money provider</p>
@@ -111,11 +128,36 @@ export const MomoCaptureIntegration: React.FC<{ onBack: () => void }> = ({ onBac
             </div>
 
             <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
-                {([['captured', 'Captured'], ['balances', 'Balance checks'], ['ignored', 'Ignored'], ['test', 'Try a message']] as [Tab, string][]).map(([id, label]) => (
+                {([['all', 'All messages'], ['captured', 'Captured'], ['balances', 'Balance checks'], ['ignored', 'Ignored'], ['test', 'Try a message']] as [Tab, string][]).map(([id, label]) => (
                     <button key={id} onClick={() => setTab(id)}
                         className={`px-4 py-2 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px ${tab === id ? 'border-brand-navy text-brand-navy' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>{label}</button>
                 ))}
             </div>
+
+            {tab === 'all' && (
+                <div className="space-y-3">
+                    <p className="text-xs text-gray-500">Every message your phones have sent, newest first: transactions, balance readings and messages that were not booked (with why). Updates by itself.</p>
+                    {everything.isLoading && <p className="text-sm text-gray-500">Loading…</p>}
+                    {!everything.isLoading && (everything.data?.length ?? 0) === 0 && <Empty text="No messages yet." />}
+                    {everything.data?.map((m) => (
+                        <div key={`${m.kind}-${m.id}`} className="p-4 bg-white border border-gray-200 rounded-xl space-y-1">
+                            <div className="flex justify-between gap-2 text-xs text-gray-500">
+                                <span className="flex flex-wrap items-center gap-1.5">
+                                    <span className={`px-2 py-0.5 rounded-full font-semibold ${m.kind === 'TRANSACTION' ? 'bg-blue-100 text-blue-800' : m.kind === 'BALANCE' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700'}`}>
+                                        {m.kind === 'TRANSACTION' ? `${m.direction === 'IN' ? 'Received' : 'Sent'} ${m.amount !== null ? `K${m.amount.toLocaleString()}` : ''} · ${m.status.toLowerCase()}` : m.kind === 'BALANCE' ? `Balance K${m.amount?.toLocaleString()}` : 'Not booked'}
+                                    </span>
+                                    <span>{SOURCE[m.source as keyof typeof SOURCE] ?? m.source}</span>
+                                    {m.device && <span>· {m.device}</span>}
+                                    {m.elsewhere && <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold">in {m.workspace ?? 'another workspace'}</span>}
+                                </span>
+                                <span className="shrink-0">{when(m.receivedAt)}</span>
+                            </div>
+                            <p className="text-sm text-gray-800 break-words">{m.text}</p>
+                            {m.note && <p className="text-xs text-amber-700">Why: {m.note}</p>}
+                        </div>
+                    ))}
+                </div>
+            )}
 
             {tab === 'captured' && (
                 <div className="space-y-3">

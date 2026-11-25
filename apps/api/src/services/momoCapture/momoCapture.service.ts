@@ -52,6 +52,7 @@ export async function getSettings(userId: string, orgId: string) {
         .eq('user_id', userId).eq('organization_id', orgId).eq('status', 'OPEN');
     // The key belongs to the person and lands messages in ONE workspace (the one it was last set up in). Say so, and
     // count what already went to their other workspaces, so nothing seems to vanish.
+    const devices = await listDevices(userId);
     const captureOrgId = (row.organization_id as string) ?? orgId;
     const [{ count: elsewhereCaptures }, { count: elsewhereIgnored }, captureWorkspaceName] = await Promise.all([
         supabase.from('momo_captures').select('id', { count: 'exact', head: true }).eq('user_id', userId).neq('organization_id', orgId),
@@ -64,7 +65,8 @@ export async function getSettings(userId: string, orgId: string) {
         elsewhere: { captures: elsewhereCaptures ?? 0, ignored: elsewhereIgnored ?? 0 },
         autoPost: !!row.auto_post,
         destination: row.destination as 'PROVIDER' | 'CASH',
-        hasToken: !!row.token_hash,
+        hasToken: !!row.token_hash || devices.length > 0,
+        devices,
         tokenCreatedAt: row.token_created_at ?? null,
         lastCaptureAt: row.last_capture_at ?? null,
         lastCaptureSource: row.last_capture_source ?? null,
@@ -97,26 +99,74 @@ export async function moveCaptureHere(userId: string, orgId: string) {
  * the plaintext exists — the app hands it to the Android native layer / the iOS Shortcut straight away. Captures land
  * in the organisation that was active when the key was issued.
  */
-export async function rotateToken(userId: string, orgId: string): Promise<string> {
+export interface DeviceInfo { deviceId?: unknown; label?: unknown; platform?: unknown }
+
+/**
+ * Issues a capture key for ONE device. A phone that sends its `deviceId` gets its own key (a re-connect replaces only
+ * that phone's key), so any number of phones can capture into the same account at once. A client that sends none (an
+ * older app build) uses the single shared slot it always had. Only the hash is stored: this is the one moment the
+ * plaintext exists. Captures land in the workspace that was active when the key was issued.
+ */
+export async function rotateToken(userId: string, orgId: string, device: DeviceInfo = {}): Promise<string> {
     await settingsRow(userId, orgId);
     const token = `mwc_${crypto.randomBytes(24).toString('base64url')}`;
+    const now = new Date().toISOString();
+    const deviceId = typeof device.deviceId === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(device.deviceId) ? device.deviceId : null;
+    if (deviceId) {
+        const label = typeof device.label === 'string' ? device.label.slice(0, 60) : null;
+        const platform = ['ios', 'android'].includes(device.platform as string) ? (device.platform as string) : 'other';
+        const { error } = await supabase.from('momo_capture_devices').upsert(
+            { user_id: userId, organization_id: orgId, device_id: deviceId, label, platform, token_hash: hashToken(token), revoked_at: null, last_seen_at: null },
+            { onConflict: 'user_id,device_id' });
+        if (error) throw new MomoCaptureError(`Could not create a capture key: ${error.message}`, 500);
+        await supabase.from('momo_capture_settings').update({ organization_id: orgId, updated_at: now }).eq('user_id', userId);
+        return token;
+    }
     const { error } = await supabase.from('momo_capture_settings')
-        .update({ organization_id: orgId, token_hash: hashToken(token), token_created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .update({ organization_id: orgId, token_hash: hashToken(token), token_created_at: now, updated_at: now })
         .eq('user_id', userId);
     if (error) throw new MomoCaptureError(`Could not create a capture key: ${error.message}`, 500);
     return token;
 }
 
-export async function revokeToken(userId: string) {
+/** Turns off one device (by its app-generated id), or the shared slot of older builds when none is given. */
+export async function revokeToken(userId: string, deviceId?: string | null) {
+    if (deviceId) {
+        await supabase.from('momo_capture_devices').update({ revoked_at: new Date().toISOString() }).eq('user_id', userId).eq('device_id', deviceId);
+        return;
+    }
     await supabase.from('momo_capture_settings').update({ token_hash: null, token_created_at: null, updated_at: new Date().toISOString() }).eq('user_id', userId);
 }
 
-export async function resolveToken(token: string): Promise<{ userId: string; orgId: string } | null> {
+/** Switch a device off by its row id (from the web / another phone). */
+export async function removeDevice(userId: string, id: string) {
+    await supabase.from('momo_capture_devices').update({ revoked_at: new Date().toISOString() }).eq('user_id', userId).eq('id', id);
+}
+
+export async function listDevices(userId: string) {
+    const { data } = await supabase.from('momo_capture_devices').select('id, device_id, label, platform, created_at, last_seen_at')
+        .eq('user_id', userId).is('revoked_at', null).order('created_at', { ascending: true });
+    return (data ?? []).map((d: any) => ({ id: d.id as string, deviceId: d.device_id as string, label: (d.label as string | null) ?? null, platform: (d.platform as string | null) ?? 'other', createdAt: d.created_at as string, lastSeenAt: (d.last_seen_at as string | null) ?? null }));
+}
+
+export interface TokenOwner { userId: string; orgId: string; deviceId: string | null }
+
+export async function resolveToken(token: string): Promise<TokenOwner | null> {
     if (typeof token !== 'string' || !token.startsWith('mwc_') || token.length > 100) return null;
-    const { data, error } = await supabase.from('momo_capture_settings').select('user_id, organization_id').eq('token_hash', hashToken(token)).maybeSingle();
+    const hash = hashToken(token);
     // A failed lookup is not a rejected key: answering 401 makes the phone throw its key away and stop capturing.
+    const dev = await supabase.from('momo_capture_devices').select('id, user_id').eq('token_hash', hash).is('revoked_at', null).maybeSingle();
+    if (dev.error) throw new MomoCaptureError('Capture is temporarily unavailable', 503);
+    if (dev.data) {
+        // The workspace is the person's current capture workspace (one setting for all their devices).
+        const st = await supabase.from('momo_capture_settings').select('organization_id').eq('user_id', dev.data.user_id).maybeSingle();
+        if (st.error || !st.data) throw new MomoCaptureError('Capture is temporarily unavailable', 503);
+        void supabase.from('momo_capture_devices').update({ last_seen_at: new Date().toISOString() }).eq('id', dev.data.id).then(() => undefined, () => undefined);
+        return { userId: dev.data.user_id, orgId: st.data.organization_id, deviceId: dev.data.id };
+    }
+    const { data, error } = await supabase.from('momo_capture_settings').select('user_id, organization_id').eq('token_hash', hash).maybeSingle();
     if (error) throw new MomoCaptureError('Capture is temporarily unavailable', 503);
-    return data ? { userId: data.user_id, orgId: data.organization_id } : null;
+    return data ? { userId: data.user_id, orgId: data.organization_id, deviceId: null } : null;
 }
 
 /** The Lenco-synced wallet entry this message describes, if there is one. */
@@ -132,7 +182,7 @@ async function findLencoTwin(orgId: string, p: ParsedMomoMessage, occurredAt: st
 }
 
 export interface IngestInput {
-    userId: string; orgId: string; source: unknown; text: unknown; sender?: unknown; occurredAt?: unknown;
+    userId: string; orgId: string; source: unknown; text: unknown; sender?: unknown; occurredAt?: unknown; deviceId?: string | null;
 }
 
 /**
@@ -144,7 +194,10 @@ export const DEVICE_RULES = {
     version: 1,
     amount: String.raw`(?i)(?:\b(?:ZMW|ZK)\s?\d|(?<![A-Za-z0-9])K\s?\d|\b(?:amount|amt)\s*[:.]?\s*(?:ZMW|ZK|K)?\s?\d)`,
     money: String.raw`(?i)(?:\b(?:ZMW|ZK)\b|\b(?:airtel|mtn|momo|zamtel|kwacha|zanaco|fnb|absa|stanbic|indo\s?zambia|izb|atlas\s?mara|ecobank|uba|lenco|natsave|investrust|first\s?capital|access\s?bank|bank)\b|\b(?:tid|txn|transaction\s?id|trans\.?\s?id|financial\s?transaction|ref(?:erence)?\s?(?:no)?\s?[:#.])|\b(?:bal|balance|avail(?:able)?\s?bal))`,
-    allow: String.raw`(?i)^\s*MoneyWise test`,
+    // For now every message is sent so none can be lost: this lets any text through. The amount/money rules above stay
+    // in place for when filtering is switched back on (drop this override).
+    allow: String.raw`(?s).`,
+    captureAll: true,
 };
 
 const workspaceNames = new Map<string, { name: string | null; at: number }>();
@@ -173,7 +226,7 @@ export async function ingest(input: IngestInput) {
     // A confirmation from an ordinary phone number is a scam, not a transaction (see isPersonalNumber). Checked here as
     // well as on the phone, so older app versions are covered too.
     if (isPersonalNumber(sender)) {
-        await logIgnored(input.userId, input.orgId, source, text, sender, 'Sent from a personal phone number, not a mobile money provider or bank — possibly a scam');
+        await logIgnored(input.deviceId ?? null, input.userId, input.orgId, source, text, sender, 'Sent from a personal phone number, not a mobile money provider or bank — possibly a scam');
         return { accepted: false as const, reason: 'PERSONAL_NUMBER' as const };
     }
 
@@ -189,8 +242,8 @@ export async function ingest(input: IngestInput) {
         // is never booked by itself: an account's balance only moves when the person records something.
         const reading = parseBalanceOnly(text, sender);
         const bal = parseBalanceMessage(text, sender);
-        if (bal) return { accepted: true as const, balanceCheck: await recordBalanceCheck(input.userId, input.orgId, source, text, await fallbackProvider(bal.provider), bal.balance, occurredAt) };
-        await logIgnored(input.userId, input.orgId, source, text, sender);
+        if (bal) return { accepted: true as const, balanceCheck: await recordBalanceCheck(input.deviceId ?? null, input.userId, input.orgId, source, text, await fallbackProvider(bal.provider), bal.balance, occurredAt) };
+        await logIgnored(input.deviceId ?? null, input.userId, input.orgId, source, text, sender);
         return { accepted: false as const, reason: reading ? 'BALANCE_ONLY' as const : 'NOT_A_TRANSACTION' as const };
     }
 
@@ -211,7 +264,7 @@ export async function ingest(input: IngestInput) {
         key = `${key}:${Math.floor(t / 60000)}`;
     }
     const insert = (dedupe_key: string) => supabase.from('momo_captures').insert({
-        organization_id: input.orgId, user_id: input.userId, source, provider: parsed.provider, sender,
+        organization_id: input.orgId, user_id: input.userId, device_id: input.deviceId ?? null, source, provider: parsed.provider, sender,
         raw_text: text.slice(0, 1200), direction: parsed.direction, amount: parsed.amount, fee: parsed.fee,
         balance_after: parsed.balanceAfter, counterparty: parsed.counterparty, provider_reference: parsed.reference,
         occurred_at: occurredAt, dedupe_key,
@@ -380,12 +433,12 @@ export async function listWithEntries(userId: string, orgId: string, status?: un
 const IGNORED_KEEP_DAYS = 30;
 
 /** Remembers a message the parser ignored, and why. Never allowed to break ingest. */
-async function logIgnored(userId: string, orgId: string, source: CaptureSource, text: string, sender: string | null, reason?: string) {
+async function logIgnored(deviceId: string | null, userId: string, orgId: string, source: CaptureSource, text: string, sender: string | null, reason?: string) {
     try {
         const d = diagnoseMessage(text, sender);
         const sensitive = d.kind === 'IGNORED' && d.sensitive;
         await supabase.from('momo_ignored_messages').insert({
-            organization_id: orgId, user_id: userId, source, reason: reason ?? (d.kind === 'IGNORED' ? d.reason : 'Not booked'),
+            organization_id: orgId, user_id: userId, device_id: deviceId, source, reason: reason ?? (d.kind === 'IGNORED' ? d.reason : 'Not booked'),
             raw_text: sensitive ? '[hidden: looks like a one-time code]' : text.slice(0, 300),
         });
         await supabase.from('momo_ignored_messages').delete().eq('user_id', userId)
@@ -582,10 +635,10 @@ async function evaluateCheck(check: any) {
     return data ?? { ...check, ledger_balance: ledger, pending_net: pendingNet, difference, status };
 }
 
-async function recordBalanceCheck(userId: string, orgId: string, source: CaptureSource, text: string, provider: MomoProvider, balance: number, observedAt: string) {
+async function recordBalanceCheck(deviceId: string | null, userId: string, orgId: string, source: CaptureSource, text: string, provider: MomoProvider, balance: number, observedAt: string) {
     const settings = await settingsRow(userId, orgId);
     const { data: row, error } = await supabase.from('momo_balance_checks').insert({
-        organization_id: orgId, user_id: userId, source, provider, raw_text: text.slice(0, 600), balance, observed_at: observedAt,
+        organization_id: orgId, user_id: userId, device_id: deviceId, source, provider, raw_text: text.slice(0, 600), balance, observed_at: observedAt,
         dedupe_key: balanceDedupeKey(provider, balance, observedAt),
         // Captures booked to Cash don't track the provider's own balance, so there is nothing to compare with.
         status: settings.destination === 'CASH' ? 'NO_ACCOUNT' : 'OPEN',
@@ -652,4 +705,36 @@ export async function dismissBalanceCheck(userId: string, orgId: string, id: str
         .eq('id', id).eq('user_id', userId).eq('organization_id', orgId).eq('status', 'OPEN').select('*').maybeSingle();
     if (!data) throw new MomoCaptureError('This balance check was already handled or no longer exists', 409);
     return data;
+}
+
+
+/**
+ * Everything the person's phones have sent, newest first, in one list: captures, balance readings and the messages
+ * that were not booked (with why). Across all workspaces; `workspace` / `elsewhere` say where each went and `device`
+ * which phone sent it.
+ */
+export async function listEverything(userId: string, orgId: string, limit = 200) {
+    const cap = Math.min(Math.max(Number(limit) || 200, 1), 500);
+    const [caps, bals, igns, devices] = await Promise.all([
+        supabase.from('momo_captures').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(cap),
+        supabase.from('momo_balance_checks').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(cap),
+        supabase.from('momo_ignored_messages').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(cap),
+        supabase.from('momo_capture_devices').select('id, label, platform').eq('user_id', userId),
+    ]);
+    for (const r of [caps, bals, igns]) if (r.error) throw new MomoCaptureError(r.error.message, 500);
+    const deviceName = new Map<string, string>((devices.data ?? []).map((d: any) => [d.id, d.label || (d.platform === 'android' ? 'Android' : d.platform === 'ios' ? 'iPhone' : 'Phone')]));
+    const names = new Map<string, string | null>();
+    const orgs = new Set<string>([...(caps.data ?? []), ...(bals.data ?? []), ...(igns.data ?? [])].map((r: any) => r.organization_id));
+    for (const id of orgs) names.set(id, await workspaceName(id));
+    const common = (r: any) => ({
+        id: r.id as string, source: r.source as string, at: (r.occurred_at ?? r.observed_at ?? r.created_at) as string, receivedAt: r.created_at as string,
+        device: r.device_id ? (deviceName.get(r.device_id) ?? 'A phone') : null,
+        workspace: names.get(r.organization_id) ?? null, elsewhere: r.organization_id !== orgId,
+    });
+    const out = [
+        ...(caps.data ?? []).map((r: any) => ({ ...common(r), kind: 'TRANSACTION' as const, text: r.raw_text as string, status: r.status as string, direction: r.direction as string | null, amount: Number(r.amount) as number | null, provider: r.provider as string | null, note: null as string | null })),
+        ...(bals.data ?? []).map((r: any) => ({ ...common(r), kind: 'BALANCE' as const, text: r.raw_text as string, status: r.status as string, direction: null as string | null, amount: Number(r.balance) as number | null, provider: r.provider as string | null, note: null as string | null })),
+        ...(igns.data ?? []).map((r: any) => ({ ...common(r), kind: 'NOT_BOOKED' as const, text: r.raw_text as string, status: 'IGNORED', direction: null as string | null, amount: null as number | null, provider: null as string | null, note: r.reason as string | null })),
+    ];
+    return out.sort((a, b) => (a.receivedAt < b.receivedAt ? 1 : -1)).slice(0, cap);
 }

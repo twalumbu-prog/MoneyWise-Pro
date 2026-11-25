@@ -48,7 +48,7 @@ object MomoCapture {
 
     fun prefs(ctx: Context): SharedPreferences = ctx.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun configure(ctx: Context, apiUrl: String?, token: String?, smsEnabled: Boolean, notificationsEnabled: Boolean, senderPattern: String?, extraPackages: List<String>) {
+    fun configure(ctx: Context, apiUrl: String?, token: String?, smsEnabled: Boolean, notificationsEnabled: Boolean, senderPattern: String?, extraPackages: List<String>, captureAll: Boolean = false) {
         prefs(ctx).edit().apply {
             putString("apiUrl", apiUrl?.trimEnd('/'))
             if (token != null) putString("token", token)
@@ -56,6 +56,7 @@ object MomoCapture {
             putBoolean("notifications", notificationsEnabled)
             putString("senderPattern", senderPattern)
             putString("packages", JSONArray(extraPackages).toString())
+            putBoolean("captureAll", captureAll)
         }.apply()
         // A new key: send whatever was kept while the phone had none.
         if (token != null) flushAsync(ctx)
@@ -92,6 +93,9 @@ object MomoCapture {
      * SMS address. A notification title can be a saved contact's name, so there the text alone is never enough.
      */
     fun looksLikeMomo(ctx: Context, sender: String?, text: String, fromProviderApp: Boolean = false, fromSms: Boolean = false): Boolean {
+        // Capture-everything mode (temporary, while capture is being validated): every SMS and every provider-app
+        // notification is sent, whoever it is from. The server files what isn't a transaction under "not booked".
+        if (prefs(ctx).getBoolean("captureAll", false) && text.isNotBlank() && (fromSms || fromProviderApp)) return true
         if (text.length < 12 || !MONEY_HINT.containsMatchIn(text)) return false
         if (isPersonalNumber(sender)) return false
         val re = senderRegex(ctx)

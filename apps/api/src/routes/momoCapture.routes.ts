@@ -21,7 +21,7 @@ router.post('/ingest', async (req: any, res: any) => {
         const owner = await momo.resolveToken(String(req.get('x-capture-token') || ''));
         if (!owner) return res.status(401).json({ error: 'Capture key is missing or was turned off. Set capture up again in MoneyWise.' });
         const b = req.body ?? {};
-        const result = await momo.ingest({ ...owner, source: b.source, text: b.text, sender: b.sender, occurredAt: b.occurredAt });
+        const result = await momo.ingest({ userId: owner.userId, orgId: owner.orgId, deviceId: owner.deviceId, source: b.source, text: b.text, sender: b.sender, occurredAt: b.occurredAt });
         // The iPhone's "captured" notification names the workspace, so it's clear where the message went.
         res.json({ ...result, workspace: await momo.workspaceName(owner.orgId) });
     } catch (error) { fail(res, error, 'ingest'); }
@@ -63,8 +63,10 @@ const handle = (label: string, fn: (req: any) => Promise<any>) => async (req: an
 router.get('/settings', handle('settings', (req) => momo.getSettings(req.user.id, req.user.organization_id)));
 router.put('/settings', handle('settings', (req) => momo.updateSettings(req.user.id, req.user.organization_id, req.body ?? {})));
 router.post('/settings/capture-here', handle('capture-here', (req) => momo.moveCaptureHere(req.user.id, req.user.organization_id)));
-router.post('/token', handle('token', async (req) => ({ token: await momo.rotateToken(req.user.id, req.user.organization_id) })));
-router.delete('/token', handle('token', async (req) => { await momo.revokeToken(req.user.id); return { ok: true }; }));
+router.post('/token', handle('token', async (req) => ({ token: await momo.rotateToken(req.user.id, req.user.organization_id, req.body ?? {}) })));
+router.delete('/token', handle('token', async (req) => { await momo.revokeToken(req.user.id, typeof req.query.deviceId === 'string' ? req.query.deviceId : null); return { ok: true }; }));
+router.delete('/devices/:id', handle('device', async (req) => { await momo.removeDevice(req.user.id, req.params.id); return { ok: true }; }));
+router.get('/everything', handle('everything', (req) => momo.listEverything(req.user.id, req.user.organization_id, Number(req.query.limit))));
 router.get('/balances', handle('balances', (req) => momo.balances(req.user.id, req.user.organization_id)));
 router.get('/', handle('list', (req) => momo.list(req.user.id, req.user.organization_id, req.query.status)));
 router.post('/paste', handle('paste', (req) => momo.ingest({ userId: req.user.id, orgId: req.user.organization_id, source: 'PASTE', text: req.body?.text })));

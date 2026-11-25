@@ -217,6 +217,11 @@ export default function MomoCaptureSettingsScreen() {
                         />
                     )}
                     <Row border={allCapturesAvailable}
+                        icon={<History size={18} color={colors.blue} />} label="All messages"
+                        sub="Every message your phones have sent, booked or not" onPress={() => router.push('/momo-all-messages')}
+                        right={<ChevronRight size={18} color={colors.textFaint} />}
+                    />
+                    <Row border
                         icon={<Inbox size={18} color={colors.blue} />} label="Review captured" onPress={() => router.push('/momo-captures')}
                         sub={s ? (s.pendingCount ? `${s.pendingCount} waiting for you to confirm` : 'Nothing waiting') : ' '}
                         right={<ChevronRight size={18} color={colors.textFaint} />}

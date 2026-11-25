@@ -43,7 +43,7 @@ interface NativeStatus {
 interface MomoCaptureNative {
     configure(options: {
         apiUrl: string; token?: string; smsEnabled: boolean; notificationsEnabled: boolean;
-        senderPattern?: string; providerPackages?: string[];
+        senderPattern?: string; providerPackages?: string[]; captureAll?: boolean;
     }): void;
     clear(): void;
     getStatus(): NativeStatus;
@@ -101,10 +101,30 @@ export function getIosStatus(): IosCaptureStatus | null {
     try { return iosNative?.getStatus() ?? null; } catch { return null; }
 }
 
+/**
+ * While capture is being validated every message is sent (nothing is filtered on the phone); the server decides what
+ * is a transaction and shows the rest as "not booked" with a reason. Flip to false to bring the phone filter back.
+ */
+const CAPTURE_EVERYTHING = true;
+
+const DEVICE_ID_KEY = 'momo-capture:device-id';
+/** This phone's own identity for capture: its key is its own, so other phones on the same account keep working. */
+export async function deviceInfo(): Promise<{ deviceId: string; label: string; platform: 'ios' | 'android' }> {
+    let id = await cacheStore.get(DEVICE_ID_KEY);
+    if (!id) {
+        const hex = (n: number) => Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+        id = `${hex(8)}-${hex(4)}-${hex(4)}-${hex(4)}-${hex(12)}`;
+        await cacheStore.set(DEVICE_ID_KEY, id);
+    }
+    const platform = Platform.OS === 'android' ? 'android' : 'ios';
+    const name = (Constants as any).deviceName as string | undefined;
+    return { deviceId: id, label: (name && name.trim()) || (platform === 'android' ? 'Android' : 'iPhone'), platform };
+}
+
 /** Issues a fresh capture key and keeps it in this iPhone's Keychain for the Shortcuts action. Nothing to paste. */
 export async function connectIphone(): Promise<void> {
     if (!iosNative) throw new Error('Update MoneyWise to set up capture on this iPhone.');
-    const { token } = await momoCaptureService.rotateToken();
+    const { token } = await momoCaptureService.rotateToken(await deviceInfo());
     iosNative.configure({ apiUrl: API_URL, token });
     // The "captured: K2.00 received…" notification after each message. Declining is fine: capture still works.
     try { await iosNative.requestNotificationPermission?.(); } catch { /* ignore */ }
@@ -117,6 +137,8 @@ export async function connectIphone(): Promise<void> {
  */
 export async function refreshIosRules(): Promise<void> {
     if (!iosNative?.setRules) return;
+    // Capture-everything: open the phone filter right away (works offline too), then take the server's rules on top.
+    if (CAPTURE_EVERYTHING) { try { iosNative.setRules({ amount: '(?s).', money: '(?s).', allow: '(?s).' }); } catch { /* ignore */ } }
     try { iosNative.setRules(await momoCaptureService.deviceRules()); } catch { /* keep the last rules */ }
 }
 
@@ -143,7 +165,7 @@ export async function setAndroidSources(sources: { notifications: boolean; sms: 
     const anyOn = sources.notifications || sources.sms;
     let token: string | undefined;
     if (anyOn && !status.hasToken) {
-        try { token = (await momoCaptureService.rotateToken()).token; }
+        try { token = (await momoCaptureService.rotateToken(await deviceInfo())).token; }
         catch (e) { console.warn('[MoMo capture] could not issue a capture key; will retry later:', e); }
     }
     // The Record / Dismiss prompt is an ordinary notification, which Android 13+ only shows with this permission.
@@ -152,7 +174,7 @@ export async function setAndroidSources(sources: { notifications: boolean; sms: 
     }
     native.configure({
         apiUrl: API_URL, token, smsEnabled: sources.sms, notificationsEnabled: sources.notifications,
-        senderPattern: SENDER_PATTERN, providerPackages: PROVIDER_PACKAGES,
+        senderPattern: SENDER_PATTERN, providerPackages: PROVIDER_PACKAGES, captureAll: CAPTURE_EVERYTHING,
     });
 }
 
@@ -239,7 +261,8 @@ export const openShortcutsApp = () => Linking.openURL('shortcuts://').catch(() =
 export async function disconnectCapture(): Promise<void> {
     try { native?.clear(); iosNative?.clear(); } catch { /* ignore */ }
     await markIosShortcutSetUp(false);
-    await momoCaptureService.revokeToken();
+    // Only this phone's key: the account's other phones keep capturing.
+    await momoCaptureService.revokeToken((await deviceInfo()).deviceId);
 }
 
 /** On sign-out: forget the key locally (the next person to sign in must not send messages as this user). */

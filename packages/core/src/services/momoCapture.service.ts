@@ -4,7 +4,17 @@ import { apiJson } from '../api/apiFetch';
 export type MomoCaptureSource = 'ANDROID_SMS' | 'ANDROID_NOTIFICATION' | 'IOS_SHORTCUT' | 'PASTE';
 export type MomoCaptureStatus = 'PENDING' | 'POSTED' | 'MATCHED' | 'DISMISSED';
 
+export interface MomoCaptureDevice { id: string; deviceId: string; label: string | null; platform: string; createdAt: string; lastSeenAt: string | null }
+/** One row of the combined "every message" list. */
+export interface MomoEverythingItem {
+    id: string; kind: 'TRANSACTION' | 'BALANCE' | 'NOT_BOOKED'; source: string; at: string; receivedAt: string;
+    text: string; status: string; direction: string | null; amount: number | null; provider: string | null; note: string | null;
+    device: string | null; workspace: string | null; elsewhere: boolean;
+}
+
 export interface MomoCaptureSettings {
+    /** Every phone that has a capture key for this person. */
+    devices: MomoCaptureDevice[];
     /** The workspace this person's capture key delivers into (the one it was last set up in). */
     captureWorkspace: { id: string; name: string | null };
     /** True when that is the workspace being viewed. */
@@ -90,11 +100,19 @@ export const momoCaptureService = {
         return apiJson('/momo-capture/settings/capture-here', { method: 'POST' });
     },
     /** A new capture key; the previous one stops working. Shown/handed over once — the server keeps only its hash. */
-    rotateToken(): Promise<{ token: string }> {
-        return apiJson('/momo-capture/token', { method: 'POST' });
+    rotateToken(device?: { deviceId: string; label: string; platform: 'ios' | 'android' }): Promise<{ token: string }> {
+        return apiJson('/momo-capture/token', { method: 'POST', body: JSON.stringify(device ?? {}) });
     },
-    revokeToken(): Promise<{ ok: true }> {
-        return apiJson('/momo-capture/token', { method: 'DELETE' });
+    /** Turns off this device's key (or, with no id, the shared key older app versions use). */
+    revokeToken(deviceId?: string): Promise<{ ok: true }> {
+        return apiJson(`/momo-capture/token${deviceId ? `?deviceId=${encodeURIComponent(deviceId)}` : ''}`, { method: 'DELETE' });
+    },
+    removeDevice(id: string): Promise<{ ok: true }> {
+        return apiJson(`/momo-capture/devices/${id}`, { method: 'DELETE' });
+    },
+    /** Every message every phone has sent, newest first: captures, balance readings and the ones not booked. */
+    everything(limit = 200): Promise<MomoEverythingItem[]> {
+        return apiJson(`/momo-capture/everything?limit=${limit}`);
     },
     list(status?: MomoCaptureStatus): Promise<MomoCapture[]> {
         return apiJson(`/momo-capture${status ? `?status=${status}` : ''}`);
@@ -121,7 +139,7 @@ export const momoCaptureService = {
         return apiJson('/momo-capture/test-parse', { method: 'POST', body: JSON.stringify({ text }) });
     },
     /** On-iPhone filter rules (which messages the capture action keeps). */
-    deviceRules(): Promise<{ version: number; amount: string; money: string; allow?: string }> {
+    deviceRules(): Promise<{ version: number; amount: string; money: string; allow?: string; captureAll?: boolean }> {
         return apiJson('/momo-capture/device-rules');
     },
     balanceChecks(): Promise<MomoBalanceCheck[]> {
