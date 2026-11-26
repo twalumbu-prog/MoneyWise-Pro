@@ -10,6 +10,18 @@ export interface MomoEverythingItem {
     id: string; kind: 'TRANSACTION' | 'BALANCE' | 'NOT_BOOKED'; source: string; at: string; receivedAt: string;
     text: string; status: string; direction: string | null; amount: number | null; provider: string | null; note: string | null;
     device: string | null; workspace: string | null; elsewhere: boolean;
+    /** A captured transaction's own note. */
+    comment: string | null;
+    /** NOT_BOOKED only: can this be moved into Captured by hand, and the parser's best guess at its fields. */
+    movable: boolean;
+    guess: { provider: string; direction: 'IN' | 'OUT' | null; amount: number | null; fee: number | null; balanceAfter: number | null; counterparty: string | null; reference: string | null } | null;
+}
+
+/** The fields of a capture a person can correct before booking. */
+export interface MomoCaptureFields {
+    provider?: 'MTN' | 'AIRTEL' | 'ZAMTEL' | 'OTHER'; direction?: 'IN' | 'OUT'; amount?: number | string;
+    fee?: number | string | null; balanceAfter?: number | string | null; counterparty?: string | null;
+    reference?: string | null; sender?: string | null; note?: string | null;
 }
 
 export interface MomoCaptureSettings {
@@ -48,6 +60,8 @@ export interface MomoCapture {
     status: MomoCaptureStatus;
     cashbook_entry_id: string | null;
     matched_entry_id: string | null;
+    /** The person's own note; sent to the AI with the description when the capture is booked. */
+    note?: string | null;
     /** Waiting captures only: the category last used with this contact, if any. */
     suggested_account_id?: string | null;
     /** Waiting captures only: the person's most-used categories for this direction, most used first. */
@@ -106,6 +120,14 @@ export const momoCaptureService = {
     /** Turns off this device's key (or, with no id, the shared key older app versions use). */
     revokeToken(deviceId?: string): Promise<{ ok: true }> {
         return apiJson(`/momo-capture/token${deviceId ? `?deviceId=${encodeURIComponent(deviceId)}` : ''}`, { method: 'DELETE' });
+    },
+    /** Corrects a capture that is waiting for review (any of the fields). */
+    editCapture(id: string, fields: MomoCaptureFields): Promise<MomoCapture> {
+        return apiJson(`/momo-capture/${id}`, { method: 'PATCH', body: JSON.stringify(fields) });
+    },
+    /** Moves a not-booked message into Captured with the details the person confirmed. */
+    moveToCaptured(ignoredId: string, fields: MomoCaptureFields): Promise<MomoCapture> {
+        return apiJson(`/momo-capture/ignored/${ignoredId}/capture`, { method: 'POST', body: JSON.stringify(fields) });
     },
     removeDevice(id: string): Promise<{ ok: true }> {
         return apiJson(`/momo-capture/devices/${id}`, { method: 'DELETE' });

@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { momoCaptureService, formatKwacha } from 'core';
-import type { MomoBalanceCheck, MomoCaptureActivity, MomoCaptureStatus, MomoDiagnosis } from 'core';
+import type { MomoBalanceCheck, MomoCaptureActivity, MomoCaptureFields, MomoCaptureStatus, MomoDiagnosis, MomoEverythingItem } from 'core';
 import { ArrowLeft, ArrowDownLeft, ArrowUpRight, Smartphone, Scale, AlertCircle, CheckCircle2, FlaskConical } from 'lucide-react';
 
 const PROVIDER: Record<string, string> = { MTN: 'MTN MoMo', AIRTEL: 'Airtel Money', ZAMTEL: 'Zamtel Kwacha', OTHER: 'Mobile money' };
@@ -50,6 +50,15 @@ export const MomoCaptureIntegration: React.FC<{ onBack: () => void }> = ({ onBac
     });
 
     const s = settings.data;
+    const [moving, setMoving] = useState<MomoEverythingItem | null>(null);
+    const known = useMemo(() => ({
+        counterparties: uniq((captured.data ?? []).map((c) => c.counterparty ?? '')),
+        senders: uniq((captured.data ?? []).map((c) => c.sender ?? '')),
+    }), [captured.data]);
+    const saveCapture = useMutation({
+        mutationFn: (v: { id: string; fields: MomoCaptureFields }) => momoCaptureService.editCapture(v.id, v.fields),
+        onSuccess: refresh,
+    });
     const setProvider = useMutation({
         mutationFn: (p: 'MTN' | 'AIRTEL' | 'ZAMTEL' | null) => momoCaptureService.updateSettings({ defaultProvider: p }),
         onSuccess: refresh,
@@ -153,11 +162,18 @@ export const MomoCaptureIntegration: React.FC<{ onBack: () => void }> = ({ onBac
                                 <span className="shrink-0">{when(m.receivedAt)}</span>
                             </div>
                             <p className="text-sm text-gray-800 break-words">{m.text}</p>
+                            {m.comment && <p className="text-xs text-gray-600"><span className="font-semibold">Note:</span> {m.comment}</p>}
                             {m.note && <p className="text-xs text-amber-700">Why: {m.note}</p>}
+                            {m.kind === 'NOT_BOOKED' && m.movable && (
+                                <div className="pt-1"><button onClick={() => setMoving(m)} className="px-3 py-1 rounded-full border border-brand-navy text-brand-navy text-xs font-semibold hover:bg-brand-navy hover:text-white">Move to Captured</button></div>
+                            )}
                         </div>
                     ))}
                 </div>
             )}
+
+            {moving && <MoveDialog m={moving} known={known} defaultProvider={s?.defaultProvider ?? null} onClose={() => setMoving(null)}
+                onDone={() => { setMoving(null); refresh(); void qc.invalidateQueries({ queryKey: ['momo-web'] }); setFilter('PENDING'); setTab('captured'); }} />}
 
             {tab === 'captured' && (
                 <div className="space-y-3">
@@ -170,7 +186,7 @@ export const MomoCaptureIntegration: React.FC<{ onBack: () => void }> = ({ onBac
                     </div>
                     {captured.isLoading && <p className="text-sm text-gray-500">Loading…</p>}
                     {!captured.isLoading && (captured.data?.length ?? 0) === 0 && <Empty text="No captured transactions yet. Messages that move money appear here within seconds of arriving on the phone." />}
-                    {captured.data?.map((c) => <CaptureRow key={c.id} c={c} busy={act.isPending && act.variables?.id === c.id} onPost={() => act.mutate({ kind: 'post', id: c.id })} onDismiss={() => act.mutate({ kind: 'dismiss', id: c.id })} />)}
+                    {captured.data?.map((c) => <CaptureRow key={c.id} c={c} known={known} onSave={(fields) => saveCapture.mutateAsync({ id: c.id, fields })} busy={act.isPending && act.variables?.id === c.id} onPost={() => act.mutate({ kind: 'post', id: c.id })} onDismiss={() => act.mutate({ kind: 'dismiss', id: c.id })} />)}
                 </div>
             )}
 
@@ -202,6 +218,142 @@ export const MomoCaptureIntegration: React.FC<{ onBack: () => void }> = ({ onBac
     );
 };
 
+
+// ── Editable fields: a dropdown of suggestions you can also type over ─────────────────────────────
+
+interface Opt { value: string; label: string }
+
+/**
+ * A text box with a dropdown. Pick a suggestion or type your own. With `strict` the typed text must match one of the
+ * options (provider, direction) and snaps back to the chosen one otherwise.
+ */
+const Combo: React.FC<{ label: string; value: string; onChange: (v: string) => void; options: Opt[]; strict?: boolean; placeholder?: string; disabled?: boolean; numeric?: boolean }> =
+({ label, value, onChange, options, strict, placeholder, disabled, numeric }) => {
+    const labelFor = (v: string) => options.find((o) => o.value === v)?.label ?? v;
+    const [text, setText] = useState(strict ? labelFor(value) : value);
+    const [open, setOpen] = useState(false);
+    const [filtering, setFiltering] = useState(false);
+    const box = useRef<HTMLDivElement>(null);
+    useEffect(() => { setText(strict ? labelFor(value) : value); /* eslint-disable-next-line */ }, [value, strict]);
+    useEffect(() => {
+        if (!open) return;
+        const close = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) { setOpen(false); setFiltering(false); if (strict) setText(labelFor(value)); } };
+        document.addEventListener('mousedown', close);
+        return () => document.removeEventListener('mousedown', close);
+        // eslint-disable-next-line
+    }, [open, value, strict]);
+    const shown = filtering && text.trim() ? options.filter((o) => o.label.toLowerCase().includes(text.trim().toLowerCase())) : options;
+    return (
+        <div ref={box} className="relative">
+            <p className="text-[11px] uppercase tracking-wide text-gray-400 mb-0.5">{label}</p>
+            <div className="flex">
+                <input value={text} disabled={disabled} placeholder={placeholder ?? '—'} inputMode={numeric ? 'decimal' : undefined}
+                    onFocus={() => setOpen(true)}
+                    onChange={(e) => {
+                        const v = numeric ? e.target.value.replace(/[^0-9.,]/g, '') : e.target.value;
+                        setText(v); setFiltering(true); setOpen(true);
+                        if (!strict) onChange(v);
+                        else { const hit = options.find((o) => o.label.toLowerCase() === v.trim().toLowerCase()); if (hit) onChange(hit.value); }
+                    }}
+                    className="w-full min-w-0 text-sm border border-gray-300 rounded-l-lg px-2.5 py-1.5 bg-white disabled:bg-gray-50 disabled:text-gray-600 focus:outline-none focus:ring-2 focus:ring-brand-navy/30" />
+                <button type="button" disabled={disabled} tabIndex={-1} onClick={() => { setFiltering(false); setOpen((v) => !v); }} aria-label={`Show ${label} options`}
+                    className="px-2 border border-l-0 border-gray-300 rounded-r-lg bg-gray-50 text-gray-500 disabled:opacity-40">▾</button>
+            </div>
+            {open && !disabled && shown.length > 0 && (
+                <ul className="absolute z-20 mt-1 w-full max-h-48 overflow-auto bg-white border border-gray-200 rounded-lg shadow-lg text-sm">
+                    {shown.map((o) => (
+                        <li key={o.value}><button type="button" onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => { onChange(o.value); setText(strict ? o.label : o.value); setOpen(false); setFiltering(false); }}
+                            className={`w-full text-left px-3 py-1.5 hover:bg-gray-50 ${o.value === value ? 'font-semibold text-brand-navy' : 'text-gray-800'}`}>{o.label}</button></li>
+                    ))}
+                </ul>
+            )}
+        </div>
+    );
+};
+
+const PROVIDER_OPTS: Opt[] = [{ value: 'MTN', label: 'MTN MoMo' }, { value: 'AIRTEL', label: 'Airtel Money' }, { value: 'ZAMTEL', label: 'Zamtel Kwacha' }, { value: 'OTHER', label: 'Mobile money' }];
+const DIRECTION_OPTS: Opt[] = [{ value: 'IN', label: 'Money in' }, { value: 'OUT', label: 'Money out' }];
+const uniq = (xs: string[]) => [...new Set(xs.map((x) => x.trim()).filter(Boolean))];
+
+/** Things that can be picked out of the message text itself, offered as suggestions. */
+function suggestFromText(text: string) {
+    const amounts = uniq([...text.matchAll(/(?<![A-Za-z0-9.])\d{1,3}(?:,\d{3})*(?:\.\d{1,4})?(?![A-Za-z0-9])|(?<![A-Za-z0-9.])\d+(?:\.\d{1,4})?(?![A-Za-z0-9])/g)].map((m) => m[0].replace(/,/g, '')).filter((v) => Number(v) > 0 && (v.includes('.') || v.length <= 7)));
+    const refs = uniq([...text.matchAll(/\b[A-Za-z0-9][A-Za-z0-9.\-]{5,}\b/g)].map((m) => m[0].replace(/\.$/, '')).filter((v) => /\d/.test(v) || /^[A-Z]{6,}$/.test(v)));
+    const names = uniq([
+        ...[...text.matchAll(/\b(?:from|to|at|@)\s+(.{3,60}?)(?=\s+(?:on|at|ref|txn|tid|trans|transaction|id|via|your|new|balance|bal|fee|for|under)\b|[.,;]\s|[.,;]$|$)/gi)].map((m) => m[1]),
+        ...[...text.matchAll(/\b[A-Z][A-Za-z.'-]+(?: [A-Z][A-Za-z.'-]+)+\b/g)].map((m) => m[0]),
+    ]);
+    return { amounts, refs, names };
+}
+
+interface Form { provider: string; direction: string; amount: string; fee: string; balanceAfter: string; counterparty: string; reference: string; sender: string; note: string }
+const fromCapture = (c: MomoCaptureActivity): Form => ({
+    provider: c.provider, direction: c.direction, amount: c.amount != null ? String(Number(c.amount)) : '', fee: c.fee ? String(Number(c.fee)) : '',
+    balanceAfter: c.balance_after != null ? String(Number(c.balance_after)) : '', counterparty: c.counterparty ?? '', reference: c.provider_reference ?? '',
+    sender: c.sender ?? '', note: c.note ?? '',
+});
+const toFields = (f: Form): MomoCaptureFields => ({
+    provider: f.provider as MomoCaptureFields['provider'], direction: f.direction as 'IN' | 'OUT', amount: f.amount.replace(/,/g, ''),
+    fee: f.fee.trim() ? f.fee.replace(/,/g, '') : null, balanceAfter: f.balanceAfter.trim() ? f.balanceAfter.replace(/,/g, '') : null,
+    counterparty: f.counterparty.trim() || null, reference: f.reference.trim() || null, sender: f.sender.trim() || null, note: f.note.trim() || null,
+});
+
+/** The eight editable details plus a note for the AI. Used when a capture is expanded and when one is moved in by hand. */
+const FieldsForm: React.FC<{ form: Form; set: (patch: Partial<Form>) => void; text: string; known: { counterparties: string[]; senders: string[] }; disabled?: boolean }> = ({ form, set, text, known, disabled }) => {
+    const sug = useMemo(() => suggestFromText(text), [text]);
+    const amountOpts = sug.amounts.map((v) => ({ value: v, label: v }));
+    return (
+        <div className="space-y-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <Combo label="Provider" strict value={form.provider} onChange={(v) => set({ provider: v })} options={PROVIDER_OPTS} disabled={disabled} />
+                <Combo label="Direction" strict value={form.direction} onChange={(v) => set({ direction: v })} options={DIRECTION_OPTS} disabled={disabled} placeholder="Choose…" />
+                <Combo label="Amount" numeric value={form.amount} onChange={(v) => set({ amount: v })} options={amountOpts} disabled={disabled} />
+                <Combo label="Fee" numeric value={form.fee} onChange={(v) => set({ fee: v })} options={amountOpts} disabled={disabled} />
+                <Combo label="Balance after" numeric value={form.balanceAfter} onChange={(v) => set({ balanceAfter: v })} options={amountOpts} disabled={disabled} />
+                <Combo label="Counterparty" value={form.counterparty} onChange={(v) => set({ counterparty: v })} options={uniq([...sug.names, ...known.counterparties]).map((v) => ({ value: v, label: v }))} disabled={disabled} />
+                <Combo label="Reference" value={form.reference} onChange={(v) => set({ reference: v })} options={sug.refs.map((v) => ({ value: v, label: v }))} disabled={disabled} />
+                <Combo label="Sender" value={form.sender} onChange={(v) => set({ sender: v })} options={uniq(['MTN', 'AirtelMoney', 'Zamtel', ...known.senders]).map((v) => ({ value: v, label: v }))} disabled={disabled} />
+            </div>
+            <div>
+                <p className="text-[11px] uppercase tracking-wide text-gray-400 mb-0.5">Note for the AI (optional)</p>
+                <textarea value={form.note} disabled={disabled} onChange={(e) => set({ note: e.target.value })} rows={2} maxLength={500}
+                    placeholder="What was this for? e.g. Rent for November, paid to the landlord. When you book it, this note goes to the AI that decides the account."
+                    className="w-full text-sm border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white disabled:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-navy/30" />
+            </div>
+        </div>
+    );
+};
+
+/** Moves a message that was not booked into Captured: confirm or fix the details first. */
+const MoveDialog: React.FC<{ m: MomoEverythingItem; known: { counterparties: string[]; senders: string[] }; defaultProvider: string | null; onClose: () => void; onDone: () => void }> = ({ m, known, defaultProvider, onClose, onDone }) => {
+    const g = m.guess;
+    const [form, setForm] = useState<Form>({
+        provider: g && g.provider !== 'OTHER' ? g.provider : (defaultProvider ?? 'OTHER'), direction: g?.direction ?? '', amount: g?.amount != null ? String(g.amount) : '',
+        fee: g?.fee != null ? String(g.fee) : '', balanceAfter: g?.balanceAfter != null ? String(g.balanceAfter) : '', counterparty: g?.counterparty ?? '',
+        reference: g?.reference ?? '', sender: '', note: '',
+    });
+    const move = useMutation({ mutationFn: () => momoCaptureService.moveToCaptured(m.id, toFields(form)), onSuccess: onDone });
+    const ready = !!form.direction && Number(form.amount.replace(/,/g, '')) > 0;
+    return (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+            <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-auto p-5 space-y-4">
+                <div>
+                    <h4 className="text-base font-bold text-brand-navy">Move to Captured</h4>
+                    <p className="text-xs text-gray-500">MoneyWise didn't read this as a transaction. Check or fill in the details and it will be added to Captured, ready to book.</p>
+                </div>
+                <p className="text-xs text-gray-600 bg-gray-50 rounded-lg p-3 break-words">{m.text}</p>
+                <FieldsForm form={form} set={(p) => setForm((f) => ({ ...f, ...p }))} text={m.text} known={known} />
+                {move.error && <p className="text-sm text-red-600">{(move.error as Error).message}</p>}
+                <div className="flex justify-end gap-2">
+                    <button onClick={onClose} className="px-4 py-1.5 rounded-full border border-gray-300 text-sm font-semibold text-gray-600">Cancel</button>
+                    <button disabled={!ready || move.isPending} onClick={() => move.mutate()} className="px-4 py-1.5 rounded-full bg-brand-navy text-white text-sm font-semibold disabled:opacity-50">{move.isPending ? 'Moving…' : 'Move to Captured'}</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const Stat: React.FC<{ label: string; value: string; sub?: string; good?: boolean }> = ({ label, value, sub, good }) => (
     <div className="p-3 bg-white border border-gray-200 rounded-xl">
         <p className="text-xs text-gray-500">{label}</p>
@@ -218,10 +370,21 @@ const Field: React.FC<{ k: string; v: React.ReactNode }> = ({ k, v }) => (
     <div><p className="text-[11px] uppercase tracking-wide text-gray-400">{k}</p><p className="text-sm text-gray-800 break-words">{v ?? '—'}</p></div>
 );
 
-const CaptureRow: React.FC<{ c: MomoCaptureActivity; busy: boolean; onPost: () => void; onDismiss: () => void }> = ({ c, busy, onPost, onDismiss }) => {
+const CaptureRow: React.FC<{ c: MomoCaptureActivity; busy: boolean; known: { counterparties: string[]; senders: string[] }; onSave: (f: MomoCaptureFields) => Promise<unknown>; onPost: () => void; onDismiss: () => void }> = ({ c, busy, known, onSave, onPost, onDismiss }) => {
     const [open, setOpen] = useState(false);
+    const [form, setForm] = useState<Form>(() => fromCapture(c));
+    const [saving, setSaving] = useState(false);
+    const [err, setErr] = useState<string | null>(null);
+    const original = useMemo(() => JSON.stringify(fromCapture(c)), [c]);
+    const dirty = JSON.stringify(form) !== original;
+    // A fresh copy from the server (after a save, or another tab's edit) replaces the form, unless there are unsaved changes.
+    useEffect(() => { if (!dirty) setForm(fromCapture(c)); /* eslint-disable-next-line */ }, [original]);
     const isIn = c.direction === 'IN';
     const open_ = c.status === 'PENDING' || c.status === 'MATCHED';
+    const save = async (): Promise<boolean> => {
+        setSaving(true); setErr(null);
+        try { await onSave(toFields(form)); return true; } catch (e: any) { setErr(e?.message || 'Could not save'); return false; } finally { setSaving(false); }
+    };
     return (
         <div className="bg-white border border-gray-200 rounded-xl">
             <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-3 p-4 text-left">
@@ -240,16 +403,9 @@ const CaptureRow: React.FC<{ c: MomoCaptureActivity; busy: boolean; onPost: () =
             {open && (
                 <div className="px-4 pb-4 space-y-3 border-t border-gray-100 pt-3">
                     <p className="text-xs text-gray-600 bg-gray-50 rounded-lg p-3 break-words">{c.raw_text}</p>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <Field k="Provider" v={PROVIDER[c.provider]} />
-                        <Field k="Direction" v={isIn ? 'Money in' : 'Money out'} />
-                        <Field k="Amount" v={formatKwacha(Number(c.amount))} />
-                        <Field k="Fee" v={c.fee ? formatKwacha(Number(c.fee)) : null} />
-                        <Field k="Balance after" v={c.balance_after != null ? formatKwacha(Number(c.balance_after)) : null} />
-                        <Field k="Counterparty" v={c.counterparty} />
-                        <Field k="Reference" v={c.provider_reference} />
-                        <Field k="Sender" v={c.sender} />
-                    </div>
+                    <FieldsForm form={form} set={(p) => setForm((f) => ({ ...f, ...p }))} text={c.raw_text} known={known} disabled={!open_ || saving} />
+                    {!open_ && c.note && <p className="text-xs text-gray-600"><span className="font-semibold">Note:</span> {c.note}</p>}
+                    {err && <p className="text-sm text-red-600">{err}</p>}
                     {c.entry && (
                         <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-100 grid grid-cols-2 md:grid-cols-4 gap-3">
                             <Field k="Booked to" v={c.entry.account} />
@@ -261,10 +417,14 @@ const CaptureRow: React.FC<{ c: MomoCaptureActivity; busy: boolean; onPost: () =
                     {c.status === 'MATCHED' && <p className="text-xs text-sky-700">The same amount and direction is already on your Lenco wallet within 30 minutes, so this was not booked again.</p>}
                     {open_ && (
                         <div className="flex justify-end gap-2">
-                            {busy ? <span className="text-sm text-gray-500">Working…</span> : (<>
+                            {busy || saving ? <span className="text-sm text-gray-500">Working…</span> : (<>
                                 <button onClick={onDismiss} className="px-4 py-1.5 rounded-full border border-gray-300 text-sm font-semibold text-gray-600">Dismiss</button>
-                                <button onClick={() => { if (c.status !== 'MATCHED' || window.confirm('This looks like a payment already in MoneyWise through your wallet. Booking it again would count it twice. Book anyway?')) onPost(); }}
-                                    className="px-4 py-1.5 rounded-full bg-brand-navy text-white text-sm font-semibold">{c.status === 'MATCHED' ? 'Book anyway' : 'Book it'}</button>
+                                {dirty && <button onClick={() => void save()} className="px-4 py-1.5 rounded-full border border-brand-navy text-brand-navy text-sm font-semibold">Save changes</button>}
+                                <button onClick={async () => {
+                                    if (c.status === 'MATCHED' && !window.confirm('This looks like a payment already in MoneyWise through your wallet. Booking it again would count it twice. Book anyway?')) return;
+                                    if (dirty && !(await save())) return;   // book exactly what is on screen
+                                    onPost();
+                                }} className="px-4 py-1.5 rounded-full bg-brand-navy text-white text-sm font-semibold">{c.status === 'MATCHED' ? 'Book anyway' : dirty ? 'Save & book it' : 'Book it'}</button>
                             </>)}
                         </div>
                     )}

@@ -77,6 +77,8 @@ router.post('/test-parse', handle('test-parse', async (req) => momo.testParse(re
 router.get('/balance-checks', handle('balance-checks', (req) => momo.listBalanceChecks(req.user.id, req.user.organization_id)));
 router.post('/balance-checks/:id/adjust', handle('balance-adjust', (req) => momo.adjustToBalance(req.user.id, req.user.organization_id, req.params.id)));
 router.post('/balance-checks/:id/dismiss', handle('balance-dismiss', (req) => momo.dismissBalanceCheck(req.user.id, req.user.organization_id, req.params.id)));
+router.post('/ignored/:id/capture', handle('move', (req) => momo.moveIgnoredToCaptured(req.user.id, req.user.organization_id, req.params.id, req.body ?? {})));
+router.patch('/:id', handle('edit', (req) => momo.editCapture(req.user.id, req.user.organization_id, req.params.id, req.body ?? {})));
 router.post('/:id/post', handle('post', (req) => momo.post(req.user.id, req.user.organization_id, req.params.id, req.body ?? {})));
 router.post('/:id/dismiss', handle('dismiss', (req) => momo.dismiss(req.user.id, req.user.organization_id, req.params.id)));
 

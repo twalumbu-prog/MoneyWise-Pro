@@ -171,6 +171,29 @@ export function parseMomoMessage(rawText: string, sender?: string | null): Parse
 }
 
 /**
+ * A best guess at the fields of a message the parser would not accept, to pre-fill the form where a person moves it
+ * into Captured by hand. Every field may be null; nothing here decides whether money moved.
+ */
+export function looseGuess(rawText: string, sender?: string | null) {
+    const text = withoutPromo(clean(rawText || '').replace(SENDER_NOTE, ''));
+    const hits = moneyHits(text);
+    const main = hits.find((h) => !isBalance(h.before) && !isFee(h.before)) ?? null;
+    const balance = hits.find((h) => h !== main && isBalance(h.before)) ?? null;
+    const fee = hits.find((h) => h !== main && isFee(h.before)) ?? null;
+    const inAt = firstMatchIndex(IN_WORDS, text), outAt = firstMatchIndex(OUT_WORDS, text);
+    const direction: 'IN' | 'OUT' | null = inAt === -1 && outAt === -1 ? null : (STRONG_IN.test(text) && !YOU_DID_IT.test(text)) ? 'IN' : inAt === -1 ? 'OUT' : outAt === -1 ? 'IN' : inAt < outAt ? 'IN' : 'OUT';
+    return {
+        provider: detectProvider(text, sender),
+        direction,
+        amount: main ? Math.round(main.value * 100) / 100 : null,
+        fee: fee ? fee.value : null,
+        balanceAfter: balance ? balance.value : null,
+        counterparty: direction === 'IN' ? counterpartyAfter(text, 'from') : counterpartyAfter(text, 'to') ?? counterpartyAfter(text, 'from'),
+        reference: findReference(text),
+    };
+}
+
+/**
  * A plain "what's my balance" reply (a dial-code check, or MTN/Airtel's own balance SMS) — no money moved, but its
  * figure is the most trustworthy anchor for the running wallet balance, better than only inferring one from
  * transaction messages. Must not also look like a transaction: checked after parseMomoMessage returns null.

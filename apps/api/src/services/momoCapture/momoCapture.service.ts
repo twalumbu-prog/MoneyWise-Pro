@@ -18,7 +18,7 @@ import crypto from 'crypto';
 import { supabase } from '../../lib/supabase';
 import { recordManualEntry, ensureCashWallet, listExternalWallets, ManualEntryError } from '../manualEntry.service';
 import { cashbookService } from '../cashbook.service';
-import { parseMomoMessage, parseBalanceOnly, parseBalanceMessage, diagnoseMessage, balanceDedupeKey, dedupeKey, describe, isPersonalNumber, type MomoProvider, type ParsedMomoMessage } from './parser';
+import { looseGuess, parseMomoMessage, parseBalanceOnly, parseBalanceMessage, diagnoseMessage, balanceDedupeKey, dedupeKey, describe, isPersonalNumber, type MomoProvider, type ParsedMomoMessage } from './parser';
 import { mirrorMomoCapture, findBookedCaptureEntry } from '../capture/capture.momoMirror';
 
 export class MomoCaptureError extends Error {
@@ -516,7 +516,7 @@ export async function post(userId: string, orgId: string, id: string, overrides:
             if (key) accountId = (await categorySuggestions(userId, orgId).catch(() => null))?.byContact.get(key) ?? null;
         }
 
-        const entry = await recordManualEntry({ orgId, userId, direction, amount, description, date, externalWalletId: wallet.id, accountId });
+        const entry = await recordManualEntry({ orgId, userId, direction, amount, description, date, externalWalletId: wallet.id, accountId, context: claimed.note ?? null });
         // From here the movement is in the ledger, so nothing below may send the capture back to PENDING (the catch
         // would, and a second tap would then book it twice).
         const { data: done } = await supabase.from('momo_captures')
@@ -736,9 +736,101 @@ export async function listEverything(userId: string, orgId: string, limit = 200)
         workspace: names.get(r.organization_id) ?? null, elsewhere: r.organization_id !== orgId,
     });
     const out = [
-        ...(caps.data ?? []).map((r: any) => ({ ...common(r), kind: 'TRANSACTION' as const, text: r.raw_text as string, status: r.status as string, direction: r.direction as string | null, amount: Number(r.amount) as number | null, provider: r.provider as string | null, note: null as string | null })),
-        ...(bals.data ?? []).map((r: any) => ({ ...common(r), kind: 'BALANCE' as const, text: r.raw_text as string, status: r.status as string, direction: null as string | null, amount: Number(r.balance) as number | null, provider: r.provider as string | null, note: null as string | null })),
-        ...(igns.data ?? []).map((r: any) => ({ ...common(r), kind: 'NOT_BOOKED' as const, text: r.raw_text as string, status: 'IGNORED', direction: null as string | null, amount: null as number | null, provider: null as string | null, note: r.reason as string | null })),
+        ...(caps.data ?? []).map((r: any) => ({ ...common(r), kind: 'TRANSACTION' as const, text: r.raw_text as string, status: r.status as string, direction: r.direction as string | null, amount: Number(r.amount) as number | null, provider: r.provider as string | null, note: null as string | null, comment: (r.note as string | null) ?? null, guess: null as ReturnType<typeof looseGuess> | null, movable: false })),
+        ...(bals.data ?? []).map((r: any) => ({ ...common(r), kind: 'BALANCE' as const, text: r.raw_text as string, status: r.status as string, direction: null as string | null, amount: Number(r.balance) as number | null, provider: r.provider as string | null, note: null as string | null, comment: null as string | null, guess: null as ReturnType<typeof looseGuess> | null, movable: false })),
+        ...(igns.data ?? []).map((r: any) => ({ ...common(r), kind: 'NOT_BOOKED' as const, text: r.raw_text as string, status: 'IGNORED', direction: null as string | null, amount: null as number | null, provider: null as string | null, note: r.reason as string | null, comment: null as string | null,
+            // A message can be moved into Captured by hand unless it is another workspace's, or a hidden one-time code.
+            movable: r.organization_id === orgId && !String(r.raw_text).startsWith('[hidden'), guess: looseGuess(String(r.raw_text), null) })),
     ];
     return out.sort((a, b) => (a.receivedAt < b.receivedAt ? 1 : -1)).slice(0, cap);
+}
+
+
+// ── Editing a capture, and moving a not-booked message into Captured ──────────────────────────────
+
+const PROVIDERS: MomoProvider[] = ['MTN', 'AIRTEL', 'ZAMTEL', 'OTHER'];
+const money = (v: unknown, what: string, opts: { required?: boolean } = {}): number | null => {
+    if (v === null || v === undefined || v === '') { if (opts.required) throw new MomoCaptureError(`${what} is required`); return null; }
+    const n = Number(String(v).replace(/,/g, ''));
+    if (!Number.isFinite(n) || n < 0 || (opts.required && n <= 0)) throw new MomoCaptureError(`${what} must be a valid amount`);
+    return Math.round(n * 100) / 100;
+};
+const text = (v: unknown, max: number): string | null => (typeof v === 'string' && v.trim() ? v.replace(/\s+/g, ' ').trim().slice(0, max) : null);
+
+interface CaptureFields { provider?: unknown; direction?: unknown; amount?: unknown; fee?: unknown; balanceAfter?: unknown; counterparty?: unknown; reference?: unknown; sender?: unknown; note?: unknown }
+
+/** Reads whichever of the editable fields were sent; anything left out is left alone. */
+function readFields(f: CaptureFields) {
+    const out: Record<string, any> = {};
+    if (f.provider !== undefined) {
+        if (!PROVIDERS.includes(f.provider as MomoProvider)) throw new MomoCaptureError('Choose MTN, Airtel, Zamtel or Other as the provider');
+        out.provider = f.provider;
+    }
+    if (f.direction !== undefined) {
+        if (f.direction !== 'IN' && f.direction !== 'OUT') throw new MomoCaptureError('Direction must be money in or money out');
+        out.direction = f.direction;
+    }
+    if (f.amount !== undefined) out.amount = money(f.amount, 'Amount', { required: true });
+    if (f.fee !== undefined) out.fee = money(f.fee, 'Fee');
+    if (f.balanceAfter !== undefined) out.balance_after = money(f.balanceAfter, 'Balance after');
+    if (f.counterparty !== undefined) out.counterparty = text(f.counterparty, 80);
+    if (f.reference !== undefined) out.provider_reference = text(f.reference, 60);
+    if (f.sender !== undefined) out.sender = text(f.sender, 60);
+    if (f.note !== undefined) out.note = text(f.note, 500);
+    return out;
+}
+
+/** Corrects a capture that is still waiting (or matched), before it is booked. */
+export async function editCapture(userId: string, orgId: string, id: string, patch: CaptureFields) {
+    const { data: row } = await supabase.from('momo_captures').select('*').eq('id', id).eq('user_id', userId).eq('organization_id', orgId).maybeSingle();
+    if (!row) throw new MomoCaptureError('This message no longer exists', 404);
+    if (row.status !== 'PENDING' && row.status !== 'MATCHED') throw new MomoCaptureError('This message is already booked or dismissed, so it can no longer be edited', 409);
+    const update = readFields(patch);
+    // The same transaction id (and provider) is what stops one message being captured twice, so it follows the edit.
+    const provider = update.provider ?? row.provider;
+    const reference = 'provider_reference' in update ? update.provider_reference : row.provider_reference;
+    if (reference && ('provider_reference' in update || 'provider' in update)) {
+        const suffix = /:(IN|OUT)$/.exec(row.dedupe_key)?.[0] ?? '';
+        update.dedupe_key = `${provider}:REF:${String(reference).toUpperCase()}${suffix}`;
+    }
+    update.updated_at = new Date().toISOString();
+    const { data, error } = await supabase.from('momo_captures').update(update).eq('id', id).eq('user_id', userId).in('status', ['PENDING', 'MATCHED']).select('*').maybeSingle();
+    if (error) {
+        if (error.code === '23505') throw new MomoCaptureError('Another captured message already has that transaction reference', 409);
+        throw new MomoCaptureError(`Could not save: ${error.message}`, 500);
+    }
+    if (!data) throw new MomoCaptureError('This message was already handled', 409);
+    try { await mirrorMomoCapture(data); } catch (e: any) { console.error('[MoMo capture] mirror after edit failed:', e?.message); }
+    return data;
+}
+
+/**
+ * Turns a message that was not booked into a captured transaction, using the details the person confirmed. The
+ * message text is the one that was kept; the not-booked entry is removed so it is not listed twice.
+ */
+export async function moveIgnoredToCaptured(userId: string, orgId: string, id: string, fields: CaptureFields) {
+    const { data: ign } = await supabase.from('momo_ignored_messages').select('*').eq('id', id).eq('user_id', userId).eq('organization_id', orgId).maybeSingle();
+    if (!ign) throw new MomoCaptureError('This message no longer exists', 404);
+    if (String(ign.raw_text).startsWith('[hidden')) throw new MomoCaptureError('This looked like a one-time code, so its text was not kept and it cannot be captured', 400);
+    const f = readFields(fields);
+    if (f.amount == null) throw new MomoCaptureError('Amount is required');
+    if (!f.direction) throw new MomoCaptureError('Choose whether money came in or went out');
+    const settings = await settingsRow(userId, orgId);
+    const provider: MomoProvider = f.provider ?? ((settings.default_provider as MomoProvider | null) ?? 'OTHER');
+    const reference = f.provider_reference ?? null;
+    const dedupe_key = reference ? `${provider}:REF:${String(reference).toUpperCase()}`
+        : dedupeKey({ provider, direction: f.direction, amount: f.amount, fee: null, balanceAfter: null, counterparty: null, reference: null } as ParsedMomoMessage, ign.raw_text);
+    const { data: row, error } = await supabase.from('momo_captures').insert({
+        organization_id: orgId, user_id: userId, device_id: ign.device_id ?? null, source: ign.source, provider, sender: f.sender ?? null,
+        raw_text: String(ign.raw_text).slice(0, 1200), direction: f.direction, amount: f.amount, fee: f.fee ?? null,
+        balance_after: f.balance_after ?? null, counterparty: f.counterparty ?? null, provider_reference: reference,
+        occurred_at: ign.created_at, dedupe_key, status: 'PENDING', note: f.note ?? null,
+    }).select('*').single();
+    if (error) {
+        if (error.code === '23505') throw new MomoCaptureError('A captured message with that transaction reference already exists', 409);
+        throw new MomoCaptureError(`Could not capture it: ${error.message}`, 500);
+    }
+    await supabase.from('momo_ignored_messages').delete().eq('id', id);
+    try { await mirrorMomoCapture(row); } catch (e: any) { console.error('[MoMo capture] mirror after move failed:', e?.message); }
+    return row;
 }

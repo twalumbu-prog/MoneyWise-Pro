@@ -76,13 +76,18 @@ export interface ManualEntryInput {
     autoCategorize?: boolean;
     /** Caller-supplied idempotency reference (transaction capture); defaults to a fresh MANUAL-… reference. */
     externalReference?: string;
+    /** The person's own note about this transaction. Sent to the AI categoriser with the description, and kept on the entry. */
+    context?: string | null;
 }
 
 export async function recordManualEntry(p: ManualEntryInput) {
     if (p.direction !== 'IN' && p.direction !== 'OUT') throw new ManualEntryError('direction must be IN or OUT');
     const value = Math.round(Number(p.amount) * 100) / 100;
     if (!Number.isFinite(value) || value <= 0) throw new ManualEntryError('Enter an amount greater than zero');
-    const details = typeof p.description === 'string' ? p.description.replace(/\s+/g, ' ').trim().slice(0, 300) : '';
+    const note = typeof p.context === 'string' ? p.context.replace(/\s+/g, ' ').trim().slice(0, 300) : '';
+    const baseDetails = typeof p.description === 'string' ? p.description.replace(/\s+/g, ' ').trim().slice(0, 300) : '';
+    // The note is the strongest hint about what a payment was for, so it goes to the AI and onto the ledger line.
+    const details = note && baseDetails ? `${baseDetails} · ${note}`.slice(0, 300) : baseDetails;
     if (details.length < 2) throw new ManualEntryError('Add a short description of the transaction');
     const entryDate = typeof p.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.date) ? p.date : new Date().toISOString().split('T')[0];
     if (entryDate > new Date(Date.now() + 24 * 3600 * 1000).toISOString().split('T')[0]) throw new ManualEntryError('The date cannot be in the future');
