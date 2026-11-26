@@ -172,14 +172,18 @@ export const requireAuth = async (req: any, res: any, next: any) => {
             console.log(`[Auth] User authenticated locally: ${user.id}`);
             const lookup = await loadUserProfile(user.id);
 
+            // Role and organization come ONLY from public.users. Never from the token's metadata (user_metadata is
+            // editable by the signed-in person) and never from a default — a failed lookup must refuse, not guess.
             if (!lookup.ok) {
-                console.warn(`[Auth] Profile lookup failed for ${user.id}. Falling back to JWT token metadata context.`);
-                user.role = user.app_metadata?.role || user.user_metadata?.role || 'ADMIN';
-                user.organization_id = user.app_metadata?.organization_id || user.user_metadata?.organization_id || 'fa99669d-6160-44fd-94ac-8ff1f065003f';
+                console.warn(`[Auth] Profile lookup failed for ${user.id}. Refusing with 503 rather than guessing.`);
+                return res.status(503).json({
+                    error: 'Could not load your account context. Please try again.',
+                });
             } else if (!lookup.profile) {
-                console.warn(`[Auth] User profile not found for ${user.id}. Using default metadata context.`);
-                user.role = user.app_metadata?.role || user.user_metadata?.role || 'ADMIN';
-                user.organization_id = user.app_metadata?.organization_id || user.user_metadata?.organization_id || 'fa99669d-6160-44fd-94ac-8ff1f065003f';
+                // Same as the remote path below: no role, no organization. Controllers that need one refuse.
+                console.warn(`[Auth] User profile not found for ${user.id}. Continuing with no role or organization.`);
+                user.role = undefined;
+                user.organization_id = undefined;
             } else {
                 user.role = lookup.profile.role;
                 user.organization_id = lookup.profile.organization_id;

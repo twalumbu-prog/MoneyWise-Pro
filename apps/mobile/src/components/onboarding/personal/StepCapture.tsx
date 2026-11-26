@@ -8,6 +8,7 @@ import type { StepContext } from './stepContext';
 import {
     androidCaptureAvailable, iosIntentAvailable, iosCaptureAvailable, getAndroidStatus, getIosStatus, setAndroidSources,
     requestSmsPermission, openNotificationAccessSettings, connectIphone, isIosShortcutSetUp,
+    importRecentMessages, smsReadingInBuild, RECENT_IMPORT_COUNT,
 } from '../../../lib/momoCapture';
 import { colors, fonts, radius } from '../../../theme/tokens';
 
@@ -32,6 +33,7 @@ export function StepCapture({ ctx }: { ctx: StepContext }) {
     const [err, setErr] = useState<string | null>(null);
     const [guideOpened, setGuideOpened] = useState(false);
     const [autoPost, setAutoPost] = useState(false);
+    const [imported, setImported] = useState<number | null>(null);
 
     const reread = useCallback(() => {
         if (ctx.preview) return;
@@ -69,6 +71,13 @@ export function StepCapture({ ctx }: { ctx: StepContext }) {
         if (r === 'granted') await setAndroidSources({ notifications: !!android?.notificationAccess, sms: true });
         else if (r === 'blocked') setErr('SMS access is off for MoneyWise. Turn it on in Settings → Apps → MoneyWise → Permissions, or use notifications instead.');
     });
+    // Past messages: only offered once both notification access and SMS access are on (the button stays disabled until then).
+    const bothOn = !!android?.notificationAccess && !!android?.smsPermission;
+    const importPast = () => act(async () => {
+        if (ctx.preview) { setImported(3); return; }
+        if (!bothOn) return;
+        setImported(await importRecentMessages());
+    });
     const iphoneConnect = () => act(async () => {
         if (ctx.preview) { setPreviewOn(true); return; }
         await connectIphone();
@@ -100,6 +109,21 @@ export function StepCapture({ ctx }: { ctx: StepContext }) {
                 <View style={{ gap: 12, marginTop: 20 }}>
                     <Item done={!!android?.notificationAccess} title="Read money notifications" body="Works with any SMS app. You’ll switch MoneyWise on in Android settings, then come back here." action="Turn on" onPress={androidNotifications} busy={busy} />
                     <Item done={!!android?.smsPermission} title="Read money SMS" body="Also catches messages that arrive while notifications are muted." action="Allow" onPress={androidSms} busy={busy} />
+                    {smsReadingInBuild && (
+                        <Item
+                            done={imported !== null}
+                            disabled={!bothOn}
+                            title="Bring in past messages"
+                            body={!bothOn && imported === null
+                                ? 'Turn on the two steps above first, then you can bring in your past messages.'
+                                : imported === null
+                                ? `Reads your last ${RECENT_IMPORT_COUNT} texts for mobile money messages, so your history starts complete. Ones already captured are skipped.`
+                                : imported
+                                    ? `Found ${imported} message${imported === 1 ? '' : 's'}. They’re waiting for you in Review captured.`
+                                    : `No mobile money messages in your last ${RECENT_IMPORT_COUNT} texts. New ones will arrive as they come in.`}
+                            action="Import" onPress={importPast} busy={busy}
+                        />
+                    )}
                 </View>
             ) : (
                 <View style={{ gap: 12, marginTop: 20 }}>

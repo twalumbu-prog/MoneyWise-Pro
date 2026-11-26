@@ -102,10 +102,11 @@ export function getIosStatus(): IosCaptureStatus | null {
 }
 
 /**
- * While capture is being validated every message is sent (nothing is filtered on the phone); the server decides what
- * is a transaction and shows the rest as "not booked" with a reason. Flip to false to bring the phone filter back.
+ * Must stay false in release builds: the phone filter keeps only mobile money / bank messages, which is what the
+ * onboarding screen and the Play Store data-safety answers promise. true sends EVERY text to the server (it was used
+ * only while capture was being validated).
  */
-const CAPTURE_EVERYTHING = true;
+const CAPTURE_EVERYTHING = false;
 
 const DEVICE_ID_KEY = 'momo-capture:device-id';
 /** This phone's own identity for capture: its key is its own, so other phones on the same account keep working. */
@@ -192,6 +193,16 @@ export async function requestSmsPermission(): Promise<'granted' | 'denied' | 'bl
 export const openNotificationAccessSettings = () => native?.openNotificationAccessSettings();
 export const openAppSettings = () => (native ? native.openAppSettings() : Linking.openSettings());
 
+/** How many of the newest SMS "Import recent messages" looks through, in Settings and in onboarding. */
+export const RECENT_IMPORT_COUNT = 300;
+
+/**
+ * Whether this binary asks for SMS access at all. A Play build made with MOMO_SMS_CAPTURE=0 leaves it out, and then
+ * nothing can read past messages, so the import isn't offered.
+ */
+export const smsReadingInBuild: boolean = Platform.OS === 'android'
+    && ((Constants.expoConfig?.android as any)?.permissions ?? []).some((p: string) => String(p).includes('READ_SMS'));
+
 /** Queues the last [days] of provider SMS from the inbox. Server-side dedupe makes re-running safe. */
 export async function importSmsHistory(days = 30, max = 500): Promise<number> {
     if (!native) return 0;
@@ -206,7 +217,7 @@ export async function importSmsHistory(days = 30, max = 500): Promise<number> {
  * both locally (the same text within 15 minutes is dropped before it's even queued) and on the server (a message
  * with the same transaction id, or the same wording within 15 minutes, is rejected outright).
  */
-export async function importRecentMessages(max = 100): Promise<number> {
+export async function importRecentMessages(max = RECENT_IMPORT_COUNT): Promise<number> {
     return importSmsHistory(3650, max);
 }
 

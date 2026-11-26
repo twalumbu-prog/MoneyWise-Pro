@@ -191,13 +191,14 @@ export interface IngestInput {
  * release. Patterns are ICU regexes (NSRegularExpression). Anything not matched never leaves the phone.
  */
 export const DEVICE_RULES = {
-    version: 1,
+    version: 2,
     amount: String.raw`(?i)(?:\b(?:ZMW|ZK)\s?\d|(?<![A-Za-z0-9])K\s?\d|\b(?:amount|amt)\s*[:.]?\s*(?:ZMW|ZK|K)?\s?\d)`,
     money: String.raw`(?i)(?:\b(?:ZMW|ZK)\b|\b(?:airtel|mtn|momo|zamtel|kwacha|zanaco|fnb|absa|stanbic|indo\s?zambia|izb|atlas\s?mara|ecobank|uba|lenco|natsave|investrust|first\s?capital|access\s?bank|bank)\b|\b(?:tid|txn|transaction\s?id|trans\.?\s?id|financial\s?transaction|ref(?:erence)?\s?(?:no)?\s?[:#.])|\b(?:bal|balance|avail(?:able)?\s?bal))`,
-    // For now every message is sent so none can be lost: this lets any text through. The amount/money rules above stay
-    // in place for when filtering is switched back on (drop this override).
-    allow: String.raw`(?s).`,
-    captureAll: true,
+    // Filtering is ON: only money messages leave the phone, as the onboarding screen promises. The "allow" rule lets just
+    // the in-app test message through (same as the phone's built-in default). Sending it explicitly also replaces the
+    // old let-everything-through rule that iPhones stored while capture was being validated.
+    allow: String.raw`(?i)^\s*MoneyWise test`,
+    captureAll: false,
 };
 
 const workspaceNames = new Map<string, { name: string | null; at: number }>();

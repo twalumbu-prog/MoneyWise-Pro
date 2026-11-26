@@ -9,7 +9,7 @@ import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 import {
     androidCaptureAvailable, iosCaptureAvailable, iosIntentAvailable, getIosStatus, getAndroidStatus, setAndroidSources, isIosShortcutSetUp, disconnectCapture,
-    importRecentMessages, requestSmsPermission, MOMO_SETTINGS_KEY, MOMO_CAPTURES_KEY,
+    importRecentMessages, requestSmsPermission, RECENT_IMPORT_COUNT, MOMO_SETTINGS_KEY, MOMO_CAPTURES_KEY,
 } from '../../src/lib/momoCapture';
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -82,10 +82,10 @@ export default function MomoCaptureSettingsScreen() {
                 const res = await requestSmsPermission();
                 if (res !== 'granted') throw new Error('MoneyWise needs SMS access to catch up on recent messages. You can use notification capture or paste messages instead.');
             }
-            return importRecentMessages(100);
+            return importRecentMessages();
         },
         onSuccess: (n) => {
-            Alert.alert(n ? 'Import complete' : 'Nothing new', n ? `Found ${n} message(s) among your newest 100. Already-captured ones were skipped — review the rest in Review captured.` : 'No new mobile money messages among your newest 100 texts.');
+            Alert.alert(n ? 'Import complete' : 'Nothing new', n ? `Found ${n} message(s) among your newest ${RECENT_IMPORT_COUNT}. Already-captured ones were skipped — review the rest in Review captured.` : `No new mobile money messages among your newest ${RECENT_IMPORT_COUNT} texts.`);
             refreshDevice();
             void qc.invalidateQueries({ queryKey: MOMO_CAPTURES_KEY });
         },
@@ -234,7 +234,7 @@ export default function MomoCaptureSettingsScreen() {
                     {Platform.OS === 'android' && androidCaptureAvailable && (
                         <Row
                             border icon={<History size={18} color={colors.blue} />} label="Import recent messages"
-                            sub="Catch up on the newest 100 — already captured ones are skipped" onPress={() => reimport.mutate()}
+                            sub={`Catch up on the newest ${RECENT_IMPORT_COUNT} — already captured ones are skipped`} onPress={() => reimport.mutate()}
                             right={reimport.isPending ? <ActivityIndicator color={colors.blue} /> : <ChevronRight size={18} color={colors.textFaint} />}
                         />
                     )}
