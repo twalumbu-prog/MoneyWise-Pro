@@ -16,7 +16,7 @@
  */
 import crypto from 'crypto';
 import { supabase } from '../../lib/supabase';
-import { recordManualEntry, ensureCashWallet, listExternalWallets, ManualEntryError } from '../manualEntry.service';
+import { recordManualEntry, ensureCashWallet, listExternalWallets, categoriesFor, suggestCategory, ManualEntryError } from '../manualEntry.service';
 import { cashbookService } from '../cashbook.service';
 import { looseGuess, parseMomoMessage, parseBalanceOnly, parseBalanceMessage, diagnoseMessage, balanceDedupeKey, dedupeKey, describe, isPersonalNumber, type MomoProvider, type ParsedMomoMessage } from './parser';
 import { mirrorMomoCapture, findBookedCaptureEntry } from '../capture/capture.momoMirror';
@@ -491,7 +491,7 @@ async function walletFor(orgId: string, provider: MomoProvider, destination: str
  * Books a capture. The PENDING → POSTED flip happens first and conditionally, so two taps (or a tap racing auto-post)
  * can't book it twice; a failed booking puts it back to PENDING.
  */
-export async function post(userId: string, orgId: string, id: string, overrides: { direction?: unknown; amount?: unknown; accountId?: unknown; description?: unknown } = {}, mirror: { autoPosted?: boolean } = {}) {
+export async function post(userId: string, orgId: string, id: string, overrides: { direction?: unknown; amount?: unknown; accountId?: unknown; description?: unknown; walletId?: unknown; date?: unknown; fee?: unknown; feeAccountId?: unknown } = {}, mirror: { autoPosted?: boolean } = {}) {
     const { data: claimed } = await supabase.from('momo_captures').update({ status: 'POSTED', updated_at: new Date().toISOString() })
         .eq('id', id).eq('user_id', userId).eq('organization_id', orgId).in('status', ['PENDING', 'MATCHED']).select('*').maybeSingle();
     if (!claimed) throw new MomoCaptureError('This message was already handled or no longer exists', 409);
@@ -501,13 +501,18 @@ export async function post(userId: string, orgId: string, id: string, overrides:
 
     try {
         const settings = await settingsRow(userId, orgId);
-        const wallet = await walletFor(orgId, claimed.provider, settings.destination);
+        // The account it lands in: the one chosen in the review, else the one saved on the capture, else its provider's default.
+        const chosenWalletId = typeof overrides.walletId === 'string' && overrides.walletId ? overrides.walletId : (claimed.external_wallet_id as string | null);
+        const wallet = chosenWalletId
+            ? ((await listExternalWallets(orgId)).find((w) => w.id === chosenWalletId) ?? (() => { throw new MomoCaptureError('That account no longer exists. Choose another.', 400); })())
+            : await walletFor(orgId, claimed.provider, settings.destination);
         const direction = overrides.direction === 'IN' || overrides.direction === 'OUT' ? overrides.direction : claimed.direction;
         const amount = Number(overrides.amount) > 0 ? Number(overrides.amount) : Number(claimed.amount);
         const description = typeof overrides.description === 'string' && overrides.description.trim().length >= 2
             ? overrides.description.trim()
             : describe({ ...claimed, direction, counterparty: claimed.counterparty } as ParsedMomoMessage);
-        const date = lusakaDate(claimed.occurred_at);
+        const date = typeof overrides.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(overrides.date) ? overrides.date : lusakaDate(claimed.occurred_at);
+        const fee = overrides.fee !== undefined ? (money(overrides.fee, 'Fee') ?? 0) : Number(claimed.fee) || 0;
         // No category chosen (the prompt's quick Record, or auto-record): the one last used with this contact, if any;
         // otherwise recordManualEntry suggests one as before.
         let accountId = typeof overrides.accountId === 'string' ? overrides.accountId : null;
@@ -522,15 +527,15 @@ export async function post(userId: string, orgId: string, id: string, overrides:
         const { data: done } = await supabase.from('momo_captures')
             .update({ cashbook_entry_id: entry.entryId, updated_at: new Date().toISOString() }).eq('id', id).select('*').single();
         // The operator's charge leaves the same wallet, so it's booked beside the movement it belongs to.
-        if (claimed.fee && Number(claimed.fee) > 0) {
+        if (fee > 0) {
             try {
-                await recordManualEntry({ orgId, userId, direction: 'OUT', amount: Number(claimed.fee), description: `${description} · fee`, date, externalWalletId: wallet.id });
+                await recordManualEntry({ orgId, userId, direction: 'OUT', amount: fee, description: `${description} · fee`, date, externalWalletId: wallet.id, accountId: typeof overrides.feeAccountId === 'string' && overrides.feeAccountId ? overrides.feeAccountId : null });
             } catch (e: any) {
-                console.error(`[MoMo capture] fee of ${claimed.fee} for capture ${id} was not booked:`, e.message);
+                console.error(`[MoMo capture] fee of ${fee} for capture ${id} was not booked:`, e.message);
             }
         }
         // The balance the newest recorded message states wins. Never allowed to undo the booking above.
-        await syncToLatestBalance(orgId, userId, claimed.provider, settings.destination)
+        if (!chosenWalletId || wallet.name.toLowerCase() === PROVIDER_WALLET[claimed.provider as MomoProvider].toLowerCase()) await syncToLatestBalance(orgId, userId, claimed.provider, settings.destination)
             .catch((e: any) => console.error(`[MoMo capture] balance sync after ${id} failed:`, e?.message));
         await mirrorMomoCapture(done, mirror);
         return { ...done, entry };
@@ -757,7 +762,7 @@ const money = (v: unknown, what: string, opts: { required?: boolean } = {}): num
 };
 const text = (v: unknown, max: number): string | null => (typeof v === 'string' && v.trim() ? v.replace(/\s+/g, ' ').trim().slice(0, max) : null);
 
-interface CaptureFields { provider?: unknown; direction?: unknown; amount?: unknown; fee?: unknown; balanceAfter?: unknown; counterparty?: unknown; reference?: unknown; sender?: unknown; note?: unknown }
+interface CaptureFields { accountId?: unknown; provider?: unknown; direction?: unknown; amount?: unknown; fee?: unknown; balanceAfter?: unknown; counterparty?: unknown; reference?: unknown; sender?: unknown; note?: unknown }
 
 /** Reads whichever of the editable fields were sent; anything left out is left alone. */
 function readFields(f: CaptureFields) {
@@ -770,6 +775,7 @@ function readFields(f: CaptureFields) {
         if (f.direction !== 'IN' && f.direction !== 'OUT') throw new MomoCaptureError('Direction must be money in or money out');
         out.direction = f.direction;
     }
+    if (f.accountId !== undefined) out.accountId = typeof f.accountId === 'string' && f.accountId ? f.accountId : null;
     if (f.amount !== undefined) out.amount = money(f.amount, 'Amount', { required: true });
     if (f.fee !== undefined) out.fee = money(f.fee, 'Fee');
     if (f.balanceAfter !== undefined) out.balance_after = money(f.balanceAfter, 'Balance after');
@@ -780,12 +786,31 @@ function readFields(f: CaptureFields) {
     return out;
 }
 
+
+/** The provider a given external account stands for (its default name), or OTHER for banks and custom accounts. */
+function providerOfWallet(w: { name: string }): MomoProvider {
+    return (Object.entries(PROVIDER_WALLET) as [MomoProvider, string][]).find(([k, n]) => k !== 'OTHER' && n.toLowerCase() === w.name.toLowerCase())?.[0] ?? 'OTHER';
+}
+
+/** Validates a chosen account and fills `external_wallet_id` and the provider that goes with it. */
+async function applyAccountChoice(orgId: string, update: Record<string, any>) {
+    if (!('accountId' in update)) return;
+    const id = update.accountId as string | null;
+    delete update.accountId;
+    if (!id) { update.external_wallet_id = null; return; }
+    const w = (await listExternalWallets(orgId)).find((x) => x.id === id);
+    if (!w) throw new MomoCaptureError('Choose one of your accounts', 400);
+    update.external_wallet_id = w.id;
+    update.provider = providerOfWallet(w);
+}
+
 /** Corrects a capture that is still waiting (or matched), before it is booked. */
 export async function editCapture(userId: string, orgId: string, id: string, patch: CaptureFields) {
     const { data: row } = await supabase.from('momo_captures').select('*').eq('id', id).eq('user_id', userId).eq('organization_id', orgId).maybeSingle();
     if (!row) throw new MomoCaptureError('This message no longer exists', 404);
     if (row.status !== 'PENDING' && row.status !== 'MATCHED') throw new MomoCaptureError('This message is already booked or dismissed, so it can no longer be edited', 409);
     const update = readFields(patch);
+    await applyAccountChoice(orgId, update);
     // The same transaction id (and provider) is what stops one message being captured twice, so it follows the edit.
     const provider = update.provider ?? row.provider;
     const reference = 'provider_reference' in update ? update.provider_reference : row.provider_reference;
@@ -813,6 +838,7 @@ export async function moveIgnoredToCaptured(userId: string, orgId: string, id: s
     if (!ign) throw new MomoCaptureError('This message no longer exists', 404);
     if (String(ign.raw_text).startsWith('[hidden')) throw new MomoCaptureError('This looked like a one-time code, so its text was not kept and it cannot be captured', 400);
     const f = readFields(fields);
+    await applyAccountChoice(orgId, f);
     if (f.amount == null) throw new MomoCaptureError('Amount is required');
     if (!f.direction) throw new MomoCaptureError('Choose whether money came in or went out');
     const settings = await settingsRow(userId, orgId);
@@ -823,7 +849,7 @@ export async function moveIgnoredToCaptured(userId: string, orgId: string, id: s
     const { data: row, error } = await supabase.from('momo_captures').insert({
         organization_id: orgId, user_id: userId, device_id: ign.device_id ?? null, source: ign.source, provider, sender: f.sender ?? null,
         raw_text: String(ign.raw_text).slice(0, 1200), direction: f.direction, amount: f.amount, fee: f.fee ?? null,
-        balance_after: f.balance_after ?? null, counterparty: f.counterparty ?? null, provider_reference: reference,
+        balance_after: f.balance_after ?? null, counterparty: f.counterparty ?? null, provider_reference: reference, external_wallet_id: f.external_wallet_id ?? null,
         occurred_at: ign.created_at, dedupe_key, status: 'PENDING', note: f.note ?? null,
     }).select('*').single();
     if (error) {
@@ -833,4 +859,120 @@ export async function moveIgnoredToCaptured(userId: string, orgId: string, id: s
     await supabase.from('momo_ignored_messages').delete().eq('id', id);
     try { await mirrorMomoCapture(row); } catch (e: any) { console.error('[MoMo capture] mirror after move failed:', e?.message); }
     return row;
+}
+
+
+// ── Accounting review: what booking will post, and the choices that change it ─────────────────────
+
+/** The accounts a capture can be booked to / categorised under, for the review dialog and the account dropdown. */
+export async function accountingOptions(_userId: string, orgId: string) {
+    const [wallets, { data: accts }] = await Promise.all([
+        listExternalWallets(orgId),
+        supabase.from('accounts').select('id, code, name, type').eq('organization_id', orgId).eq('is_active', true).in('type', ['INCOME', 'EXPENSE']).order('name'),
+    ]);
+    const pick = (t: string) => (accts ?? []).filter((a: any) => a.type === t).map((a: any) => ({ id: a.id as string, code: (a.code as string | null) ?? null, name: a.name as string, emoji: null as string | null }));
+    return {
+        wallets: wallets.map((w) => ({ id: w.id, name: w.name, providerType: w.provider_type, provider: providerOfWallet(w) })),
+        income: pick('INCOME'), expense: pick('EXPENSE'),
+    };
+}
+
+interface PreviewInput { direction?: unknown; amount?: unknown; fee?: unknown; accountId?: unknown; feeAccountId?: unknown; walletId?: unknown; description?: unknown; date?: unknown }
+
+/**
+ * The double entry booking this capture would post, without posting it: the money account on one side, the category
+ * on the other (the person's choice, else the AI's suggestion with its reasoning, else Suspense), and the operator's
+ * fee as its own pair. Mirrors post(): every figure and account here is what post() will use when given the same input.
+ */
+export async function previewPosting(userId: string, orgId: string, id: string, input: PreviewInput = {}) {
+    const { data: c } = await supabase.from('momo_captures').select('*').eq('id', id).eq('user_id', userId).eq('organization_id', orgId).maybeSingle();
+    if (!c) throw new MomoCaptureError('This message no longer exists', 404);
+    const direction = input.direction === 'IN' || input.direction === 'OUT' ? input.direction : (c.direction as 'IN' | 'OUT');
+    const amount = money(input.amount ?? c.amount, 'Amount', { required: true })!;
+    const fee = input.fee !== undefined ? (money(input.fee, 'Fee') ?? 0) : Number(c.fee) || 0;
+    const settings = await settingsRow(userId, orgId);
+    const wallets = await listExternalWallets(orgId);
+    const wanted = typeof input.walletId === 'string' && input.walletId ? input.walletId : (c.external_wallet_id as string | null);
+    let wallet = wanted ? wallets.find((w) => w.id === wanted) ?? null : null;
+    let walletWillBeCreated = false;
+    if (!wallet) {
+        if (settings.destination === 'CASH') wallet = wallets.find((w) => w.name.toLowerCase() === 'cash') ?? null;
+        else {
+            const name = PROVIDER_WALLET[c.provider as MomoProvider];
+            wallet = wallets.find((w) => w.name.toLowerCase() === name.toLowerCase()) ?? null;
+            if (!wallet) walletWillBeCreated = true;
+        }
+    }
+    const walletName = wallet?.name ?? (settings.destination === 'CASH' ? 'Cash' : PROVIDER_WALLET[c.provider as MomoProvider]);
+
+    // The asset account the money account maps to in the ledger.
+    let assetAcct: { id: string; code: string | null; name: string } | null = null;
+    if (wallet) {
+        const { data: ew } = await supabase.from('external_wallets').select('qb_account_id').eq('id', wallet.id).maybeSingle();
+        const linkId = ew?.qb_account_id && /^[0-9a-f-]{36}$/i.test(ew.qb_account_id) ? ew.qb_account_id : null;
+        const q = supabase.from('accounts').select('id, code, name').eq('organization_id', orgId).eq('type', 'ASSET');
+        const { data: byLink } = linkId ? await q.eq('id', linkId).maybeSingle() : { data: null };
+        assetAcct = (byLink as any) ?? ((await supabase.from('accounts').select('id, code, name').eq('organization_id', orgId).eq('type', 'ASSET').ilike('name', wallet.name).limit(1).maybeSingle()).data as any) ?? null;
+    }
+    const assetLabel = assetAcct ? { accountId: assetAcct.id, code: assetAcct.code, name: assetAcct.name, type: 'ASSET' as const, willBeCreated: false }
+        : { accountId: null as string | null, code: null as string | null, name: walletName, type: 'ASSET' as const, willBeCreated: true };
+
+    const note = typeof c.note === 'string' ? c.note : '';
+    const baseDescription = typeof input.description === 'string' && input.description.trim().length >= 2 ? input.description.trim() : describe({ ...c, direction } as ParsedMomoMessage);
+    const description = note ? `${baseDescription} · ${note}`.slice(0, 300) : baseDescription;
+
+    const categories = await categoriesFor(orgId, direction);
+    const lookup = async (accountId: unknown, dir: 'IN' | 'OUT', desc: string, amt: number, list: any[]) => {
+        if (typeof accountId === 'string' && accountId) {
+            const a = list.find((x: any) => x.id === accountId);
+            if (!a) throw new MomoCaptureError('That category does not fit this kind of entry', 400);
+            return { account: a, source: 'USER' as const, reasoning: null as string | null, confidence: null as number | null };
+        }
+        const sug = await suggestCategory(orgId, dir, desc, amt);
+        return sug ? { account: sug.account, source: 'AI' as const, reasoning: sug.reasoning, confidence: sug.confidence } : { account: null, source: null, reasoning: null, confidence: null };
+    };
+    const main = await lookup(input.accountId, direction, description, amount, categories);
+    const catLine = main.account
+        ? { accountId: main.account.id as string, code: (main.account.code as string | null) ?? null, name: main.account.name as string, type: (direction === 'IN' ? 'INCOME' : 'EXPENSE') as 'INCOME' | 'EXPENSE', suspense: false }
+        : { accountId: null as string | null, code: null as string | null, name: 'Suspense (not categorised yet)', type: 'SUSPENSE' as const, suspense: true };
+
+    const lines: { role: string; accountId: string | null; code: string | null; name: string; type: string; debit: number; credit: number; note: string | null }[] = [];
+    const asset = (debit: number, credit: number, role: string, note: string | null) => lines.push({ role, accountId: assetLabel.accountId, code: assetLabel.code, name: assetLabel.name, type: 'ASSET', debit, credit, note: assetLabel.willBeCreated ? 'This account will be created when you post' : note });
+    const cat = (debit: number, credit: number, role: string) => lines.push({ role, accountId: catLine.accountId, code: catLine.code, name: catLine.name, type: catLine.type, debit, credit, note: catLine.suspense ? 'No category chosen, so it sits in Suspense until one is set' : null });
+    if (direction === 'IN') { asset(amount, 0, 'MONEY', 'Money received'); cat(0, amount, 'CATEGORY'); }
+    else { cat(amount, 0, 'CATEGORY'); asset(0, amount, 'MONEY', 'Money paid out'); }
+
+    let feeInfo: { source: 'USER' | 'AI' | null; reasoning: string | null; confidence: number | null; accountId: string | null } | null = null;
+    if (fee > 0) {
+        const expense = await categoriesFor(orgId, 'OUT');
+        const f = await lookup(input.feeAccountId, 'OUT', `${description} · fee`, fee, expense);
+        feeInfo = { source: f.source, reasoning: f.reasoning, confidence: f.confidence, accountId: f.account?.id ?? null };
+        lines.push({ role: 'FEE_CATEGORY', accountId: f.account?.id ?? null, code: f.account?.code ?? null, name: f.account?.name ?? 'Suspense (not categorised yet)', type: f.account ? 'EXPENSE' : 'SUSPENSE', debit: fee, credit: 0, note: 'Operator fee' });
+        asset(0, fee, 'FEE_MONEY', 'Operator fee paid from the same account');
+    }
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const totalDebit = r2(lines.reduce((t, l) => t + l.debit, 0)), totalCredit = r2(lines.reduce((t, l) => t + l.credit, 0));
+    return {
+        direction, amount, fee, description: baseDescription, note: note || null,
+        date: typeof input.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.date) ? input.date : lusakaDate(c.occurred_at),
+        wallet: { id: wallet?.id ?? null, name: walletName, willBeCreated: walletWillBeCreated },
+        category: { accountId: main.account?.id ?? null, source: main.source, reasoning: main.reasoning, confidence: main.confidence },
+        fee_category: feeInfo,
+        lines, totals: { debit: totalDebit, credit: totalCredit, balanced: totalDebit === totalCredit },
+    };
+}
+
+
+const BANK_WORDS = /\b(bank|fnb|zanaco|absa|stanbic|indo\s?zambia|izb|atlas\s?mara|ecobank|uba|natsave|investrust|access|first\s?capital|cavmont|bancabc|standard\s?chartered|citi)\b/i;
+
+/** Adds an external account (a bank like FNB, a mobile money line, cash …) so captures can be booked into it. */
+export async function createAccount(_userId: string, orgId: string, nameIn: unknown, typeIn?: unknown) {
+    const name = typeof nameIn === 'string' ? nameIn.replace(/\s+/g, ' ').trim().slice(0, 60) : '';
+    if (name.length < 2) throw new MomoCaptureError('Give the account a name, for example FNB');
+    const providerType = ['BANK', 'MOBILE_MONEY', 'CUSTOM'].includes(typeIn as string) ? (typeIn as string) : BANK_WORDS.test(name) ? 'BANK' : /\b(cash|petty)\b/i.test(name) ? 'CUSTOM' : 'MOBILE_MONEY';
+    const existing = (await listExternalWallets(orgId)).find((w) => w.name.toLowerCase() === name.toLowerCase());
+    if (existing) return { id: existing.id, name: existing.name, providerType: existing.provider_type, provider: providerOfWallet(existing), existed: true };
+    const { data, error } = await supabase.from('external_wallets').insert({ organization_id: orgId, name, provider_type: providerType, provider_name: null }).select('id, name, provider_type, provider_name').single();
+    if (error || !data) throw new MomoCaptureError(`Could not add the account: ${error?.message}`, 500);
+    return { id: data.id as string, name: data.name as string, providerType: data.provider_type as string, provider: providerOfWallet(data as any), existed: false };
 }
