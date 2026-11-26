@@ -15,6 +15,20 @@ import { colors, fonts, radius } from '../src/theme/tokens';
  * account; this chooses what kind of MoneyWise they are setting up — the same two choices as email
  * sign-up — and creates it. Anyone who signed in to an existing account never sees this.
  */
+/**
+ * One sign-up request at a time for the whole app. The screen creates a Personal workspace by itself as soon as it
+ * opens, and it can open twice in a row (a redirect, a re-render). Without this, both would send the request and the
+ * person could end up with two personal workspaces. A second call joins the request already on its way.
+ */
+let inFlight: Promise<{ organizationId: string }> | null = null;
+function completeSignupOnce(body: string) {
+    if (!inFlight) {
+        inFlight = apiJson<{ organizationId: string }>('/auth/complete-social-signup', { method: 'POST', body })
+            .finally(() => { inFlight = null; });
+    }
+    return inFlight;
+}
+
 export default function CompleteProfileScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
@@ -36,10 +50,7 @@ export default function CompleteProfileScreen() {
         setBusy(true); setError(''); setSuggestion('');
         track('account_type_chosen', { account_choice: type, via: 'social' });
         try {
-            const res = await apiJson<{ organizationId: string }>('/auth/complete-social-signup', {
-                method: 'POST',
-                body: JSON.stringify({ accountType: type, organizationName: nameOverride ?? businessName.trim() }),
-            });
+            const res = await completeSignupOnce(JSON.stringify({ accountType: type, organizationName: nameOverride ?? businessName.trim() }));
             await refreshUserOrganizations();
             await switchOrganization(res.organizationId);
             try { cacheStoreSync.removeItem(PENDING_ACCOUNT_TYPE_KEY); } catch { /* nothing stored */ }

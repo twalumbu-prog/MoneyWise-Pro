@@ -14,7 +14,10 @@ import Constants from 'expo-constants';
 const API_URL: string = ((Constants.expoConfig?.extra as any)?.apiUrl ?? '').replace(/\/$/, '');
 const PING_ONLINE_MS = 45_000;
 const PING_OFFLINE_MS = 8_000;
-const PING_TIMEOUT_MS = 6_000;
+// Generous: a sleeping server (a Vercel preview, a cold start) can take several seconds to answer, and that is not "offline".
+const PING_TIMEOUT_MS = 12_000;
+/** A second look before saying "offline": one slow or dropped ping is not an outage. */
+const RECHECK_MS = 3_000;
 
 let online = true;
 const listeners = new Set<() => void>();
@@ -40,21 +43,29 @@ export function isNetworkError(e: unknown): boolean {
     return e instanceof TypeError || /network request failed|failed to fetch|network error|timed out|timeout|aborted|load failed|offline/i.test(msg);
 }
 
-/** Asks the API whether it can be reached right now. */
-export async function probe(): Promise<boolean> {
-    if (!API_URL) return online;
+async function ping(): Promise<boolean> {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), PING_TIMEOUT_MS);
     try {
         await fetch(`${API_URL}/`, { method: 'GET', signal: ctrl.signal });
-        markOnline();
         return true;
     } catch {
-        markOffline();
         return false;
     } finally {
         clearTimeout(t);
     }
+}
+
+/** Asks the API whether it can be reached right now. While online, it takes two failed pings in a row to say "offline". */
+export async function probe(): Promise<boolean> {
+    if (!API_URL) return online;
+    let ok = await ping();
+    if (!ok && online) {
+        await new Promise((r) => setTimeout(r, RECHECK_MS));
+        ok = await ping();
+    }
+    if (ok) markOnline(); else markOffline();
+    return ok;
 }
 
 let started = false;

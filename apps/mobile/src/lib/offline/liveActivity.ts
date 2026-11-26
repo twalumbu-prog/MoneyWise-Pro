@@ -25,11 +25,48 @@ export const liveActivityAvailable = (): boolean => {
     return supported;
 };
 
+/**
+ * Android 16+: the same status in the phone's OWN island / status-bar chip (HyperOS Super Island, Samsung Now Bar, Pixel chip),
+ * via a "Live Update" notification posted by the momo-capture module. When this is available the in-app pill is not drawn, so the
+ * person never sees two islands. Older phones and older app binaries (no such function) keep the in-app pill.
+ */
+interface AndroidStatusNative {
+    systemStatusSupported?(): boolean;
+    showSystemStatus?(chip: string, title: string, text: string): boolean;
+    clearSystemStatus?(): void;
+}
+const androidNative: AndroidStatusNative | null = Platform.OS === 'android' ? requireOptionalNativeModule<AndroidStatusNative>('MomoCapture') : null;
+
+/** True when this Android phone shows MoneyWise's connection status in its own island / chip (so the app draws nothing). */
+export const androidSystemStatusAvailable = (): boolean => {
+    try { return !!androidNative?.systemStatusSupported?.(); } catch { return false; }
+};
+
+let androidShown = false;
+let androidClearTimer: ReturnType<typeof setTimeout> | null = null;
+function syncAndroidStatus(online: boolean, waiting: number) {
+    if (!androidNative?.showSystemStatus || !androidSystemStatusAvailable()) return;
+    try {
+        if (androidClearTimer) { clearTimeout(androidClearTimer); androidClearTimer = null; }
+        if (!online) {
+            peakWaiting = Math.max(peakWaiting, waiting);
+            androidShown = androidNative.showSystemStatus('Offline', 'MoneyWise is offline',
+                waiting > 0 ? `${waiting} saved on your phone. They sync when you're back online.` : "Working from your phone. Changes sync when you're back online.");
+        } else if (androidShown) {
+            const synced = peakWaiting;
+            androidNative.showSystemStatus('Online', 'Back online', synced > 0 ? `${synced} synced` : 'All caught up');
+            androidShown = false; peakWaiting = 0;
+            androidClearTimer = setTimeout(() => { try { androidNative.clearSystemStatus?.(); } catch { /* ignore */ } }, 4000);
+        }
+    } catch { /* never let an indicator break the app */ }
+}
+
 let peakWaiting = 0;       // the most that were waiting during this outage: what "synced" reports when the connection returns
 let active = false;
 
 /** Call whenever the connection or the number of saved items changes. */
 export async function syncLiveActivity(online: boolean, waiting: number): Promise<void> {
+    if (Platform.OS === 'android') { syncAndroidStatus(online, waiting); return; }
     if (!native || !liveActivityAvailable()) return;
     try {
         if (!online) {

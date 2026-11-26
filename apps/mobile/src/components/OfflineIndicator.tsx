@@ -8,6 +8,7 @@ import { probe, useOnline } from '../lib/offline/connectivity';
 import { discardOutboxItem, retryFailedItem, useOutbox } from '../lib/offline/outbox';
 import { useAuth } from '../context/AuthContext';
 import { flushOutbox } from '../lib/offline/outbox';
+import { androidSystemStatusAvailable } from '../lib/offline/liveActivity';
 
 /**
  * Tells the person, at all times, that the phone is working offline.
@@ -15,6 +16,7 @@ import { flushOutbox } from '../lib/offline/outbox';
  * iPhones with a Dynamic Island: a black capsule is drawn exactly over the island. It swells (the way the island does for a call or
  * a timer) to say "Offline · saved on phone", then settles back to island size with a small amber light beside the camera for as long as
  * the phone is offline. Tap it to open it again. When the connection returns it swells once more in green ("Back online · 2 synced").
+ * Android 16 phones with their own island / chip (HyperOS, One UI, Pixel): the phone shows it there, and nothing is drawn here.
  * Every other phone: a slim pill just under the status bar does the same job.
  *
  * (This lives inside the app. A true system Live Activity, visible while the app is closed, needs native iOS code; see the notes.)
@@ -90,6 +92,8 @@ export const OfflineIndicator: React.FC = () => {
     const compactLabel = useAnimatedStyle(() => ({ opacity: interpolate(open.value, [0, 0.3], [1, 0], 'clamp') }));
 
     if (!shown) return null;
+    // Android phones with their own island / status-bar chip show the status there (liveActivity.ts): never draw a second one.
+    const phoneShowsIt = Platform.OS === 'android' && androidSystemStatusAvailable();
 
     const top = hasIsland ? ISLAND_TOP : insets.top + 4;
     const title = mode === 'synced' ? 'Back online' : 'Offline';
@@ -99,7 +103,7 @@ export const OfflineIndicator: React.FC = () => {
 
     return (
         <View pointerEvents="box-none" style={[styles.wrap, { top }]}>
-            <Pressable onPress={() => { open.value = withSpring(open.value > 0.5 ? 0 : 1, { damping: 14, stiffness: 180 }); if (timer.current) clearTimeout(timer.current); if (!online) void probe(); else if (user) void flushOutbox({ userId: user.id, orgId: organizationId }); }} accessibilityRole="button" accessibilityLabel={`${title}. ${sub}`}>
+            {!phoneShowsIt && <Pressable onPress={() => { open.value = withSpring(open.value > 0.5 ? 0 : 1, { damping: 14, stiffness: 180 }); if (timer.current) clearTimeout(timer.current); if (!online) void probe(); else if (user) void flushOutbox({ userId: user.id, orgId: organizationId }); }} accessibilityRole="button" accessibilityLabel={`${title}. ${sub}`}>
                 <Animated.View style={[styles.capsule, capsule]}>
                     {/* island-size state: a light beside the camera (island), or the word Offline (other phones) */}
                     <Animated.View style={[StyleSheet.absoluteFill, styles.compact, compactLabel]} pointerEvents="none">
@@ -117,7 +121,7 @@ export const OfflineIndicator: React.FC = () => {
                         <Text style={styles.sub} numberOfLines={1}>{sub}</Text>
                     </Animated.View>
                 </Animated.View>
-            </Pressable>
+            </Pressable>}
             {mode === 'offline' && failed.length > 0 && (
                 <View style={styles.failed}>
                     <Text style={styles.failedText} numberOfLines={2}>{failed.length} saved {failed.length === 1 ? 'item' : 'items'} could not sync: {failed[0].failed}</Text>

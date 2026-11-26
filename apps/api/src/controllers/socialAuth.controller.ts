@@ -117,6 +117,28 @@ export const completeSocialSignup = async (req: any, res: any): Promise<any> => 
             await supabase.from('organizations').delete().eq('id', org.id);
             return res.status(500).json({ error: 'Failed to link you to your account: ' + uoError.message });
         }
+
+        // Two requests at the same moment can both pass the "already has one?" check above and both create a personal
+        // workspace. Now that ours is linked, look again: whichever request checks last sees both, and every request
+        // keeps only the OLDEST one, so exactly one survives. Ours is removed if it lost (before anything is seeded).
+        if (isPersonal) {
+            const { data: mine } = await supabase
+                .from('user_organizations')
+                .select('organization_id, role, organization:organizations(id, is_personal, created_at)')
+                .eq('user_id', userId).eq('status', 'ACTIVE');
+            const personal = (mine || [])
+                .map((m: any) => ({ m, o: Array.isArray(m.organization) ? m.organization[0] : m.organization }))
+                .filter(({ o }) => o?.is_personal === true)
+                .sort((a, b) => String(a.o.created_at).localeCompare(String(b.o.created_at)) || String(a.o.id).localeCompare(String(b.o.id)));
+            const keep = personal[0];
+            if (keep && keep.o.id !== org.id) {
+                await supabase.from('user_organizations').delete().eq('user_id', userId).eq('organization_id', org.id);
+                await supabase.from('organizations').delete().eq('id', org.id);
+                await supabase.from('users').update({ organization_id: keep.o.id, role: keep.m.role || 'ADMIN' }).eq('id', userId);
+                return res.json({ organizationId: keep.o.id, created: false });
+            }
+        }
+
         await supabase.from('users').update({ organization_id: org.id, role: 'ADMIN', employee_id: employeeId, status: 'ACTIVE' }).eq('id', userId);
 
         // Same seeding as email sign-up: chart of accounts, Main Wallet, onboarding progress (best effort).

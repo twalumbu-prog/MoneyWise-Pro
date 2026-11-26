@@ -38,6 +38,11 @@ class MomoCaptureModule : Module() {
 
         Function("clear") { MomoCapture.clear(context) }
 
+        // Connection status in the phone's own island / status-bar chip (Android 16 Live Updates). See MomoStatusChip.
+        Function("systemStatusSupported") { MomoStatusChip.supported(context) }
+        Function("showSystemStatus") { chip: String, title: String, text: String -> MomoStatusChip.show(context, chip, title, text) }
+        Function("clearSystemStatus") { MomoStatusChip.clear(context) }
+
         Function("getStatus") {
             val p = MomoCapture.prefs(context)
             mapOf(

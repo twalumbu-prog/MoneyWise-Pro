@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { queryClient } from '../lib/queryClient';
-import { isNetworkError, isOnline, markOffline, markOnline, onConnectivityChange, startConnectivityWatch } from '../lib/offline/connectivity';
+import { isNetworkError, isOnline, markOnline, onConnectivityChange, probe, startConnectivityWatch } from '../lib/offline/connectivity';
 import { flushOutbox, useOutbox } from '../lib/offline/outbox';
 import { useOnline } from '../lib/offline/connectivity';
 import { syncLiveActivity } from '../lib/offline/liveActivity';
@@ -24,7 +24,8 @@ export function useOfflineSync() {
         return queryClient.getQueryCache().subscribe((ev) => {
             if (ev.type !== 'updated') return;
             const a = ev.action as any;
-            if (a.type === 'error' && isNetworkError(a.error)) markOffline();
+            // A failed request is a hint, not proof (a slow server times out too): check properly before saying "offline".
+            if (a.type === 'error' && isNetworkError(a.error)) { if (isOnline()) void probe(); }
             else if (a.type === 'success') markOnline();
         });
     }, []);

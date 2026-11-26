@@ -3,6 +3,8 @@
        until Google Play approves the SMS permission declaration; without them this receiver simply never fires. -->
   <!-- For the "Record / Dismiss" prompt shown when a transaction is captured. -->
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <!-- Android 16: lets the "Offline" status appear in the phone's own island / status-bar chip (no prompt; a normal permission). -->
+  <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
   <application>
     <receiver android:name="expo.modules.momocapture.MomoPromptReceiver" android:exported="false" />
     <!-- Re-sends queued messages when the phone is back online. -->
