@@ -449,12 +449,12 @@ const BalanceRow: React.FC<{ b: MomoBalanceCheck; busy: boolean; onAdjust: () =>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <Field k="MoneyWise balance" v={b.ledger_balance != null ? formatKwacha(Number(b.ledger_balance)) : null} />
-                <Field k="Waiting for review" v={pending !== 0 ? `${pending > 0 ? '+' : '−'}${formatKwacha(Math.abs(pending))}` : 'None'} />
+                <Field k="Waiting since then" v={pending !== 0 ? `${pending > 0 ? '+' : '−'}${formatKwacha(Math.abs(pending))}` : 'None'} />
                 <Field k="Difference" v={b.difference != null ? (Math.abs(diff) < 0.005 ? 'None' : `${diff > 0 ? '+' : '−'}${formatKwacha(Math.abs(diff))}`) : null} />
             </div>
             {b.status === 'OPEN' && (
                 <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs text-gray-500">{diff > 0 ? 'A payment may be missing from MoneyWise.' : 'MoneyWise may hold something the provider never charged.'} Review waiting messages first.</p>
+                    <p className="text-xs text-gray-500">The phone's figure plus what you've recorded since. Adjusting sets the account to match; it isn't counted as income or spending.</p>
                     {busy ? <span className="text-sm text-gray-500">Working…</span> : (
                         <div className="flex gap-2 shrink-0">
                             <button onClick={onIgnore} className="px-4 py-1.5 rounded-full border border-gray-300 text-sm font-semibold text-gray-600">Ignore</button>

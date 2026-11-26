@@ -164,8 +164,15 @@ export const PERSONAL_STEP_KEYS: PersonalStepKey[] = PERSONAL_STEPS.map((s) => s
 
 export const personalStepDef = (key: string): PersonalStepDef | undefined => PERSONAL_STEPS.find((s) => s.key === key);
 
+/**
+ * Steps a platform leaves out. Android builds that can read SMS hide "accounts": its mobile money accounts and
+ * balances come from the person's own messages (the capture step's first import) instead of being typed in.
+ */
+let hiddenSteps = new Set<PersonalStepKey>();
+export function hidePersonalSteps(keys: PersonalStepKey[]): void { hiddenSteps = new Set(keys); }
+
 /** The steps the wizard walks through, in order. */
-export const builtPersonalSteps = (): PersonalStepDef[] => PERSONAL_STEPS.filter((s) => s.built);
+export const builtPersonalSteps = (): PersonalStepDef[] => PERSONAL_STEPS.filter((s) => s.built && !hiddenSteps.has(s.key));
 
 /** First built step with no saved state, or null when every built step is done or skipped. */
 export function firstOpenPersonalStep(steps: PersonalStepsMap): PersonalStepDef | null {

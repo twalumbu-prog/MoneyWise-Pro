@@ -193,8 +193,10 @@ export async function requestSmsPermission(): Promise<'granted' | 'denied' | 'bl
 export const openNotificationAccessSettings = () => native?.openNotificationAccessSettings();
 export const openAppSettings = () => (native ? native.openAppSettings() : Linking.openSettings());
 
-/** How many of the newest SMS "Import recent messages" looks through, in Settings and in onboarding. */
-export const RECENT_IMPORT_COUNT = 300;
+/** The first time SMS capture is turned on, MoneyWise reads this many of the newest texts. */
+export const FIRST_IMPORT_COUNT = 300;
+/** After that, "Import recent messages" reads this many of the newest texts. */
+export const RECENT_IMPORT_COUNT = 100;
 
 /**
  * Whether this binary asks for SMS access at all. A Play build made with MOMO_SMS_CAPTURE=0 leaves it out, and then
@@ -203,7 +205,11 @@ export const RECENT_IMPORT_COUNT = 300;
 export const smsReadingInBuild: boolean = Platform.OS === 'android'
     && ((Constants.expoConfig?.android as any)?.permissions ?? []).some((p: string) => String(p).includes('READ_SMS'));
 
-/** Queues the last [days] of provider SMS from the inbox. Server-side dedupe makes re-running safe. */
+/**
+ * Reads the newest [max] texts in the inbox and queues the mobile money ones (the rest never leave the phone). The
+ * count is of TEXTS read, not of money messages found (app 0.8.0+; older binaries stop after [max] money messages).
+ * Returns how many money messages were queued. Server-side dedupe makes re-running safe.
+ */
 export async function importSmsHistory(days = 30, max = 500): Promise<number> {
     if (!native) return 0;
     const n = await native.importSmsHistory(Date.now() - days * 24 * 3600 * 1000, max);
@@ -211,14 +217,36 @@ export async function importSmsHistory(days = 30, max = 500): Promise<number> {
 }
 
 /**
- * Catches the phone back up: queues the newest [max] matching SMS regardless of how long ago they are (the
- * original import only ever ran once, during setup, so anything since has no way back into Review captured short
- * of this). Safe to run as often as wanted — a message already booked, dismissed, or waiting is never duplicated,
- * both locally (the same text within 15 minutes is dropped before it's even queued) and on the server (a message
- * with the same transaction id, or the same wording within 15 minutes, is rejected outright).
+ * Catches the phone back up: the newest [max] texts, however long ago. Safe to run as often as wanted: a message
+ * already booked, dismissed, or waiting is never duplicated, both locally (the same text within 15 minutes is dropped
+ * before it's even queued) and on the server (same transaction id, or the same wording within 15 minutes).
  */
 export async function importRecentMessages(max = RECENT_IMPORT_COUNT): Promise<number> {
     return importSmsHistory(3650, max);
+}
+
+const FIRST_IMPORT_KEY = 'momo-capture:first-import-done';
+/** Whether this phone has already done its first (300-text) import. */
+export async function firstImportDone(): Promise<boolean> {
+    try { return (await cacheStore.get(FIRST_IMPORT_KEY)) === '1'; } catch { return false; }
+}
+
+export interface OpeningBalance { provider: 'MTN' | 'AIRTEL' | 'ZAMTEL'; name: string; found: boolean; balance?: number; asOf?: string }
+
+/**
+ * The first import, when SMS capture is first turned on: reads the newest 300 texts, waits until the money messages
+ * among them have reached MoneyWise, then sets each mobile money account from the newest balance its messages state.
+ * Later catch-ups use importRecentMessages (100). Balances are best effort: if the server can't set them, the import
+ * still counts.
+ */
+export async function importFirstTime(): Promise<{ imported: number; balances: OpeningBalance[] }> {
+    const imported = await importRecentMessages(FIRST_IMPORT_COUNT);
+    try { await cacheStore.set(FIRST_IMPORT_KEY, '1'); } catch { /* asks again next time: harmless */ }
+    // The phone sends queued messages one by one in the background; wait for them before reading balances.
+    try { await native?.flush(); } catch { /* whatever is left is retried later */ }
+    let balances: OpeningBalance[] = [];
+    try { balances = await momoCaptureService.openingBalances(); } catch (e) { console.warn('[MoMo capture] opening balances failed:', e); }
+    return { imported, balances };
 }
 
 /**

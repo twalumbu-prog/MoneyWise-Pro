@@ -103,6 +103,10 @@ export const momoCaptureService = {
     balances(): Promise<MomoBalance[]> {
         return apiJson('/momo-capture/balances');
     },
+    /** Sets each mobile money account from the newest balance its own messages state (after the first import). */
+    openingBalances(): Promise<{ provider: 'MTN' | 'AIRTEL' | 'ZAMTEL'; name: string; found: boolean; balance?: number; asOf?: string }[]> {
+        return apiJson('/momo-capture/opening-balances', { method: 'POST' });
+    },
     getSettings(): Promise<MomoCaptureSettings> {
         return apiJson('/momo-capture/settings');
     },

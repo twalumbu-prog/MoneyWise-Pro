@@ -49,5 +49,22 @@ test('the contact suggestion still comes from booked captures', () => {
     assert.strictEqual(s.byContact.get('OUT|tel:971234567'), C); assert.deepStrictEqual(s.ranked.OUT, [A]);
 });
 
+// A balance reading the person accepted (or the opening balance taken from their messages) is a stated balance with no
+// movement of its own. This is the Demo case that showed "differs by K858.61": phone K143.40 after K715.21 of older
+// spending was imported. The older spending is already inside the phone's figure, so it must not move the account.
+const reading = (occurred_at: string, balance: number): RecordedCapture => ({ occurred_at, direction: 'NONE', amount: 0, fee: 0, balance_after: balance });
+test('an accepted reading wins over older recorded spending (already inside the phone figure)', () => {
+    const rows = [cap('2026-11-10T08:00:00Z', 'OUT', 500, null), cap('2026-11-12T08:00:00Z', 'OUT', 215.21, null), reading('2026-11-16T11:44:44Z', 143.40)];
+    assert.deepStrictEqual(latestBalanceTarget(rows), { balance: 143.4, asOf: '2026-11-16T11:44:44Z' });
+});
+test('money recorded after the reading moves it, fee included', () => {
+    const rows = [reading('2026-11-16T11:44:44Z', 143.40), cap('2026-11-17T09:00:00Z', 'OUT', 40, null, 1.5), cap('2026-11-18T09:00:00Z', 'IN', 100, null)];
+    assert.deepStrictEqual(latestBalanceTarget(rows), { balance: 201.9, asOf: '2026-11-16T11:44:44Z' });
+});
+test('a newer message that states its own balance replaces the reading', () => {
+    const rows = [reading('2026-11-16T11:44:44Z', 143.40), cap('2026-11-17T09:00:00Z', 'OUT', 40, 102.10)];
+    assert.deepStrictEqual(latestBalanceTarget(rows), { balance: 102.1, asOf: '2026-11-17T09:00:00Z' });
+});
+
 console.log(failed ? `\n${failed} failing` : '\nall passed');
 process.exit(failed ? 1 : 0);

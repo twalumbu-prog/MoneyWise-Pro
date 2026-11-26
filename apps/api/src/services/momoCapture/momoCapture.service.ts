@@ -399,7 +399,7 @@ export async function balances(_userId: string, orgId: string) {
     const wallets = await listExternalWallets(orgId);
     const out: { provider: MomoProvider; name: string; balance: number; asOf: string }[] = [];
     for (const [provider, name] of Object.entries(PROVIDER_WALLET) as [MomoProvider, string][]) {
-        const wallet = wallets.find((w) => w.name.toLowerCase() === name.toLowerCase());
+        const wallet = pickProviderWallet(wallets, provider);
         if (!wallet) continue;
         const balance = await cashbookService.getCurrentBalance(orgId, wallet.id);
         out.push({ provider, name: wallet.name, balance: Math.round(Number(balance) * 100) / 100, asOf: new Date().toISOString() });
@@ -469,14 +469,22 @@ export function testParse(text: unknown) {
     return diagnoseMessage(t, null);
 }
 
+/**
+ * The provider's account among the organisation's accounts: by name first; else the one mobile money account of this
+ * provider, whatever it was nicknamed (onboarding lets people call their MTN line "Work line"). Two of the same
+ * provider and none named after it: none (the default name is created). Used for booking AND for comparing balances,
+ * so both always look at the same account.
+ */
+function pickProviderWallet<W extends { name: string; provider_type?: string | null; provider_name?: string | null }>(wallets: W[], provider: MomoProvider): W | undefined {
+    const name = PROVIDER_WALLET[provider].toLowerCase();
+    const sameProvider = wallets.filter((w) => w.provider_type === 'MOBILE_MONEY' && (w.provider_name ?? '').toLowerCase() === name);
+    return wallets.find((w) => w.name.toLowerCase() === name) ?? (sameProvider.length === 1 ? sameProvider[0] : undefined);
+}
+
 async function walletFor(orgId: string, provider: MomoProvider, destination: string) {
     if (destination === 'CASH') return ensureCashWallet(orgId);
     const name = PROVIDER_WALLET[provider];
-    const wallets = await listExternalWallets(orgId);
-    // By name first; else the one mobile money account of this provider, whatever it was nicknamed (onboarding lets
-    // people call their MTN line "Work line"). Two of the same provider and none named after it → the default name.
-    const sameProvider = wallets.filter((w) => w.provider_type === 'MOBILE_MONEY' && (w.provider_name ?? '').toLowerCase() === name.toLowerCase());
-    const existing = wallets.find((w) => w.name.toLowerCase() === name.toLowerCase()) ?? (sameProvider.length === 1 ? sameProvider[0] : undefined);
+    const existing = pickProviderWallet(await listExternalWallets(orgId), provider);
     if (existing) return existing;
     const { data, error } = await supabase.from('external_wallets')
         .insert({ organization_id: orgId, name, provider_type: 'MOBILE_MONEY', provider_name: name })
@@ -580,12 +588,7 @@ export function latestBalanceTarget(rows: RecordedCapture[]): { balance: number;
  */
 async function syncToLatestBalance(orgId: string, userId: string, provider: MomoProvider, destination: string) {
     if (destination === 'CASH' || provider === 'OTHER') return null;
-    const { data, error } = await supabase.from('momo_captures')
-        .select('direction, amount, fee, balance_after, occurred_at')
-        .eq('organization_id', orgId).eq('provider', provider).eq('status', 'POSTED').not('cashbook_entry_id', 'is', null)
-        .order('occurred_at', { ascending: false }).limit(500);
-    if (error) throw new Error(error.message);
-    const target = latestBalanceTarget((data ?? []) as RecordedCapture[]);
+    const target = latestBalanceTarget(await balanceAnchors(orgId, provider));
     if (!target) return null;
     const wallet = await walletFor(orgId, provider, 'PROVIDER');
     const current = round2(Number(await cashbookService.getCurrentBalance(orgId, wallet.id)));
@@ -604,6 +607,31 @@ async function syncToLatestBalance(orgId: string, userId: string, provider: Momo
     return { balance: target.balance, adjustedBy: diff };
 }
 
+/**
+ * Everything that fixes or moves a provider account's balance, for latestBalanceTarget:
+ *   - recorded captures (their movement, and the balance their message states, when it states one);
+ *   - balance readings the person accepted ("Adjust to match", or the opening balance taken from their messages):
+ *     a stated balance with no movement of its own.
+ * One rule for everything, so a balance check and a recorded message can never pull the account two different ways.
+ */
+async function balanceAnchors(orgId: string, provider: MomoProvider): Promise<RecordedCapture[]> {
+    const [captures, checks] = await Promise.all([
+        supabase.from('momo_captures')
+            .select('direction, amount, fee, balance_after, occurred_at')
+            .eq('organization_id', orgId).eq('provider', provider).eq('status', 'POSTED').not('cashbook_entry_id', 'is', null)
+            .order('occurred_at', { ascending: false }).limit(500),
+        supabase.from('momo_balance_checks')
+            .select('balance, observed_at')
+            .eq('organization_id', orgId).eq('provider', provider).eq('status', 'ADJUSTED')
+            .order('observed_at', { ascending: false }).limit(50),
+    ]);
+    if (captures.error) throw new Error(captures.error.message);
+    if (checks.error) throw new Error(checks.error.message);
+    const readings: RecordedCapture[] = (checks.data ?? []).map((c: any) => ({ direction: 'NONE', amount: 0, fee: 0, balance_after: c.balance, occurred_at: new Date(c.observed_at).toISOString() }));
+    const recorded = ((captures.data ?? []) as RecordedCapture[]).map((r) => ({ ...r, occurred_at: new Date(r.occurred_at).toISOString() }));
+    return [...recorded, ...readings];
+}
+
 // ── Balance checks ──────────────────────────────────────────────────────────
 
 const EPS = 0.005;
@@ -611,29 +639,34 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /** The provider's account in MoneyWise, if it exists yet (never created just to compare). */
 async function existingProviderWallet(orgId: string, provider: MomoProvider) {
-    const name = PROVIDER_WALLET[provider].toLowerCase();
-    return (await listExternalWallets(orgId)).find((w) => w.name.toLowerCase() === name) ?? null;
+    return pickProviderWallet(await listExternalWallets(orgId), provider) ?? null;
 }
 
 /**
- * What MoneyWise holds for this provider right now: the account's running balance, plus captured messages still waiting
- * for review (they are real movements the phone already counted, just not booked yet). MATCHED ones are excluded: those
- * are on the Lenco wallet, not on this account.
+ * Compares a balance reading with MoneyWise using the same rule that sets balances (latestBalanceTarget):
+ *   what the account SHOULD hold now = the phone's figure + every message recorded since that moment;
+ *   what it DOES hold now           = the account's running balance.
+ * The difference is exactly what "Adjust to match" books. Messages still waiting are NOT counted: they move the
+ * account when they are recorded. (The old version added every waiting message from before the reading on top of the
+ * account, so a freshly imported history, whose effect the phone's figure already includes, showed as hundreds of
+ * kwacha "missing", and adjusting booked that as income.)
+ *
+ * A reading older than a balance MoneyWise already follows (a newer message or an accepted reading) is superseded.
  */
-async function ledgerPosition(userId: string, orgId: string, provider: MomoProvider, upTo: string) {
-    const wallet = await existingProviderWallet(orgId, provider);
-    const ledger = wallet ? await cashbookService.getCurrentBalance(orgId, wallet.id) : 0;
-    const { data } = await supabase.from('momo_captures').select('direction, amount, fee')
-        .eq('user_id', userId).eq('organization_id', orgId).eq('provider', provider).eq('status', 'PENDING').lte('occurred_at', upTo);
-    const pendingNet = (data ?? []).reduce((sum, c: any) =>
-        sum + (c.direction === 'IN' ? Number(c.amount) : -(Number(c.amount) + Number(c.fee ?? 0))), 0);
-    return { ledger: round2(ledger), pendingNet: round2(pendingNet) };
-}
-
 async function evaluateCheck(check: any) {
-    const { ledger, pendingNet } = await ledgerPosition(check.user_id, check.organization_id, check.provider, check.observed_at);
-    const difference = round2(Number(check.balance) - (ledger + pendingNet));
-    const status = Math.abs(difference) < EPS ? 'IN_SYNC' : 'OPEN';
+    const provider = check.provider as MomoProvider;
+    const observedAt = new Date(check.observed_at).toISOString();
+    const anchors = await balanceAnchors(check.organization_id, provider);
+    const newer = anchors.some((a) => a.balance_after !== null && a.balance_after !== undefined && a.occurred_at > observedAt);
+    const wallet = await existingProviderWallet(check.organization_id, provider);
+    const ledger = round2(wallet ? Number(await cashbookService.getCurrentBalance(check.organization_id, wallet.id)) : 0);
+    const { data: waiting } = await supabase.from('momo_captures').select('direction, amount, fee')
+        .eq('organization_id', check.organization_id).eq('provider', provider).eq('status', 'PENDING').gt('occurred_at', observedAt);
+    const pendingNet = round2((waiting ?? []).reduce((sum, c: any) =>
+        sum + (c.direction === 'IN' ? Number(c.amount) : -(Number(c.amount) + Number(c.fee ?? 0))), 0));
+    const target = latestBalanceTarget([...anchors, { direction: 'NONE', amount: 0, fee: 0, balance_after: check.balance, occurred_at: observedAt }]);
+    const difference = round2((target?.balance ?? Number(check.balance)) - ledger);
+    const status = newer ? 'SUPERSEDED' : Math.abs(difference) < EPS ? 'IN_SYNC' : 'OPEN';
     const { data } = await supabase.from('momo_balance_checks')
         .update({ ledger_balance: ledger, pending_net: pendingNet, difference, status, updated_at: new Date().toISOString() })
         .eq('id', check.id).in('status', ['OPEN', 'IN_SYNC']).select('*').maybeSingle();
@@ -687,22 +720,72 @@ export async function adjustToBalance(userId: string, orgId: string, id: string)
         .eq('id', id).eq('status', 'OPEN').select('*').maybeSingle();
     if (!claimed) throw new MomoCaptureError('This balance check was already handled', 409);
     try {
-        const wallet = await walletFor(orgId, check.provider, 'PROVIDER');
-        const diff = Number(check.difference);
-        const label = PROVIDER_WALLET[check.provider as MomoProvider];
-        const entry = await recordManualEntry({
-            orgId, userId, direction: diff > 0 ? 'IN' : 'OUT', amount: Math.abs(diff),
-            description: `${label} · Balance adjustment to match the provider balance of K${Number(check.balance).toFixed(2)}`,
-            date: lusakaDate(check.observed_at), externalWalletId: wallet.id, autoCategorize: false,
-        });
+        // The reading is now a balance MoneyWise follows. The same rule as everywhere else then books one ADJUSTMENT
+        // (not income or spending) so the account equals the reading plus whatever was recorded after it.
+        const synced = await syncToLatestBalance(orgId, userId, check.provider as MomoProvider, 'PROVIDER');
         const { data: done } = await supabase.from('momo_balance_checks')
-            .update({ adjustment_entry_id: entry.entryId, updated_at: new Date().toISOString() }).eq('id', id).select('*').single();
-        return { ...done, entry };
+            .update({ updated_at: new Date().toISOString() }).eq('id', id).select('*').single();
+        return { ...done, synced };
     } catch (e: any) {
         await supabase.from('momo_balance_checks').update({ status: 'OPEN', updated_at: new Date().toISOString() }).eq('id', id);
-        if (e instanceof ManualEntryError) throw new MomoCaptureError(e.message, e.httpStatus);
         throw e;
     }
+}
+
+/**
+ * Onboarding on Android: instead of asking "where do you keep your money and how much is there", set each mobile money
+ * account from the newest balance its own messages state (a confirmation's "new balance", or a balance enquiry reply).
+ * Run after the first import of past messages. The figure becomes a balance MoneyWise follows (an accepted reading),
+ * so recording any of the imported messages later never moves the account away from it; messages after it do.
+ * Safe to run again. Providers with messages but no stated balance come back with found: false.
+ */
+export async function openingBalancesFromMessages(userId: string, orgId: string) {
+    const out: { provider: MomoProvider; name: string; found: boolean; balance?: number; asOf?: string }[] = [];
+    for (const provider of ['MTN', 'AIRTEL', 'ZAMTEL'] as MomoProvider[]) {
+        const [cap, chk, any] = await Promise.all([
+            supabase.from('momo_captures').select('id, balance_after, occurred_at, source, raw_text')
+                .eq('organization_id', orgId).eq('user_id', userId).eq('provider', provider).not('balance_after', 'is', null)
+                .order('occurred_at', { ascending: false }).limit(1).maybeSingle(),
+            supabase.from('momo_balance_checks').select('*')
+                .eq('organization_id', orgId).eq('user_id', userId).eq('provider', provider).neq('status', 'DISMISSED')
+                .order('observed_at', { ascending: false }).limit(1).maybeSingle(),
+            supabase.from('momo_captures').select('id', { count: 'exact', head: true })
+                .eq('organization_id', orgId).eq('user_id', userId).eq('provider', provider),
+        ]);
+        const fromCapture = cap.data && Number.isFinite(Number(cap.data.balance_after)) ? cap.data : null;
+        const fromCheck = chk.data ?? null;
+        if (!fromCapture && !fromCheck) {
+            if ((any.count ?? 0) > 0) out.push({ provider, name: PROVIDER_WALLET[provider], found: false });
+            continue;
+        }
+        const useCheck = !!fromCheck && (!fromCapture || new Date(fromCheck.observed_at).getTime() >= new Date(fromCapture.occurred_at).getTime());
+        const balance = round2(Number(useCheck ? fromCheck!.balance : fromCapture!.balance_after));
+        const asOf = new Date(useCheck ? fromCheck!.observed_at : fromCapture!.occurred_at).toISOString();
+
+        if (useCheck) {
+            await supabase.from('momo_balance_checks').update({ status: 'ADJUSTED', updated_at: new Date().toISOString() }).eq('id', fromCheck!.id);
+        } else {
+            const key = balanceDedupeKey(provider, balance, asOf);
+            const ins = await supabase.from('momo_balance_checks').insert({
+                organization_id: orgId, user_id: userId, source: fromCapture!.source, provider, balance, observed_at: asOf,
+                raw_text: `Opening balance from your messages: ${String(fromCapture!.raw_text ?? '').slice(0, 400)}`,
+                dedupe_key: key, status: 'ADJUSTED',
+            });
+            if (ins.error && ins.error.code === '23505') {
+                await supabase.from('momo_balance_checks').update({ status: 'ADJUSTED', updated_at: new Date().toISOString() })
+                    .eq('organization_id', orgId).eq('dedupe_key', key);
+            } else if (ins.error) {
+                throw new MomoCaptureError(`Could not save the balance: ${ins.error.message}`, 500);
+            }
+        }
+        // Older readings still waiting for a decision have nothing left to say.
+        await supabase.from('momo_balance_checks').update({ status: 'SUPERSEDED', updated_at: new Date().toISOString() })
+            .eq('organization_id', orgId).eq('provider', provider).eq('status', 'OPEN').lte('observed_at', asOf);
+        await walletFor(orgId, provider, 'PROVIDER');
+        await syncToLatestBalance(orgId, userId, provider, 'PROVIDER');
+        out.push({ provider, name: PROVIDER_WALLET[provider], found: true, balance, asOf });
+    }
+    return out;
 }
 
 export async function dismissBalanceCheck(userId: string, orgId: string, id: string) {

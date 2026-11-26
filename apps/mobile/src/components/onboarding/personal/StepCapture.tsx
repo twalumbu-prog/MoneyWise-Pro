@@ -2,15 +2,16 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Platform, AppState, ActivityIndicator, Switch } from 'react-native';
 import { useRouter } from 'expo-router';
 import { CheckCircle2, Circle, ShieldCheck } from 'lucide-react-native';
-import { momoCaptureService } from 'core';
+import { momoCaptureService, formatKwacha } from 'core';
 import { PersonalStepShell } from './PersonalStepShell';
 import type { StepContext } from './stepContext';
 import {
     androidCaptureAvailable, iosIntentAvailable, iosCaptureAvailable, getAndroidStatus, getIosStatus, setAndroidSources,
     requestSmsPermission, openNotificationAccessSettings, connectIphone, isIosShortcutSetUp,
-    importRecentMessages, smsReadingInBuild, RECENT_IMPORT_COUNT,
+    importFirstTime, smsReadingInBuild, FIRST_IMPORT_COUNT, type OpeningBalance,
 } from '../../../lib/momoCapture';
 import { colors, fonts, radius } from '../../../theme/tokens';
+
 
 /**
  * Step "capture": turn mobile money confirmation messages into transactions.
@@ -34,6 +35,7 @@ export function StepCapture({ ctx }: { ctx: StepContext }) {
     const [guideOpened, setGuideOpened] = useState(false);
     const [autoPost, setAutoPost] = useState(false);
     const [imported, setImported] = useState<number | null>(null);
+    const [balances, setBalances] = useState<OpeningBalance[]>([]);
 
     const reread = useCallback(() => {
         if (ctx.preview) return;
@@ -74,9 +76,13 @@ export function StepCapture({ ctx }: { ctx: StepContext }) {
     // Past messages: only offered once both notification access and SMS access are on (the button stays disabled until then).
     const bothOn = !!android?.notificationAccess && !!android?.smsPermission;
     const importPast = () => act(async () => {
-        if (ctx.preview) { setImported(3); return; }
+        if (ctx.preview) { setImported(3); setBalances([{ provider: 'MTN', name: 'MTN MoMo', found: true, balance: 245.5 }]); return; }
         if (!bothOn) return;
-        setImported(await importRecentMessages());
+        // Reads the newest 300 texts, waits for the money ones to reach MoneyWise, then sets each mobile money account
+        // from the newest balance its messages state (this replaces asking for accounts and balances on Android).
+        const r = await importFirstTime();
+        setImported(r.imported);
+        setBalances(r.balances);
     });
     const iphoneConnect = () => act(async () => {
         if (ctx.preview) { setPreviewOn(true); return; }
@@ -117,12 +123,26 @@ export function StepCapture({ ctx }: { ctx: StepContext }) {
                             body={!bothOn && imported === null
                                 ? 'Turn on the two steps above first, then you can bring in your past messages.'
                                 : imported === null
-                                ? `Reads your last ${RECENT_IMPORT_COUNT} texts for mobile money messages, so your history starts complete. Ones already captured are skipped.`
+                                ? `Reads your last ${FIRST_IMPORT_COUNT} texts for mobile money messages and sets your balances from the newest ones. This can take a minute.`
                                 : imported
                                     ? `Found ${imported} message${imported === 1 ? '' : 's'}. They’re waiting for you in Review captured.`
-                                    : `No mobile money messages in your last ${RECENT_IMPORT_COUNT} texts. New ones will arrive as they come in.`}
+                                    : `No mobile money messages in your last ${FIRST_IMPORT_COUNT} texts. New ones will arrive as they come in.`}
                             action="Import" onPress={importPast} busy={busy}
                         />
+                    )}
+                    {balances.length > 0 && (
+                        <View style={styles.balances}>
+                            <Text style={styles.itemTitle}>Your balances</Text>
+                            {balances.map((b) => (
+                                <View key={b.provider} style={styles.balanceRow}>
+                                    <Text style={styles.balanceName}>{b.name}</Text>
+                                    <Text style={b.found ? styles.balanceValue : styles.balanceMissing}>
+                                        {b.found ? formatKwacha(Number(b.balance)) : 'Not in your messages yet'}
+                                    </Text>
+                                </View>
+                            ))}
+                            <Text style={styles.itemBody}>From the newest message that states a balance. It updates by itself as new messages arrive.</Text>
+                        </View>
                     )}
                 </View>
             ) : (
@@ -174,4 +194,9 @@ const styles = StyleSheet.create({
     itemBtn: { minHeight: 38, paddingHorizontal: 14, borderRadius: radius.pill, backgroundColor: colors.blue, alignItems: 'center', justifyContent: 'center' },
     itemBtnText: { fontFamily: fonts.bodyBold, fontSize: 13, color: '#FFFFFF' },
     autoRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 16 },
+    balances: { padding: 14, borderRadius: radius.md, backgroundColor: '#F3F4F6', gap: 8 },
+    balanceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    balanceName: { fontFamily: fonts.body, fontSize: 14, color: colors.text },
+    balanceValue: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.text },
+    balanceMissing: { fontFamily: fonts.body, fontSize: 13, color: colors.textMuted },
 });

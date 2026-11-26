@@ -11,7 +11,7 @@ import { colors, fonts, radius } from '../../src/theme/tokens';
 import { useGoBack } from '../../src/hooks/useGoBack';
 import {
     getAndroidStatus, setAndroidSources, requestSmsPermission, openNotificationAccessSettings, openAppSettings,
-    importRecentMessages, RECENT_IMPORT_COUNT, installIosShortcut, openShortcutsApp, markIosShortcutSetUp, MOMO_SETTINGS_KEY,
+    importFirstTime, FIRST_IMPORT_COUNT, installIosShortcut, openShortcutsApp, markIosShortcutSetUp, MOMO_SETTINGS_KEY,
     iosIntentAvailable, connectIphone, getIosStatus, isIosShortcutSetUp,
 } from '../../src/lib/momoCapture';
 
@@ -124,15 +124,15 @@ function SmsFlow() {
 
     const runImport = async () => {
         setBusy(true);
-        try { setImported(await importRecentMessages()); setStep('done'); }
+        try { setImported((await importFirstTime()).imported); setStep('done'); }
         catch (e: any) { Alert.alert('Import failed', e.message); }
         finally { setBusy(false); }
     };
 
     if (step === 'import') return (
         <>
-            <Hero icon={<History size={28} color={colors.blue} />} title="Bring in past messages?" body={`MoneyWise can pick up the mobile money messages among your last ${RECENT_IMPORT_COUNT} texts. You review them before anything is booked, and payments already in MoneyWise are skipped.`} />
-            <PrimaryButton loading={busy} onPress={runImport}>{`Import last ${RECENT_IMPORT_COUNT} messages`}</PrimaryButton>
+            <Hero icon={<History size={28} color={colors.blue} />} title="Bring in past messages?" body={`MoneyWise can pick up the mobile money messages among your last ${FIRST_IMPORT_COUNT} texts. You review them before anything is booked, and payments already in MoneyWise are skipped.`} />
+            <PrimaryButton loading={busy} onPress={runImport}>{`Import last ${FIRST_IMPORT_COUNT} messages`}</PrimaryButton>
             <GhostButton onPress={() => setStep('done')}>Not now</GhostButton>
         </>
     );
@@ -141,7 +141,7 @@ function SmsFlow() {
             title="SMS capture is on"
             body={imported == null
                 ? 'New mobile money SMS will appear in Review captured as they arrive.'
-                : imported === 0 ? `No mobile money messages were found among your last ${RECENT_IMPORT_COUNT} texts. New ones will appear in Review captured as they arrive.`
+                : imported === 0 ? `No mobile money messages were found among your last ${FIRST_IMPORT_COUNT} texts. New ones will appear in Review captured as they arrive.`
                 : `${imported} past message${imported === 1 ? '' : 's'} sent for review. They’ll be in Review captured in a moment.`}
             onDone={back}
         />

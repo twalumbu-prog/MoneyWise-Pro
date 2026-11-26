@@ -210,10 +210,9 @@ const BalanceCard: React.FC<{ b: MomoBalanceCheck; busy: boolean; onAdjust: () =
                 </View>
             </View>
             <Text style={styles.raw}>
-                Your phone says {formatKwacha(Number(b.balance))}. MoneyWise has {formatKwacha(Number(b.ledger_balance ?? 0))}
-                {pending !== 0 ? `, plus ${formatKwacha(Math.abs(pending))} ${pending > 0 ? 'received' : 'spent'} that is waiting below` : ''}.
-                {diff > 0 ? ' A payment may be missing from MoneyWise.' : ' MoneyWise may have something the provider never charged.'}
-                {' '}Review any waiting messages first. Adjusting books the {formatKwacha(Math.abs(diff))} difference as {diff > 0 ? 'money in' : 'money out'}.
+                Your phone said {formatKwacha(Number(b.balance))}. With what you've recorded since, {PROVIDER[b.provider]} should hold {formatKwacha(Number(b.ledger_balance ?? 0) + diff)}; MoneyWise has {formatKwacha(Number(b.ledger_balance ?? 0))}.
+                {pending !== 0 ? ` ${formatKwacha(Math.abs(pending))} ${pending > 0 ? 'received' : 'spent'} since then is still waiting below and will change it when you record it.` : ''}
+                {' '}Adjusting sets the account to match. It isn't counted as income or spending.
             </Text>
             <View style={styles.actions}>
                 {busy ? <ActivityIndicator color={colors.blue} /> : (

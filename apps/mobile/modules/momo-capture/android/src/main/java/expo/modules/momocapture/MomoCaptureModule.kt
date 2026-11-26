@@ -79,19 +79,24 @@ class MomoCaptureModule : Module() {
             MomoCapture.flushAsync(context) { sent: Int -> promise.resolve(sent) }
         }
 
-        /** Queues matching inbox messages received since [sinceMs] (newest first, up to [max]); returns how many. */
+        /**
+         * Reads the newest [max] inbox texts received since [sinceMs] and queues the mobile money ones; returns how many
+         * were queued. [max] counts texts READ (so "the last 300 texts"), not money messages found.
+         */
         AsyncFunction("importSmsHistory") { sinceMs: Double, max: Int ->
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) {
                 throw Exceptions.MissingPermissions(Manifest.permission.READ_SMS)
             }
             var count = 0
+            var read = 0
             context.contentResolver.query(
                 Telephony.Sms.Inbox.CONTENT_URI,
                 arrayOf(Telephony.Sms.ADDRESS, Telephony.Sms.BODY, Telephony.Sms.DATE),
                 "${Telephony.Sms.DATE} >= ?", arrayOf(sinceMs.toLong().toString()),
                 "${Telephony.Sms.DATE} DESC",
             )?.use { c ->
-                while (c.moveToNext() && count < max) {
+                while (read < max && c.moveToNext()) {
+                    read++
                     val sender = c.getString(0)
                     val body = c.getString(1) ?: continue
                     if (MomoCapture.looksLikeMomo(context, sender, body, fromSms = true)) {

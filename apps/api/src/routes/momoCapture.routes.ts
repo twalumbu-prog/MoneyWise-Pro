@@ -68,6 +68,8 @@ router.delete('/token', handle('token', async (req) => { await momo.revokeToken(
 router.delete('/devices/:id', handle('device', async (req) => { await momo.removeDevice(req.user.id, req.params.id); return { ok: true }; }));
 router.get('/everything', handle('everything', (req) => momo.listEverything(req.user.id, req.user.organization_id, Number(req.query.limit))));
 router.get('/balances', handle('balances', (req) => momo.balances(req.user.id, req.user.organization_id)));
+// Android onboarding: set each mobile money account from the newest balance its own messages state.
+router.post('/opening-balances', handle('opening-balances', (req) => momo.openingBalancesFromMessages(req.user.id, req.user.organization_id)));
 router.get('/', handle('list', (req) => momo.list(req.user.id, req.user.organization_id, req.query.status)));
 router.post('/paste', handle('paste', (req) => momo.ingest({ userId: req.user.id, orgId: req.user.organization_id, source: 'PASTE', text: req.body?.text })));
 router.get('/activity', handle('activity', (req) => momo.listWithEntries(req.user.id, req.user.organization_id, req.query.status)));

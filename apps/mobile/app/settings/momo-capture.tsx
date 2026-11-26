@@ -9,7 +9,7 @@ import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 import {
     androidCaptureAvailable, iosCaptureAvailable, iosIntentAvailable, getIosStatus, getAndroidStatus, setAndroidSources, isIosShortcutSetUp, disconnectCapture,
-    importRecentMessages, requestSmsPermission, RECENT_IMPORT_COUNT, MOMO_SETTINGS_KEY, MOMO_CAPTURES_KEY,
+    importRecentMessages, importFirstTime, firstImportDone, requestSmsPermission, RECENT_IMPORT_COUNT, FIRST_IMPORT_COUNT, MOMO_SETTINGS_KEY, MOMO_CAPTURES_KEY,
 } from '../../src/lib/momoCapture';
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -74,6 +74,20 @@ export default function MomoCaptureSettingsScreen() {
             });
         } catch (e: any) { Alert.alert('Could not change capture', e.message); }
         refreshDevice();
+        // The first time SMS capture goes on: bring in the newest 300 texts and set balances from them.
+        if (source === 'sms' && on && !(await firstImportDone())) {
+            try {
+                const r = await importFirstTime();
+                const set = r.balances.filter((b) => b.found);
+                Alert.alert('Past messages imported',
+                    `Found ${r.imported} mobile money message(s) in your last ${FIRST_IMPORT_COUNT} texts. They're waiting in Review captured.`
+                    + (set.length ? `
+
+Balances set from your newest messages: ${set.map((b) => `${b.name} K${Number(b.balance).toFixed(2)}`).join(', ')}.` : ''));
+                void qc.invalidateQueries({ queryKey: MOMO_CAPTURES_KEY });
+            } catch (e: any) { Alert.alert('Could not import past messages', e.message); }
+            refreshDevice();
+        }
     };
 
     const reimport = useMutation({

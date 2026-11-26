@@ -128,7 +128,7 @@ export type { CashbookEntry, CashbookSummary } from './services/cashbook.service
 export { PL_SECTIONS, onboardingService, personalOnboardingService, PersonalStepError } from './services/onboarding.service';
 export type { PersonalOnboardingState, PersonalMoney, PersonalAccount, PersonalHolding, HoldingKind, MoneyProviderType, GmailFindings } from './services/onboarding.service';
 export {
-    PERSONAL_STEPS, PERSONAL_STEP_KEYS, PERSONAL_CHAPTERS, personalStepDef, builtPersonalSteps, firstOpenPersonalStep,
+    PERSONAL_STEPS, PERSONAL_STEP_KEYS, PERSONAL_CHAPTERS, personalStepDef, builtPersonalSteps, hidePersonalSteps, firstOpenPersonalStep,
     personalRequiredDone, personalChecklist, personalProgress, PERSONAL_INTENTS, zambianNetwork, zambianMobileDigits,
     BILL_SUGGESTIONS, BILL_CADENCE_LABEL, billMonthly, nextBillDue,
 } from './onboarding/personalSteps';

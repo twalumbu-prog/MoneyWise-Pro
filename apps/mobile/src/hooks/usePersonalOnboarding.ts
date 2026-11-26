@@ -1,7 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import { personalOnboardingService, personalChecklist } from 'core';
+import { personalOnboardingService, personalChecklist, hidePersonalSteps } from 'core';
 import { useAuth } from '../context/AuthContext';
 import { usePersonalAccount } from './usePersonalAccount';
+import { androidCaptureAvailable, smsReadingInBuild } from '../lib/momoCapture';
+
+// Android phones that can read SMS skip "Where do you keep your money?": the capture step's first import sets each
+// mobile money account and its balance from the person's own messages. (The wizard imports this file too.)
+if (androidCaptureAvailable && smsReadingInBuild) hidePersonalSteps(['accounts']);
 
 export const PERSONAL_ONBOARDING_QUERY_KEY = ['personal-onboarding-state'];
 
