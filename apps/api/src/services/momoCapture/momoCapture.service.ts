@@ -468,6 +468,30 @@ export function testParse(text: unknown) {
     return diagnoseMessage(t, null);
 }
 
+/**
+ * Makes sure the external account has its own ASSET account in the chart, so what is booked to it is posted there (and
+ * shows in Reports) rather than falling into "Uncategorised Asset". Safe to call every time.
+ */
+async function ensureWalletAssetAccount(orgId: string, wallet: { id: string; name: string; provider_type?: string | null }) {
+    const { data: ew } = await supabase.from('external_wallets').select('qb_account_id').eq('id', wallet.id).maybeSingle();
+    if (ew?.qb_account_id && /^[0-9a-f-]{36}$/i.test(ew.qb_account_id)) {
+        const { data: linked } = await supabase.from('accounts').select('id').eq('organization_id', orgId).eq('type', 'ASSET').eq('id', ew.qb_account_id).maybeSingle();
+        if (linked) return linked.id as string;
+    }
+    const { data: byName } = await supabase.from('accounts').select('id').eq('organization_id', orgId).eq('type', 'ASSET').ilike('name', wallet.name).limit(1).maybeSingle();
+    let id = byName?.id as string | undefined;
+    if (!id) {
+        const { data: made, error } = await supabase.from('accounts').insert({
+            organization_id: orgId, code: `EXT-${wallet.id.slice(0, 8).toUpperCase()}`, name: wallet.name, type: 'ASSET',
+            subtype: wallet.provider_type === 'BANK' ? 'Bank' : 'Other Asset', is_active: true, description: `Money in ${wallet.name}`,
+        }).select('id').single();
+        if (error || !made) throw new MomoCaptureError(`Could not create the ${wallet.name} account in the chart: ${error?.message}`, 500);
+        id = made.id as string;
+    }
+    await supabase.from('external_wallets').update({ qb_account_id: id }).eq('id', wallet.id);
+    return id;
+}
+
 async function walletFor(orgId: string, provider: MomoProvider, destination: string) {
     if (destination === 'CASH') return ensureCashWallet(orgId);
     const name = PROVIDER_WALLET[provider];
@@ -506,6 +530,7 @@ export async function post(userId: string, orgId: string, id: string, overrides:
         const wallet = chosenWalletId
             ? ((await listExternalWallets(orgId)).find((w) => w.id === chosenWalletId) ?? (() => { throw new MomoCaptureError('That account no longer exists. Choose another.', 400); })())
             : await walletFor(orgId, claimed.provider, settings.destination);
+        await ensureWalletAssetAccount(orgId, wallet);
         const direction = overrides.direction === 'IN' || overrides.direction === 'OUT' ? overrides.direction : claimed.direction;
         const amount = Number(overrides.amount) > 0 ? Number(overrides.amount) : Number(claimed.amount);
         const description = typeof overrides.description === 'string' && overrides.description.trim().length >= 2
@@ -521,7 +546,7 @@ export async function post(userId: string, orgId: string, id: string, overrides:
             if (key) accountId = (await categorySuggestions(userId, orgId).catch(() => null))?.byContact.get(key) ?? null;
         }
 
-        const entry = await recordManualEntry({ orgId, userId, direction, amount, description, date, externalWalletId: wallet.id, accountId, context: claimed.note ?? null });
+        const entry = await recordManualEntry({ orgId, userId, direction, amount, description, date, externalWalletId: wallet.id, accountId, context: claimed.note ?? null, anyAccount: true });
         // From here the movement is in the ledger, so nothing below may send the capture back to PENDING (the catch
         // would, and a second tap would then book it twice).
         const { data: done } = await supabase.from('momo_captures')
@@ -529,7 +554,7 @@ export async function post(userId: string, orgId: string, id: string, overrides:
         // The operator's charge leaves the same wallet, so it's booked beside the movement it belongs to.
         if (fee > 0) {
             try {
-                await recordManualEntry({ orgId, userId, direction: 'OUT', amount: fee, description: `${description} · fee`, date, externalWalletId: wallet.id, accountId: typeof overrides.feeAccountId === 'string' && overrides.feeAccountId ? overrides.feeAccountId : null });
+                await recordManualEntry({ orgId, userId, direction: 'OUT', amount: fee, description: `${description} · fee`, date, externalWalletId: wallet.id, accountId: typeof overrides.feeAccountId === 'string' && overrides.feeAccountId ? overrides.feeAccountId : null, anyAccount: true });
             } catch (e: any) {
                 console.error(`[MoMo capture] fee of ${fee} for capture ${id} was not booked:`, e.message);
             }
@@ -868,12 +893,14 @@ export async function moveIgnoredToCaptured(userId: string, orgId: string, id: s
 export async function accountingOptions(_userId: string, orgId: string) {
     const [wallets, { data: accts }] = await Promise.all([
         listExternalWallets(orgId),
-        supabase.from('accounts').select('id, code, name, type').eq('organization_id', orgId).eq('is_active', true).in('type', ['INCOME', 'EXPENSE']).order('name'),
+        supabase.from('accounts').select('id, code, name, type').eq('organization_id', orgId).eq('is_active', true).order('name'),
     ]);
     const pick = (t: string) => (accts ?? []).filter((a: any) => a.type === t).map((a: any) => ({ id: a.id as string, code: (a.code as string | null) ?? null, name: a.name as string, emoji: null as string | null }));
     return {
         wallets: wallets.map((w) => ({ id: w.id, name: w.name, providerType: w.provider_type, provider: providerOfWallet(w) })),
         income: pick('INCOME'), expense: pick('EXPENSE'),
+        // The whole chart, for the debit / credit pickers in the review.
+        accounts: (accts ?? []).map((a: any) => ({ id: a.id as string, code: (a.code as string | null) ?? null, name: a.name as string, type: a.type as string })),
     };
 }
 
@@ -922,10 +949,13 @@ export async function previewPosting(userId: string, orgId: string, id: string, 
     const description = note ? `${baseDescription} · ${note}`.slice(0, 300) : baseDescription;
 
     const categories = await categoriesFor(orgId, direction);
+    const chart = (await supabase.from('accounts').select('id, code, name, type').eq('organization_id', orgId).eq('is_active', true)).data ?? [];
     const lookup = async (accountId: unknown, dir: 'IN' | 'OUT', desc: string, amt: number, list: any[]) => {
         if (typeof accountId === 'string' && accountId) {
-            const a = list.find((x: any) => x.id === accountId);
-            if (!a) throw new MomoCaptureError('That category does not fit this kind of entry', 400);
+            // Any account in the chart may be chosen (a manual double entry), not only an income / expense category.
+            const a = chart.find((x: any) => x.id === accountId);
+            if (!a) throw new MomoCaptureError('That account does not exist or is switched off', 400);
+            if (assetAcct && a.id === assetAcct.id) throw new MomoCaptureError('The debit and credit can\'t be the same account', 400);
             return { account: a, source: 'USER' as const, reasoning: null as string | null, confidence: null as number | null };
         }
         const sug = await suggestCategory(orgId, dir, desc, amt);
@@ -933,7 +963,7 @@ export async function previewPosting(userId: string, orgId: string, id: string, 
     };
     const main = await lookup(input.accountId, direction, description, amount, categories);
     const catLine = main.account
-        ? { accountId: main.account.id as string, code: (main.account.code as string | null) ?? null, name: main.account.name as string, type: (direction === 'IN' ? 'INCOME' : 'EXPENSE') as 'INCOME' | 'EXPENSE', suspense: false }
+        ? { accountId: main.account.id as string, code: (main.account.code as string | null) ?? null, name: main.account.name as string, type: String(main.account.type ?? (direction === 'IN' ? 'INCOME' : 'EXPENSE')), suspense: false }
         : { accountId: null as string | null, code: null as string | null, name: 'Suspense (not categorised yet)', type: 'SUSPENSE' as const, suspense: true };
 
     const lines: { role: string; accountId: string | null; code: string | null; name: string; type: string; debit: number; credit: number; note: string | null }[] = [];
@@ -947,7 +977,7 @@ export async function previewPosting(userId: string, orgId: string, id: string, 
         const expense = await categoriesFor(orgId, 'OUT');
         const f = await lookup(input.feeAccountId, 'OUT', `${description} · fee`, fee, expense);
         feeInfo = { source: f.source, reasoning: f.reasoning, confidence: f.confidence, accountId: f.account?.id ?? null };
-        lines.push({ role: 'FEE_CATEGORY', accountId: f.account?.id ?? null, code: f.account?.code ?? null, name: f.account?.name ?? 'Suspense (not categorised yet)', type: f.account ? 'EXPENSE' : 'SUSPENSE', debit: fee, credit: 0, note: 'Operator fee' });
+        lines.push({ role: 'FEE_CATEGORY', accountId: f.account?.id ?? null, code: f.account?.code ?? null, name: f.account?.name ?? 'Suspense (not categorised yet)', type: f.account ? String(f.account.type ?? 'EXPENSE') : 'SUSPENSE', debit: fee, credit: 0, note: 'Operator fee' });
         asset(0, fee, 'FEE_MONEY', 'Operator fee paid from the same account');
     }
     const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -974,5 +1004,6 @@ export async function createAccount(_userId: string, orgId: string, nameIn: unkn
     if (existing) return { id: existing.id, name: existing.name, providerType: existing.provider_type, provider: providerOfWallet(existing), existed: true };
     const { data, error } = await supabase.from('external_wallets').insert({ organization_id: orgId, name, provider_type: providerType, provider_name: null }).select('id, name, provider_type, provider_name').single();
     if (error || !data) throw new MomoCaptureError(`Could not add the account: ${error?.message}`, 500);
+    await ensureWalletAssetAccount(orgId, { id: data.id as string, name: data.name as string, provider_type: data.provider_type as string });
     return { id: data.id as string, name: data.name as string, providerType: data.provider_type as string, provider: providerOfWallet(data as any), existed: false };
 }

@@ -241,8 +241,8 @@ interface Opt { value: string; label: string }
  * A text box with a dropdown. Pick a suggestion or type your own. With `strict` the typed text must match one of the
  * options (provider, direction) and snaps back to the chosen one otherwise.
  */
-const Combo: React.FC<{ label: string; value: string; onChange: (v: string) => void; options: Opt[]; strict?: boolean; placeholder?: string; disabled?: boolean; numeric?: boolean; onCreate?: (text: string) => void }> =
-({ label, value, onChange, options, strict, placeholder, disabled, numeric, onCreate }) => {
+const Combo: React.FC<{ label: string; value: string; onChange: (v: string) => void; options: Opt[]; strict?: boolean; placeholder?: string; disabled?: boolean; numeric?: boolean; onCreate?: (text: string) => void; hideLabel?: boolean }> =
+({ label, value, onChange, options, strict, placeholder, disabled, numeric, onCreate, hideLabel }) => {
     const labelFor = (v: string) => options.find((o) => o.value === v)?.label ?? v;
     const [text, setText] = useState(strict ? labelFor(value) : value);
     const [open, setOpen] = useState(false);
@@ -260,7 +260,7 @@ const Combo: React.FC<{ label: string; value: string; onChange: (v: string) => v
     const shown = filtering && text.trim() ? options.filter((o) => o.label.toLowerCase().includes(text.trim().toLowerCase())) : options;
     return (
         <div ref={box} className="relative">
-            <p className="text-[11px] uppercase tracking-wide text-gray-400 mb-0.5">{label}</p>
+            {!hideLabel && <p className="text-[11px] uppercase tracking-wide text-gray-400 mb-0.5">{label}</p>}
             <div className="flex">
                 <input value={text} disabled={disabled} placeholder={placeholder ?? '—'} inputMode={numeric ? 'decimal' : undefined}
                     onFocus={() => setOpen(true)}
@@ -434,8 +434,10 @@ const ReviewDialog: React.FC<{ c: MomoCaptureActivity; opts: MomoAccountingOptio
         // eslint-disable-next-line
     }, [walletId, direction, amount, fee, date, description, catId, feeCatId]);
 
-    const cats = (direction === 'IN' ? opts.income : opts.expense).map((a) => ({ value: a.id, label: `${a.code ? a.code + ' · ' : ''}${a.name}` }));
-    const feeCats = opts.expense.map((a) => ({ value: a.id, label: `${a.code ? a.code + ' · ' : ''}${a.name}` }));
+    // Any account in the chart can sit on the debit or credit side. Income and expense first (the usual choice), then the rest.
+    const TYPE_ORDER: Record<string, number> = { EXPENSE: 0, INCOME: 1, ASSET: 2, LIABILITY: 3, EQUITY: 4 };
+    const chartOpts = [...opts.accounts].sort((a, b) => (TYPE_ORDER[a.type] ?? 9) - (TYPE_ORDER[b.type] ?? 9) || a.name.localeCompare(b.name))
+        .map((a) => ({ value: a.id, label: `${a.code ? a.code + ' · ' : ''}${a.name} — ${a.type.charAt(0) + a.type.slice(1).toLowerCase()}` }));
     const post = async () => {
         setPosting(true); setError(null);
         try {
@@ -453,23 +455,19 @@ const ReviewDialog: React.FC<{ c: MomoCaptureActivity; opts: MomoAccountingOptio
             <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[92vh] overflow-auto p-5 space-y-4">
                 <div>
                     <h4 className="text-base font-bold text-brand-navy">Review &amp; book</h4>
-                    <p className="text-xs text-gray-500">This is the double entry that will be posted. Change anything that's wrong, then post it. Nothing is booked until you press Post.</p>
+                    <p className="text-xs text-gray-500">This is the double entry that will be posted. Pick the account on the debit and the credit side (type to search), fix anything that's wrong, then post it. Nothing is booked until you press Post.</p>
                 </div>
                 <p className="text-xs text-gray-600 bg-gray-50 rounded-lg p-3 break-words">{c.raw_text}</p>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <Combo label="Account" strict value={account} onChange={setAccount} options={accountOptions(opts)} onCreate={async (name) => { const id = await onCreateAccount(name); if (id) setAccount(id); }} />
-                    <Combo label="Direction" strict value={direction} onChange={(v) => { setDirection(v); setCategory(''); setAiCategory(''); }} options={DIRECTION_OPTS} />
+                    <Combo label="Direction" strict value={direction} onChange={(v) => { setDirection(v); setCategory(''); setAiCategory(''); setFeeCategory(''); setAiFeeCategory(''); }} options={DIRECTION_OPTS} />
                     <Combo label="Amount" numeric value={amount} onChange={setAmount} options={[]} />
                     <div>
                         <p className="text-[11px] uppercase tracking-wide text-gray-400 mb-0.5">Date</p>
                         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full text-sm border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-brand-navy/30" />
                     </div>
-                    <div className="col-span-2">
-                        <Combo label={direction === 'IN' ? 'Income category' : 'Expense category'} strict value={catId} onChange={setCategory} options={cats} placeholder="Let the AI decide" />
-                    </div>
                     <Combo label="Fee" numeric value={fee} onChange={(v) => { setFee(v); if (!v.trim()) { setFeeCategory(''); setAiFeeCategory(''); } }} options={[]} />
-                    {fee.trim() && Number(fee.replace(/,/g, '')) > 0 && <Combo label="Fee category" strict value={feeCatId} onChange={setFeeCategory} options={feeCats} placeholder="Let the AI decide" />}
                 </div>
                 <div>
                     <p className="text-[11px] uppercase tracking-wide text-gray-400 mb-0.5">Description in the ledger</p>
@@ -478,8 +476,8 @@ const ReviewDialog: React.FC<{ c: MomoCaptureActivity; opts: MomoAccountingOptio
                     {preview?.note && <p className="text-xs text-gray-500 mt-1">Your note “{preview.note}” is added to the description and given to the AI.</p>}
                 </div>
 
-                <div className="border border-gray-200 rounded-xl overflow-hidden">
-                    <div className="flex items-center justify-between px-3 py-2 bg-gray-50 text-xs font-semibold text-gray-600">
+                <div className="border border-gray-200 rounded-xl">
+                    <div className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-t-xl text-xs font-semibold text-gray-600">
                         <span>Accounting entry · {preview?.date ?? date}</span>
                         <span>{loading ? 'Updating…' : preview ? (preview.totals.balanced ? '✓ Balanced' : '⚠ Not balanced') : ''}</span>
                     </div>
@@ -489,7 +487,13 @@ const ReviewDialog: React.FC<{ c: MomoCaptureActivity; opts: MomoAccountingOptio
                             {preview?.lines.map((l, i) => (
                                 <tr key={i} className="border-t border-gray-100 align-top">
                                     <td className={`px-3 py-2 ${l.credit > 0 ? 'pl-8' : ''}`}>
-                                        <p className={`text-gray-900 ${l.type === 'SUSPENSE' ? 'text-amber-700' : ''}`}>{l.code ? `${l.code} · ` : ''}{l.name} <span className="text-[10px] text-gray-400 uppercase">{l.type === 'SUSPENSE' ? '' : l.type.toLowerCase()}</span></p>
+                                        {l.role === 'MONEY' || l.role === 'FEE_MONEY' ? (
+                                            <Combo label="Account" hideLabel strict value={account} onChange={setAccount} options={accountOptions(opts)} disabled={l.role === 'FEE_MONEY'}
+                                                onCreate={async (name) => { const id = await onCreateAccount(name); if (id) setAccount(id); }} />
+                                        ) : (
+                                            <Combo label={l.debit > 0 ? 'Debit account' : 'Credit account'} hideLabel strict value={l.role === 'FEE_CATEGORY' ? feeCatId : catId}
+                                                onChange={l.role === 'FEE_CATEGORY' ? setFeeCategory : setCategory} options={chartOpts} placeholder="Choose an account (type to search)" />
+                                        )}
                                         {l.note && <p className="text-xs text-gray-500">{l.note}</p>}
                                     </td>
                                     <td className="px-3 py-2 text-right tabular-nums">{kwacha(l.debit)}</td>

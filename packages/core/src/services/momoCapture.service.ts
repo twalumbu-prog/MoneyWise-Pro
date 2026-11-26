@@ -21,6 +21,8 @@ export interface MomoAccountingOptions {
     wallets: { id: string; name: string; providerType: string; provider: 'MTN' | 'AIRTEL' | 'ZAMTEL' | 'OTHER' }[];
     income: { id: string; code: string | null; name: string; emoji: string | null }[];
     expense: { id: string; code: string | null; name: string; emoji: string | null }[];
+    /** The whole chart of accounts, for the debit / credit pickers. */
+    accounts: { id: string; code: string | null; name: string; type: string }[];
 }
 export interface MomoPostingLine { role: string; accountId: string | null; code: string | null; name: string; type: string; debit: number; credit: number; note: string | null }
 export interface MomoPostingPreview {
