@@ -112,6 +112,29 @@ export const registerUser = async (req: any, res: any): Promise<any> => {
                 return res.status(401).json({ error: 'Invalid password for the existing account' });
             }
             userId = authSession.user.id;
+
+            // "Sign up" again with an email that already has an account: a person gets ONE personal workspace. If they
+            // already have one, this is really a sign-in, so hand back that workspace instead of creating "… Workspace 2".
+            // (A new MoneyWise Pro business account for an existing person is still allowed below.)
+            if (isPersonalSignup(accountType, organizationName)) {
+                const { data: memberships } = await supabase
+                    .from('user_organizations')
+                    .select('organization_id, organization:organizations(id, is_personal, created_at)')
+                    .eq('user_id', userId).eq('status', 'ACTIVE');
+                const personal = (memberships || [])
+                    .map((m: any) => (Array.isArray(m.organization) ? m.organization[0] : m.organization))
+                    .filter((o: any) => o?.is_personal === true)
+                    .sort((a: any, b: any) => String(a.created_at).localeCompare(String(b.created_at)))[0];
+                if (personal) {
+                    return res.status(200).json({
+                        message: 'You already have a MoneyWise Personal account. Signing you in.',
+                        userId,
+                        organizationId: personal.id,
+                        existing: true,
+                        onboarding: false,
+                    });
+                }
+            }
         } else {
             // Create user in Supabase Auth with password
             const { data: authData, error: authError } = await (supabase.auth as any).admin.createUser({
