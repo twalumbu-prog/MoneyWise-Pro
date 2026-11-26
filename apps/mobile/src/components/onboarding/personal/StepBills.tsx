@@ -61,7 +61,12 @@ export function StepBills({ ctx }: { ctx: StepContext }) {
             continueLabel={ctx.single ? 'Done' : 'Continue'}
             stickyAbove={(
                 <View style={styles.sticky}>
-                    <Text style={m.totalLabel}>About a month</Text>
+                    <View style={{ flex: 1, paddingRight: 12 }}>
+                        <Text style={m.totalLabel}>Total a month</Text>
+                        {(bills ?? []).some((b) => asCadence(b.cadence) !== 'MONTHLY') && (
+                            <Text style={styles.stickyNote}>A weekly bill counts about 4⅓ times a month</Text>
+                        )}
+                    </View>
                     <Text style={m.totalValue}>{fmtK(monthly)}</Text>
                 </View>
             )}
@@ -81,6 +86,9 @@ export function StepBills({ ctx }: { ctx: StepContext }) {
                             <View style={{ flex: 1 }}>
                                 <Text style={m.rowName}>{b.title}</Text>
                                 <Text style={styles.sub}>{BILL_CADENCE_LABEL[asCadence(b.cadence)]} · next {short(b.next_due_date.slice(0, 10))}</Text>
+                                {asCadence(b.cadence) !== 'MONTHLY' && (
+                                    <Text style={styles.sub}>≈ {fmtK(billMonthly(Number(b.amount), asCadence(b.cadence)))} a month</Text>
+                                )}
                             </View>
                             <Text style={m.rowAmount}>{fmtK(Number(b.amount))}</Text>
                             <ChevronRight size={18} color={colors.textFaint} />
@@ -211,6 +219,7 @@ const styles = StyleSheet.create({
     sub: { fontFamily: fonts.body, fontSize: 12, color: colors.textMuted, marginTop: 2 },
     add: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 52, marginTop: 14, borderRadius: radius.pill, backgroundColor: '#EAF1FF' },
     sticky: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 14, borderTopWidth: 1, borderColor: colors.border, backgroundColor: colors.canvas },
+    stickyNote: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint, marginTop: 2 },
     addText: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.blue },
     note: { fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: colors.textFaint, marginTop: 18 },
     label: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.textMuted, marginBottom: 8 },

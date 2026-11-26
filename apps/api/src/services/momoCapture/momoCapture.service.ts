@@ -762,8 +762,14 @@ export async function openingBalancesFromMessages(userId: string, orgId: string)
         const balance = round2(Number(useCheck ? fromCheck!.balance : fromCapture!.balance_after));
         const asOf = new Date(useCheck ? fromCheck!.observed_at : fromCapture!.occurred_at).toISOString();
 
+        // Claim the reading: only the request that turns it into an accepted reading books the balance. Two runs at once
+        // (a second tap while the first was still waiting) each used to book the whole opening balance, doubling the
+        // account. A reading that is already accepted has already been booked, so a later run books nothing.
+        let claimed = false;
         if (useCheck) {
-            await supabase.from('momo_balance_checks').update({ status: 'ADJUSTED', updated_at: new Date().toISOString() }).eq('id', fromCheck!.id);
+            const { data: won } = await supabase.from('momo_balance_checks').update({ status: 'ADJUSTED', updated_at: new Date().toISOString() })
+                .eq('id', fromCheck!.id).neq('status', 'ADJUSTED').select('id').maybeSingle();
+            claimed = !!won;
         } else {
             const key = balanceDedupeKey(provider, balance, asOf);
             const ins = await supabase.from('momo_balance_checks').insert({
@@ -772,17 +778,20 @@ export async function openingBalancesFromMessages(userId: string, orgId: string)
                 dedupe_key: key, status: 'ADJUSTED',
             });
             if (ins.error && ins.error.code === '23505') {
-                await supabase.from('momo_balance_checks').update({ status: 'ADJUSTED', updated_at: new Date().toISOString() })
-                    .eq('organization_id', orgId).eq('dedupe_key', key);
+                const { data: won } = await supabase.from('momo_balance_checks').update({ status: 'ADJUSTED', updated_at: new Date().toISOString() })
+                    .eq('organization_id', orgId).eq('dedupe_key', key).neq('status', 'ADJUSTED').select('id');
+                claimed = (won ?? []).length > 0;
             } else if (ins.error) {
                 throw new MomoCaptureError(`Could not save the balance: ${ins.error.message}`, 500);
+            } else {
+                claimed = true;
             }
         }
         // Older readings still waiting for a decision have nothing left to say.
         await supabase.from('momo_balance_checks').update({ status: 'SUPERSEDED', updated_at: new Date().toISOString() })
             .eq('organization_id', orgId).eq('provider', provider).eq('status', 'OPEN').lte('observed_at', asOf);
         await walletFor(orgId, provider, 'PROVIDER');
-        await syncToLatestBalance(orgId, userId, provider, 'PROVIDER');
+        if (claimed) await syncToLatestBalance(orgId, userId, provider, 'PROVIDER');
         out.push({ provider, name: PROVIDER_WALLET[provider], found: true, balance, asOf });
     }
     return out;

@@ -239,11 +239,29 @@ export interface OpeningBalance { provider: 'MTN' | 'AIRTEL' | 'ZAMTEL'; name: s
  * Later catch-ups use importRecentMessages (100). Balances are best effort: if the server can't set them, the import
  * still counts.
  */
-export async function importFirstTime(): Promise<{ imported: number; balances: OpeningBalance[] }> {
+/** Longest the first import waits for the phone to finish sending before it reads the balances anyway. */
+const FIRST_IMPORT_WAIT_MS = 75_000;
+let firstImportRun: Promise<{ imported: number; balances: OpeningBalance[] }> | null = null;
+
+/**
+ * One run at a time, app-wide: a second tap, the screen opened again, or Settings while it runs all share the same
+ * run instead of starting another (two runs at once each set the opening balance, which doubled it).
+ */
+export function importFirstTime(): Promise<{ imported: number; balances: OpeningBalance[] }> {
+    if (!firstImportRun) firstImportRun = runFirstImport().finally(() => { firstImportRun = null; });
+    return firstImportRun;
+}
+
+async function runFirstImport(): Promise<{ imported: number; balances: OpeningBalance[] }> {
     const imported = await importRecentMessages(FIRST_IMPORT_COUNT);
     try { await cacheStore.set(FIRST_IMPORT_KEY, '1'); } catch { /* asks again next time: harmless */ }
-    // The phone sends queued messages one by one in the background; wait for them before reading balances.
-    try { await native?.flush(); } catch { /* whatever is left is retried later */ }
+    // The phone sends queued messages one by one in the background; wait for them before reading balances, but not
+    // forever (on a slow connection the button kept spinning): whatever is still queued keeps sending by itself.
+    if (imported > 0) {
+        try {
+            await Promise.race([native?.flush(), new Promise((resolve) => setTimeout(resolve, FIRST_IMPORT_WAIT_MS))]);
+        } catch { /* whatever is left is retried later */ }
+    }
     let balances: OpeningBalance[] = [];
     try { balances = await momoCaptureService.openingBalances(); } catch (e) { console.warn('[MoMo capture] opening balances failed:', e); }
     return { imported, balances };
