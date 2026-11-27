@@ -114,6 +114,8 @@ if (!PERSONAL_TEAM_BUILD) {
 const config: ExpoConfig = {
     name: 'MoneyWise Pro',
     slug: 'moneywise-pro',
+    // The Expo project (d844c494) lives in this team; it holds the Play Store signing key.
+    owner: 'kevon101s-team',
     // 0.2.0: adds a native module (expo-local-authentication). runtimeVersion follows this, so OTA updates for 0.1.x binaries stop here.
     // 0.3.0: adds the local momo-capture native module (SMS receiver + notification listener).
     // 0.5.0: adds @shopify/react-native-skia (the Grow chart draws on the GPU). Native, so 0.4.0 binaries never get it.
