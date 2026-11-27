@@ -162,7 +162,7 @@ export type { RewardCard, RewardsOverview, RewardDetail, RewardPointEntry, Rewar
 export { captureService } from './services/capture.service';
 export type { CaptureRow, CaptureDetail, CaptureConversation, CaptureSettings, CaptureStatus, CustomerCapture } from './services/capture.service';
 export { momoCaptureService } from './services/momoCapture.service';
-export type { MomoBalance, MomoBalanceCheck, MomoCaptureActivity, MomoDiagnosis, MomoIgnoredMessage, MomoCapture, MomoCaptureDevice, MomoCaptureFields, MomoEverythingItem, MomoCaptureSettings, MomoCaptureSource, MomoCaptureStatus } from './services/momoCapture.service';
+export type { MomoBalance, MomoBalanceCheck, MomoCaptureActivity, MomoDiagnosis, MomoIgnoredMessage, MomoCapture, MomoAccountingOptions, MomoCaptureDevice, MomoCaptureFields, MomoPostingInput, MomoPostingLine, MomoPostingPreview, MomoEverythingItem, MomoCaptureSettings, MomoCaptureSource, MomoCaptureStatus } from './services/momoCapture.service';
 export type {
     SavingsKind, SavingsFrequency, SavingsItem, SavingsOverview, SavingsDetail, SavingsMember, SavingsContribution, SavingsMemberSummary,
     SavingsInvitePreview, SavingsPerson,

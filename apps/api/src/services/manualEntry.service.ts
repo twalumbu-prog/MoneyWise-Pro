@@ -74,6 +74,8 @@ export interface ManualEntryInput {
     externalWalletId: string; accountId?: string | null;
     /** false = book it uncategorised rather than asking the AI (the Assistant always passes the category it showed). */
     autoCategorize?: boolean;
+    /** true = the chosen account may be any active account in the chart (a manual double entry), not only an income/expense category. */
+    anyAccount?: boolean;
     /** Caller-supplied idempotency reference (transaction capture); defaults to a fresh MANUAL-… reference. */
     externalReference?: string;
     /** The person's own note about this transaction. Sent to the AI categoriser with the description, and kept on the entry. */
@@ -117,8 +119,10 @@ export async function recordManualEntry(p: ManualEntryInput) {
     let reasoning: string | null = null;
     let confidence: number | null = null;
     if (p.accountId) {
-        chosen = (await categoriesFor(p.orgId, p.direction)).find((a: any) => a.id === p.accountId) || null;
-        if (!chosen) throw new ManualEntryError('That category is not valid for this kind of entry');
+        chosen = p.anyAccount
+            ? ((await supabase.from('accounts').select('*').eq('organization_id', p.orgId).eq('is_active', true).eq('id', p.accountId).maybeSingle()).data || null)
+            : (await categoriesFor(p.orgId, p.direction)).find((a: any) => a.id === p.accountId) || null;
+        if (!chosen) throw new ManualEntryError(p.anyAccount ? 'That account does not exist or is switched off' : 'That category is not valid for this kind of entry');
         source = 'USER';
     } else if (p.autoCategorize !== false) {
         const s = await suggestCategory(p.orgId, p.direction, details, value);
