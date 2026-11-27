@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { findWalletAssetAccountId, ensureWalletAssetAccount } from './walletAccount.service';
 
 /**
  * Double-Entry General Ledger posting engine.
@@ -322,34 +323,21 @@ async function resolveCashAccountInner(ce: CashbookRow, create = true): Promise<
     if (ce.account_type && ce.account_type.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)) {
         const { data: extWallet } = await supabase
             .from('external_wallets')
-            .select('name, qb_account_id')
+            .select('id, name, qb_account_id, provider_type')
             .eq('id', ce.account_type)
             .maybeSingle();
 
         if (extWallet) {
-            // external_wallets.qb_account_id is often the linked account's own UUID (set from the app's account picker), not a
-            // QuickBooks number. Matching only by name / QB number missed those wallets, so their journals fell through to the
-            // QB-1 fallback (and, before it was type-checked, landed in Twalumbu's "Bus Fares" income account).
-            if (extWallet.qb_account_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(extWallet.qb_account_id)) {
-                const { data: linked } = await supabase
-                    .from('accounts')
-                    .select('id')
-                    .eq('organization_id', orgId)
-                    .eq('type', 'ASSET')
-                    .eq('id', extWallet.qb_account_id)
-                    .maybeSingle();
-                if (linked) return linked.id;
+            // The wallet's own asset account: its link (a UUID set from the app's account picker, or a QuickBooks number)
+            // or one of the same name. A wallet that has none gets one made here, so what is booked to it is posted to it
+            // (and shows in Net worth) instead of falling through to Uncategorised Asset / QB-1 (which once landed in
+            // Twalumbu's "Bus Fares" income account).
+            const found = await findWalletAssetAccountId(orgId, extWallet as any);
+            if (found) return found;
+            if (create) {
+                try { return await ensureWalletAssetAccount(orgId, extWallet as any); }
+                catch (e: any) { console.error(`[Ledger] could not create an account for wallet ${extWallet.name}:`, e.message); }
             }
-            let q = supabase
-                .from('accounts')
-                .select('id')
-                .eq('organization_id', orgId)
-                .eq('type', 'ASSET');
-            q = extWallet.qb_account_id
-                ? q.or(`name.eq.${extWallet.name},qb_account_id.eq.${extWallet.qb_account_id}`)
-                : q.eq('name', extWallet.name);
-            const { data: assetAcct } = await q.limit(1).maybeSingle();
-            if (assetAcct) return assetAcct.id;
         }
     }
 

@@ -6,6 +6,7 @@
 import { supabase } from '../lib/supabase';
 import { cashbookService } from './cashbook.service';
 import { decisionRouter } from './ai/decision.router';
+import { ensureWalletAssetAccount } from './walletAccount.service';
 
 export class ManualEntryError extends Error {
     constructor(message: string, public httpStatus = 400) { super(message); }
@@ -45,6 +46,7 @@ export async function ensureCashWallet(orgId: string): Promise<ExternalWallet> {
         if (again) return again;
         throw new ManualEntryError(`Could not create a Cash account: ${error?.message}`, 500);
     }
+    await ensureWalletAssetAccount(orgId, data as any).catch((e: any) => console.error('[Manual entry] Cash account not created:', e.message));
     return data as ExternalWallet;
 }
 
