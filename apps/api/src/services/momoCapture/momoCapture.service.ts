@@ -20,6 +20,7 @@ import { recordManualEntry, ensureCashWallet, listExternalWallets, categoriesFor
 import { cashbookService } from '../cashbook.service';
 import { looseGuess, parseMomoMessage, parseBalanceOnly, parseBalanceMessage, diagnoseMessage, balanceDedupeKey, dedupeKey, describe, isPersonalNumber, type MomoProvider, type ParsedMomoMessage } from './parser';
 import { mirrorMomoCapture, findBookedCaptureEntry } from '../capture/capture.momoMirror';
+import { ensureWalletAssetAccount, findWalletAssetAccountId } from '../walletAccount.service';
 
 export class MomoCaptureError extends Error {
     constructor(message: string, public httpStatus = 400) { super(message); }
@@ -481,30 +482,6 @@ function pickProviderWallet<W extends { name: string; provider_type?: string | n
     return wallets.find((w) => w.name.toLowerCase() === name) ?? (sameProvider.length === 1 ? sameProvider[0] : undefined);
 }
 
-/**
- * Makes sure the external account has its own ASSET account in the chart, so what is booked to it is posted there (and
- * shows in Reports) rather than falling into "Uncategorised Asset". Safe to call every time.
- */
-async function ensureWalletAssetAccount(orgId: string, wallet: { id: string; name: string; provider_type?: string | null }) {
-    const { data: ew } = await supabase.from('external_wallets').select('qb_account_id').eq('id', wallet.id).maybeSingle();
-    if (ew?.qb_account_id && /^[0-9a-f-]{36}$/i.test(ew.qb_account_id)) {
-        const { data: linked } = await supabase.from('accounts').select('id').eq('organization_id', orgId).eq('type', 'ASSET').eq('id', ew.qb_account_id).maybeSingle();
-        if (linked) return linked.id as string;
-    }
-    const { data: byName } = await supabase.from('accounts').select('id').eq('organization_id', orgId).eq('type', 'ASSET').ilike('name', wallet.name).limit(1).maybeSingle();
-    let id = byName?.id as string | undefined;
-    if (!id) {
-        const { data: made, error } = await supabase.from('accounts').insert({
-            organization_id: orgId, code: `EXT-${wallet.id.slice(0, 8).toUpperCase()}`, name: wallet.name, type: 'ASSET',
-            subtype: wallet.provider_type === 'BANK' ? 'Bank' : 'Other Asset', is_active: true, description: `Money in ${wallet.name}`,
-        }).select('id').single();
-        if (error || !made) throw new MomoCaptureError(`Could not create the ${wallet.name} account in the chart: ${error?.message}`, 500);
-        id = made.id as string;
-    }
-    await supabase.from('external_wallets').update({ qb_account_id: id }).eq('id', wallet.id);
-    return id;
-}
-
 async function walletFor(orgId: string, provider: MomoProvider, destination: string) {
     if (destination === 'CASH') return ensureCashWallet(orgId);
     const name = PROVIDER_WALLET[provider];
@@ -513,7 +490,7 @@ async function walletFor(orgId: string, provider: MomoProvider, destination: str
     const { data, error } = await supabase.from('external_wallets')
         .insert({ organization_id: orgId, name, provider_type: 'MOBILE_MONEY', provider_name: name })
         .select('id, name, provider_type, provider_name').single();
-    if (data) return data;
+    if (data) { await ensureWalletAssetAccount(orgId, data as any); return data; }
     // Lost a race with a concurrent capture creating the same account.
     const again = (await listExternalWallets(orgId)).find((w) => w.name.toLowerCase() === name.toLowerCase());
     if (again) return again;
@@ -1028,11 +1005,8 @@ export async function previewPosting(userId: string, orgId: string, id: string, 
     // The asset account the money account maps to in the ledger.
     let assetAcct: { id: string; code: string | null; name: string } | null = null;
     if (wallet) {
-        const { data: ew } = await supabase.from('external_wallets').select('qb_account_id').eq('id', wallet.id).maybeSingle();
-        const linkId = ew?.qb_account_id && /^[0-9a-f-]{36}$/i.test(ew.qb_account_id) ? ew.qb_account_id : null;
-        const q = supabase.from('accounts').select('id, code, name').eq('organization_id', orgId).eq('type', 'ASSET');
-        const { data: byLink } = linkId ? await q.eq('id', linkId).maybeSingle() : { data: null };
-        assetAcct = (byLink as any) ?? ((await supabase.from('accounts').select('id, code, name').eq('organization_id', orgId).eq('type', 'ASSET').ilike('name', wallet.name).limit(1).maybeSingle()).data as any) ?? null;
+        const assetId = await findWalletAssetAccountId(orgId, wallet as any);
+        if (assetId) assetAcct = ((await supabase.from('accounts').select('id, code, name').eq('id', assetId).maybeSingle()).data as any) ?? null;
     }
     const assetLabel = assetAcct ? { accountId: assetAcct.id, code: assetAcct.code, name: assetAcct.name, type: 'ASSET' as const, willBeCreated: false }
         : { accountId: null as string | null, code: null as string | null, name: walletName, type: 'ASSET' as const, willBeCreated: true };
@@ -1059,9 +1033,16 @@ export async function previewPosting(userId: string, orgId: string, id: string, 
         ? { accountId: main.account.id as string, code: (main.account.code as string | null) ?? null, name: main.account.name as string, type: String(main.account.type ?? (direction === 'IN' ? 'INCOME' : 'EXPENSE')), suspense: false }
         : { accountId: null as string | null, code: null as string | null, name: 'Suspense (not categorised yet)', type: 'SUSPENSE' as const, suspense: true };
 
+    // Picking another of your own wallets' accounts is a transfer in the books, but only the account chosen above has its
+    // wallet balance move, so say so.
+    let otherWalletNote: string | null = null;
+    if (catLine.accountId) {
+        const { data: lw } = await supabase.from('external_wallets').select('name').eq('organization_id', orgId).eq('qb_account_id', catLine.accountId).limit(1).maybeSingle();
+        if (lw) otherWalletNote = `This is your ${lw.name} account. The books are right, but ${lw.name}'s balance on the Wallets page only changes when an entry is recorded on that wallet itself.`;
+    }
     const lines: { role: string; accountId: string | null; code: string | null; name: string; type: string; debit: number; credit: number; note: string | null }[] = [];
     const asset = (debit: number, credit: number, role: string, note: string | null) => lines.push({ role, accountId: assetLabel.accountId, code: assetLabel.code, name: assetLabel.name, type: 'ASSET', debit, credit, note: assetLabel.willBeCreated ? 'This account will be created when you post' : note });
-    const cat = (debit: number, credit: number, role: string) => lines.push({ role, accountId: catLine.accountId, code: catLine.code, name: catLine.name, type: catLine.type, debit, credit, note: catLine.suspense ? 'No category chosen, so it sits in Suspense until one is set' : null });
+    const cat = (debit: number, credit: number, role: string) => lines.push({ role, accountId: catLine.accountId, code: catLine.code, name: catLine.name, type: catLine.type, debit, credit, note: catLine.suspense ? 'No category chosen, so it sits in Suspense until one is set' : otherWalletNote });
     if (direction === 'IN') { asset(amount, 0, 'MONEY', 'Money received'); cat(0, amount, 'CATEGORY'); }
     else { cat(amount, 0, 'CATEGORY'); asset(0, amount, 'MONEY', 'Money paid out'); }
 

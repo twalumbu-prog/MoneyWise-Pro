@@ -12,6 +12,7 @@ import { ledgerService } from '../services/ledger.service';
 import { releaseAllocationsIfNotReceivable } from '../services/customerInvoice.service';
 import { calculatePlatformFee } from '../utils/platformFee';
 import { liveLencoStatus, applyLiveBalance } from '../services/liveWalletBalance.service';
+import { ensureWalletAssetAccount } from '../services/walletAccount.service';
 
 /**
  * Get all cashbook entries with optional filters
@@ -1211,6 +1212,11 @@ export const createExternalWallet = async (req: any, res: any): Promise<any> => 
             }
             throw error;
         }
+
+        // Every wallet has its own ASSET account in the chart, so its money is posted there and shows in Net worth. A wallet
+        // linked to an existing account from the picker keeps that link.
+        try { await ensureWalletAssetAccount(organizationId, wallet as any); }
+        catch (e: any) { console.error('[Wallets] created the wallet but not its chart account (made on first posting):', e.message); }
 
         res.status(201).json(wallet);
     } catch (error: any) {
