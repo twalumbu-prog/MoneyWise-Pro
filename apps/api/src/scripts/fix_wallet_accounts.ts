@@ -1,7 +1,10 @@
 /**
- * Gives every external wallet its own ASSET account in the chart, and re-posts the entries that were booked to a wallet
- * while it had none (they fell into "Uncategorised Asset"). Dry run by default.
- *   npx ts-node --transpile-only src/scripts/fix_wallet_accounts.ts [--org <id>] [--apply]
+ * Audit / repair for external wallets and the chart of accounts.
+ *  1. Every external wallet must have its own ASSET account (a database trigger now guarantees this for new wallets).
+ *  2. Entries booked to a wallet must be posted to THAT account. Entries whose wallet side landed in "Uncategorised Asset"
+ *     (what happened while a wallet had no account) are re-posted. Entries posted elsewhere on purpose (MasterFees manual
+ *     payments go to their own "Master Fees Manual" accounts) are left alone.
+ * Dry run by default.   npx ts-node --transpile-only src/scripts/fix_wallet_accounts.ts [--org <id>] [--apply]
  */
 import 'dotenv/config';
 import { supabase } from '../lib/supabase';
@@ -10,38 +13,52 @@ import { ensureWalletAssetAccount, findWalletAssetAccountId } from '../services/
 
 const apply = process.argv.includes('--apply');
 const orgArg = process.argv.includes('--org') ? process.argv[process.argv.indexOf('--org') + 1] : null;
+const chunk = <T>(xs: T[], n: number) => Array.from({ length: Math.ceil(xs.length / n) }, (_, i) => xs.slice(i * n, i * n + n));
 
 (async () => {
-    let q = supabase.from('external_wallets').select('id, organization_id, name, provider_type, qb_account_id');
-    if (orgArg) q = q.eq('organization_id', orgArg);
-    const { data: wallets, error } = await q;
-    if (error) throw error;
-    const orgNames = new Map<string, string>();
-    for (const o of (await supabase.from('organizations').select('id, name')).data ?? []) orgNames.set(o.id, o.name);
-    console.log(`${apply ? 'APPLY' : 'DRY RUN'} · ${wallets!.length} external wallets${orgArg ? ' in one workspace' : ''}\n`);
-    let missing = 0, misposted = 0;
-    for (const w of wallets!) {
-        const target = await findWalletAssetAccountId(w.organization_id, w as any);
-        const { data: entries } = await supabase.from('cashbook_entries').select('id, date, description, debit, credit').eq('account_type', w.id);
-        const bad: any[] = [];
-        for (const e of entries ?? []) {
-            const { data: j } = await supabase.from('journal_entries').select('id').eq('source_type', 'CASHBOOK').eq('source_id', e.id);
-            const ids = (j ?? []).map((x: any) => x.id);
-            const { data: lines } = ids.length ? await supabase.from('journal_lines').select('account_id').in('journal_entry_id', ids) : { data: [] as any[] };
-            const hasWalletLine = !!target && (lines ?? []).some((l: any) => l.account_id === target);
-            if (!hasWalletLine && Math.abs(Number(e.debit) - Number(e.credit)) > 0.004) bad.push(e);
-        }
-        if (target && bad.length === 0) continue;
-        if (!target) missing++;
-        misposted += bad.length;
-        console.log(`${orgNames.get(w.organization_id) ?? w.organization_id} · "${w.name}" (${w.provider_type}) — ${target ? 'has its account' : 'NO chart account'}; ${bad.length} entr${bad.length === 1 ? 'y' : 'ies'} not posted to it`);
-        for (const e of bad) console.log(`     ${e.date} ${e.description?.slice(0, 70)} Dr${e.debit} Cr${e.credit}`);
-        if (apply) {
-            const id = await ensureWalletAssetAccount(w.organization_id, w as any);
-            for (const e of bad) await ledgerService.repostForCashbookEntry(e.id);
-            console.log(`     → account ${id} ensured; ${bad.length} re-posted`);
+    let wq = supabase.from('external_wallets').select('id, organization_id, name, provider_type, qb_account_id');
+    if (orgArg) wq = wq.eq('organization_id', orgArg);
+    const wallets = (await wq).data ?? [];
+    console.log(`${apply ? 'APPLY' : 'DRY RUN'} · ${wallets.length} external wallets\n`);
+
+    let noAccount = 0;
+    const target = new Map<string, string>();
+    for (const w of wallets) {
+        let id = await findWalletAssetAccountId(w.organization_id, w as any);
+        if (!id) { noAccount++; console.log(`no chart account: ${w.name} (${w.organization_id})`); if (apply) id = await ensureWalletAssetAccount(w.organization_id, w as any); }
+        if (id) target.set(w.id, id);
+    }
+
+    // Uncategorised Asset account per organisation
+    const orgs = [...new Set(wallets.map((w) => w.organization_id))];
+    const uncat = new Map<string, string>();
+    for (const o of orgs) {
+        const { data } = await supabase.from('accounts').select('id').eq('organization_id', o).eq('type', 'ASSET').eq('code', 'QB-1').maybeSingle();
+        if (data) uncat.set(o, data.id);
+    }
+
+    const misposted: { id: string; wallet: string }[] = [];
+    for (const w of wallets) {
+        const { data: entries } = await supabase.from('cashbook_entries').select('id, debit, credit, status').eq('account_type', w.id);
+        const live = (entries ?? []).filter((e: any) => e.status !== 'PENDING' && Math.abs(Number(e.debit) - Number(e.credit)) > 0.004);
+        for (const part of chunk(live, 150)) {
+            const ids = part.map((e: any) => e.id);
+            const { data: js } = await supabase.from('journal_entries').select('id, source_id').eq('source_type', 'CASHBOOK').in('source_id', ids);
+            const jIds = (js ?? []).map((j: any) => j.id);
+            const lines: any[] = [];
+            for (const jp of chunk(jIds, 150)) lines.push(...((await supabase.from('journal_lines').select('journal_entry_id, account_id').in('journal_entry_id', jp)).data ?? []));
+            const entryOf = new Map((js ?? []).map((j: any) => [j.id, j.source_id]));
+            const accountsOf = new Map<string, Set<string>>();
+            for (const l of lines) { const e = entryOf.get(l.journal_entry_id)!; (accountsOf.get(e) ?? accountsOf.set(e, new Set()).get(e)!).add(l.account_id); }
+            for (const e of part) {
+                const set = accountsOf.get(e.id);
+                const t = target.get(w.id);
+                if (t && set && !set.has(t) && uncat.get(w.organization_id) && set.has(uncat.get(w.organization_id)!)) misposted.push({ id: e.id, wallet: w.name });
+            }
         }
     }
-    console.log(`\n${missing} wallets without a chart account, ${misposted} entries to re-post.${apply ? '' : ' (dry run: nothing changed)'}`);
+    console.log(`\n${noAccount} wallets without a chart account · ${misposted.length} entries posted to Uncategorised Asset instead of their wallet`);
+    if (apply) { for (const m of misposted) await ledgerService.repostForCashbookEntry(m.id); console.log(`re-posted ${misposted.length}`); }
+    else console.log('(dry run: nothing changed)');
     process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

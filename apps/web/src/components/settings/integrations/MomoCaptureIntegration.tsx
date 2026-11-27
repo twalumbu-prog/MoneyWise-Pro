@@ -52,7 +52,7 @@ export const MomoCaptureIntegration: React.FC<{ onBack: () => void }> = ({ onBac
     const s = settings.data;
     const [moving, setMoving] = useState<MomoEverythingItem | null>(null);
     const [reviewing, setReviewing] = useState<string | null>(null);
-    const options = useQuery({ queryKey: ['momo-web', 'accounting-options'], queryFn: () => momoCaptureService.accountingOptions(), staleTime: 60_000 });
+    const options = useQuery({ queryKey: ['momo-web', 'accounting-options'], queryFn: () => momoCaptureService.accountingOptions(), staleTime: 0, refetchOnWindowFocus: true, refetchOnMount: 'always' });
     const createAccount = async (name: string): Promise<string | null> => {
         try {
             const a = await momoCaptureService.createAccount(name);
@@ -174,14 +174,14 @@ export const MomoCaptureIntegration: React.FC<{ onBack: () => void }> = ({ onBac
                             {m.comment && <p className="text-xs text-gray-600"><span className="font-semibold">Note:</span> {m.comment}</p>}
                             {m.note && <p className="text-xs text-amber-700">Why: {m.note}</p>}
                             {m.kind === 'NOT_BOOKED' && m.movable && (
-                                <div className="pt-1"><button onClick={() => setMoving(m)} className="px-3 py-1 rounded-full border border-brand-navy text-brand-navy text-xs font-semibold hover:bg-brand-navy hover:text-white">Move to Captured</button></div>
+                                <div className="pt-1"><button onClick={() => { void options.refetch(); setMoving(m); }} className="px-3 py-1 rounded-full border border-brand-navy text-brand-navy text-xs font-semibold hover:bg-brand-navy hover:text-white">Move to Captured</button></div>
                             )}
                         </div>
                     ))}
                 </div>
             )}
 
-            {moving && <MoveDialog m={moving} known={known} defaultProvider={s?.defaultProvider ?? null} opts={options.data} onCreateAccount={createAccount} onClose={() => setMoving(null)}
+            {moving && <MoveDialog key={moving.id} m={moving} known={known} defaultProvider={s?.defaultProvider ?? null} opts={options.data} onCreateAccount={createAccount} onClose={() => setMoving(null)}
                 onDone={() => { setMoving(null); refresh(); void qc.invalidateQueries({ queryKey: ['momo-web'] }); setFilter('PENDING'); setTab('captured'); }} />}
 
             {reviewing && captured.data?.find((c) => c.id === reviewing) && options.data && (
@@ -200,7 +200,7 @@ export const MomoCaptureIntegration: React.FC<{ onBack: () => void }> = ({ onBac
                     </div>
                     {captured.isLoading && <p className="text-sm text-gray-500">Loading…</p>}
                     {!captured.isLoading && (captured.data?.length ?? 0) === 0 && <Empty text="No captured transactions yet. Messages that move money appear here within seconds of arriving on the phone." />}
-                    {captured.data?.map((c) => <CaptureRow key={c.id} c={c} known={known} opts={options.data} onCreateAccount={createAccount} onSave={(fields) => saveCapture.mutateAsync({ id: c.id, fields })} busy={act.isPending && act.variables?.id === c.id} onReview={() => setReviewing(c.id)} onDismiss={() => act.mutate({ kind: 'dismiss', id: c.id })} />)}
+                    {captured.data?.map((c) => <CaptureRow key={c.id} c={c} known={known} opts={options.data} onCreateAccount={createAccount} onSave={(fields) => saveCapture.mutateAsync({ id: c.id, fields })} busy={act.isPending && act.variables?.id === c.id} onReview={() => { void options.refetch(); setReviewing(c.id); }} onDismiss={() => act.mutate({ kind: 'dismiss', id: c.id })} />)}
                 </div>
             )}
 
