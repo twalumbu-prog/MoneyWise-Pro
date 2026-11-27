@@ -33,7 +33,7 @@ export interface MomoPostingPreview {
     lines: MomoPostingLine[];
     totals: { debit: number; credit: number; balanced: boolean };
 }
-export interface MomoPostingInput { direction?: 'IN' | 'OUT'; amount?: number | string; fee?: number | string | null; accountId?: string | null; feeAccountId?: string | null; walletId?: string | null; description?: string; date?: string }
+export interface MomoPostingInput { feeWalletId?: string | null; direction?: 'IN' | 'OUT'; amount?: number | string; fee?: number | string | null; accountId?: string | null; feeAccountId?: string | null; walletId?: string | null; description?: string; date?: string }
 
 /** The fields of a capture a person can correct before booking. */
 export interface MomoCaptureFields {
@@ -180,7 +180,7 @@ export const momoCaptureService = {
     paste(text: string): Promise<{ accepted: boolean; duplicate?: boolean; reason?: string; capture?: MomoCapture; balanceCheck?: MomoBalanceCheck | { duplicate: true } }> {
         return apiJson('/momo-capture/paste', { method: 'POST', body: JSON.stringify({ text }) });
     },
-    post(id: string, overrides: { direction?: 'IN' | 'OUT'; amount?: number | string; accountId?: string; description?: string; walletId?: string; date?: string; fee?: number | string | null; feeAccountId?: string } = {}): Promise<MomoCapture> {
+    post(id: string, overrides: { direction?: 'IN' | 'OUT'; amount?: number | string; accountId?: string; description?: string; walletId?: string; date?: string; fee?: number | string | null; feeAccountId?: string; feeWalletId?: string } = {}): Promise<MomoCapture> {
         return apiJson(`/momo-capture/${id}/post`, { method: 'POST', body: JSON.stringify(overrides) });
     },
     dismiss(id: string): Promise<MomoCapture> {

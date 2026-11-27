@@ -20,7 +20,7 @@ import { recordManualEntry, ensureCashWallet, listExternalWallets, categoriesFor
 import { cashbookService } from '../cashbook.service';
 import { looseGuess, parseMomoMessage, parseBalanceOnly, parseBalanceMessage, diagnoseMessage, balanceDedupeKey, dedupeKey, describe, isPersonalNumber, type MomoProvider, type ParsedMomoMessage } from './parser';
 import { mirrorMomoCapture, findBookedCaptureEntry } from '../capture/capture.momoMirror';
-import { ensureWalletAssetAccount, findWalletAssetAccountId } from '../walletAccount.service';
+import { ensureWalletAssetAccount, findWalletAssetAccountId, ensureTransferClearingAccount } from '../walletAccount.service';
 
 export class MomoCaptureError extends Error {
     constructor(message: string, public httpStatus = 400) { super(message); }
@@ -482,6 +482,19 @@ function pickProviderWallet<W extends { name: string; provider_type?: string | n
     return wallets.find((w) => w.name.toLowerCase() === name) ?? (sameProvider.length === 1 ? sameProvider[0] : undefined);
 }
 
+/**
+ * When the other side of an entry is another of the organisation's own wallets' accounts, that is a transfer: that wallet
+ * has to move too, not just the books.
+ */
+async function transferWalletFor(orgId: string, accountId: string | null | undefined, from: { id: string }) {
+    if (!accountId) return null;
+    for (const w of await listExternalWallets(orgId)) {
+        if (w.id === from.id) continue;
+        if ((await findWalletAssetAccountId(orgId, w as any)) === accountId) return w;
+    }
+    return null;
+}
+
 async function walletFor(orgId: string, provider: MomoProvider, destination: string) {
     if (destination === 'CASH') return ensureCashWallet(orgId);
     const name = PROVIDER_WALLET[provider];
@@ -501,7 +514,7 @@ async function walletFor(orgId: string, provider: MomoProvider, destination: str
  * Books a capture. The PENDING → POSTED flip happens first and conditionally, so two taps (or a tap racing auto-post)
  * can't book it twice; a failed booking puts it back to PENDING.
  */
-export async function post(userId: string, orgId: string, id: string, overrides: { direction?: unknown; amount?: unknown; accountId?: unknown; description?: unknown; walletId?: unknown; date?: unknown; fee?: unknown; feeAccountId?: unknown } = {}, mirror: { autoPosted?: boolean } = {}) {
+export async function post(userId: string, orgId: string, id: string, overrides: { direction?: unknown; amount?: unknown; accountId?: unknown; description?: unknown; walletId?: unknown; date?: unknown; fee?: unknown; feeAccountId?: unknown; feeWalletId?: unknown } = {}, mirror: { autoPosted?: boolean } = {}) {
     const { data: claimed } = await supabase.from('momo_captures').update({ status: 'POSTED', updated_at: new Date().toISOString() })
         .eq('id', id).eq('user_id', userId).eq('organization_id', orgId).in('status', ['PENDING', 'MATCHED']).select('*').maybeSingle();
     if (!claimed) throw new MomoCaptureError('This message was already handled or no longer exists', 409);
@@ -532,7 +545,17 @@ export async function post(userId: string, orgId: string, id: string, overrides:
             if (key) accountId = (await categorySuggestions(userId, orgId).catch(() => null))?.byContact.get(key) ?? null;
         }
 
-        const entry = await recordManualEntry({ orgId, userId, direction, amount, description, date, externalWalletId: wallet.id, accountId, context: claimed.note ?? null, anyAccount: true });
+        // Another of your own accounts on the other side = a transfer: both wallets get an entry, joined by the transfers account.
+        const otherWallet = await transferWalletFor(orgId, accountId, wallet);
+        const clearingId = otherWallet ? await ensureTransferClearingAccount(orgId) : null;
+        const entry = await recordManualEntry({ orgId, userId, direction, amount, description, date, externalWalletId: wallet.id, accountId: clearingId ?? accountId, context: claimed.note ?? null, anyAccount: true });
+        if (otherWallet) {
+            await ensureWalletAssetAccount(orgId, otherWallet);
+            await recordManualEntry({
+                orgId, userId, direction: direction === 'IN' ? 'OUT' : 'IN', amount, date, externalWalletId: otherWallet.id, accountId: clearingId, anyAccount: true,
+                description: direction === 'IN' ? `Transfer to ${wallet.name}` : `Transfer from ${wallet.name}`,
+            });
+        }
         // From here the movement is in the ledger, so nothing below may send the capture back to PENDING (the catch
         // would, and a second tap would then book it twice).
         const { data: done } = await supabase.from('momo_captures')
@@ -540,7 +563,11 @@ export async function post(userId: string, orgId: string, id: string, overrides:
         // The operator's charge leaves the same wallet, so it's booked beside the movement it belongs to.
         if (fee > 0) {
             try {
-                await recordManualEntry({ orgId, userId, direction: 'OUT', amount: fee, description: `${description} · fee`, date, externalWalletId: wallet.id, accountId: typeof overrides.feeAccountId === 'string' && overrides.feeAccountId ? overrides.feeAccountId : null, anyAccount: true });
+                // The fee leaves whichever wallet was charged: the one chosen in the review, else the one the money moved in.
+                const feeWalletId = typeof overrides.feeWalletId === 'string' && overrides.feeWalletId ? overrides.feeWalletId : wallet.id;
+                const feeWallet = feeWalletId === wallet.id ? wallet : ((await listExternalWallets(orgId)).find((w) => w.id === feeWalletId) ?? wallet);
+                if (feeWallet.id !== wallet.id) await ensureWalletAssetAccount(orgId, feeWallet);
+                await recordManualEntry({ orgId, userId, direction: 'OUT', amount: fee, description: `${description} · fee`, date, externalWalletId: feeWallet.id, accountId: typeof overrides.feeAccountId === 'string' && overrides.feeAccountId ? overrides.feeAccountId : null, anyAccount: true });
             } catch (e: any) {
                 console.error(`[MoMo capture] fee of ${fee} for capture ${id} was not booked:`, e.message);
             }
@@ -974,7 +1001,7 @@ export async function accountingOptions(_userId: string, orgId: string) {
     };
 }
 
-interface PreviewInput { direction?: unknown; amount?: unknown; fee?: unknown; accountId?: unknown; feeAccountId?: unknown; walletId?: unknown; description?: unknown; date?: unknown }
+interface PreviewInput { feeWalletId?: unknown; direction?: unknown; amount?: unknown; fee?: unknown; accountId?: unknown; feeAccountId?: unknown; walletId?: unknown; description?: unknown; date?: unknown }
 
 /**
  * The double entry booking this capture would post, without posting it: the money account on one side, the category
@@ -1036,9 +1063,17 @@ export async function previewPosting(userId: string, orgId: string, id: string, 
     // Picking another of your own wallets' accounts is a transfer in the books, but only the account chosen above has its
     // wallet balance move, so say so.
     let otherWalletNote: string | null = null;
-    if (catLine.accountId) {
-        const { data: lw } = await supabase.from('external_wallets').select('name').eq('organization_id', orgId).eq('qb_account_id', catLine.accountId).limit(1).maybeSingle();
-        if (lw) otherWalletNote = `This is your ${lw.name} account. The books are right, but ${lw.name}'s balance on the Wallets page only changes when an entry is recorded on that wallet itself.`;
+    if (wallet) {
+        const tw = await transferWalletFor(orgId, catLine.accountId, wallet);
+        if (tw) otherWalletNote = `A transfer between your own accounts: ${tw.name}'s balance on the Wallets page ${direction === 'IN' ? 'goes down' : 'goes up'} too.`;
+    }
+    // The wallet the fee is charged to (defaults to the one the money moved in).
+    const feeWalletChosen = typeof input.feeWalletId === 'string' && input.feeWalletId ? wallets.find((w) => w.id === input.feeWalletId) ?? null : null;
+    const feeWalletName = feeWalletChosen?.name ?? walletName;
+    let feeAssetLabel = assetLabel;
+    if (feeWalletChosen && feeWalletChosen.id !== wallet?.id) {
+        const fid = await findWalletAssetAccountId(orgId, feeWalletChosen as any);
+        feeAssetLabel = fid ? { accountId: fid, code: null as string | null, name: feeWalletName, type: 'ASSET' as const, willBeCreated: false } : { accountId: null, code: null, name: feeWalletName, type: 'ASSET' as const, willBeCreated: true };
     }
     const lines: { role: string; accountId: string | null; code: string | null; name: string; type: string; debit: number; credit: number; note: string | null }[] = [];
     const asset = (debit: number, credit: number, role: string, note: string | null) => lines.push({ role, accountId: assetLabel.accountId, code: assetLabel.code, name: assetLabel.name, type: 'ASSET', debit, credit, note: assetLabel.willBeCreated ? 'This account will be created when you post' : note });
@@ -1052,7 +1087,7 @@ export async function previewPosting(userId: string, orgId: string, id: string, 
         const f = await lookup(input.feeAccountId, 'OUT', `${description} · fee`, fee, expense);
         feeInfo = { source: f.source, reasoning: f.reasoning, confidence: f.confidence, accountId: f.account?.id ?? null };
         lines.push({ role: 'FEE_CATEGORY', accountId: f.account?.id ?? null, code: f.account?.code ?? null, name: f.account?.name ?? 'Suspense (not categorised yet)', type: f.account ? String(f.account.type ?? 'EXPENSE') : 'SUSPENSE', debit: fee, credit: 0, note: 'Operator fee' });
-        asset(0, fee, 'FEE_MONEY', 'Operator fee paid from the same account');
+        lines.push({ role: 'FEE_MONEY', accountId: feeAssetLabel.accountId, code: feeAssetLabel.code, name: feeAssetLabel.name, type: 'ASSET', debit: 0, credit: fee, note: feeAssetLabel.willBeCreated ? 'This account will be created when you post' : (feeWalletChosen && feeWalletChosen.id !== wallet?.id ? `Fee charged to ${feeWalletName}` : 'Operator fee paid from the same account') });
     }
     const r2 = (n: number) => Math.round(n * 100) / 100;
     const totalDebit = r2(lines.reduce((t, l) => t + l.debit, 0)), totalCredit = r2(lines.reduce((t, l) => t + l.credit, 0));

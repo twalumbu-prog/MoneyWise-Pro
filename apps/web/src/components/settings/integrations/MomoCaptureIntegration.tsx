@@ -404,6 +404,7 @@ const ReviewDialog: React.FC<{ c: MomoCaptureActivity; opts: MomoAccountingOptio
     const [date, setDate] = useState(lusakaDay(c.occurred_at));
     const [description, setDescription] = useState('');
     const [category, setCategory] = useState('');          // '' = the AI's suggestion
+    const [feeWallet, setFeeWallet] = useState('');        // '' = the same account the money moved in
     const [feeCategory, setFeeCategory] = useState('');
     const [aiCategory, setAiCategory] = useState('');      // the suggestion, once seen: later previews reuse it instead of asking the AI again
     const [aiFeeCategory, setAiFeeCategory] = useState('');
@@ -412,6 +413,7 @@ const ReviewDialog: React.FC<{ c: MomoCaptureActivity; opts: MomoAccountingOptio
     const [error, setError] = useState<string | null>(null);
     const [posting, setPosting] = useState(false);
     const walletId = account.startsWith('prov:') ? '' : account;
+    const feeWalletId = feeWallet && !feeWallet.startsWith('prov:') ? feeWallet : '';
     const catId = category || aiCategory, feeCatId = feeCategory || aiFeeCategory;
 
     useEffect(() => {
@@ -420,7 +422,7 @@ const ReviewDialog: React.FC<{ c: MomoCaptureActivity; opts: MomoAccountingOptio
         const t = setTimeout(async () => {
             try {
                 const p = await momoCaptureService.previewPosting(c.id, {
-                    walletId: walletId || null, direction: direction as 'IN' | 'OUT', amount: amount.replace(/,/g, ''), fee: fee.trim() ? fee.replace(/,/g, '') : null,
+                    walletId: walletId || null, feeWalletId: feeWalletId || null, direction: direction as 'IN' | 'OUT', amount: amount.replace(/,/g, ''), fee: fee.trim() ? fee.replace(/,/g, '') : null,
                     accountId: catId || undefined, feeAccountId: feeCatId || undefined, description: description.trim() || undefined, date,
                 });
                 if (!alive) return;
@@ -432,7 +434,7 @@ const ReviewDialog: React.FC<{ c: MomoCaptureActivity; opts: MomoAccountingOptio
         }, 450);
         return () => { alive = false; clearTimeout(t); };
         // eslint-disable-next-line
-    }, [walletId, direction, amount, fee, date, description, catId, feeCatId]);
+    }, [walletId, feeWalletId, direction, amount, fee, date, description, catId, feeCatId]);
 
     // Any account in the chart can sit on the debit or credit side. Income and expense first (the usual choice), then the rest.
     const TYPE_ORDER: Record<string, number> = { EXPENSE: 0, INCOME: 1, ASSET: 2, LIABILITY: 3, EQUITY: 4 };
@@ -443,7 +445,7 @@ const ReviewDialog: React.FC<{ c: MomoCaptureActivity; opts: MomoAccountingOptio
         try {
             await momoCaptureService.post(c.id, {
                 direction: direction as 'IN' | 'OUT', amount: amount.replace(/,/g, ''), accountId: catId || undefined, description: description.trim() || undefined,
-                walletId: walletId || undefined, date, fee: fee.trim() ? fee.replace(/,/g, '') : null, feeAccountId: feeCatId || undefined,
+                walletId: walletId || undefined, feeWalletId: feeWalletId || undefined, date, fee: fee.trim() ? fee.replace(/,/g, '') : null, feeAccountId: feeCatId || undefined,
             });
             onPosted();
         } catch (e: any) { setError(e?.message || 'Could not post'); setPosting(false); }
@@ -488,8 +490,9 @@ const ReviewDialog: React.FC<{ c: MomoCaptureActivity; opts: MomoAccountingOptio
                                 <tr key={i} className="border-t border-gray-100 align-top">
                                     <td className={`px-3 py-2 ${l.credit > 0 ? 'pl-8' : ''}`}>
                                         {l.role === 'MONEY' || l.role === 'FEE_MONEY' ? (
-                                            <Combo label="Account" hideLabel strict value={account} onChange={setAccount} options={accountOptions(opts)} disabled={l.role === 'FEE_MONEY'}
-                                                onCreate={async (name) => { const id = await onCreateAccount(name); if (id) setAccount(id); }} />
+                                            <Combo label={l.role === 'FEE_MONEY' ? 'Fee paid from' : 'Account'} hideLabel strict value={l.role === 'FEE_MONEY' ? (feeWallet || account) : account}
+                                                onChange={l.role === 'FEE_MONEY' ? setFeeWallet : setAccount} options={accountOptions(opts)}
+                                                onCreate={async (name) => { const id = await onCreateAccount(name); if (id) (l.role === 'FEE_MONEY' ? setFeeWallet : setAccount)(id); }} />
                                         ) : (
                                             <Combo label={l.debit > 0 ? 'Debit account' : 'Credit account'} hideLabel strict value={l.role === 'FEE_CATEGORY' ? feeCatId : catId}
                                                 onChange={l.role === 'FEE_CATEGORY' ? setFeeCategory : setCategory} options={chartOpts} placeholder="Choose an account (type to search)" />

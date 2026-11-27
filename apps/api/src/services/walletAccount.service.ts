@@ -51,3 +51,24 @@ export async function ensureWalletAssetAccount(orgId: string, w: WalletRef): Pro
     await supabase.from('external_wallets').update({ qb_account_id: id }).eq('id', w.id).is('qb_account_id', null);
     return id!;
 }
+
+const CODE_WALLET_TRANSFER = 'SYS-WALLET-TRANSFER';
+
+/**
+ * The account a transfer between two of the organisation's own wallets passes through. Each wallet gets its own entry
+ * (so each wallet's balance moves) and each is posted against this account: money out of FNB is Dr this / Cr FNB, money
+ * into Airtel is Dr Airtel / Cr this, so together they read Dr Airtel / Cr FNB and this account nets to zero.
+ */
+export async function ensureTransferClearingAccount(orgId: string): Promise<string> {
+    const find = async () => (await supabase.from('accounts').select('id').eq('organization_id', orgId).eq('code', CODE_WALLET_TRANSFER).maybeSingle()).data?.id as string | undefined;
+    const existing = await find();
+    if (existing) return existing;
+    const { data } = await supabase.from('accounts').insert({
+        organization_id: orgId, code: CODE_WALLET_TRANSFER, name: 'Transfers between accounts', type: 'ASSET', subtype: 'Other Asset', is_active: true,
+        description: 'Money moving between your own accounts. Always nets to zero once both sides are recorded.',
+    }).select('id').single();
+    if (data) return data.id as string;
+    const again = await find();
+    if (!again) throw new Error('Could not create the transfers account');
+    return again;
+}
