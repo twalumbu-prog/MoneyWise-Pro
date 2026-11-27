@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <!-- RECEIVE_SMS / READ_SMS are added by app.config.ts (MOMO_SMS_CAPTURE) so a store build can ship without them
        until Google Play approves the SMS permission declaration; without them this receiver simply never fires. -->
+  <!-- The SMS permissions make Android assume a SIM is required, which hid the app from ~4,000 tablets and other
+       devices without one on Google Play. A SIM is optional: without one, capture works through notifications. -->
+  <uses-feature android:name="android.hardware.telephony" android:required="false" />
   <!-- For the "Record / Dismiss" prompt shown when a transaction is captured. -->
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <!-- Android 16: lets the "Offline" status appear in the phone's own island / status-bar chip (no prompt; a normal permission). -->
