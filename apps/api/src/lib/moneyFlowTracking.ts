@@ -24,7 +24,8 @@
 import crypto from 'crypto';
 import { posthogClient } from './posthog';
 import { supabase } from './supabase';
-import { loadOrg } from './usageTracking';
+import { loadOrg, platformOf } from './usageTracking';
+import { currentRequest } from '../services/usage.service';
 
 export type FlowType = 'deposit' | 'pos_sale' | 'store_link' | 'quick_pay' | 'payment_link' | 'payout';
 export type FlowStage = 'started' | 'completed' | 'failed';
@@ -74,6 +75,10 @@ async function classifyCollection(reference: string, hint?: FlowType): Promise<F
 
 export function trackFlow(stage: FlowStage, input: FlowInput): void {
     if (!posthogClient || !input.reference) return;
+    // Which app the person was using. Only requests carry it: a failure settled later by a webhook or poller has none, so read the platform
+    // from the matching `started` event (same reference) when reporting.
+    const req = currentRequest();
+    const platform = req ? platformOf(req) : undefined;
     void (async () => {
         try {
             const event = `money_flow_${stage}`;
@@ -124,6 +129,7 @@ export function trackFlow(stage: FlowStage, input: FlowInput): void {
                     account_type: org?.accountType ?? 'unknown',
                     organization_id: organizationId,
                     method: input.method,
+                    platform,
                     reference: input.reference,
                     duration_seconds: durationSeconds,
                     failure_type: input.failureType,

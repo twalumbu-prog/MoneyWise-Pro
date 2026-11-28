@@ -153,7 +153,7 @@ export async function loadOrg(organizationId: string): Promise<OrgInfo | null> {
 const ENVIRONMENT = process.env.NODE_ENV === 'production' ? 'prod' : 'dev';
 
 /** Which client made the request. The mobile app and web both send their own User-Agent; fall back to the optional header. */
-function platformOf(req: any): 'ios' | 'android' | 'web' | 'api' {
+export function platformOf(req: any): 'ios' | 'android' | 'web' | 'api' {
     const declared = String(req.headers['x-client-platform'] || '').toLowerCase();
     if (declared === 'ios' || declared === 'android' || declared === 'web') return declared;
     const ua = String(req.headers['user-agent'] || '');

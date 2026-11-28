@@ -13,6 +13,8 @@ const als = new AsyncLocalStorage<Ctx>();
 
 /** Express middleware: remembers the request for the rest of its life, so the signed-in business can be read when an event is recorded. */
 export const usageContext = (req: any, _res: any, next: () => void) => als.run({ req }, () => next());
+/** The request that started the work in progress, if any (webhooks, jobs and pollers have none). */
+export const currentRequest = (): any => als.getStore()?.req ?? null;
 /** Names the business the rest of this piece of work is for (used where the business is known but there is no signed-in request). */
 export function attributeTo(orgId: string | null | undefined): void {
     const c = als.getStore();

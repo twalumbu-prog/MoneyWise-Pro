@@ -7,10 +7,14 @@ import posthog from 'posthog-js';
 const key =
     import.meta.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN ||
     import.meta.env.VITE_POSTHOG_KEY;
-const apiHost =
+const configuredHost =
     import.meta.env.NEXT_PUBLIC_POSTHOG_HOST ||
     import.meta.env.VITE_POSTHOG_HOST ||
     'https://us.i.posthog.com';
+// Send through our own domain (the /ingest rewrite in vercel.json) instead of straight to posthog.com. Direct calls to a third-party
+// analytics host are blocked by some mobile carriers, ad blockers and corporate networks, which silently drops every event (browser
+// events from signed-in users have been near zero since mid-August). The dev server has no rewrite, so it keeps the direct host.
+const apiHost = import.meta.env.PROD && /posthog\.com/.test(configuredHost) ? '/ingest' : configuredHost;
 
 if (key) {
     posthog.init(key, {
@@ -20,6 +24,8 @@ if (key) {
         // real PostHog UI instead of the proxy domain.
         ui_host: 'https://us.posthog.com',
         person_profiles: 'identified_only',
+        // This is a single-page app: count each in-app navigation as a page view (Budget, Savings, Invest, Grow, …), not just the first load.
+        capture_pageview: 'history_change',
     });
 } else if (import.meta.env.PROD) {
     // Surface a clear signal in the browser console instead of silently
